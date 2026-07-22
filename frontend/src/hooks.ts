@@ -35,6 +35,7 @@ export function useFetch(url: string, options: any = {}) {
 
     options.headers = new Headers({
       'X-Auth-Pacs': localStorage.getItem('token') || '',
+      'Content-Type': 'application/json',
     });
     controller.current = new AbortController();
     options.signal = controller.current.signal;

@@ -45,6 +45,8 @@ class Patient(Table):
 
         q = self.select('*').where(self.table.id == patient_id)
         patient = await self.fetchone(q)
+        if not patient:
+            return None
         patient = dict(patient)
 
         StudyT = Study(self.conn)

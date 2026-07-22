@@ -26,24 +26,28 @@ function App() {
     init();
   }, []);
 
-  if (!localStorage.getItem('userId') && !localStorage.getItem('tempKey')) {
-    return <Navigate to="/login" />;
-  }
+  const authed = localStorage.getItem('userId') || localStorage.getItem('tempKey');
 
   return (
     <ConfigProvider>
       <Router history={history as any}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Files />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/replicas" element={<Replicas />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/logs" element={<Logs />} />
-        <Route path="/patients/:id" element={<Patient />} />
-        <Route path="/files/:id" element={<Detail />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      {authed ? (
+        <Routes>
+          <Route path="/account" element={<Account />} />
+          <Route path="/replicas" element={<Replicas />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/logs" element={<Logs />} />
+          <Route path="/patients/:id" element={<Patient />} />
+          <Route path="/files/:id" element={<Detail />} />
+          <Route path="/" element={<Files />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      ) : (
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+      )}
       </Router>
     </ConfigProvider>
     );

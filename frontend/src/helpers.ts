@@ -38,6 +38,7 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
   }
   options.headers = new Headers({
     'X-Auth-Pacs': token || '',
+    'Content-Type': 'application/json',
   });
   if (options.data) {
     options.method = 'POST';
