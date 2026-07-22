@@ -1,6 +1,8 @@
 from starlette.routing import Router, Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
+from starlette.responses import JSONResponse
+
 from api.patient import PatientHandler
 from api.files import (
     Upload, DownloadFiles, DownloadData, DownloadToken, FilesHandler, FileHandler,
@@ -15,6 +17,7 @@ from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
 routes = [
+    Route('/health', endpoint=lambda r: JSONResponse({'status': 'ok'})),
     Route('/replicas', endpoint=ReplicasHandlers),
     Route('/replicas/{id}', endpoint=ReplicaHandlers),
     Route('/login', endpoint=Login),

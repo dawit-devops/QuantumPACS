@@ -4,9 +4,8 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse
 from starlette.exceptions import HTTPException
-from starlette.routing import Route
 
 import lifecycle
 from api.auth import TokenAuth
@@ -55,9 +54,7 @@ async def startup():
 
 
 app = Starlette(
-    routes=routes + [
-        Route('/api/health', endpoint=lambda r: JSONResponse({'status': 'ok'})),
-    ],
+    routes=routes,
     middleware=[
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(CustomMiddleware),

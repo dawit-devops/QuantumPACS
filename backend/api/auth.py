@@ -37,7 +37,7 @@ class TokenAuth(AuthenticationBackend):
         path = request.url.path
         if not path.startswith('/api'):
             return
-        if path == '/api/login':
+        if path == '/api/login' or path == '/api/health':
             return
         if request.scope.get('method') == 'OPTIONS':
             return
