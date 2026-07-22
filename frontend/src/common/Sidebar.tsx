@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import withRouter from '../withRouter';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
 import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useFetch } from '../hooks';
@@ -11,7 +10,7 @@ import './Sidebar.css';
 const { Sider } = Layout;
 
 function getKey(loc: string) {
-  return loc === '/' ? 'files' : loc.slice(1);
+  return loc === '/' ? 'files' : loc.slice(1).split('/')[0];
 }
 
 function getOpenKey(key: string) {
@@ -21,8 +20,10 @@ function getOpenKey(key: string) {
   return key;
 }
 
-function Sidebar(props: any) {
-  const loc = props.history.location.pathname;
+function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const loc = location.pathname;
 
   let [collapsed, setCollapsed] = useState(false);
   const key = getKey(loc);
@@ -41,7 +42,7 @@ function Sidebar(props: any) {
     localStorage.removeItem('userId');
     localStorage.removeItem('admin');
     localStorage.removeItem('token');
-    props.history.push('/login');
+    navigate('/login');
   };
 
   useEffect(() => {
@@ -116,4 +117,4 @@ function Sidebar(props: any) {
   );
 }
 
-export default withRouter(Sidebar);
+export default Sidebar;

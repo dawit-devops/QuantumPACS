@@ -12,7 +12,12 @@ export default function withRouter(Component: React.ComponentType<any>) {
     return (
       <Component
         {...props}
-        history={{ ...location, push: navigate, replace: (to: string) => navigate(to, { replace: true }) }}
+        history={{
+          ...location,
+          location,
+          push: navigate,
+          replace: (to: string) => navigate(to, { replace: true }),
+        }}
         match={match}
         location={location}
         navigate={navigate}

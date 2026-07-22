@@ -15,6 +15,14 @@ import Detail from './detail/Detail';
 import history from './history';
 import { init } from './ws';
 
+function ProtectedRoute({ children }: { children: React.ReactElement }) {
+  const authed = localStorage.getItem('userId') || localStorage.getItem('tempKey');
+  if (!authed) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
+
 function App() {
   const params = new URLSearchParams(window.location.search);
   const tempKey = params.get('key');
@@ -26,28 +34,20 @@ function App() {
     init();
   }, []);
 
-  const authed = localStorage.getItem('userId') || localStorage.getItem('tempKey');
-
   return (
     <ConfigProvider>
       <Router history={history as any}>
-      {authed ? (
-        <Routes>
-          <Route path="/account" element={<Account />} />
-          <Route path="/replicas" element={<Replicas />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/logs" element={<Logs />} />
-          <Route path="/patients/:id" element={<Patient />} />
-          <Route path="/files/:id" element={<Detail />} />
-          <Route path="/" element={<Files />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      ) : (
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" />} />
+          <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+          <Route path="/replicas" element={<ProtectedRoute><Replicas /></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+          <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
+          <Route path="/patients/:id" element={<ProtectedRoute><Patient /></ProtectedRoute>} />
+          <Route path="/files/:id" element={<ProtectedRoute><Detail /></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute><Files /></ProtectedRoute>} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
-      )}
       </Router>
     </ConfigProvider>
     );
