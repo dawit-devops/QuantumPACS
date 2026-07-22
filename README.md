@@ -1,45 +1,131 @@
-# openpacs
+# OpenPACS
 
-Latest source code is at https://github.com/wooque/openpacs
+Open-source Picture Archiving and Communication System for medical image management. DICOM ingestion, study browsing, multi-planar reconstruction viewer, multi-site replication, and full-text search — built for production radiology workflows.
 
-## Install
+## Quick Start
 
-### Easy way
+```bash
+# Clone and start all services
+git clone https://github.com/wooque/openpacs
+docker compose up -d
+```
 
-Make sure you have `docker-compose` installed ([install docs](https://docs.docker.com/compose/install/))
+If Elasticsearch fails to start with permission errors:
+```bash
+chmod -R 1000 ./es
+docker compose up -d
+```
 
-Grab `docker-compose.yaml` file
+Open `http://localhost` — default credentials: `admin` / `pa55w0rd`
 
-Run `docker-compose up -d`
+## Manual Setup
 
-If you have trouble with elasticsearch container, complaining about permissions, run `chmod -R 1000 ./es`
+### Backend
 
-### Custom installation 
-
-#### Backend
-
-Install and run `PostgreSQL` and `ElasticSearch`, easiest way is to run `docker-compose up -d` inside `backend` folder
-
-Make sure you have `Python 3`, `gcc` and `make` installed
-
-Create virtual environment `python -m venv venv`
-
-Enter virtual environment `source venv/bin/activate`
-
-Install dependencies `pip install -r requirements.txt`
-
-Initialize database with `./manage db init`,
-it will output random password that should be put wither in `DB_PASS` environment variable or `db_pass` field in `config.local.yaml`
-
-Start processes `./start.sh`
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+./manage db init          # creates DB, outputs random password
+export DB_PASS=<password> # or set in config.local.yaml
+./start.sh                # starts DICOM listener, sync, HTTP server
+```
 
 ### Frontend
 
-Make sure you have `Node.js` and `npm` installed
+```bash
+npm install
+npm run build             # outputs to build/
+```
 
-Install dependencies `npm install`
+Serve `build/` via Nginx/Caddy, or copy to `backend/static/` and set `OPENPACS_DOCKER=true`.
 
-Build frontend `npm run build`
+## Commands
 
-Resulting files will be in `build` folder. 
-Setup Nginx or some other webserver to serve files or copy files to `backend/static` folder and set `OPENPACS_DOCKER=true` environment variable to have backend serving files 
+| Command | Description |
+|---------|-------------|
+| `./manage db init` | Initialize database and create superadmin user |
+| `./manage db create` | Create database schema |
+| `./manage db drop` | Drop database |
+| `./manage db reset` | Drop and recreate database |
+| `./manage db shell` | Open database shell |
+| `./manage db import` | Import DICOM files |
+| `./start.sh` | Start all backend processes |
+| `npm run dev` | Start frontend dev server |
+| `npm run build` | Production frontend build |
+| `npm test` | Run frontend tests |
+| `npm run lint` | Lint frontend code |
+| `npm run typecheck` | TypeScript type checking |
+| `pytest` | Run backend tests (from `backend/`) |
+| `flake8` | Lint backend code (from `backend/`) |
+| `docker compose up -d` | Start all services |
+
+## Architecture
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
+│  Browser      │────▶│  Caddy (reverse  │────▶│  PostgreSQL   │
+│  (React SPA   │     │   proxy)         │     │  + Elastic    │
+│   + Viewer)   │◀────│                  │◀────│  Search       │
+└──────────────┘     └────────┬─────────┘     └──────────────┘
+                              │
+                     ┌────────▼─────────┐
+                     │  Starlette API    │
+                     │  (Uvicorn/Gun)    │
+                     │                   │
+                     │  ┌─ JWT Auth     │
+                     │  ├─ DICOM Router │
+                     │  ├─ File Manager │
+                     │  └─ Replicator   │
+                     └────────┬─────────┘
+                              │
+                     ┌────────▼─────────┐
+                     │   Filesystem      │
+                     │   (DICOM store)   │
+                     └──────────────────┘
+```
+
+Key design decisions documented in [docs/decisions/](docs/decisions/):
+- **ADR-001**: Strangler Fig incremental modernization
+- **ADR-002**: Starlette backend framework
+- **ADR-003**: JWT token authentication
+- **ADR-004**: PostgreSQL + asyncpg + Alembic
+- **ADR-005**: REST API with Pydantic validation
+- **ADR-006**: React + Vite + Ant Design + Cornerstone3D
+- **ADR-007**: Multi-tier storage (FS + DB + ES)
+- **ADR-008**: Security architecture
+
+## Configuration
+
+Settings loaded from `config.local.yaml` (if present) and overridden by environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET` | `db_password` | JWT signing secret |
+| `SUPERADMIN_PASS` | `pa55w0rd` | Initial admin password |
+| `DB_HOST` | `127.0.0.1` | PostgreSQL host |
+| `DB_DATABASE` | `openpacs` | PostgreSQL database name |
+| `DB_USER` | `openpacs` | PostgreSQL user |
+| `DB_PASS` | `pa55w0rd` | PostgreSQL password |
+| `ES_HOST` | `localhost` | Elasticsearch host |
+| `OPENPACS_DOCKER` | — | Enable Docker mode (backend serves static) |
+
+## Tech Stack
+
+- **Backend**: Python 3.11, Starlette, asyncpg, Alembic, Pydantic v2, PyJWT
+- **Frontend**: React 18, TypeScript, Vite, Ant Design 5, Cornerstone3D
+- **Database**: PostgreSQL 16, Elasticsearch 8
+- **Infrastructure**: Docker, Caddy, GitHub Actions
+
+## Contributing
+
+1. Open an issue to discuss changes before implementing
+2. Write tests for new endpoints and DICOM processing logic
+3. Run `pytest` and `npm test` before opening a PR
+4. Update ADRs for architectural decisions
+5. Follow existing code conventions — match the patterns you find
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2019 Vuk Mirovic.

@@ -1,10 +1,14 @@
+"""Database connection management — legacy per-process pool + new Database singleton.
+Prefer get_database() for new code; get_conn() maintains backward compatibility."""
 import os
 
 import asyncpg
 
 from config import config
+from db.database import Database
 
 db = {}
+database = Database()
 
 
 async def init_db():
@@ -50,6 +54,8 @@ async def setup(pool_size=None):
     )
     db[os.getpid()] = pool
 
+    await database.setup(pool_size)
+
 
 async def create_conn():
     return await asyncpg.connect(
@@ -65,7 +71,13 @@ def get_conn():
     return db[os.getpid()].acquire()
 
 
+def get_database():
+    return database
+
+
 async def teardown():
     pid = os.getpid()
     await db[pid].close()
     del db[pid]
+
+    await database.close()

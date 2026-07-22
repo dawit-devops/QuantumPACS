@@ -4,8 +4,8 @@ import functools
 import os.path
 from io import BytesIO
 
-from b2sdk.v1 import InMemoryAccountInfo, B2Api, DownloadDestBytes
-from starlette.responses import StreamingResponse
+from b2sdk.v2 import InMemoryAccountInfo, B2Api
+from starlette.responses import StreamingResponse, RedirectResponse
 
 from storage.storage import Storage
 
@@ -116,7 +116,7 @@ class B2Storage(Storage):
         return {
             'location': filename,
             'meta': {
-                'id': id_.id_,
+                'id': id_.id_ if hasattr(id_, 'id_') else id_,
             }
         }
 
@@ -124,18 +124,21 @@ class B2Storage(Storage):
     def fetch(self, filedata):
         path = self.get_path(filedata)
         bucket = self.api.get_bucket_by_name(self.bucket)
-        dest = DownloadDestBytes()
-        bucket.download_file_by_name(path, dest)
-        return BytesIO(dest.bytes_written)
+        downloaded = bucket.download_file_by_name(path)
+        buf = BytesIO()
+        downloaded.save(buf)
+        buf.seek(0)
+        return buf
 
     async def serve(self, file):
         bucket = self.api.get_bucket_by_name(self.bucket)
-        # TODO: use this method if B2 fixes CORS
-        # url = bucket.get_download_url(file['location'])
-        # token = bucket.get_download_authorization(file['location'], 3600)
-        # return RedirectResponse(url=f"{url}?Authorization={token}")
-        fp = await self.fetch(file)
-        return StreamingResponse(fp)
+        url = bucket.get_download_url(file['location'])
+        try:
+            token = bucket.get_download_authorization(file['location'], 3600)
+            return RedirectResponse(url=f"{url}?Authorization={token}")
+        except Exception:
+            fp = await self.fetch(file)
+            return StreamingResponse(fp)
 
     @run_in_executor
     def delete(self, filedata):

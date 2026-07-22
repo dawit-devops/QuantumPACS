@@ -1,6 +1,7 @@
 import os
 
-from elasticsearch_async import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch import ConnectionError as ESConnectionError
 
 from config import config
 from es.mapping import INDEX
@@ -15,11 +16,10 @@ async def setup():
     client[os.getpid()] = conn
     try:
         await get_client().indices.get(index=INDEX_NAME)
-    except Exception as e:
-        if getattr(e, 'error', '') == 'index_not_found_exception':
-            await get_client().indices.create(index=INDEX_NAME, body=INDEX)
-        else:
-            raise
+    except NotFoundError:
+        await get_client().indices.create(index=INDEX_NAME, body=INDEX)
+    except ESConnectionError:
+        raise
 
 
 async def teardown():
@@ -28,7 +28,7 @@ async def teardown():
 
 
 async def close():
-    await get_client().transport.close()
+    await get_client().close()
 
 
 def get_client():
@@ -92,9 +92,12 @@ async def search(data):
             "size": size,
             "from": (page - 1) * size,
         })
+    total = res['hits']['total']
+    if isinstance(total, dict):
+        total = total['value']
     return {
         'data': [r['_source'] for r in res['hits']['hits']],
-        'total': res['hits']['total']['value'],
+        'total': total,
     }
 
 
@@ -112,4 +115,3 @@ async def index_file(file):
 async def reset_index():
     await get_client().indices.delete(index='openpacs')
     await get_client().indices.create(index='openpacs', body=INDEX)
-

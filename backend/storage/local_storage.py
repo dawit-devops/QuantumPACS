@@ -56,12 +56,16 @@ class LocalStorage(Storage):
                 shutil.copyfileobj(src, f)
 
     def get_path(self, filedata):
-        return os.path.join(
+        safe_parts = []
+        for part in [
             str(filedata['patient_id']),
             str(filedata['study_id']) or 'empty',
             str(filedata['series_number']) or 'empty',
             filedata['name'],
-        )
+        ]:
+            safe = os.path.basename(os.path.normpath(part))
+            safe_parts.append(safe)
+        return os.path.join(*safe_parts)
 
     async def copy(self, src, filedata):
         dst = self.get_path(filedata)

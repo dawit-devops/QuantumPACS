@@ -1,6 +1,6 @@
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import UJSONResponse
 
+from api.response import ok, not_found
 from api.utils import get_id
 from db.conn import get_conn
 from db.patient import Patient
@@ -16,5 +16,5 @@ class PatientHandler(HTTPEndpoint):
     async def get(self, request):
         data = await get_patient_by_id(request)
         if not data:
-            return UJSONResponse(status_code=404)
-        return UJSONResponse(data)
+            return not_found()
+        return ok(data)

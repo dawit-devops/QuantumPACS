@@ -14,8 +14,11 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from dcm.file import get_meta
 from lifecycle import setup, teardown
+from log import get_logger
 from storage.storage import Storage
 from utils import hash_file
+
+log = get_logger(__name__)
 
 initialized = False
 loop = None
@@ -52,7 +55,7 @@ async def store(ds, data):
                     [{'id': f['id'], **ret}],
                 )
         except Exception as e:
-            print(traceback.format_exc())
+            log.error('DICOM store failed: %s', traceback.format_exc())
             await Log(conn).add(str(e))
             return False
     return True
@@ -75,7 +78,7 @@ def handle_store(event):
             return 0x0001
 
     except Exception as e:
-        print(traceback.format_exc())
+        log.error('DICOM handle_store failed: %s', traceback.format_exc())
         return 0x0001
 
     return 0x0000

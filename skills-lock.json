@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "multi-stage-dockerfile": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/multi-stage-dockerfile/SKILL.md",
+      "computedHash": "698bf93a84dae18fd7bd0b1d35c21427307fde78fbdf4624be9726f5f98189ca"
+    },
+    "readme-generator": {
+      "source": "dmccreary/claude-skills",
+      "sourceType": "github",
+      "skillPath": "skills/archived/readme-generator/SKILL.md",
+      "computedHash": "cce31c863537486d771fab271b5b1c0931dce58fb031a69dfa836001180df20c"
+    }
+  }
+}

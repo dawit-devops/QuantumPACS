@@ -4,11 +4,13 @@ from zipfile import ZipFile
 from uuid import uuid4
 
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import UJSONResponse, FileResponse
+from starlette.responses import FileResponse
 from starlette.exceptions import HTTPException
 from starlette.background import BackgroundTask
 
-from api.utils import get_id, api_error, is_admin, gen_token
+from api.response import ok, not_found, no_content, validation_error
+from api.tokens import create_token as gen_token
+from api.utils import get_id, is_admin
 from db.conn import get_conn
 from db.file_changes import FileChange
 from db.files import Files
@@ -31,7 +33,7 @@ class Upload(HTTPEndpoint):
             async with conn.transaction():
                 master = await Replica(conn).master()
                 if not master:
-                    return api_error('No master set')
+                    return validation_error('No master set')
 
                 ds = parse_dcm(file)
                 hsh = hash_file(file)
@@ -51,7 +53,7 @@ class Upload(HTTPEndpoint):
                     master['id'],
                     [{'id': filedata['id'], **ret}],
                 )
-        return UJSONResponse({})
+        return no_content()
 
 
 def zip_files(files, zipname):
@@ -123,7 +125,7 @@ class FilesHandler(HTTPEndpoint):
 
         async with get_conn() as conn:
             data = await es.search(data)
-            return UJSONResponse(data)
+            return ok(data)
 
 
 async def get_file_by_id(request):
@@ -139,8 +141,8 @@ class FileHandler(HTTPEndpoint):
     async def get(self, request):
         data = await get_file_by_id(request)
         if not data:
-            return UJSONResponse(status_code=404)
-        return UJSONResponse(data)
+            return not_found()
+        return ok(data)
 
     async def post(self, request):
         file_id = get_id(request)
@@ -152,7 +154,7 @@ class FileHandler(HTTPEndpoint):
                     request.user.id,
                     data['tools_state'],
                 )
-        return UJSONResponse(data)
+        return ok(data)
 
     async def delete(self, request):
         is_admin(request)
@@ -160,14 +162,14 @@ class FileHandler(HTTPEndpoint):
             async with conn.transaction():
                 master = await Replica(conn).master()
                 if not master:
-                    return api_error('No master set')
+                    return validation_error('No master set')
 
                 file = await get_file_by_id(request)
                 storage = await Storage.get(master)
                 await storage.delete(file)
 
                 await Files(conn).delete(file['id'], master['id'])
-        return UJSONResponse({})
+        return no_content()
 
 
 class FileChangesHandler(HTTPEndpoint):
@@ -176,7 +178,7 @@ class FileChangesHandler(HTTPEndpoint):
         async with get_conn() as conn:
             data = await FileChange(conn).for_file(file_id)
 
-        return UJSONResponse({'data': data})
+        return ok({'data': data})
 
 
 class ServeFile(HTTPEndpoint):
@@ -202,10 +204,10 @@ class ShareFilesHandler(HTTPEndpoint):
 
         async with get_conn() as conn:
             key = await SharedFiles(conn).share(file_id, data['duration'])
-        return UJSONResponse({'key': key})
+        return ok({'key': key})
 
 
 class DownloadToken(HTTPEndpoint):
     async def get(self, request):
         token = gen_token(request.user.to_dict(), {'minutes': 1})
-        return UJSONResponse({'token': token})
+        return ok({'token': token})

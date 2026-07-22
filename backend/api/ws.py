@@ -2,16 +2,16 @@ from collections import defaultdict
 from threading import Lock
 
 from starlette.endpoints import HTTPEndpoint, WebSocketEndpoint
-from starlette.responses import UJSONResponse
 from starlette.websockets import WebSocket
 
-from api.utils import gen_token
+from api.response import ok
+from api.tokens import create_token as gen_token
 
 
 class WSToken(HTTPEndpoint):
     async def get(self, request):
         token = gen_token(request.user.to_dict(), {'minutes': 1})
-        return UJSONResponse({'token': token})
+        return ok({'token': token})
 
 
 files = defaultdict(lambda: {'ver': 0, 'state': None})

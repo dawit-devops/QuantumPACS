@@ -5,6 +5,9 @@ from es import es
 import db.conn
 from db.users import Users
 from db.table import Table
+from log import get_logger
+
+log = get_logger(__name__)
 
 
 async def setup(db_pool_size=None, sync_db=False):
@@ -16,8 +19,7 @@ async def setup(db_pool_size=None, sync_db=False):
             success = True
             break
         except Exception as e:
-            print(e)
-            # try teardown and retry
+            log.warning('Startup attempt %d/30 failed: %s', i + 1, e)
             try:
                 await teardown()
             except:
@@ -25,8 +27,10 @@ async def setup(db_pool_size=None, sync_db=False):
         time.sleep(1)
 
     if not success:
-        print("Can't connect to database or elasticsearch")
+        log.critical("Can't connect to database or elasticsearch")
         sys.exit(1)
+
+    log.info('Connected to database and elasticsearch')
 
     if sync_db:
         async with db.conn.get_conn() as conn:
@@ -34,12 +38,14 @@ async def setup(db_pool_size=None, sync_db=False):
                 try:
                     await t(conn).sync_db()
                 except:
-                    print(f"{t.name} failed")
+                    log.error('Table sync failed: %s', t.name)
                     raise
 
             await Users(conn).add_superadmin()
+            log.info('Database schema synced')
 
 
 async def teardown():
     await db.conn.teardown()
     await es.teardown()
+    log.info('Shutdown complete')

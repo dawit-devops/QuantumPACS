@@ -1,6 +1,6 @@
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import UJSONResponse
 
+from api.response import ok
 from api.utils import is_admin
 from db.conn import get_conn
 from db.log import Log
@@ -14,4 +14,4 @@ class LogsHandler(HTTPEndpoint):
 
         async with get_conn() as conn:
             data = await Log(conn).get_logs(offset=offset, limit=limit)
-        return UJSONResponse({'data': [dict(u) for u in data]})
+        return ok({'data': [dict(u) for u in data]})

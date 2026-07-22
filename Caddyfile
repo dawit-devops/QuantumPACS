@@ -1,0 +1,16 @@
+:80 {
+    root * /openpacs/frontend/dist
+    try_files {path} /index.html
+
+    @api {
+        path /api/*
+    }
+    reverse_proxy @api localhost:8080
+
+    @ws {
+        path /ws/*
+    }
+    reverse_proxy @ws localhost:8080
+
+    file_server
+}

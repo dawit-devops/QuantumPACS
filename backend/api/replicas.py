@@ -1,6 +1,6 @@
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import UJSONResponse
 
+from api.response import ok, created
 from api.utils import is_admin
 from db.conn import get_conn
 from db.replica import Replica
@@ -26,14 +26,14 @@ class ReplicasHandlers(HTTPEndpoint):
 
                 await ReplicaFiles(conn).add_replica(result, master_id)
 
-        return UJSONResponse({'id': result})
+        return created({'id': result})
 
     async def get(self, request):
         is_admin(request)
         async with get_conn() as conn:
             replicas = await Replica(conn).get_all()
 
-        return UJSONResponse({'data': replicas})
+        return ok({'data': replicas})
 
 
 class ReplicaHandlers(HTTPEndpoint):
@@ -48,7 +48,7 @@ class ReplicaHandlers(HTTPEndpoint):
             if 'delay' in data:
                 await Replica(conn).update_delay(replica_id, data['delay'])
 
-        return UJSONResponse({})
+        return ok({})
 
     async def delete(self, request):
         is_admin(request)
@@ -57,4 +57,4 @@ class ReplicaHandlers(HTTPEndpoint):
         async with get_conn() as conn:
             await Replica(conn).delete(replica_id)
 
-        return UJSONResponse({})
+        return ok({})

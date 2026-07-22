@@ -4,7 +4,7 @@ from os import urandom
 
 def _hash_file(f):
     f.seek(0)
-    hasher = hashlib.md5()
+    hasher = hashlib.sha256()
     block = f.read(65536)
     while len(block) > 0:
         hasher.update(block)

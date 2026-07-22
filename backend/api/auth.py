@@ -1,10 +1,12 @@
-import jwt
+"""Starlette authentication backend — JWT token verification on every API request.
+Supports bearer tokens via X-Auth-Pacs header, query parameter tokens for WebSocket,
+and shared-file access tokens for expiring share links."""
 from starlette.authentication import (
     AuthenticationBackend, AuthenticationError, BaseUser,
     AuthCredentials
 )
-from starlette.responses import UJSONResponse
-
+from api.response import unauthorized
+from api.tokens import verify_token
 from config import config
 from db.conn import get_conn
 from db.share_files import SharedFiles
@@ -50,7 +52,7 @@ class TokenAuth(AuthenticationBackend):
 
             credentials = auth
             try:
-                data = jwt.decode(credentials, config['secret'], algorithms=['HS256'])
+                data = verify_token(credentials)
                 async with get_conn() as conn:
                     active = await Users(conn).is_active(data['id'])
                 if not active:
@@ -68,7 +70,7 @@ class TokenAuth(AuthenticationBackend):
         else:
             token = request.query_params.get('token')
             try:
-                data = jwt.decode(token, config['secret'], algorithms=['HS256'])
+                data = verify_token(token)
             except Exception as e:
                 raise AuthenticationError('Invalid auth')
 
@@ -81,4 +83,4 @@ class TokenAuth(AuthenticationBackend):
 
     @staticmethod
     def on_auth_error(request, exc):
-        return UJSONResponse({"error": str(exc)}, status_code=401)
+        return unauthorized(str(exc))

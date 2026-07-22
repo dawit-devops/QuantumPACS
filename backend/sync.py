@@ -11,8 +11,11 @@ from db.replica_files import ReplicaFiles, Status
 from dcm.file import parse_dcm
 from es.es import index_file
 from lifecycle import setup, teardown
+from log import get_logger
 from storage.storage import Storage
 from utils import hash_file
+
+log = get_logger(__name__)
 
 work = True
 
@@ -171,12 +174,12 @@ async def sync():
         try:
             await do_sync()
         except Exception as e:
-            print(traceback.format_exc())
+            log.error('Sync error: %s', traceback.format_exc())
             try:
                 async with get_conn() as conn:
                     await Log(conn).add(traceback.format_exc())
             except Exception as e:
-                print(traceback.format_exc())
+                log.error('Failed to log sync error: %s', traceback.format_exc())
         try:
             time.sleep(1)
         except KeyboardInterrupt:
