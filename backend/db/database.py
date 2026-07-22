@@ -16,7 +16,7 @@ class Database:
             password=config['db_password'],
             database=config['db_database'],
             host=config['db_host'],
-            port=5432,
+            port=int(config.get('db_port', '5432')),
             max_size=pool_size,
             min_size=pool_size,
         )

@@ -34,11 +34,45 @@ Production PACS (Picture Archiving and Communication System) for medical image m
 - **Backend**: pytest with async fixtures in `backend/tests/`
 - **Frontend**: Vitest with React Testing Library
 
+## Dev Environment (Permanent Setup)
+
+Services managed via systemd user services — auto-start on boot:
+
+| Service | Type | URL |
+|---------|------|-----|
+| PostgreSQL | Docker container `openpacs-postgres-1`, `restart: unless-stopped` | `localhost:5432` |
+| Backend | `openpacs-backend.service` (systemd user) | `http://localhost:8080` |
+| Frontend | `openpacs-frontend.service` (systemd user) | `http://localhost:5173` |
+
+**Commands:**
+- `scripts/dev.sh {start|stop|restart|status|logs|logs-fe}` — manage all services
+- `systemctl --user start|stop|restart|status openpacs-backend.service`
+- `systemctl --user start|stop|restart|status openpacs-frontend.service`
+- `journalctl --user -u openpacs-backend.service -f` — tail backend logs
+- `journalctl --user -u openpacs-frontend.service -f` — tail frontend logs
+- `docker compose up -d` — start PostgreSQL via docker-compose
+- `docker compose build postgres` — rebuild custom postgres image (after base image update)
+
+**Key fixes applied (Jul 2026):**
+- `app.py`: changed from `on_startup` parameter (removed in starlette 1.x) to lifespan pattern, then pinned starlette to `>=0.35.0,<0.36.0` for compatibility
+- `es/es.py`: prepends `http://` scheme + `:9200` port to bare hostnames for ES 8.x client compat
+- `db_init.py`: replaced `asyncio.get_event_loop()` with `asyncio.run()` for Python 3.14 compat
+- `config.local.yaml`: uses dedicated OpenPACS postgres on port 5432
+- `docker-compose.yaml`: removed deprecated `version` key; uses custom `openpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image)
+- `frontend/vite.config.js`: set `host: '0.0.0.0'` for LAN access, port changed to 5173
+- Backend runs via `uvicorn app:app --host 0.0.0.0 --port 8080`
+- Frontend runs via `vite --host 0.0.0.0 --port 5173`
+- Database port config centralized in `config.py` default_config via `db_port` key
+
 ## Common Gotchas
 - `network_mode: host` in docker-compose — services bind directly to host ports
-- Elasticsearch 8 needs `xpack.security.enabled=false` for dev (configured in docker-compose)
+- Elasticsearch 8 needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
 - Database init (`./manage db init`) generates a random password — capture it from output
 - Token expiry defaults to 14 days — extend via `create_token(user, expire={'days': 30})`
 - CORS allows all origins — tighten before production deployment
 - The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
 - Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
+- The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
+- Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
+- PostgreSQL runs via `openpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`)
+- Elasticsearch Docker image cannot be pulled (network issues) — search disabled at startup, no impact on basic functionality

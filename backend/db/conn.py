@@ -17,7 +17,7 @@ async def init_db():
         password=config['db_password'],
         database='postgres',
         host=config['db_host'],
-        port=5432,
+        port=int(config.get('db_port', '5432')),
     )
     try:
         await conn.execute('CREATE DATABASE openpacs')
@@ -30,7 +30,7 @@ async def init_db():
         password=config['db_password'],
         database='openpacs',
         host=config['db_host'],
-        port=5432,
+        port=int(config.get('db_port', '5432')),
     )
     try:
         await conn.execute('CREATE EXTENSION intarray')
@@ -48,7 +48,7 @@ async def setup(pool_size=None):
         password=config['db_password'],
         database=config['db_database'],
         host=config['db_host'],
-        port=5432,
+        port=int(config.get('db_port', '5432')),
         max_size=pool_size,
         min_size=pool_size,
     )
@@ -63,7 +63,7 @@ async def create_conn():
         password=config['db_password'],
         database=config['db_database'],
         host=config['db_host'],
-        port=5432,
+        port=int(config.get('db_port', '5432')),
     )
 
 

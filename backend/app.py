@@ -1,7 +1,9 @@
 import time
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException
 from starlette.routing import Route
@@ -16,51 +18,55 @@ from log import setup_logging, get_logger
 setup_logging()
 log = get_logger(__name__)
 
-app = Starlette(routes=routes + [
-    Route('/api/health', endpoint=lambda r: JSONResponse({'status': 'ok'})),
-])
-app.add_middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error)
+
+class CustomMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        elapsed = time.monotonic() - start
+
+        if response.status_code == 405:
+            response.status_code = 200
+
+        if is_docker and not request.url.path.startswith('/api') and response.status_code == 404:
+            response = FileResponse('./static/index.html')
+
+        if response.status_code >= 500:
+            log.error('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
+        elif response.status_code >= 400:
+            log.warning('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
+        else:
+            log.info('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
+
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
+        response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+        return response
 
 
-def add_cors(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
-    response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
-
-
-@app.middleware("http")
-async def custom_middleware(request, call_next):
-    start = time.monotonic()
-    response = await call_next(request)
-    elapsed = time.monotonic() - start
-
-    if response.status_code == 405:
-        response.status_code = 200
-
-    if is_docker and not request.url.path.startswith('/api') and response.status_code == 404:
-        response = FileResponse('./static/index.html')
-
-    if response.status_code >= 500:
-        log.error('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-    elif response.status_code >= 400:
-        log.warning('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-    else:
-        log.info('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-
-    add_cors(response)
-    return response
-
-
-@app.exception_handler(HTTPException)
 async def http_exception(request, exc):
     resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
-    add_cors(resp)
+    resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 
-@app.on_event('startup')
-async def setup():
+async def startup():
     await lifecycle.setup()
+
+
+app = Starlette(
+    routes=routes + [
+        Route('/api/health', endpoint=lambda r: JSONResponse({'status': 'ok'})),
+    ],
+    middleware=[
+        Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
+        Middleware(CustomMiddleware),
+    ],
+    exception_handlers={
+        HTTPException: http_exception,
+    },
+    on_startup=[startup],
+)
 
 
 if __name__ == "__main__":

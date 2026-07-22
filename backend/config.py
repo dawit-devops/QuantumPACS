@@ -7,6 +7,7 @@ default_config = {
     'secret': 'default',
     'superadmin_pass': 'pa55w0rd',
     'db_host': '127.0.0.1',
+    'db_port': '5432',
     'db_database': 'openpacs',
     'db_user': 'openpacs',
     'db_password': 'pa55w0rd',

@@ -11,5 +11,4 @@ async def init():
     await lifecycle.setup(sync_db=True)
     await lifecycle.teardown()
 
-loop = asyncio.get_event_loop()
-loop.run_until_complete(init())
+asyncio.run(init())

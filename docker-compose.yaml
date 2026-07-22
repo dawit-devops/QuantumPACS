@@ -1,46 +1,24 @@
-version: '3.8'
 services:
   postgres:
-    image: postgres:16-alpine
-    network_mode: host
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
+    image: openpacs-postgres:16
+    container_name: openpacs-postgres-1
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
-      POSTGRES_PASSWORD: p05tgr35
+      POSTGRES_USER: openpacs
+      POSTGRES_PASSWORD: pa55w0rd
+      POSTGRES_DB: openpacs
     volumes:
-      - ./db:/var/lib/postgresql/data
+      - openpacs_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U openpacs"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  elasticsearch:
-    image: elasticsearch:8.16.0
-    network_mode: host
-    environment:
-      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
-      - bootstrap.memory_lock=true
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - xpack.security.enrollment.enabled=false
-    volumes:
-      - ./es:/usr/share/elasticsearch/data
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-
-  openpacs:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    network_mode: host
-    environment:
-      DB_USER: postgres
-      DB_PASS: p05tgr35
-    volumes:
-      - ./storage:/data/files
-    depends_on:
-      postgres:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_started
+volumes:
+  openpacs_pgdata:

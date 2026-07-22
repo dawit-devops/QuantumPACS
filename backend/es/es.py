@@ -12,35 +12,48 @@ INDEX_NAME = 'openpacs'
 
 async def setup():
     global client
-    conn = AsyncElasticsearch(hosts=[config['es_host']])
+    host = config['es_host']
+    if not host.startswith('http'):
+        host = f'http://{host}:9200'
+    conn = AsyncElasticsearch(hosts=[host])
     client[os.getpid()] = conn
     try:
         await get_client().indices.get(index=INDEX_NAME)
     except NotFoundError:
         await get_client().indices.create(index=INDEX_NAME, body=INDEX)
-    except ESConnectionError:
-        raise
+    except (ESConnectionError, OSError):
+        from log import get_logger
+        get_logger(__name__).warning('Elasticsearch not available — search disabled')
+        client[os.getpid()] = None
 
 
 async def teardown():
-    await close()
-    del client[os.getpid()]
+    if get_client():
+        await close()
+    if os.getpid() in client:
+        del client[os.getpid()]
 
 
 async def close():
-    await get_client().close()
+    c = get_client()
+    if c:
+        await c.close()
 
 
 def get_client():
-    return client[os.getpid()]
+    return client.get(os.getpid())
 
 
 async def index(data):
-    await get_client().index(index=INDEX_NAME, id=data['id'], body=data)
+    c = get_client()
+    if c:
+        await c.index(index=INDEX_NAME, id=data['id'], body=data)
 
 
 async def delete(id_):
-    await get_client().delete(index=INDEX_NAME, id=id_)
+    c = get_client()
+    if c:
+        await c.delete(index=INDEX_NAME, id=id_)
 
 
 columns = [
@@ -50,6 +63,9 @@ columns = [
 
 
 async def search(data):
+    c = get_client()
+    if not c:
+        return {'data': [], 'total': 0}
     size = data.pop('results', 10)
     page = data.pop('page', 1)
 
@@ -113,5 +129,8 @@ async def index_file(file):
 
 
 async def reset_index():
-    await get_client().indices.delete(index='openpacs')
-    await get_client().indices.create(index='openpacs', body=INDEX)
+    c = get_client()
+    if not c:
+        return
+    await c.indices.delete(index='openpacs')
+    await c.indices.create(index='openpacs', body=INDEX)

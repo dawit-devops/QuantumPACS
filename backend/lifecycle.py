@@ -30,7 +30,7 @@ async def setup(db_pool_size=None, sync_db=False):
         log.critical("Can't connect to database or elasticsearch")
         sys.exit(1)
 
-    log.info('Connected to database and elasticsearch')
+    log.info('Connected to database')
 
     if sync_db:
         async with db.conn.get_conn() as conn:
