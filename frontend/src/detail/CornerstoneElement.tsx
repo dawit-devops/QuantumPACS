@@ -1,44 +1,100 @@
 import React, { Component } from 'react';
 import { Button, message, Slider } from 'antd';
 import { ReloadOutlined, ColumnWidthOutlined, ColumnHeightOutlined, DragOutlined, RightOutlined, ArrowRightOutlined, LineOutlined, BorderOutlined, PlusCircleOutlined, ScissorOutlined, SaveOutlined, CloseCircleOutlined, DownloadOutlined } from '@ant-design/icons';
-import * as cornerstone from 'cornerstone-core';
-import * as cornerstoneMath from 'cornerstone-math';
-import * as cornerstoneTools from 'cornerstone-tools';
-import Hammer from 'hammerjs';
-import * as cornerstoneWADOImageLoader from 'cornerstone-wado-image-loader';
-import dicomParser from 'dicom-parser';
+import {
+  init as csCoreInit,
+  RenderingEngine,
+  Enums,
+  eventTarget,
+  EVENTS,
+  getRenderingEngine,
+  StackViewport,
+} from '@cornerstonejs/core';
+import {
+  init as csToolsInit,
+  ToolGroupManager,
+  addTool,
+  annotation as csAnnotation,
+  Enums as ToolsEnums,
+  PanTool,
+  ZoomTool,
+  WindowLevelTool,
+  LengthTool,
+  RectangleROITool,
+  AngleTool,
+  ArrowAnnotateTool,
+  EllipticalROITool,
+  EraserTool,
+  StackScrollTool,
+} from '@cornerstonejs/tools';
+import initDicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import * as ws from '../ws';
 import { request } from '../helpers';
 import { API_URL } from '../config';
 import './CornerstoneElement.css';
 
-cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
-cornerstoneTools.external.cornerstoneMath = cornerstoneMath;
-cornerstoneTools.external.cornerstone = cornerstone;
-cornerstoneTools.external.Hammer = Hammer;
-window.cornerstoneTools = cornerstoneTools;
+const ENGINE_ID = 'OPENPACS_ENGINE';
+const TOOL_GROUP_ID = 'OPENPACS_TOOL_GROUP';
 
-cornerstoneWADOImageLoader.configure({
-  beforeSend: function (xhr: any) {
-    let token = localStorage.getItem('token');
-    if (!token) {
-      token = localStorage.getItem('tempKey');
-    }
-    xhr.setRequestHeader('X-Auth-Pacs', token);
+let globalInitCalled = false;
+
+async function ensureGlobalInit() {
+  if (globalInitCalled) return;
+  globalInitCalled = true;
+
+  initDicomImageLoader({
+    beforeSend: (xhr: any) => {
+      const token = localStorage.getItem('token') || localStorage.getItem('tempKey');
+      if (token) xhr.setRequestHeader('X-Auth-Pacs', token);
+    },
+  });
+
+  await csCoreInit();
+  await csToolsInit();
+
+  addTool(PanTool);
+  addTool(ZoomTool);
+  addTool(WindowLevelTool);
+  addTool(LengthTool);
+  addTool(RectangleROITool);
+  addTool(AngleTool);
+  addTool(ArrowAnnotateTool);
+  addTool(EllipticalROITool);
+  addTool(EraserTool);
+  addTool(StackScrollTool);
+
+  let tg = ToolGroupManager.getToolGroup(TOOL_GROUP_ID);
+  if (!tg) {
+    tg = ToolGroupManager.createToolGroup(TOOL_GROUP_ID);
   }
-});
+
+  tg.addTool(PanTool.toolName);
+  tg.addTool(ZoomTool.toolName);
+  tg.addTool(WindowLevelTool.toolName);
+  tg.addTool(LengthTool.toolName);
+  tg.addTool(RectangleROITool.toolName);
+  tg.addTool(AngleTool.toolName);
+  tg.addTool(ArrowAnnotateTool.toolName);
+  tg.addTool(EllipticalROITool.toolName);
+  tg.addTool(EraserTool.toolName);
+  tg.addTool(StackScrollTool.toolName);
+
+  tg.setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
+  tg.setToolActive(ZoomTool.toolName, { mouseButtonMask: 2 });
+  tg.setToolActive(WindowLevelTool.toolName, { mouseButtonMask: 4 });
+  tg.setToolActive(StackScrollTool.toolName);
+}
 
 const bottomLeftStyle: React.CSSProperties = {
   left: '5px',
   position: 'absolute',
-  color: 'white'
+  color: 'white',
 };
 
 const bottomRightStyle: React.CSSProperties = {
   right: '5px',
   position: 'absolute',
-  color: 'white'
+  color: 'white',
 };
 
 function InvertIcon() {
@@ -49,21 +105,9 @@ function InvertIcon() {
   );
 }
 
-function invalidateState(state: any) {
-  for (let e in state) {
-    for (let t in state[e]) {
-      for (let te of state[e][t].data) {
-        te.invalidated = true;
-        te.cachedStats = undefined;
-      }
-    }
-  }
-  return state;
-}
-
 function ActionBtn(props: any) {
   return (
-    <Button type="primary" shape="circle" size='small' style={{ margin: '5px' }}
+    <Button type="primary" shape="circle" size="small" style={{ margin: '5px' }}
       icon={props.icon} onClick={props.onClick}
     />
   );
@@ -79,21 +123,28 @@ interface CEProps {
 }
 
 interface CEState {
+  zoom: number;
+  ww: number;
+  wc: number;
+  image: any;
   state: any;
   stateVer: number;
   stateVerSent: number;
-  image: any;
-  viewport: any;
   interval: any;
 }
 
 class CornerstoneElement extends Component<CEProps, CEState> {
-  private element: any;
+  private element: HTMLDivElement | null = null;
+  private viewportId: string;
+  private mounted = false;
 
   constructor(props: CEProps) {
     super(props);
+    this.viewportId = `stack-viewport-${Math.random().toString(36).slice(2, 9)}`;
     this.state = {
-      viewport: cornerstone.getDefaultViewport(null, undefined),
+      zoom: 1,
+      ww: 0,
+      wc: 0,
       image: props.image,
       state: {},
       stateVer: 0,
@@ -101,8 +152,11 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       interval: null,
     };
     this.onImageRendered = this.onImageRendered.bind(this);
-    this.onNewImage = this.onNewImage.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
+    this.onAnnotationAdded = this.onAnnotationAdded.bind(this);
+    this.onAnnotationModified = this.onAnnotationModified.bind(this);
+    this.onAnnotationRemoved = this.onAnnotationRemoved.bind(this);
+    this.onAnnotationCompleted = this.onAnnotationCompleted.bind(this);
     this.rotate = this.rotate.bind(this);
     this.vflip = this.vflip.bind(this);
     this.hflip = this.hflip.bind(this);
@@ -121,82 +175,127 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     this.download = this.download.bind(this);
   }
 
+  getToolGroup() {
+    return ToolGroupManager.getToolGroup(TOOL_GROUP_ID)!;
+  }
+
+  getViewport(): StackViewport | null {
+    const re = getRenderingEngine(ENGINE_ID);
+    if (!re) return null;
+    return re.getViewport(this.viewportId) as StackViewport | null;
+  }
+
+  private updateViewportInfo() {
+    const vp = this.getViewport();
+    if (!vp) return;
+    const zoom = vp.getZoom();
+    const voiRange = (vp as any).voiRange;
+    let ww = 0;
+    let wc = 0;
+    if (voiRange) {
+      ww = voiRange.upper - voiRange.lower;
+      wc = (voiRange.upper + voiRange.lower) / 2;
+    }
+    this.setState({ zoom, ww, wc });
+  }
+
   rotate() {
-    const viewport = cornerstone.getViewport(this.element);
-    viewport.rotation += 90;
-    cornerstone.setViewport(this.element, viewport);
+    const vp = this.getViewport();
+    if (!vp) return;
+    const camera = vp.getCamera();
+    const rotation = ((camera.rotation || 0) + 90) % 360;
+    (vp as any).setRotationCPU(rotation);
   }
 
   vflip() {
-    const viewport = cornerstone.getViewport(this.element);
-    viewport.vflip = !viewport.vflip;
-    cornerstone.setViewport(this.element, viewport);
+    const vp = this.getViewport();
+    if (!vp) return;
+    (vp as any).setFlipCPU({ flipHorizontal: false, flipVertical: true });
   }
 
   hflip() {
-    const viewport = cornerstone.getViewport(this.element);
-    viewport.hflip = !viewport.hflip;
-    cornerstone.setViewport(this.element, viewport);
+    const vp = this.getViewport();
+    if (!vp) return;
+    (vp as any).setFlipCPU({ flipHorizontal: true, flipVertical: false });
   }
 
   invert() {
-    const viewport = cornerstone.getViewport(this.element);
-    viewport.invert = !viewport.invert;
-    cornerstone.setViewport(this.element, viewport);
+    const vp = this.getViewport();
+    if (!vp) return;
+    vp.setProperties({ invert: !(vp as any).invert });
   }
 
-  activateArrow(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('ArrowAnnotate', { mouseButtonMask: 1 });
+  private setPrimaryTool(toolName: string) {
+    const tg = this.getToolGroup();
+    tg.setToolPassive(PanTool.toolName);
+    tg.setToolActive(toolName, { mouseButtonMask: 1 });
   }
 
-  activateAngle(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('Angle', { mouseButtonMask: 1 });
+  activateArrow(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(ArrowAnnotateTool.toolName);
   }
 
-  activateLine(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('Length', { mouseButtonMask: 1 });
+  activateAngle(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(AngleTool.toolName);
   }
 
-  activateRect(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('RectangleRoi', { mouseButtonMask: 1 });
+  activateLine(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(LengthTool.toolName);
   }
 
-  activateElipse(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('EllipticalRoi', { mouseButtonMask: 1 });
+  activateRect(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(RectangleROITool.toolName);
   }
 
-  activateDrag(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('Pan', { mouseButtonMask: 1 });
+  activateElipse(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(EllipticalROITool.toolName);
   }
 
-  activateEraser(e: React.MouseEvent) {
-    e.stopPropagation();
-    cornerstoneTools.setToolActive('Eraser', { mouseButtonMask: 1 });
+  activateDrag(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    const tg = this.getToolGroup();
+    tg.setToolPassive(ArrowAnnotateTool.toolName);
+    tg.setToolPassive(AngleTool.toolName);
+    tg.setToolPassive(LengthTool.toolName);
+    tg.setToolPassive(RectangleROITool.toolName);
+    tg.setToolPassive(EllipticalROITool.toolName);
+    tg.setToolPassive(EraserTool.toolName);
+    tg.setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
+  }
+
+  activateEraser(_e: React.MouseEvent) {
+    _e.stopPropagation();
+    this.setPrimaryTool(EraserTool.toolName);
   }
 
   onWindowResize() {
-    if (!this.element) return;
-    cornerstone.resize(this.element);
+    const re = getRenderingEngine(ENGINE_ID);
+    if (re) re.resize();
   }
 
   onImageRendered() {
-    const viewport = cornerstone.getViewport(this.element);
-    this.setState({
-      viewport
-    });
+    this.updateViewportInfo();
   }
 
-  onNewImage() {
-    const enabledElement = cornerstone.getEnabledElement(this.element);
-    this.setState({
-      image: enabledElement.image.imageId
-    });
+  onAnnotationAdded() {
+    this.saveToolState();
+  }
+
+  onAnnotationModified() {
+    this.saveToolState();
+  }
+
+  onAnnotationRemoved() {
+    this.saveToolState();
+  }
+
+  onAnnotationCompleted() {
+    this.saveToolState();
   }
 
   onMeasurementAdded() {
@@ -216,26 +315,30 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   }
 
   saveToolState() {
-    const s = cornerstoneTools.getElementToolStateManager(this.element).saveToolState();
-    this.setState({ state: invalidateState(s), stateVer: this.state.stateVer + 1 });
+    const mgr = csAnnotation.state.getAnnotationManager();
+    const annotations = mgr.getAllAnnotations();
+    this.setState({ state: annotations, stateVer: this.state.stateVer + 1 });
   }
 
   clearToolState() {
+    const mgr = csAnnotation.state.getAnnotationManager();
+    const existing = mgr.getAllAnnotations();
+    for (const a of existing) {
+      csAnnotation.state.removeAnnotation(a.annotationUID);
+    }
     this.setState({ state: null as any });
-    cornerstoneTools.getElementToolStateManager(this.element).restoreToolState({ [this.state.image]: {} });
-
-    const viewport = cornerstone.getViewport(this.element);
-    cornerstone.setViewport(this.element, viewport);
   }
 
   restoreToolState(state: any) {
     if (!state) return;
-    state = invalidateState(state);
-    cornerstoneTools.getElementToolStateManager(this.element).restoreToolState(state);
-
-    const viewport = cornerstone.getViewport(this.element);
-    if (!viewport) return;
-    cornerstone.setViewport(this.element, viewport);
+    const mgr = csAnnotation.state.getAnnotationManager();
+    const existing = mgr.getAllAnnotations();
+    for (const a of existing) {
+      csAnnotation.state.removeAnnotation(a.annotationUID);
+    }
+    for (const a of state) {
+      csAnnotation.state.addAnnotation(a);
+    }
   }
 
   sendState() {
@@ -267,76 +370,99 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     );
   }
 
-  componentDidMount() {
-    const element = this.element;
-    cornerstone.enable(element);
-    cornerstoneTools.init({});
+  async componentDidMount() {
+    this.mounted = true;
 
-    const tools = [
-      'PanTool', 'ZoomTool', 'WwwcTool', 'PanMultiTouchTool', 'ZoomTouchPinchTool',
-      'ZoomMouseWheelTool', 'LengthTool', 'RectangleRoiTool', 'AngleTool', 'ArrowAnnotateTool',
-      'EllipticalRoiTool', 'EraserTool',
-    ];
-    for (let t of tools) {
-      cornerstoneTools.addToolForElement(element, (cornerstoneTools as any)[t]);
-    }
-    for (let t of tools) {
-      const options: any = {};
-      if (t === 'PanTool') {
-        options['mouseButtonMask'] = 1;
-      } else if (t === 'ZoomTool') {
-        options['mouseButtonMask'] = 2;
-      } else if (t === 'WwwcTool') {
-        options['mouseButtonMask'] = 4;
+    try {
+      await ensureGlobalInit();
+
+      if (!this.mounted) return;
+      if (!this.element) return;
+
+      let renderingEngine = getRenderingEngine(ENGINE_ID);
+      if (!renderingEngine) {
+        renderingEngine = new RenderingEngine(ENGINE_ID);
       }
-      cornerstoneTools.setToolActiveForElement(element, t.replace('Tool', ''), options);
+
+      await renderingEngine.enableElement({
+        viewportId: this.viewportId,
+        type: Enums.ViewportType.STACK,
+        element: this.element,
+        defaultOptions: {
+          background: [0, 0, 0],
+        },
+      });
+
+      if (!this.mounted) return;
+
+      const tg = this.getToolGroup();
+      tg.addViewport(this.viewportId, ENGINE_ID);
+
+      const viewport = renderingEngine.getViewport(this.viewportId) as StackViewport;
+      await viewport.setStack([this.state.image]);
+
+      eventTarget.addEventListener(EVENTS.IMAGE_RENDERED, this.onImageRendered);
+      eventTarget.addEventListener(EVENTS.STACK_NEW_IMAGE, this.onImageRendered);
+
+      eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_ADDED, this.onAnnotationAdded);
+      eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_MODIFIED, this.onAnnotationModified);
+      eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_REMOVED, this.onAnnotationRemoved);
+      eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_COMPLETED, this.onAnnotationCompleted);
+
+      window.addEventListener('resize', this.onWindowResize);
+
+      const that = this;
+      const checkReady = () => {
+        const vp = that.getViewport();
+        if (vp && (vp as any).voiRange) {
+          that.restoreToolState(that.props.file.tools_state);
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      setTimeout(checkReady, 200);
+
+      const interval = setInterval(() => this.sendState(), 500);
+      this.setState({ interval });
+
+      ws.addEventListener(this.onStateUpdate);
+      ws.onOpen(() => ws.send({ type: 'open', file: this.state.image }));
+    } catch (e) {
+      console.error('CornerstoneElement init error:', e);
+      message.error('Failed to initialize viewer');
     }
+  }
 
-    element.addEventListener('cornerstoneimagerendered', this.onImageRendered);
-    element.addEventListener('cornerstonenewimage', this.onNewImage);
-    window.addEventListener('resize', this.onWindowResize);
-
-    element.addEventListener('cornerstonetoolsmeasurementadded', this.onMeasurementAdded);
-    element.addEventListener('cornerstonetoolsmeasurementmodified', this.onMeasurementModified);
-    element.addEventListener('cornerstonetoolsmeasurementremoved', this.onMeasurementRemoved);
-    element.addEventListener('cornerstonetoolsmeasurementcompleted', this.onMeasurementCompleted);
-
-    const that = this;
-    cornerstone.loadImage(this.state.image).then((image: any) => {
-      cornerstone.displayImage(element, image);
-      that.restoreToolState(that.props.file.tools_state);
-    });
-
-    const interval = setInterval(() => this.sendState(), 500);
-    this.setState({ interval });
-
-    ws.addEventListener(this.onStateUpdate);
-    ws.onOpen(() => ws.send({ 'type': 'open', file: this.state.image }));
+  componentDidUpdate(_prevProps: CEProps) {
+    if (_prevProps.image !== this.props.image) {
+      this.setState({ image: this.props.image });
+      const vp = this.getViewport();
+      if (vp) {
+        vp.setStack([this.props.image]).then(() => {
+          this.restoreToolState(this.props.file.tools_state);
+        });
+      }
+      ws.send({ type: 'open', file: this.props.image });
+    }
   }
 
   componentWillUnmount() {
-    const element = this.element;
-    element.removeEventListener('cornerstoneimagerendered', this.onImageRendered);
-    element.removeEventListener('cornerstonenewimage', this.onNewImage);
+    this.mounted = false;
+    const { interval } = this.state;
+    if (interval) clearInterval(interval);
+
     window.removeEventListener('resize', this.onWindowResize);
-    element.removeEventListener('cornerstonetoolsmeasurementadded', this.onMeasurementAdded);
-    element.removeEventListener('cornerstonetoolsmeasurementmodified', this.onMeasurementModified);
-    element.removeEventListener('cornerstonetoolsmeasurementremoved', this.onMeasurementRemoved);
-    element.removeEventListener('cornerstonetoolsmeasurementcompleted', this.onMeasurementCompleted);
-  }
 
-  componentWillReceiveProps(props: CEProps) {
-    if (props.image !== this.state.image) {
-      this.setState({ image: props.image });
-
-      const that = this;
-      cornerstone.loadImage(props.image).then((image: any) => {
-        cornerstone.displayImage(that.element, image);
-        that.restoreToolState(that.props.file.tools_state);
-      });
-
-      ws.send({ 'type': 'open', file: props.image });
+    const re = getRenderingEngine(ENGINE_ID);
+    if (re) {
+      re.disableElement(this.viewportId);
     }
+
+    const tg = this.getToolGroup();
+    tg.removeViewports(ENGINE_ID, this.viewportId);
+
+    eventTarget.removeEventListener(EVENTS.IMAGE_RENDERED, this.onImageRendered);
+    eventTarget.removeEventListener(EVENTS.STACK_NEW_IMAGE, this.onImageRendered);
   }
 
   download() {
@@ -379,7 +505,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
           <ActionBtn icon={<ReloadOutlined />} onClick={this.rotate} />
           <ActionBtn icon={<ColumnWidthOutlined />} onClick={this.hflip} />
           <ActionBtn icon={<ColumnHeightOutlined />} onClick={this.vflip} />
-          <Button type="primary" shape="circle" size='small'
+          <Button type="primary" shape="circle" size="small"
             style={{ margin: '5px' }} onClick={this.invert} >
             <InvertIcon />
           </Button>
@@ -396,16 +522,13 @@ class CornerstoneElement extends Component<CEProps, CEState> {
         </div>
         <div
           className="viewportElement"
-          ref={(input: any) => {
-            if (!input) return;
-            this.element = input;
+          ref={(el: HTMLDivElement | null) => {
+            this.element = el;
           }}
         >
-          <canvas className="cornerstone-canvas" />
-          <div style={bottomLeftStyle}>Zoom: {this.state.viewport.scale}</div>
+          <div style={bottomLeftStyle}>Zoom: {this.state.zoom}</div>
           <div style={bottomRightStyle}>
-            WW/WC: {this.state.viewport.voi.windowWidth} /{' '}
-            {this.state.viewport.voi.windowCenter}
+            WW/WC: {this.state.ww} / {this.state.wc}
           </div>
         </div>
       </div>

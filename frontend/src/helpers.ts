@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import history from './history';
+import { navigate } from './navigator';
 
 export const handleResponse = async (response: Response): Promise<any> => {
   if (!response) {
@@ -58,7 +58,7 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
         options.unauthorized();
       }
       else {
-        history.push('/login');
+        navigate('/login');
       }
     }
     if (!error.code || error.code !== 20) {

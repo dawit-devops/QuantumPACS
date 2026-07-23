@@ -4,31 +4,17 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: {
-    esbuild: {
-      loader: {
-        '.js': 'jsx',
-      },
-    },
-  },
   build: {
-    chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-antd': ['antd', '@ant-design/icons'],
-          'vendor-cornerstone': [
-            'cornerstone-core',
-            'cornerstone-tools',
-            'cornerstone-wado-image-loader',
-            'cornerstone-math',
-            'dicom-parser',
-            'hammerjs',
-          ],
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) return 'vendor-react';
+          if (id.includes('node_modules/antd') || id.includes('node_modules/@ant-design')) return 'vendor-antd';
+          if (id.includes('node_modules/cornerstone') || id.includes('node_modules/dicom-parser') || id.includes('node_modules/hammerjs')) return 'vendor-cornerstone';
         },
       },
     },
+    chunkSizeWarningLimit: 4000,
   },
   server: {
     host: '0.0.0.0',

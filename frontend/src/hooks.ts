@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LOADING_DELAY, API_URL } from './config';
 import { handleResponse } from './helpers';
-import history from './history';
+import { navigate } from './navigator';
 
 export function useFetch(url: string, options: any = {}) {
   const [loading, setLoading] = useState(false);
@@ -51,7 +51,7 @@ export function useFetch(url: string, options: any = {}) {
           options.unauthorized();
         }
         else {
-          history.push('/login');
+          navigate('/login');
         }
       }
       if (!error.code || error.code !== 20) {

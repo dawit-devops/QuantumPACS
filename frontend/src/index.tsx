@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { unstable_HistoryRouter as Router } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { createRoot } from 'react-dom/client';
 import Login from './login/Login';
@@ -12,8 +11,8 @@ import NotFound from './notfound/NotFound';
 import Patient from './patient/Patient';
 import Files from './files/Files';
 import Detail from './detail/Detail';
-import history from './history';
 import { init } from './ws';
+import { setNavigator } from './navigator';
 
 function ProtectedRoute({ children }: { children: React.ReactElement }) {
   const authed = localStorage.getItem('userId') || localStorage.getItem('tempKey');
@@ -21,6 +20,12 @@ function ProtectedRoute({ children }: { children: React.ReactElement }) {
     return <Navigate to="/login" replace />;
   }
   return children;
+}
+
+function NavigatorSetter() {
+  const navigate = useNavigate();
+  useEffect(() => { setNavigator(navigate); }, [navigate]);
+  return null;
 }
 
 function App() {
@@ -36,7 +41,8 @@ function App() {
 
   return (
     <ConfigProvider>
-      <Router history={history as any}>
+      <BrowserRouter>
+        <NavigatorSetter />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
@@ -48,7 +54,7 @@ function App() {
           <Route path="/" element={<ProtectedRoute><Files /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Router>
+      </BrowserRouter>
     </ConfigProvider>
     );
   }
