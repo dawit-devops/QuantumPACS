@@ -185,7 +185,7 @@ function Files(props: any) {
     filterIcon: (filtered: any) => (
       <SearchOutlined style={{ color: filtered ? 'var(--color-blue-500)' : undefined }} />
     ),
-    onFilterDropdownVisibleChange: (visible: any) => {
+    onFilterDropdownOpenChange: (visible: any) => {
       if (visible) {
         setTimeout(() => (searchInput.current as any)?.select());
       }

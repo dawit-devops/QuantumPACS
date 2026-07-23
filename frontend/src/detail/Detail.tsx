@@ -83,23 +83,11 @@ function Detail(props: any) {
   };
 
   const studiesDrop = (data: any) => {
-    if (!data) return <></>;
-    return (
-      <Menu>
-        {
-          data.map((d: any) => {
-            return (
-              <Menu.Item key={d.study_id}>
-                {/* eslint-disable-next-line */}
-                <a href="" onClick={(e: any) => changeStudy(e, d)}>
-                  {`Study ${d.study_id} ${wrap(d.description)}`}
-                </a>
-              </Menu.Item>
-            );
-          })
-        }
-      </Menu>
-    );
+    if (!data) return [];
+    return data.map((d: any) => ({
+      key: d.study_id,
+      label: <a href="" onClick={(e: any) => changeStudy(e, d)}>{`Study ${d.study_id} ${wrap(d.description)}`}</a>,
+    }));
   };
 
   const changeSeries = (e: any, s: any) => {
@@ -108,42 +96,19 @@ function Detail(props: any) {
   };
 
   const seriesDrop = (data: any) => {
-    if (!data) return <></>;
-    return (
-      <Menu>
-        {
-          data.map((d: any) => {
-            return (
-              <Menu.Item key={d.number}>
-                {/* eslint-disable-next-line */}
-                <a href='' onClick={(e: any) => changeSeries(e, d)}>
-                  {`Series ${d.number} ${wrap(d.description)}`}
-                </a>
-              </Menu.Item>
-            );
-          })
-        }
-      </Menu>
-    );
+    if (!data) return [];
+    return data.map((d: any) => ({
+      key: d.number,
+      label: <a href='' onClick={(e: any) => changeSeries(e, d)}>{`Series ${d.number} ${wrap(d.description)}`}</a>,
+    }));
   };
 
   const filesDrop = (data: any) => {
-    if (!data) return <></>;
-    return (
-      <Menu>
-        {
-          data.map((d: any) => {
-            return (
-              <Menu.Item key={d.id}>
-                <Link to={`/files/${d.id}`}>
-                  {`File ${d.name}`}
-                </Link>
-              </Menu.Item>
-            );
-          })
-        }
-      </Menu>
-    );
+    if (!data) return [];
+    return data.map((d: any) => ({
+      key: d.id,
+      label: <Link to={`/files/${d.id}`}>{`File ${d.name}`}</Link>,
+    }));
   };
 
   const tempKey = localStorage.getItem('tempKey');
@@ -193,13 +158,13 @@ function Detail(props: any) {
               {`${data.patient.name} (${data.patient.patient_id})`}
             </Link>
           </Breadcrumb.Item>
-          <Breadcrumb.Item overlay={studiesDrop(data.patient.studies)}>
+          <Breadcrumb.Item menu={{ items: studiesDrop(data.patient.studies) }}>
             {`Study ${study?.study_id} ${wrap(study?.description)}`}
           </Breadcrumb.Item>
-          <Breadcrumb.Item overlay={seriesDrop(study?.series)}>
+          <Breadcrumb.Item menu={{ items: seriesDrop(study?.series) }}>
             {`Series ${series?.number} ${wrap(series?.description)}`}
           </Breadcrumb.Item>
-          <Breadcrumb.Item overlay={filesDrop(series?.files)}>
+          <Breadcrumb.Item menu={{ items: filesDrop(series?.files) }}>
             {`File ${data.name}`}
           </Breadcrumb.Item>
         </Breadcrumb>

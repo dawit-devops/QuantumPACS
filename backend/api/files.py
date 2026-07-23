@@ -142,6 +142,10 @@ class FileHandler(HTTPEndpoint):
         data = await get_file_by_id(request)
         if not data:
             return not_found()
+        async with get_conn() as conn:
+            await FileChange(conn).add_change(
+                data['id'], 'read', by_user=request.user.id,
+            )
         return ok(data)
 
     async def post(self, request):
@@ -194,6 +198,11 @@ class ServeFile(HTTPEndpoint):
 
         if not file:
             raise HTTPException(status_code=404)
+
+        async with get_conn() as conn:
+            await FileChange(conn).add_change(
+                file_id, 'download', by_user=request.user.id,
+            )
         return await storage.serve(file)
 
 

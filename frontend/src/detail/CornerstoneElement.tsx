@@ -27,7 +27,7 @@ import {
   EraserTool,
   StackScrollTool,
 } from '@cornerstonejs/tools';
-import initDicomImageLoader from '@cornerstonejs/dicom-image-loader';
+import { init as initDicomImageLoader } from '@cornerstonejs/dicom-image-loader';
 import * as ws from '../ws';
 import { request } from '../helpers';
 import { API_URL } from '../config';
@@ -67,6 +67,7 @@ async function ensureGlobalInit() {
   if (!tg) {
     tg = ToolGroupManager.createToolGroup(TOOL_GROUP_ID);
   }
+  if (!tg) return;
 
   tg.addTool(PanTool.toolName);
   tg.addTool(ZoomTool.toolName);
@@ -79,10 +80,11 @@ async function ensureGlobalInit() {
   tg.addTool(EraserTool.toolName);
   tg.addTool(StackScrollTool.toolName);
 
-  tg.setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
-  tg.setToolActive(ZoomTool.toolName, { mouseButtonMask: 2 });
-  tg.setToolActive(WindowLevelTool.toolName, { mouseButtonMask: 4 });
-  tg.setToolActive(StackScrollTool.toolName);
+  const bindings = (tg as any).setToolActive;
+  bindings.call(tg, PanTool.toolName, { mouseButtonMask: 1 });
+  bindings.call(tg, ZoomTool.toolName, { mouseButtonMask: 2 });
+  bindings.call(tg, WindowLevelTool.toolName, { mouseButtonMask: 4 });
+  bindings.call(tg, StackScrollTool.toolName);
 }
 
 const bottomLeftStyle: React.CSSProperties = {
@@ -176,7 +178,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   }
 
   getToolGroup() {
-    return ToolGroupManager.getToolGroup(TOOL_GROUP_ID)!;
+    return ToolGroupManager.getToolGroup(TOOL_GROUP_ID);
   }
 
   getViewport(): StackViewport | null {
@@ -227,8 +229,9 @@ class CornerstoneElement extends Component<CEProps, CEState> {
 
   private setPrimaryTool(toolName: string) {
     const tg = this.getToolGroup();
+    if (!tg) return;
     tg.setToolPassive(PanTool.toolName);
-    tg.setToolActive(toolName, { mouseButtonMask: 1 });
+    (tg as any).setToolActive(toolName, { mouseButtonMask: 1 });
   }
 
   activateArrow(_e: React.MouseEvent) {
@@ -259,13 +262,14 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   activateDrag(_e: React.MouseEvent) {
     _e.stopPropagation();
     const tg = this.getToolGroup();
+    if (!tg) return;
     tg.setToolPassive(ArrowAnnotateTool.toolName);
     tg.setToolPassive(AngleTool.toolName);
     tg.setToolPassive(LengthTool.toolName);
     tg.setToolPassive(RectangleROITool.toolName);
     tg.setToolPassive(EllipticalROITool.toolName);
     tg.setToolPassive(EraserTool.toolName);
-    tg.setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
+    (tg as any).setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
   }
 
   activateEraser(_e: React.MouseEvent) {
@@ -337,7 +341,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       csAnnotation.state.removeAnnotation(a.annotationUID);
     }
     for (const a of state) {
-      csAnnotation.state.addAnnotation(a);
+      csAnnotation.state.addAnnotation(a, this.state.image);
     }
   }
 
@@ -396,7 +400,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       if (!this.mounted) return;
 
       const tg = this.getToolGroup();
-      tg.addViewport(this.viewportId, ENGINE_ID);
+      if (tg) tg.addViewport(this.viewportId, ENGINE_ID);
 
       const viewport = renderingEngine.getViewport(this.viewportId) as StackViewport;
       await viewport.setStack([this.state.image]);
@@ -459,7 +463,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     }
 
     const tg = this.getToolGroup();
-    tg.removeViewports(ENGINE_ID, this.viewportId);
+    if (tg) tg.removeViewports(ENGINE_ID, this.viewportId);
 
     eventTarget.removeEventListener(EVENTS.IMAGE_RENDERED, this.onImageRendered);
     eventTarget.removeEventListener(EVENTS.STACK_NEW_IMAGE, this.onImageRendered);
@@ -498,7 +502,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
               max={files.length - 1}
               value={fileIndex}
               defaultValue={fileIndex}
-              tipFormatter={this.tipFormatter}
+              tooltip={{ formatter: this.tipFormatter }}
               onChange={this.props.changeFile}
             />
           }
