@@ -1,0 +1,42 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Dev config
+*.local.yaml
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose*.yaml
+
+# Docs
+docs/
+.claude/
+.graphify/
+
+# Storage
+storage/
+db/
+es/
