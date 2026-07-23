@@ -15,9 +15,27 @@ from api.users import (
 )
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
+from db.conn import get_conn
+
+
+async def health(request):
+    db_ok = False
+    db_error = None
+    try:
+        async with get_conn() as conn:
+            val = await conn.fetchval('SELECT 1')
+            db_ok = val == 1
+    except Exception as e:
+        db_error = str(e)
+    status = 503 if not db_ok else 200
+    return JSONResponse({
+        'status': 'ok' if db_ok else 'degraded',
+        'database': 'connected' if db_ok else f'error: {db_error}',
+    }, status_code=status)
+
 
 routes = [
-    Route('/health', endpoint=lambda r: JSONResponse({'status': 'ok'})),
+    Route('/health', endpoint=health),
     Route('/replicas', endpoint=ReplicasHandlers),
     Route('/replicas/{id}', endpoint=ReplicaHandlers),
     Route('/login', endpoint=Login),
