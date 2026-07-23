@@ -1,8 +1,9 @@
 from starlette.endpoints import HTTPEndpoint
 
-from api.response import ok, validation_error
+from api.response import ok, paginated, validation_error
 from api.tokens import create_token as gen_token
 from api.utils import is_admin
+from api.ratelimit import login_bucket
 from db.conn import get_conn
 from db.users import Users
 from exceptions import ApiException
@@ -10,12 +11,18 @@ from exceptions import ApiException
 
 class Login(HTTPEndpoint):
     async def post(self, request):
+        ip = request.client.host if request.client else 'unknown'
+        allowed, msg = login_bucket.check(ip)
+        if not allowed:
+            return validation_error(msg)
+
         data = await request.json()
 
         async with get_conn() as conn:
             try:
                 data = await Users(conn).login(data['username'], data['password'])
             except ApiException as e:
+                login_bucket.record(ip)
                 return validation_error(str(e))
 
             token = gen_token(data)
@@ -43,14 +50,19 @@ class ChangePassword(HTTPEndpoint):
 class UsersHandler(HTTPEndpoint):
     async def get(self, request):
         is_admin(request)
-        q = request.path_params.get('q')
-        offset = request.path_params.get('offset')
-        limit = request.path_params.get('limit')
+        q = request.query_params.get('q')
+        offset = int(request.query_params.get('offset', 0))
+        limit = int(request.query_params.get('limit', 20))
 
         async with get_conn() as conn:
             data = await Users(conn).get_users(offset=offset, limit=limit, username=q)
+            total = await Users(conn).count_users(username=q)
 
-        return ok({'data': [Users.to_json(u) for u in data]})
+        return paginated(
+            [Users.to_json(u) for u in data],
+            total=total, page=(offset // limit) + 1, per_page=limit,
+            request=request,
+        )
 
     async def post(self, request):
         is_admin(request)

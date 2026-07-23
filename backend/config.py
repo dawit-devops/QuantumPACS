@@ -12,6 +12,8 @@ default_config = {
     'db_user': 'quantumpacs',
     'db_password': 'pa55w0rd',
     'es_host': 'localhost',
+    'cors_origins': '*',
+    'allowed_hosts': 'localhost,127.0.0.1',
 }
 
 config = default_config.copy()
@@ -32,5 +34,11 @@ for k in default_config.keys():
 
 if config['secret'] == 'default':
     config['secret'] = config['db_password']
+
+if config['secret'] == 'default' or config['secret'] == 'pa55w0rd':
+    import logging
+    logging.getLogger(__name__).critical(
+        'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
+    )
 
 is_docker = bool(os.getenv('QUANTUMPACS_DOCKER'))

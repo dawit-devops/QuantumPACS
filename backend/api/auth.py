@@ -46,6 +46,10 @@ class TokenAuth(AuthenticationBackend):
         if request.url.scheme != 'ws':
             auth = request.headers.get('X-Auth-Pacs')
             if not auth:
+                bearer = request.headers.get('Authorization')
+                if bearer and bearer.startswith('Bearer '):
+                    auth = bearer[7:]
+            if not auth:
                 auth = request.query_params.get('token')
                 if not auth:
                     raise AuthenticationError('Invalid auth')
@@ -83,4 +87,8 @@ class TokenAuth(AuthenticationBackend):
 
     @staticmethod
     def on_auth_error(request, exc):
-        return unauthorized(str(exc))
+        resp = unauthorized(str(exc))
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
+        resp.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+        return resp

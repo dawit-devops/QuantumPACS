@@ -2,6 +2,14 @@
     root * /openpacs/frontend/dist
     try_files {path} /index.html
 
+    header {
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws:; font-src 'self'"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
     @api {
         path /api/*
     }

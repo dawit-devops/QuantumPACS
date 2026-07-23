@@ -4,6 +4,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import FileResponse
 from starlette.exceptions import HTTPException
 
@@ -11,7 +12,7 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
-from config import is_docker
+from config import is_docker, config
 from log import setup_logging, get_logger
 
 setup_logging()
@@ -57,6 +58,7 @@ app = Starlette(
     routes=routes,
     middleware=[
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
+        Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(CustomMiddleware),
     ],
     exception_handlers={

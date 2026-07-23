@@ -23,3 +23,7 @@ class Log(Table):
             self.table.id, order=Order.desc
         ).offset(offset).limit(limit)
         return await self.fetch(q)
+
+    async def count_logs(self):
+        q = self.select('COUNT(1)')
+        return await self.fetchval(q)

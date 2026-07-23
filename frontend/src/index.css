@@ -16,9 +16,9 @@ body {
 
 a {
   text-decoration: none;
-  color: #0077B6;
+  color: var(--text-link);
 }
 
 a:hover {
-  color: #6366F1;
+  color: var(--text-link-hover);
 }

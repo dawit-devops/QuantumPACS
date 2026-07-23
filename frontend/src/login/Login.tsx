@@ -43,7 +43,7 @@ function LoginForm(props: any) {
       'alignItems': 'center',
       'justifyContent': 'center',
       'height': '100%',
-      background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)',
+      background: 'linear-gradient(135deg, var(--login-gradient-start) 0%, var(--login-gradient-mid) 50%, var(--login-gradient-end) 100%)',
     }}
     >
       <Content>

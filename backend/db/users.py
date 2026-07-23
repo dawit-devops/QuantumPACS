@@ -46,6 +46,9 @@ class Users(Table):
     @staticmethod
     def _verify_password(password, stored):
         raw = binascii.unhexlify(stored)
+        if len(raw) == 32:
+            data = hashlib.pbkdf2_hmac('sha256', password.encode('utf8'), b'', 10000)
+            return binascii.hexlify(data).decode('utf8') == stored
         salt = raw[:16]
         expected = hash_password(password, salt)
         return expected == stored
@@ -91,6 +94,12 @@ class Users(Table):
             q = q.where(self.table.username.ilike('%' + username + '%'))
         q = q.orderby('username').offset(offset).limit(limit)
         return await self.fetch(q)
+
+    async def count_users(self, username=None):
+        q = self.select('COUNT(1)')
+        if username:
+            q = q.where(self.table.username.ilike('%' + username + '%'))
+        return await self.fetchval(q)
 
     async def deactivate(self, user_id):
         q = self.update().where(self.table.id == user_id).set(self.table.status, 'deactivated')

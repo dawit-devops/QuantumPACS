@@ -37,7 +37,7 @@ class Series(Table):
         ),).on_conflict(
             'study_id, number'
         ).do_update(
-            self.table.number, PseudoColumn('EXCLUDED.number')
+            self.table.description, PseudoColumn('EXCLUDED.description')
         ).returning('id')
 
         sid = await self.fetchval(q)

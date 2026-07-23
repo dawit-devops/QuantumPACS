@@ -1,5 +1,10 @@
 import type { ThemeConfig } from 'antd';
 
+/**
+ * Brand tokens — source of truth.
+ * CSS variable equivalents in tokens.css.
+ * JSON canonical definition in docs/design-tokens.json.
+ */
 export const BRAND = {
   primary: '#0077B6',
   secondary: '#6366F1',
@@ -12,7 +17,7 @@ export const BRAND = {
   bgDark: '#0F172A',
   text: '#1E293B',
   textLight: '#94A3B8',
-};
+} as const;
 
 export const theme: ThemeConfig = {
   token: {
@@ -33,8 +38,8 @@ export const theme: ThemeConfig = {
       borderRadius: 6,
     },
     Menu: {
-      darkItemBg: '#0F172A',
-      darkItemSelectedBg: 'rgba(99, 102, 241, 0.2)',
+      darkItemBg: BRAND.bgDark,
+      darkItemSelectedBg: `${BRAND.secondary}33`,
     },
     Layout: {
       headerBg: '#FFFFFF',

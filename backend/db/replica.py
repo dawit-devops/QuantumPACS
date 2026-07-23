@@ -6,6 +6,7 @@ from db.table import Table
 from db.files import Files
 
 from pypika.functions import Count
+from pypika import Table as PyPikaTable, Query
 
 
 class Replica(Table):
@@ -39,14 +40,14 @@ class Replica(Table):
             ELSE
               record = NEW;
             END IF;
-        
+
             payload = json_build_object('table', TG_TABLE_NAME,
                                         'action', TG_OP,
-                                        'old', row_to_json(OLD),
-                                        'new', row_to_json(NEW));
-        
+                                        'old', COALESCE(row_to_json(OLD), '{}'::json),
+                                        'new', COALESCE(row_to_json(NEW), '{}'::json));
+
             PERFORM pg_notify('events', payload::text);
-        
+
             RETURN NULL;
           END;
           $$ LANGUAGE plpgsql;
@@ -119,9 +120,21 @@ class Replica(Table):
         data = await self.fetch(q)
         data = [dict(d) for d in data]
 
-        for d in data:
-            d['files'] = await ReplicaFiles(self.conn).non_indexing(d['id'])
-            d['meta'] = json.loads(d['meta'] or '{}')
+        if data:
+            ids = [d['id'] for d in data]
+            rf = PyPikaTable('replica_files')
+            q = Query.from_(rf).select(
+                rf.replica_id, Count('1')
+            ).where(
+                rf.status != 0
+            ).where(
+                rf.replica_id.isin(ids)
+            ).groupby(rf.replica_id)
+            counts = await self.fetch(q)
+            count_map = {r['replica_id']: r['count'] for r in counts}
+            for d in data:
+                d['files'] = {'count': count_map.get(d['id'], 0)}
+                d['meta'] = json.loads(d['meta'] or '{}')
 
         return data
 

@@ -1,0 +1,166 @@
+/* ── QuantumPACS Design Tokens ───────────────────────────────
+   Three-layer architecture: Primitive → Semantic → Component
+   Source of truth: docs/design-tokens.json
+   DO NOT hardcode raw hex values — use var() references.
+   ──────────────────────────────────────────────────────── */
+
+/* ═══════════════════════════════════════════════════════════
+   LAYER 1: PRIMITIVE TOKENS
+   Raw values — never use directly in components.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Color Primitives ────────────────────────────── */
+  --color-blue-600: #0077B6;
+  --color-indigo-500: #6366F1;
+  --color-cyan-500: #06B6D4;
+  --color-emerald-500: #10B981;
+  --color-amber-500: #F59E0B;
+  --color-red-500: #EF4444;
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-white: #FFFFFF;
+  --color-blue-500: #1890ff;
+
+  /* ── Typography Primitives ────────────────────────── */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, monospace;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 32px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+
+  /* ── Spacing Primitives ───────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Border Radius Primitives ─────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* ── Shadow Primitives ────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYER 2: SEMANTIC TOKENS
+   Purpose-based aliases — use in layout and design logic.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand Colors ─────────────────────────────────── */
+  --color-primary: var(--color-blue-600);
+  --color-secondary: var(--color-indigo-500);
+  --color-accent: var(--color-cyan-500);
+  --color-success: var(--color-emerald-500);
+  --color-warning: var(--color-amber-500);
+  --color-error: var(--color-red-500);
+  --color-info: var(--color-indigo-500);
+
+  /* ── Background ───────────────────────────────────── */
+  --bg-page: var(--color-slate-50);
+  --bg-surface: var(--color-white);
+  --bg-elevated: var(--color-white);
+  --bg-dark: var(--color-slate-900);
+  --bg-muted: var(--color-slate-100);
+
+  /* ── Text ─────────────────────────────────────────── */
+  --text-primary: var(--color-slate-800);
+  --text-secondary: var(--color-slate-600);
+  --text-muted: var(--color-slate-500);
+  --text-light: var(--color-slate-300);
+  --text-inverse: var(--color-white);
+  --text-link: var(--color-primary);
+  --text-link-hover: var(--color-secondary);
+
+  /* ── Border ───────────────────────────────────────── */
+  --border-color: var(--color-slate-200);
+  --border-color-strong: var(--color-slate-300);
+
+  /* ── Status ───────────────────────────────────────── */
+  --color-info-bg: rgba(99, 102, 241, 0.06);
+  --color-success-bg: rgba(16, 185, 129, 0.06);
+  --color-warning-bg: rgba(245, 158, 11, 0.06);
+  --color-error-bg: rgba(239, 68, 68, 0.06);
+
+  /* ── Typography Scale ─────────────────────────────── */
+  --font-family-base: var(--font-sans);
+  --font-family-heading: var(--font-sans);
+  --font-family-mono: var(--font-mono);
+
+  --font-size-body: var(--font-size-base);
+  --font-size-body-sm: var(--font-size-sm);
+  --font-size-h1: var(--font-size-3xl);
+  --font-size-h2: var(--font-size-2xl);
+  --font-size-h3: var(--font-size-xl);
+  --font-size-label: var(--font-size-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYER 3: COMPONENT TOKENS
+   Component-specific overrides — scoped to Ant Design.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Button ───────────────────────────────────────── */
+  --btn-primary-bg: var(--color-primary);
+  --btn-primary-text: var(--color-white);
+  --btn-primary-hover-bg: var(--color-blue-600);
+
+  /* ── Sidebar ──────────────────────────────────────── */
+  --sidebar-bg: var(--color-slate-900);
+  --sidebar-text: var(--color-slate-300);
+  --sidebar-selected-bg: rgba(99, 102, 241, 0.2);
+  --sidebar-trigger-bg: var(--color-white);
+  --sidebar-trigger-text: #001529;
+
+  /* ── Card ─────────────────────────────────────────── */
+  --card-bg: var(--color-white);
+  --card-radius: var(--radius-lg);
+
+  /* ── Table ────────────────────────────────────────── */
+  --table-radius: var(--radius-lg);
+  --table-highlight-bg: #ffc069;
+
+  /* ── Layout ───────────────────────────────────────── */
+  --layout-header-bg: var(--color-white);
+  --layout-body-bg: var(--bg-page);
+
+  /* ── Login ────────────────────────────────────────── */
+  --login-gradient-start: var(--color-slate-900);
+  --login-gradient-mid: var(--color-slate-800);
+  --login-gradient-end: var(--color-slate-900);
+}

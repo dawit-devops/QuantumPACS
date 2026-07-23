@@ -11,6 +11,8 @@ import NotFound from './notfound/NotFound';
 import Patient from './patient/Patient';
 import Files from './files/Files';
 import Detail from './detail/Detail';
+import './common/tokens.css';
+import './index.css';
 import { init } from './ws';
 import { setNavigator } from './navigator';
 import { theme } from './common/theme';

@@ -183,7 +183,7 @@ function Files(props: any) {
       </div>
     ),
     filterIcon: (filtered: any) => (
-      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+      <SearchOutlined style={{ color: filtered ? 'var(--color-blue-500)' : undefined }} />
     ),
     onFilterDropdownVisibleChange: (visible: any) => {
       if (visible) {
@@ -200,7 +200,7 @@ function Files(props: any) {
       }
       return (
         <Highlighter
-          highlightStyle={{ backgroundColor: '#ffc069', padding: 0 }}
+          highlightStyle={{ backgroundColor: 'var(--table-highlight-bg)', padding: 0 }}
           searchWords={searchWords}
           autoEscape
           textToHighlight={text ? text.toString() : ''}
