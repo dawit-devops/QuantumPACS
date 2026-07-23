@@ -82,7 +82,11 @@ class UsersDeactivate(HTTPEndpoint):
         async with get_conn() as conn:
             await Users(conn).deactivate(data['id'])
 
-        return ok({})
+        resp = ok({})
+        resp.headers['X-API-Deprecated'] = 'true'
+        resp.headers['X-API-Sunset'] = 'v3.0'
+        resp.headers['X-API-Replacement'] = 'DELETE /api/users/{id}'
+        return resp
 
 
 class UsersNewPassword(HTTPEndpoint):
@@ -93,4 +97,8 @@ class UsersNewPassword(HTTPEndpoint):
         async with get_conn() as conn:
             result = await Users(conn).new_pswd(data['id'])
 
-        return ok({'password': result})
+        resp = ok({'password': result})
+        resp.headers['X-API-Deprecated'] = 'true'
+        resp.headers['X-API-Sunset'] = 'v3.0'
+        resp.headers['X-API-Replacement'] = 'POST /api/users/{id}/reset-password'
+        return resp
