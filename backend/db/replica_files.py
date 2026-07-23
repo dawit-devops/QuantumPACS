@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from dateutil.relativedelta import relativedelta
@@ -91,7 +91,7 @@ class ReplicaFiles(Table):
         return await self.fetch(q)
 
     async def get_for_sync(self, replica, offset=0):
-        to_update = datetime.utcnow() - relativedelta(minutes=replica['delay'])
+        to_update = datetime.now(timezone.utc) - relativedelta(minutes=replica['delay'])
 
         files = PyPikaTable('files')
         q = self.select(
@@ -164,7 +164,7 @@ class ReplicaFiles(Table):
             ).set(
                 self.table.status, Status.deleted,
             ).set(
-                self.table.updated, datetime.utcnow(),
+                self.table.updated, datetime.now(timezone.utc),
             )
             await self.exec(q)
 

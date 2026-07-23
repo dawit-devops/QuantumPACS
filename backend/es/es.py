@@ -7,7 +7,7 @@ from config import config
 from es.mapping import INDEX
 
 client = {}
-INDEX_NAME = 'openpacs'
+INDEX_NAME = 'quantumpacs'
 
 
 async def setup():
@@ -132,5 +132,5 @@ async def reset_index():
     c = get_client()
     if not c:
         return
-    await c.indices.delete(index='openpacs')
-    await c.indices.create(index='openpacs', body=INDEX)
+    await c.indices.delete(index='quantumpacs')
+    await c.indices.create(index='quantumpacs', body=INDEX)

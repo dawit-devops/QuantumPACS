@@ -8,8 +8,8 @@ default_config = {
     'superadmin_pass': 'pa55w0rd',
     'db_host': '127.0.0.1',
     'db_port': '5432',
-    'db_database': 'openpacs',
-    'db_user': 'openpacs',
+    'db_database': 'quantumpacs',
+    'db_user': 'quantumpacs',
     'db_password': 'pa55w0rd',
     'es_host': 'localhost',
 }
@@ -21,7 +21,7 @@ try:
     for k, v in config.items():
         if k in local_config:
             config[k] = local_config[k]
-except:
+except Exception:
     pass
 
 for k in default_config.keys():
@@ -33,4 +33,4 @@ for k in default_config.keys():
 if config['secret'] == 'default':
     config['secret'] = config['db_password']
 
-is_docker = bool(os.getenv('OPENPACS_DOCKER'))
+is_docker = bool(os.getenv('QUANTUMPACS_DOCKER'))

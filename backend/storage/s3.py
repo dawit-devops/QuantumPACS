@@ -15,7 +15,7 @@ class S3Storage(Storage):
         self.access_key_id = replica['meta']['access_key_id']
         self.secret_access_key = replica['meta']['secret_access_key']
         self.session = aiobotocore.session.get_session()
-        self.bucket = 'openpacs'
+        self.bucket = 'quantumpacs'
         self.region = replica['location']
         self._client = None
 
@@ -70,7 +70,7 @@ class S3Storage(Storage):
                         study_id = ''
                     if series_id == 'empty':
                         series_id = ''
-                except:
+                except Exception:
                     continue
 
                 yield {

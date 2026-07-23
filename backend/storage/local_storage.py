@@ -37,7 +37,7 @@ class LocalStorage(Storage):
                         study_id = ''
                     if series_id == 'empty':
                         series_id = ''
-                except:
+                except Exception:
                     continue
                 yield {
                     'patient_id': patient_id,

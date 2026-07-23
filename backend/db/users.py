@@ -1,20 +1,23 @@
 import binascii
 import hashlib
+import os
 import random
 import string
 
 from config import config
-from exeptions import ApiException
+from exceptions import ApiException
 from db.table import Table
 
 
-def rand_pwswd(length=8):
+def rand_pswd(length=12):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 
-def pswd_hash(pswd):
-    data = hashlib.pbkdf2_hmac('sha256', pswd.encode('utf8'), b'', 10000)
-    return binascii.hexlify(data).decode('utf8')
+def hash_password(pswd, salt=None):
+    if salt is None:
+        salt = os.urandom(16)
+    data = hashlib.pbkdf2_hmac('sha256', pswd.encode('utf8'), salt, 600000)
+    return binascii.hexlify(salt + data).decode('utf8')
 
 
 class Users(Table):
@@ -40,12 +43,19 @@ class Users(Table):
     def to_json(data):
         return dict(data)
 
+    @staticmethod
+    def _verify_password(password, stored):
+        raw = binascii.unhexlify(stored)
+        salt = raw[:16]
+        expected = hash_password(password, salt)
+        return expected == stored
+
     async def login(self, username, password):
         q = self.select('*').where(self.table.username == username)
         data = await self.fetchone(q)
         if not data:
             raise ApiException('User does not exists')
-        if pswd_hash(password) != data['password']:
+        if not self._verify_password(password, data['password']):
             raise ApiException('Password is not correct')
         if data['status'] != 'active':
             raise ApiException('User deactivated')
@@ -55,18 +65,18 @@ class Users(Table):
         q = self.select('*').where(self.table.username == 'admin')
         data = await self.fetchone(q)
         if not data:
-            pswd = pswd_hash(config['superadmin_pass'])
+            pswd = hash_password(config['superadmin_pass'])
             q = self.insert().columns('username', 'password', 'admin').insert('admin', pswd, True)
             await self.exec(q)
 
     async def change_password(self, user, password):
-        pswd = pswd_hash(password)
+        pswd = hash_password(password)
         q = self.update().where(self.table.id == user.id).set(self.table.password, pswd)
         await self.exec(q)
 
     async def add_user(self, username, is_admin):
-        pswd = rand_pwswd()
-        ph = pswd_hash(pswd)
+        pswd = rand_pswd()
+        ph = hash_password(pswd)
         q = self.insert().columns('username', 'password', 'admin').insert(username, ph, is_admin)
         await self.exec(q)
         return {'password': pswd}
@@ -87,8 +97,8 @@ class Users(Table):
         await self.exec(q)
 
     async def new_pswd(self, user_id):
-        pswd = rand_pwswd()
-        ph = pswd_hash(pswd)
+        pswd = rand_pswd()
+        ph = hash_password(pswd)
         q = self.update().where(self.table.id == user_id).set(self.table.password, ph)
         await self.exec(q)
         return pswd

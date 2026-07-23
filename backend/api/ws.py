@@ -73,7 +73,7 @@ class WebsocketHandler(WebSocketEndpoint):
             mutex.acquire()
             try:
                 del files[f][id(websocket)]
-            except:
+            except Exception:
                 pass
             finally:
                 mutex.release()

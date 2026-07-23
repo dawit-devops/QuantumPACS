@@ -181,7 +181,7 @@ async def sync():
             except Exception as e:
                 log.error('Failed to log sync error: %s', traceback.format_exc())
         try:
-            time.sleep(1)
+            await asyncio.sleep(1)
         except KeyboardInterrupt:
             if listener_conn:
                 await listener_conn.close()
@@ -190,9 +190,7 @@ async def sync():
 
 
 def main():
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(sync())
-    loop.close()
+    asyncio.run(sync())
 
 
 if __name__ == '__main__':

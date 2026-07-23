@@ -29,7 +29,7 @@ class B2Storage(Storage):
         self.app_key = replica['meta']['app_key']
         info = InMemoryAccountInfo()
         self.api = B2Api(info)
-        self.bucket = 'openpacs'
+        self.bucket = 'quantumpacs'
 
     @staticmethod
     def default_config():
@@ -72,7 +72,7 @@ class B2Storage(Storage):
                         study_id = ''
                     if series_id == 'empty':
                         series_id = ''
-                except:
+                except Exception:
                     continue
                 yield {
                     'patient_id': patient_id,

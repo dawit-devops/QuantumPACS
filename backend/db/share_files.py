@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dateutil.relativedelta import relativedelta
 
@@ -25,7 +25,7 @@ class SharedFiles(Table):
 
     async def share(self, file_id, duration):
         key = rand_str()
-        expires = datetime.utcnow() + relativedelta(hours=duration)
+        expires = datetime.now(timezone.utc) + relativedelta(hours=duration)
         q = self.insert().columns(
             'file_id', 'hash', 'expires'
         ).insert(
@@ -37,7 +37,7 @@ class SharedFiles(Table):
     async def check(self, key):
         q = self.select('*').where(self.table.hash == key)
         sf = await self.fetchone(q)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if not sf:
             return None
 

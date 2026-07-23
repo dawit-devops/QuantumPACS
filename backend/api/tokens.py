@@ -1,6 +1,4 @@
-"""Centralized JWT token creation and verification.
-All auth flows must use this module to ensure consistent token format and expiry."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from api.jwt_compat import encode as jwt_encode, decode as jwt_decode
 from config import config
@@ -14,7 +12,7 @@ def create_token(user, expire=None):
     if not expire:
         expire = {'days': 14}
 
-    exp = datetime.utcnow() + timedelta(**expire)
+    exp = datetime.now(timezone.utc) + timedelta(**expire)
     payload['exp'] = exp
 
     return jwt_encode(

@@ -1,40 +1,39 @@
 #!/bin/bash
 set -e
 
-if [ -z $1 ]
-then
+if [ -z "${1:-}" ]; then
     echo "Command needed (run, db)"
-    exit
+    exit 1
 fi
 
-DBNAME="openpacs"
-DBUSER="openpacs"
+DBNAME="quantumpacs"
+DBUSER="quantumpacs"
+DBHOST="${DBHOST:-localhost}"
 
-postgres_psql () {
-    sudo -u postgres psql -h localhost -c "$1"
+postgres_psql() {
+    sudo -u postgres psql -h "$DBHOST" -c "$1"
 }
 
-create_exts () {
-    sudo -u postgres psql -h localhost $1 -c "CREATE EXTENSION intarray"
-    sudo -u postgres psql -h localhost $1 -c "CREATE EXTENSION citext"
+create_exts() {
+    sudo -u postgres psql -h "$DBHOST" "$1" -c "CREATE EXTENSION IF NOT EXISTS intarray"
+    sudo -u postgres psql -h "$DBHOST" "$1" -c "CREATE EXTENSION IF NOT EXISTS citext"
 }
 
-create_db () {
+create_db() {
     postgres_psql "CREATE DATABASE $1"
     postgres_psql "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DBUSER"
     postgres_psql "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DBUSER"
-    create_exts $1
+    create_exts "$1"
 }
 
-drop_db () {
+drop_db() {
     postgres_psql "DROP DATABASE IF EXISTS $1"
 }
 
-handle_db () {
-    if [ -z $1 ]
-    then
+handle_db() {
+    if [ -z "${1:-}" ]; then
         echo "Command needed (create, init, import, start, stop, shell)"
-        exit
+        exit 1
     fi
 
     case $1 in
@@ -42,27 +41,27 @@ handle_db () {
             DBPASS=$(openssl rand -base64 15)
             echo "db_pass: $DBPASS"
             postgres_psql "CREATE USER $DBUSER WITH PASSWORD '$DBPASS'"
-
-            create_db $DBNAME
+            create_db "$DBNAME"
             ;;
         create)
-            create_db $DBNAME
+            create_db "$DBNAME"
             ;;
         drop)
-            drop_db $DBNAME
+            drop_db "$DBNAME"
             ;;
         reset)
-            drop_db $DBNAME
-            create_db $DBNAME
+            drop_db "$DBNAME"
+            create_db "$DBNAME"
             ;;
         shell)
-            psql -h localhost $DBNAME -U $DBUSER
+            psql -h "$DBHOST" "$DBNAME" -U "$DBUSER"
             ;;
         import)
-            psql -h localhost $DBNAME -U $DBUSER < dump.sql
+            psql -h "$DBHOST" "$DBNAME" -U "$DBUSER" < dump.sql
             ;;
         *)
             echo "Invalid command"
+            exit 1
             ;;
     esac
 }
@@ -76,10 +75,10 @@ case $1 in
         ;;
     *)
         cmd="./cmd/$1.py"
-        if [ ! -f $cmd ]; then
+        if [ ! -f "$cmd" ]; then
             echo "Unsupported command $1"
-        else
-            python $cmd "${@:2}"
+            exit 1
         fi
+        python "$cmd" "${@:2}"
         ;;
 esac

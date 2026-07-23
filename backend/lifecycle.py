@@ -1,5 +1,5 @@
+import asyncio
 import sys
-import time
 
 from es import es
 import db.conn
@@ -22,9 +22,9 @@ async def setup(db_pool_size=None, sync_db=False):
             log.warning('Startup attempt %d/30 failed: %s', i + 1, e)
             try:
                 await teardown()
-            except:
+            except Exception:
                 pass
-        time.sleep(1)
+        await asyncio.sleep(1)
 
     if not success:
         log.critical("Can't connect to database or elasticsearch")
@@ -37,7 +37,7 @@ async def setup(db_pool_size=None, sync_db=False):
             for t in Table.tables:
                 try:
                     await t(conn).sync_db()
-                except:
+                except Exception:
                     log.error('Table sync failed: %s', t.name)
                     raise
 

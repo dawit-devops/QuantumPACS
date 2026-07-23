@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from es import es
@@ -52,7 +52,7 @@ class Files(Table):
             series = await Series(self.conn).insert_or_select(filedata)
             filedata['series_db_id'] = series['id']
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
                 'indexed', 'hash', 'created', 'updated',

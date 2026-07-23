@@ -20,22 +20,22 @@ async def init_db():
         port=int(config.get('db_port', '5432')),
     )
     try:
-        await conn.execute('CREATE DATABASE openpacs')
-    except:
+        await conn.execute('CREATE DATABASE quantumpacs')
+    except Exception:
         pass
     await conn.close()
 
     conn = await asyncpg.connect(
         user='postgres',
         password=config['db_password'],
-        database='openpacs',
+        database='quantumpacs',
         host=config['db_host'],
         port=int(config.get('db_port', '5432')),
     )
     try:
         await conn.execute('CREATE EXTENSION intarray')
         await conn.execute('CREATE EXTENSION citext')
-    except:
+    except Exception:
         pass
     await conn.close()
 

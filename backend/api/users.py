@@ -5,7 +5,7 @@ from api.tokens import create_token as gen_token
 from api.utils import is_admin
 from db.conn import get_conn
 from db.users import Users
-from exeptions import ApiException
+from exceptions import ApiException
 
 
 class Login(HTTPEndpoint):

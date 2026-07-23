@@ -20,16 +20,15 @@ from utils import hash_file
 
 log = get_logger(__name__)
 
-initialized = False
-loop = None
+_initialized = False
 
 
 async def store(ds, data):
-    global initialized
+    global _initialized
 
-    if not initialized:
+    if not _initialized:
         await setup()
-        initialized = True
+        _initialized = True
 
     async with get_conn() as conn:
         try:
@@ -62,8 +61,6 @@ async def store(ds, data):
 
 
 def handle_store(event):
-    global loop
-
     ds = event.dataset
     ds.file_meta = event.file_meta
     dst = BytesIO()
@@ -71,9 +68,7 @@ def handle_store(event):
     try:
         ds.save_as(dst, write_like_original=False)
 
-        if not loop:
-            loop = asyncio.new_event_loop()
-        result = loop.run_until_complete(store(ds, dst))
+        result = asyncio.run(store(ds, dst))
         if not result:
             return 0x0001
 
@@ -85,24 +80,20 @@ def handle_store(event):
 
 
 handlers = [(evt.EVT_C_STORE, handle_store)]
-scp = None
+_scp = None
 
 
-def signal_handler(sig, frame):
-    global loop
-
-    if scp:
-        scp.shutdown()
-
-    if loop:
-        loop.run_until_complete(teardown())
+def _signal_handler(sig, frame):
+    if _scp:
+        _scp.shutdown()
+    asyncio.run(teardown())
     sys.exit(0)
 
 
 def main():
-    global scp
+    global _scp
 
-    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
     ae = AE()
     ae.supported_contexts = StoragePresentationContexts
-    scp = ae.start_server(('', 11112), evt_handlers=handlers)
+    _scp = ae.start_server(('', 11112), evt_handlers=handlers)
