@@ -7,7 +7,7 @@ import { AddUser } from './EditUser';
 const Content = Layout.Content;
 
 function Users() {
-  document.title = 'Users';
+  document.title = 'QuantumPACS - Users';
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});

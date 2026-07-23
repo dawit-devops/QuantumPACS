@@ -13,6 +13,7 @@ import Files from './files/Files';
 import Detail from './detail/Detail';
 import { init } from './ws';
 import { setNavigator } from './navigator';
+import { theme } from './common/theme';
 
 function ProtectedRoute({ children }: { children: React.ReactElement }) {
   const authed = localStorage.getItem('userId') || localStorage.getItem('tempKey');
@@ -40,7 +41,7 @@ function App() {
   }, []);
 
   return (
-    <ConfigProvider>
+    <ConfigProvider theme={theme}>
       <BrowserRouter>
         <NavigatorSetter />
         <Routes>

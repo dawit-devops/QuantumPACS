@@ -5,6 +5,7 @@ import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamO
 import { useFetch } from '../hooks';
 import { isAdmin } from '../helpers';
 import { PAGINATION } from '../config';
+import QuantumLogo from './QuantumLogo';
 import './Sidebar.css';
 
 const { Sider } = Layout;
@@ -61,6 +62,16 @@ function Sidebar() {
         }
       }}
     >
+      <div style={{
+        padding: collapsed ? '16px 8px' : '16px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        marginBottom: 4,
+      }}>
+        <QuantumLogo size={32} showText={!collapsed} />
+      </div>
       <Menu mode="inline" theme="dark"
         defaultOpenKeys={[openKey]} defaultSelectedKeys={[selectedKey]} >
 

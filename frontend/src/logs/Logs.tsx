@@ -23,7 +23,7 @@ const columns: any[] = [
 ];
 
 function Logs() {
-  document.title = 'Logs';
+  document.title = 'QuantumPACS - Logs';
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});

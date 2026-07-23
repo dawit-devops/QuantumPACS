@@ -42,7 +42,7 @@ function wrap(txt: string) {
 }
 
 function Patient(props: any) {
-  document.title = 'Patient';
+  document.title = 'QuantumPACS - Patient';
 
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);

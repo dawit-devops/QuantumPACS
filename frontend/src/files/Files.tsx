@@ -41,7 +41,7 @@ const initialAdvancedFields = [
 ];
 
 function Files(props: any) {
-  document.title = 'Search';
+  document.title = 'QuantumPACS - Search';
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({ pageSize: PAGINATION.limit });

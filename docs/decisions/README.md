@@ -11,3 +11,4 @@
 | 007 | [Storage Backend Multi-Tier](ADR-007-storage-backend-multi-tier.md) | Accepted |
 | 008 | [Security Architecture](ADR-008-security-architecture.md) | Accepted |
 | 009 | [Repository Organization and Branching Strategy](ADR-009-repository-organization-and-branching-strategy.md) | Accepted |
+| 010 | [QuantumPACS Brand Identity](ADR-010-quantumpacs-brand-identity.md) | Accepted |

@@ -21,7 +21,7 @@ function wrap(txt: string) {
 }
 
 function Detail(props: any) {
-  document.title = 'Detail';
+  document.title = 'QuantumPACS - Detail';
   const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
 
   let [tab, setTab] = useState('image');

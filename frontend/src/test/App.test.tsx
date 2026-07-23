@@ -11,7 +11,7 @@ describe('Login', () => {
         <Login />
       </MemoryRouter>
     );
-    expect(screen.getByText('OpenPACS')).toBeInTheDocument();
-    expect(screen.getByText('Login')).toBeInTheDocument();
+    expect(screen.getByText(/Sign in to your account/)).toBeInTheDocument();
+    expect(screen.getByText('Sign In')).toBeInTheDocument();
   });
 });

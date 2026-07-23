@@ -9,7 +9,7 @@ function sleep(ms: number) {
 }
 
 function Managment(props: any) {
-  document.title = 'Managment';
+  document.title = 'QuantumPACS - Managment';
   let [loading, setLoading] = useState(false);
 
   const deleteFile = () => {

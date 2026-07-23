@@ -8,7 +8,7 @@ const { Content } = Layout;
 
 
 function Share(props: any) {
-  document.title = 'Share';
+  document.title = 'QuantumPACS - Share';
   let [loading, setLoading] = useState(false);
   let [key, setKey] = useState<string | null>(null);
   const [form] = Form.useForm();

@@ -8,7 +8,7 @@ const { Content } = Layout;
 
 
 function Account(props: any) {
-  document.title = 'Account';
+  document.title = 'QuantumPACS - Account';
 
   const [form] = Form.useForm();
   const { exec, loading, data, error } = useFetch('change_password');

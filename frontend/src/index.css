@@ -1,44 +1,24 @@
-input {
-    margin: 2px;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
-button, input[type=submit] {
-    border: 0;
-    background: #d3d3d3;
-    margin: 2px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    padding-left: 10px;
-    padding-right: 10px;
-    outline: none;
+
+html, body, #root {
+  height: 100%;
 }
-button:hover {
-    background: #c5c5c5;
+
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-input[type=submit]:hover {
-    background: #c5c5c5;
-}
-span {
-    margin: 2px;
-}
-ul {
-    list-style-type: none;
-    padding: 0;
-}
-li {
-    margin-top: 10px;
-}
+
 a {
-    text-decoration: none;
+  text-decoration: none;
+  color: #0077B6;
 }
-a:link {
-    color: #000000;
-}
-a:visited {
-    color: #000000;
-}
-.material-icons.md-18 {
-    font-size: 18px;
-}
-.material-icons.md-14 {
-    font-size: 14px;
+
+a:hover {
+  color: #6366F1;
 }

@@ -28,7 +28,7 @@ export function EditDelay(props: any) {
 }
 
 function Replicas() {
-  document.title = 'Replicas';
+  document.title = 'QuantumPACS - Replicas';
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});

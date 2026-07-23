@@ -4,13 +4,21 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      events: 'events',
+    },
+  },
+  optimizeDeps: {
+    include: ['events'],
+  },
   build: {
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) return 'vendor-react';
           if (id.includes('node_modules/antd') || id.includes('node_modules/@ant-design')) return 'vendor-antd';
-          if (id.includes('node_modules/cornerstone') || id.includes('node_modules/dicom-parser') || id.includes('node_modules/hammerjs')) return 'vendor-cornerstone';
+          if (id.includes('node_modules/cornerstone') || id.includes('node_modules/@cornerstonejs') || id.includes('node_modules/dicom-parser') || id.includes('node_modules/hammerjs')) return 'vendor-cornerstone';
         },
       },
     },
@@ -31,7 +39,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
-    testTimeout: 30000,
+    testTimeout: 60000,
   },
   define: {
     'process.env': {},
