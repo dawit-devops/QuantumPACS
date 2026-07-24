@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import withRouter from '../withRouter';
 import { useFetch } from '../hooks';
 import { Form, Input, Button, message, Layout, Card, Typography } from 'antd';
@@ -8,15 +8,53 @@ import './Login.css';
 const { Content } = Layout;
 const { Text } = Typography;
 
+const LOGIN_RETRY_KEY = 'loginAttempts';
+
+
+function getLoginDelay(): number {
+  try {
+    const raw = localStorage.getItem(LOGIN_RETRY_KEY);
+    if (!raw) return 0;
+    const { count, nextAllowed } = JSON.parse(raw);
+    if (Date.now() < nextAllowed) {
+      return Math.ceil((nextAllowed - Date.now()) / 1000);
+    }
+  } catch {
+    localStorage.removeItem(LOGIN_RETRY_KEY);
+  }
+  return 0;
+}
+
+
+function recordFailedAttempt() {
+  const raw = localStorage.getItem(LOGIN_RETRY_KEY);
+  let count = 1;
+  if (raw) {
+    try { count = JSON.parse(raw).count + 1; } catch {}
+  }
+  const delay = Math.min(30, Math.pow(2, count - 1));
+  localStorage.setItem(LOGIN_RETRY_KEY, JSON.stringify({
+    count,
+    nextAllowed: Date.now() + delay * 1000,
+  }));
+}
+
+
+function clearAttempts() {
+  localStorage.removeItem(LOGIN_RETRY_KEY);
+}
+
 
 function LoginForm(props: any) {
   document.title = 'QuantumPACS - Login';
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch('login');
+  const [lockoutSeconds, setLockoutSeconds] = useState(getLoginDelay);
 
   useEffect(() => {
     if (!data) return;
+    clearAttempts();
     localStorage.setItem('userId', data.id);
     localStorage.setItem('admin', data.admin);
     localStorage.setItem('token', data.token);
@@ -25,11 +63,27 @@ function LoginForm(props: any) {
 
   useEffect(() => {
     if (!loading && error) {
+      recordFailedAttempt();
+      setLockoutSeconds(getLoginDelay());
       message.error(error.error || error);
     }
   }, [loading, error]);
 
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const id = setInterval(() => {
+      const remaining = getLoginDelay();
+      setLockoutSeconds(remaining);
+      if (remaining <= 0) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockoutSeconds]);
+
   const handleSubmit = (values: any) => {
+    if (lockoutSeconds > 0) {
+      message.warning(`Too many attempts. Try again in ${lockoutSeconds}s.`);
+      return;
+    }
     exec(
       true,
       {
@@ -74,8 +128,8 @@ function LoginForm(props: any) {
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" className="login-form-button"
-                size="large" loading={showLoading}>
-                  Sign In
+                size="large" loading={showLoading} disabled={lockoutSeconds > 0}>
+                  {lockoutSeconds > 0 ? `Retry in ${lockoutSeconds}s` : 'Sign In'}
               </Button>
             </Form.Item>
           </Form>

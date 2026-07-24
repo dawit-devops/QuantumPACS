@@ -1,4 +1,4 @@
-import time
+from unittest.mock import patch
 
 import pytest
 
@@ -51,9 +51,11 @@ class TestTokenBucket:
         assert '5 minutes' in msg
 
     def test_window_expires(self):
-        b = TokenBucket(max_attempts=1, window_seconds=0.05, lockout_attempts=10)
-        ok, _ = b.check('exp-ip')
-        b.record('exp-ip')
-        assert b.remaining('exp-ip') == 0
-        time.sleep(0.06)
-        assert b.remaining('exp-ip') == 1
+        with patch('api.ratelimit.time.monotonic') as mock_time:
+            mock_time.return_value = 1000.0
+            b = TokenBucket(max_attempts=1, window_seconds=60, lockout_attempts=10)
+            ok, _ = b.check('exp-ip')
+            b.record('exp-ip')
+            assert b.remaining('exp-ip') == 0
+            mock_time.return_value = 1061.0
+            assert b.remaining('exp-ip') == 1

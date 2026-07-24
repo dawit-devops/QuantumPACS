@@ -8,7 +8,7 @@ from api.tokens import create_token, verify_token
 
 
 class TestTokens:
-    SECRET = 'test-secret-key'
+    SECRET = 'test-secret-key-32-bytes-long!!!'
 
     @pytest.fixture
     def user(self):
@@ -53,23 +53,23 @@ class TestTokens:
     def test_expired_token_raises(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user, expire={'days': -1})
-        with pytest.raises(jwt.InvalidTokenError):
-            verify_token(token)
+            with pytest.raises(jwt.InvalidTokenError):
+                verify_token(token)
 
     def test_invalid_signature_raises(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user)
-        with patch('api.tokens.config', {'secret': 'different-secret'}):
+        with patch('api.tokens.config', {'secret': 'different-secret-key-32-bytes!!!'}):
             with pytest.raises(jwt.InvalidSignatureError):
                 verify_token(token)
 
     def test_tampered_token_raises(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user)
-        parts = token.split('.')
-        tampered = parts[0] + '.' + parts[1] + '.invalidsig'
-        with pytest.raises(jwt.InvalidTokenError):
-            verify_token(tampered)
+            parts = token.split('.')
+            tampered = parts[0] + '.' + parts[1] + '.invalidsig'
+            with pytest.raises(jwt.InvalidTokenError):
+                verify_token(tampered)
 
     def test_admin_false_token(self):
         user = {'id': 1, 'admin': False}

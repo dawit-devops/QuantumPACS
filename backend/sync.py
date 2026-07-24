@@ -1,6 +1,6 @@
 import asyncio
 import json
-import time
+import random
 import traceback
 
 from db.conn import get_conn, create_conn
@@ -36,21 +36,22 @@ async def index(replica):
                 break
 
             loc = None
-            if not d.get('hash'):
+            needs_fetch_for_hash = not d.get('hash')
+            needs_fetch_for_dcm = replica['master']
+            if needs_fetch_for_hash or needs_fetch_for_dcm:
                 loc = await storage.fetch(d)
 
-                if not d.get('hash'):
-                    d['hash'] = hash_file(loc)
+            if needs_fetch_for_hash:
+                d['hash'] = hash_file(loc)
 
             f = await Files(conn).get(d)
             if not f:
                 if not replica['master']:
                     continue
-                if not loc:
-                    loc = await storage.fetch(d)
                 try:
                     dcm_data = parse_dcm(loc)
                 except Exception as e:
+                    log.warning('Skipping unparseable DICOM file %s: %s', d.get('name', 'unknown'), e)
                     continue
 
                 d.update(dcm_data)
@@ -111,10 +112,10 @@ async def do_sync():
         if r['master']:
             continue
 
-        offset = 0
+        last_id = 0
         while True:
             async with get_conn() as conn:
-                data = await ReplicaFiles(conn).get_for_sync(r, offset)
+                data = await ReplicaFiles(conn).get_for_sync(r, last_id)
 
                 if len(data):
                     await Replica(conn).update_status(r['id'], 'syncing')
@@ -145,7 +146,7 @@ async def do_sync():
                     async with get_conn() as conn:
                         await Replica(conn).update_status(r['id'], 'ok')
                 break
-            offset += 1000
+            last_id = data[-1]['id']
 
 
 listener_conn = None
@@ -169,19 +170,22 @@ async def sync():
     listener_conn = await create_conn()
     await listener_conn.add_listener('events', db_event)
 
+    backoff = 1
     while True:
         work = True
         try:
             await do_sync()
-        except Exception as e:
+            backoff = 1
+        except Exception:
             log.error('Sync error: %s', traceback.format_exc())
+            backoff = min(60, backoff * 2)
             try:
                 async with get_conn() as conn:
                     await Log(conn).add(traceback.format_exc())
-            except Exception as e:
+            except Exception:
                 log.error('Failed to log sync error: %s', traceback.format_exc())
         try:
-            await asyncio.sleep(1)
+            await asyncio.sleep(backoff + random.uniform(0, 1))
         except KeyboardInterrupt:
             if listener_conn:
                 await listener_conn.close()

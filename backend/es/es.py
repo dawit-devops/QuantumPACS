@@ -66,8 +66,8 @@ async def search(data):
     c = get_client()
     if not c:
         return {'data': [], 'total': 0}
-    size = data.pop('results', 10)
-    page = data.pop('page', 1)
+    size = data.get('results', 10)
+    page = data.get('page', 1)
 
     query = data.get('query', '').lower()
     if query != '':
@@ -95,7 +95,7 @@ async def search(data):
 
             if k in columns:
                 k += ".lang_analyzed"
-            es_q.append({"match": {k: v[0]}})
+            es_q.append({"match": {k: v[0] if isinstance(v, list) and len(v) > 0 else v}})
 
         es_q = {"bool": {"must": es_q}}
     else:

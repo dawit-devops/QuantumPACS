@@ -21,14 +21,17 @@ from utils import hash_file
 log = get_logger(__name__)
 
 _initialized = False
+_init_lock = asyncio.Lock()
 
 
 async def store(ds, data):
     global _initialized
 
     if not _initialized:
-        await setup()
-        _initialized = True
+        async with _init_lock:
+            if not _initialized:
+                await setup()
+                _initialized = True
 
     async with get_conn() as conn:
         try:
@@ -60,6 +63,14 @@ async def store(ds, data):
     return True
 
 
+async def _handle_store_async(ds, dst):
+    try:
+        return await store(ds, dst)
+    except Exception as e:
+        log.error('DICOM store failed: %s', traceback.format_exc())
+        return False
+
+
 def handle_store(event):
     ds = event.dataset
     ds.file_meta = event.file_meta
@@ -67,13 +78,18 @@ def handle_store(event):
 
     try:
         ds.save_as(dst, write_like_original=False)
-
-        result = asyncio.run(store(ds, dst))
-        if not result:
-            return 0x0001
-
     except Exception as e:
-        log.error('DICOM handle_store failed: %s', traceback.format_exc())
+        log.error('DICOM save failed: %s', traceback.format_exc())
+        return 0x0001
+
+    future = asyncio.run_coroutine_threadsafe(_handle_store_async(ds, dst), _loop)
+    try:
+        result = future.result(timeout=60)
+    except Exception as e:
+        log.error('DICOM store timed out or failed: %s', traceback.format_exc())
+        return 0x0001
+
+    if not result:
         return 0x0001
 
     return 0x0000
@@ -84,11 +100,15 @@ _scp = None
 _loop = None
 
 
-def _signal_handler(sig, frame):
-    if _loop and not _loop.is_closed():
-        _loop.create_task(teardown())
+async def _async_shutdown():
+    await teardown()
     if _scp:
         _scp.shutdown()
+
+
+def _signal_handler(sig, frame):
+    if _loop and not _loop.is_closed():
+        asyncio.run_coroutine_threadsafe(_async_shutdown(), _loop)
 
 
 def main():

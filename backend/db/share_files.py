@@ -3,7 +3,10 @@ from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 
 from db.table import Table
+from log import get_logger
 from utils import rand_str
+
+log = get_logger(__name__)
 
 
 class SharedFiles(Table):
@@ -46,3 +49,9 @@ class SharedFiles(Table):
             await self.exec(q)
             return None
         return sf['file_id']
+
+    async def cleanup_expired(self):
+        q = self.query().where(self.table.expires < datetime.now(timezone.utc)).delete()
+        cnt = await self.exec(q)
+        if cnt:
+            log.info('Cleaned up %s expired shared files', cnt)

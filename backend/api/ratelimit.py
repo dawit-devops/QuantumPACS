@@ -1,11 +1,43 @@
-"""Simple token-bucket rate limiter for login endpoint.
+"""Token-bucket rate limiter for login endpoint.
 
 Limits to N attempts per IP per window_seconds.
-Uses in-memory state for speed, with optional DB persistence layer.
-For multi-worker deployments, add Redis backend.
+Uses Redis-based sliding window when available, falls back to in-memory TokenBucket.
 """
 import time
 from collections import defaultdict
+
+from log import get_logger
+
+log = get_logger(__name__)
+
+_redis = None
+_redis_available = False
+
+try:
+    import redis.asyncio as _aioredis
+
+    def _get_rate_redis():
+        global _redis, _redis_available
+        if _redis is not None:
+            return _redis
+        try:
+            from config import config as cfg
+            host = cfg.get('redis_host', 'localhost')
+            port = int(cfg.get('redis_port', '6379'))
+            password = cfg.get('redis_password') or None
+            _redis = _aioredis.Redis(
+                host=host, port=port, password=password, db=3,
+                socket_connect_timeout=1,
+                socket_timeout=1,
+            )
+            _redis_available = True
+        except Exception:
+            _redis_available = False
+        return _redis
+
+except ImportError:
+    def _get_rate_redis():
+        return None
 
 
 class TokenBucket:
@@ -39,6 +71,10 @@ class TokenBucket:
         return True, None
 
     def record(self, ip, success=False):
+        if success:
+            self._attempts[ip].clear()
+            self._lockouts.pop(ip, None)
+            return
         now = time.monotonic()
         self._attempts[ip].append(now)
         if len(self._attempts[ip]) >= self.lockout_attempts:
@@ -51,12 +87,89 @@ class TokenBucket:
                 'INSERT INTO login_attempts (ip, endpoint, success) VALUES ($1, $2, $3)',
                 ip, 'login', success,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning('Failed to record login attempt: %s', e)
 
     def remaining(self, ip):
         self._prune(ip)
         return max(0, self.max_attempts - len(self._attempts[ip]))
 
 
-login_bucket = TokenBucket()
+class RedisTokenBucket:
+    def __init__(self, max_attempts=5, window_seconds=60, lockout_attempts=10, lockout_seconds=300):
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.lockout_attempts = lockout_attempts
+        self.lockout_seconds = lockout_seconds
+        self._fallback = TokenBucket(max_attempts, window_seconds, lockout_attempts, lockout_seconds)
+
+    def _rkey(self, ip):
+        return f'ratelimit:login:{ip}'
+
+    def _lkey(self, ip):
+        return f'ratelimit:login:lockout:{ip}'
+
+    async def check(self, ip):
+        r = _get_rate_redis()
+        if r is None or not _redis_available:
+            return self._fallback.check(ip)
+        try:
+            now = time.time()
+            cutoff = now - self.window_seconds
+            await r.zremrangebyscore(self._rkey(ip), '-inf', cutoff)
+            locked = await r.get(self._lkey(ip))
+            if locked:
+                return False, 'Too many attempts. Try again in 5 minutes.'
+            count = await r.zcard(self._rkey(ip))
+            if count >= self.max_attempts:
+                return False, 'Too many attempts. Try again later.'
+            return True, None
+        except Exception as e:
+            log.warning('Redis rate-limit check failed, falling back: %s', e)
+            return self._fallback.check(ip)
+
+    async def record(self, ip, success=False):
+        r = _get_rate_redis()
+        if r is None or not _redis_available:
+            self._fallback.record(ip, success=success)
+            return
+        try:
+            if success:
+                await r.delete(self._rkey(ip), self._lkey(ip))
+                return
+            now = time.time()
+            await r.zadd(self._rkey(ip), {str(now): now})
+            await r.expire(self._rkey(ip), self.window_seconds + 10)
+            count = await r.zcard(self._rkey(ip))
+            if count >= self.lockout_attempts:
+                await r.setex(self._lkey(ip), self.lockout_seconds, '1')
+        except Exception as e:
+            log.warning('Redis rate-limit record failed, falling back: %s', e)
+            self._fallback.record(ip, success=success)
+
+    async def record_db(self, ip, conn, success=False):
+        await self.record(ip, success=success)
+        try:
+            await conn.execute(
+                'INSERT INTO login_attempts (ip, endpoint, success) VALUES ($1, $2, $3)',
+                ip, 'login', success,
+            )
+        except Exception as e:
+            log.warning('Failed to record login attempt: %s', e)
+
+    async def remaining(self, ip):
+        r = _get_rate_redis()
+        if r is None or not _redis_available:
+            return self._fallback.remaining(ip)
+        try:
+            now = time.time()
+            cutoff = now - self.window_seconds
+            await r.zremrangebyscore(self._rkey(ip), '-inf', cutoff)
+            count = await r.zcard(self._rkey(ip))
+            return max(0, self.max_attempts - count)
+        except Exception as e:
+            log.warning('Redis rate-limit remaining failed, falling back: %s', e)
+            return self._fallback.remaining(ip)
+
+
+login_bucket = RedisTokenBucket()

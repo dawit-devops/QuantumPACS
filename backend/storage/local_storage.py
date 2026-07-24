@@ -58,12 +58,14 @@ class LocalStorage(Storage):
     def get_path(self, filedata):
         safe_parts = []
         for part in [
-            str(filedata['patient_id']),
-            str(filedata['study_id']) or 'empty',
-            str(filedata['series_number']) or 'empty',
-            filedata['name'],
+            str(filedata.get('patient_id', '')),
+            str(filedata.get('study_id', '')) or 'empty',
+            str(filedata.get('series_number', '')) or 'empty',
+            filedata.get('name', ''),
         ]:
-            safe = os.path.basename(os.path.normpath(part))
+            safe = os.path.basename(os.path.normpath(part)).encode('ascii', errors='ignore').decode('ascii')
+            if not safe:
+                safe = 'unnamed'
             safe_parts.append(safe)
         return os.path.join(*safe_parts)
 
@@ -78,8 +80,7 @@ class LocalStorage(Storage):
         try:
             self._copy(src, dst)
         except PermissionError:
-            # try adding writable permissions
-            os.chmod(dst, 644)
+            os.chmod(dst, 0o644)
             self._copy(src, dst)
         return {
             'location': dst

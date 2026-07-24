@@ -90,12 +90,12 @@ class ReplicaFiles(Table):
         q = self.select('*').where(self.table.file_id == file_id)
         return await self.fetch(q)
 
-    async def get_for_sync(self, replica, offset=0):
+    async def get_for_sync(self, replica, last_id=0):
         to_update = datetime.now(timezone.utc) - relativedelta(minutes=replica['delay'])
 
         files = PyPikaTable('files')
         q = self.select(
-            self.table.replica_id, self.table.file_id, self.table.location,
+            self.table.id, self.table.replica_id, self.table.file_id, self.table.location,
             self.table.status, self.table.meta, files.name, files.hash,
         ).join(files).on(
             self.table.file_id == files.id
@@ -105,7 +105,9 @@ class ReplicaFiles(Table):
             self.table.status.isin([Status.indexing, Status.deleted])
         ).where(
             ((self.table.updated <= to_update) | (self.table.location == ''))
-        ).orderby(self.table.id).offset(offset).limit(1000)
+        ).where(
+            self.table.id > last_id
+        ).orderby(self.table.id).limit(1000)
 
         return await self.fetch(q)
 
@@ -157,24 +159,16 @@ class ReplicaFiles(Table):
         await self.exec(q)
 
     async def delete(self, replica_id, file_id):
-        cnt = await self.count(replica_id)
-        if cnt > 1:
-            q = self.update().where(
-                self.table.file_id == file_id,
-            ).set(
-                self.table.status, Status.deleted,
-            ).set(
-                self.table.updated, datetime.now(timezone.utc),
-            )
-            await self.exec(q)
-
         q = self.query().where(
             self.table.replica_id == replica_id,
         ).where(
             self.table.file_id == file_id,
         ).delete()
         await self.exec(q)
-        return cnt
+
+        q = self.select(Count('1')).where(self.table.file_id == file_id)
+        remaining = await self.fetchval(q)
+        return remaining
 
     async def restore_deleted(self, replica_id):
         q = self.update().where(

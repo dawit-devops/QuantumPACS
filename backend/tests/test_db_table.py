@@ -7,7 +7,12 @@ from db.table import Table
 
 class TestTableRegistry:
     def setup_method(self):
+        self._saved_tables = list(Table.tables)
         Table.tables.clear()
+
+    def teardown_method(self):
+        Table.tables.clear()
+        Table.tables.extend(self._saved_tables)
 
     def test_register_adds_class(self):
         class MyTable(Table):
@@ -42,7 +47,12 @@ class TestTableRegistry:
 
 class TestTableQuery:
     def setup_method(self):
+        self._saved_tables = list(Table.tables)
         Table.tables.clear()
+
+    def teardown_method(self):
+        Table.tables.clear()
+        Table.tables.extend(self._saved_tables)
 
     def test_query_returns_pypika_query_object(self):
         class PatientTable(Table):
@@ -99,7 +109,12 @@ class TestTableQuery:
 
 class TestTableAsync:
     def setup_method(self):
+        self._saved_tables = list(Table.tables)
         Table.tables.clear()
+
+    def teardown_method(self):
+        Table.tables.clear()
+        Table.tables.extend(self._saved_tables)
 
     @pytest.mark.asyncio
     async def test_sync_db_raises_not_implemented(self):

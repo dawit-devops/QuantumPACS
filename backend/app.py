@@ -1,5 +1,3 @@
-import time
-
 import sentry_sdk
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.applications import Starlette
@@ -14,7 +12,9 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
-from config import is_docker, config
+from api.telemetry import RequestIDMiddleware, record_request
+from api.validate import validation_exception_handler, _ValidationException
+from config import is_docker, config, assert_production_secret
 from log import setup_logging, get_logger
 
 setup_logging()
@@ -29,24 +29,25 @@ if config.get('sentry_dsn'):
 
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        import time
         start = time.monotonic()
         response = await call_next(request)
         elapsed = time.monotonic() - start
 
-        if response.status_code == 405:
-            response.status_code = 200
+        path = request.url.path
+        if path.startswith('/api') and response.status_code < 500:
+            log.info('%s %s -> %s (%.3fs)', request.method, path, response.status_code, elapsed)
+        elif response.status_code >= 500:
+            log.error('%s %s -> %s (%.3fs)', request.method, path, response.status_code, elapsed)
+        elif response.status_code >= 400:
+            log.warning('%s %s -> %s (%.3fs)', request.method, path, response.status_code, elapsed)
+        record_request(request.method, path, response.status_code, elapsed)
 
-        if is_docker and not request.url.path.startswith('/api') and response.status_code == 404:
+        if is_docker and not path.startswith('/api') and response.status_code == 404:
             response = FileResponse('./static/index.html')
 
-        if response.status_code >= 500:
-            log.error('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-        elif response.status_code >= 400:
-            log.warning('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-        else:
-            log.info('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
-
-        response.headers['Access-Control-Allow-Origin'] = '*'
+        cors_origin = config.get('cors_origins', '*')
+        response.headers['Access-Control-Allow-Origin'] = cors_origin
         response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
         response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
         return response
@@ -54,11 +55,13 @@ class CustomMiddleware(BaseHTTPMiddleware):
 
 async def http_exception(request, exc):
     resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    cors_origin = config.get('cors_origins', '*')
+    resp.headers['Access-Control-Allow-Origin'] = cors_origin
     return resp
 
 
 async def startup():
+    assert_production_secret()
     await lifecycle.setup()
 
 
@@ -67,10 +70,12 @@ app = Starlette(
     middleware=[
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
+        Middleware(RequestIDMiddleware),
         Middleware(CustomMiddleware),
     ],
     exception_handlers={
         HTTPException: http_exception,
+        _ValidationException: validation_exception_handler,
     },
     on_startup=[startup],
 )

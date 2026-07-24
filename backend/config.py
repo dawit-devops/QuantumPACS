@@ -1,7 +1,7 @@
 import os
+import sys
 
 import yaml
-from yaml.loader import FullLoader
 
 default_config = {
     'secret': 'default',
@@ -14,33 +14,50 @@ default_config = {
     'es_host': 'localhost',
     'cors_origins': '*',
     'allowed_hosts': 'localhost,127.0.0.1',
+    'redis_host': 'localhost',
+    'redis_port': '6379',
+    'redis_password': '',
     'db_pool_size': '8',
     'sentry_dsn': '',
 }
 
-config = default_config.copy()
-try:
-    local_file = open('config.local.yaml').read()
-    local_config = yaml.load(local_file, Loader=FullLoader)
-    for k, v in config.items():
-        if k in local_config:
-            config[k] = local_config[k]
-except Exception:
-    pass
 
-for k in default_config.keys():
-    kenv = k.upper()
-    env_val = os.getenv(kenv)
-    if env_val:
-        config[k] = env_val
+def load_config(overrides=None):
+    cfg = default_config.copy()
+    try:
+        with open('config.local.yaml') as f:
+            local_config = yaml.safe_load(f.read())
+        for k, v in cfg.items():
+            if k in local_config:
+                cfg[k] = local_config[k]
+    except Exception:
+        pass
 
-if config['secret'] == 'default':
-    config['secret'] = config['db_password']
+    for k in default_config.keys():
+        kenv = k.upper()
+        env_val = os.getenv(kenv)
+        if env_val:
+            cfg[k] = env_val
 
-if config['secret'] == 'default' or config['secret'] == 'pa55w0rd':
-    import logging
-    logging.getLogger(__name__).critical(
-        'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
-    )
+    if overrides:
+        cfg.update(overrides)
+
+    if cfg['secret'] == 'default':
+        cfg['secret'] = cfg['db_password']
+
+    return cfg
+
+
+config = load_config()
+
+
+def assert_production_secret():
+    if config['secret'] in ('default', 'pa55w0rd'):
+        import logging
+        logging.getLogger(__name__).critical(
+            'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
+        )
+        sys.exit(1)
+
 
 is_docker = bool(os.getenv('QUANTUMPACS_DOCKER'))

@@ -21,19 +21,10 @@ class Series(Table):
         """)
 
     async def insert_or_select(self, data):
-        q = self.select('*').where(
-            self.table.study_id == data['study_db_id']
-        ).where(
-            self.table.number == data['series_number']
-        )
-        s = await self.fetchone(q)
-        if s:
-            return s
-
         q = self.insert().columns(
             'study_id', 'number', 'modality', 'description',
         ).insert((
-            data['study_db_id'], data['series_number'], data['modality'], data['series_description'],
+            data['study_db_id'], data['series_number'], data.get('modality', ''), data.get('series_description', ''),
         ),).on_conflict(
             'study_id, number'
         ).do_update(

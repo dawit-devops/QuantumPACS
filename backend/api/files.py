@@ -11,6 +11,8 @@ from starlette.background import BackgroundTask
 from api.response import ok, not_found, no_content, api_error, paginated
 from api.tokens import create_token as gen_token
 from api.utils import get_id, is_admin
+from api.validate import parse_body
+from api.schemas.files import FileUpdateRequest, ShareRequest
 from db.conn import get_conn
 from db.file_changes import FileChange
 from db.files import Files
@@ -162,15 +164,22 @@ class FileHandler(HTTPEndpoint):
 
     async def post(self, request):
         file_id = get_id(request)
-        data = await request.json()
-        if 'tools_state' in data:
+        body = await parse_body(FileUpdateRequest, request)
+        if body.tools_state:
             async with get_conn() as conn:
                 await Files(conn).update_tools_state(
                     file_id,
                     request.user.id,
-                    data['tools_state'],
+                    body.tools_state,
                 )
-        return ok(data)
+        if body.tag:
+            async with get_conn() as conn:
+                await Files(conn).update_tag(
+                    file_id,
+                    request.user.id,
+                    body.tag,
+                )
+        return ok(body.model_dump(exclude_none=True))
 
     async def delete(self, request):
         is_admin(request)
@@ -221,10 +230,10 @@ class ServeFile(HTTPEndpoint):
 class ShareFilesHandler(HTTPEndpoint):
     async def post(self, request):
         file_id = get_id(request)
-        data = await request.json()
+        body = await parse_body(ShareRequest, request)
 
         async with get_conn() as conn:
-            key = await SharedFiles(conn).share(file_id, data['duration'])
+            key = await SharedFiles(conn).share(file_id, body.duration)
         return ok({'key': key})
 
 

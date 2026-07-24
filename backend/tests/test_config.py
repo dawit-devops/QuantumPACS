@@ -1,9 +1,8 @@
-import os
 from unittest.mock import patch
 
 import pytest
 
-from config import default_config
+from config import default_config, load_config
 
 
 class TestDefaultConfig:
@@ -28,31 +27,22 @@ class TestDefaultConfig:
         assert default_config['es_host'] == 'localhost'
 
     def test_secret_falls_back_to_db_password(self):
-        cfg = default_config.copy()
-        assert cfg['secret'] == 'default'
-        assert cfg['db_password'] == 'pa55w0rd'
-        if cfg['secret'] == 'default':
-            cfg['secret'] = cfg['db_password']
+        cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})
         assert cfg['secret'] == 'pa55w0rd'
 
     def test_env_overrides_default(self, monkeypatch):
         monkeypatch.setenv('DB_HOST', '10.0.0.1')
         monkeypatch.setenv('DB_PORT', '9999')
         monkeypatch.setenv('SECRET', 'env-secret')
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.config['db_host'] == '10.0.0.1'
-        assert cfg_module.config['db_port'] == '9999'
-        assert cfg_module.config['secret'] == 'env-secret'
+        cfg = load_config()
+        assert cfg['db_host'] == '10.0.0.1'
+        assert cfg['db_port'] == '9999'
+        assert cfg['secret'] == 'env-secret'
 
-    def test_env_secret_not_default_skips_db_fallback(self, monkeypatch):
-        monkeypatch.setenv('SECRET', 'custom-secret')
-        monkeypatch.delenv('DB_PASSWORD', raising=False)
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.config['secret'] == 'custom-secret'
+    def test_overrides_param_takes_precedence(self):
+        cfg = load_config(overrides={'db_host': 'override-host', 'secret': 'override-secret'})
+        assert cfg['db_host'] == 'override-host'
+        assert cfg['secret'] == 'override-secret'
 
     def test_is_docker_set_by_env(self, monkeypatch):
         monkeypatch.setenv('QUANTUMPACS_DOCKER', '1')
@@ -70,25 +60,19 @@ class TestDefaultConfig:
 
     def test_env_keys_are_upper_case(self, monkeypatch):
         monkeypatch.setenv('SUPERADMIN_PASS', 's3cret!')
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.config['superadmin_pass'] == 's3cret!'
+        cfg = load_config()
+        assert cfg['superadmin_pass'] == 's3cret!'
 
     def test_local_yaml_overrides_defaults(self, tmp_path, monkeypatch):
-        import importlib
         monkeypatch.chdir(tmp_path)
         yaml_content = 'db_host: 192.168.1.1\nsecret: yaml-secret\n'
         (tmp_path / 'config.local.yaml').write_text(yaml_content)
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.config['db_host'] == '192.168.1.1'
-        assert cfg_module.config['secret'] == 'yaml-secret'
+        cfg = load_config()
+        assert cfg['db_host'] == '192.168.1.1'
+        assert cfg['secret'] == 'yaml-secret'
         (tmp_path / 'config.local.yaml').unlink()
 
     def test_missing_local_yaml_does_not_fail(self, tmp_path, monkeypatch):
-        import importlib
         monkeypatch.chdir(tmp_path)
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert 'db_host' in cfg_module.config
+        cfg = load_config()
+        assert 'db_host' in cfg
