@@ -8,7 +8,7 @@ COPY frontend/ .
 RUN npm run build
 
 # ---- Stage 2: Python dependencies ----
-FROM python:3.12-slim AS deps
+FROM python:3.14-slim AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc musl-dev make \
@@ -21,7 +21,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Stage 3: Production ----
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
