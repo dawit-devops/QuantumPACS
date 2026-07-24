@@ -66,6 +66,7 @@ class TestDefaultConfig:
     def test_local_yaml_overrides_defaults(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv('DB_HOST', '')
+        monkeypatch.setenv('SECRET', '')
         yaml_content = 'db_host: 192.168.1.1\nsecret: yaml-secret\n'
         (tmp_path / 'config.local.yaml').write_text(yaml_content)
         cfg = load_config()
