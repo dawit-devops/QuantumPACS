@@ -11,7 +11,6 @@ INDEX_NAME = 'quantumpacs'
 
 
 async def setup():
-    global client
     host = config['es_host']
     if not host.startswith('http'):
         host = f'http://{host}:9200'

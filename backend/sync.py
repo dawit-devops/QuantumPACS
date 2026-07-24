@@ -21,8 +21,6 @@ work = True
 
 
 async def index(replica):
-    global work
-
     replica_id = replica['id']
     async with get_conn() as conn:
         await Replica(conn).update_status(replica_id, 'indexing')
@@ -75,8 +73,6 @@ async def index(replica):
 
 
 async def do_sync():
-    global work
-
     # index unindexed files
     async with get_conn() as conn:
         files = await Files(conn).unindexed()
