@@ -14,6 +14,7 @@ default_config = {
     'es_host': 'localhost',
     'cors_origins': '*',
     'allowed_hosts': 'localhost,127.0.0.1',
+    'sentry_dsn': '',
 }
 
 config = default_config.copy()

@@ -40,6 +40,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     testTimeout: 60000,
+    exclude: ['node_modules/**', 'e2e/**', 'dist/**'],
   },
   define: {
     'process.env': {},

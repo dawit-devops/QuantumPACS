@@ -7,7 +7,7 @@ Accepted
 2026-07-22
 
 ## Context
-OpenPACS manages medical image files (DICOM) that need to be stored durably, retrieved quickly, and replicated across sites. The original storage used a simple filesystem directory with database metadata. Requirements:
+QuantumPACS manages medical image files (DICOM) that need to be stored durably, retrieved quickly, and replicated across sites. The original storage used a simple filesystem directory with database metadata. Requirements:
 
 - Durable file storage with integrity verification (SHA-256 hashing)
 - Multiple replica locations (local, Backblaze B2, S3-compatible)

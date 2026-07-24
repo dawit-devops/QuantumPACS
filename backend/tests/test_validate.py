@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from starlette.requests import Request
 
 from api.validate import parse_body, _ValidationException, validation_exception_handler
-from api.response import validation_error
 
 
 class SampleSchema(BaseModel):
@@ -37,14 +36,14 @@ class TestParseBody:
         req = _make_request({'name': 'Bob'})
         with pytest.raises(_ValidationException) as exc:
             await parse_body(SampleSchema, req)
-        assert 'age' in exc.value.message
+        assert any(d['field'] == 'age' for d in exc.value.details)
 
     @pytest.mark.asyncio
     async def test_wrong_type_raises(self):
         req = _make_request({'name': 'Alice', 'age': 'not-a-number'})
         with pytest.raises(_ValidationException) as exc:
             await parse_body(SampleSchema, req)
-        assert 'age' in exc.value.message
+        assert any(d['field'] == 'age' for d in exc.value.details)
 
     @pytest.mark.asyncio
     async def test_extra_fields_ignored_by_default(self):
@@ -59,8 +58,9 @@ class TestParseBody:
         req = _make_request({})
         with pytest.raises(_ValidationException) as exc:
             await parse_body(SampleSchema, req)
-        assert 'name' in exc.value.message
-        assert 'age' in exc.value.message
+        fields = {d['field'] for d in exc.value.details}
+        assert 'name' in fields
+        assert 'age' in fields
 
     @pytest.mark.asyncio
     async def test_empty_schema_accepts_empty_body(self):
@@ -73,7 +73,7 @@ class TestParseBody:
         req = _make_request({'name': None, 'age': 30})
         with pytest.raises(_ValidationException) as exc:
             await parse_body(SampleSchema, req)
-        assert 'name' in exc.value.message
+        assert any(d['field'] == 'name' for d in exc.value.details)
 
     @pytest.mark.asyncio
     async def test_null_body_raises_type_error(self):
@@ -90,10 +90,11 @@ class TestParseBody:
         with pytest.raises(ValueError):
             await parse_body(SampleSchema, req)
 
-    def test_exception_handler_returns_validation_error_response(self):
-        exc = _ValidationException('field: error message')
+    def test_exception_handler_returns_api_error_response(self):
+        exc = _ValidationException([{'field': 'name', 'message': 'Field required', 'type': 'missing'}])
         resp = validation_exception_handler(None, exc)
-        assert resp.status_code == 400
+        assert resp.status_code == 422
         import json
         body = json.loads(resp.body)
-        assert body == {'error': 'field: error message'}
+        assert body['error']['code'] == 'VALIDATION_ERROR'
+        assert body['error']['details'][0]['field'] == 'name'

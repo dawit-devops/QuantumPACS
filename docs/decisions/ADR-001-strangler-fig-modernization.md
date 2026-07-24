@@ -7,7 +7,7 @@ Accepted
 2026-07-22
 
 ## Context
-OpenPACS is a production medical image management system (PACS) with a legacy codebase built around Python 3.7-era patterns: procedural routes, global mutable state, synchronous database access via raw SQLite/SQLAlchemy, and a Jinja2-templated frontend. The system processes DICOM studies, manages file storage replicas, and serves a web viewer.
+QuantumPACS is a production medical image management system (PACS) with a legacy codebase built around Python 3.7-era patterns: procedural routes, global mutable state, synchronous database access via raw SQLite/SQLAlchemy, and a Jinja2-templated frontend. The system processes DICOM studies, manages file storage replicas, and serves a web viewer.
 
 Key challenges:
 - Tight coupling between HTTP handlers and database logic

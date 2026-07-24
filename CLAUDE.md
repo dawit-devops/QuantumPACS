@@ -1,4 +1,4 @@
-# OpenPACS — Agent Instructions
+# QuantumPACS — Agent Instructions
 
 ## Project Overview
 
@@ -40,16 +40,16 @@ Services managed via systemd user services — auto-start on boot:
 
 | Service | Type | URL |
 |---------|------|-----|
-| PostgreSQL | Docker container `openpacs-postgres-1`, `restart: unless-stopped` | `localhost:5432` |
-| Backend | `openpacs-backend.service` (systemd user) | `http://localhost:8080` |
-| Frontend | `openpacs-frontend.service` (systemd user) | `http://localhost:5173` |
+| PostgreSQL | Docker container `quantumpacs-postgres-1`, `restart: unless-stopped` | `localhost:5432` |
+| Backend | `quantumpacs-backend.service` (systemd user) | `http://localhost:8080` |
+| Frontend | `quantumpacs-frontend.service` (systemd user) | `http://localhost:5173` |
 
 **Commands:**
 - `scripts/dev.sh {start|stop|restart|status|logs|logs-fe}` — manage all services
-- `systemctl --user start|stop|restart|status openpacs-backend.service`
-- `systemctl --user start|stop|restart|status openpacs-frontend.service`
-- `journalctl --user -u openpacs-backend.service -f` — tail backend logs
-- `journalctl --user -u openpacs-frontend.service -f` — tail frontend logs
+- `systemctl --user start|stop|restart|status quantumpacs-backend.service`
+- `systemctl --user start|stop|restart|status quantumpacs-frontend.service`
+- `journalctl --user -u quantumpacs-backend.service -f` — tail backend logs
+- `journalctl --user -u quantumpacs-frontend.service -f` — tail frontend logs
 - `docker compose up -d` — start PostgreSQL via docker-compose
 - `docker compose build postgres` — rebuild custom postgres image (after base image update)
 
@@ -57,8 +57,8 @@ Services managed via systemd user services — auto-start on boot:
 - `app.py`: changed from `on_startup` parameter (removed in starlette 1.x) to lifespan pattern, then pinned starlette to `>=0.35.0,<0.36.0` for compatibility
 - `es/es.py`: prepends `http://` scheme + `:9200` port to bare hostnames for ES 8.x client compat
 - `db_init.py`: replaced `asyncio.get_event_loop()` with `asyncio.run()` for Python 3.14 compat
-- `config.local.yaml`: uses dedicated OpenPACS postgres on port 5432
-- `docker-compose.yaml`: removed deprecated `version` key; uses custom `openpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image)
+- `config.local.yaml`: uses dedicated QuantumPACS postgres on port 5432
+- `docker-compose.yaml`: removed deprecated `version` key; uses custom `quantumpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image)
 - `frontend/vite.config.js`: set `host: '0.0.0.0'` for LAN access, port changed to 5173
 - Backend runs via `uvicorn app:app --host 0.0.0.0 --port 8080`
 - Frontend runs via `vite --host 0.0.0.0 --port 5173`
@@ -74,5 +74,5 @@ Services managed via systemd user services — auto-start on boot:
 - Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
 - The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
 - Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
-- PostgreSQL runs via `openpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`)
+- PostgreSQL runs via `quantumpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`)
 - Elasticsearch Docker image cannot be pulled (network issues) — search disabled at startup, no impact on basic functionality

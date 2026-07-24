@@ -7,7 +7,7 @@ Accepted
 2026-07-22
 
 ## Context
-OpenPACS handles medical imaging data (PHI under HIPAA). The original security model had several gaps: default passwords in config, no rate limiting, no audit trail for file access, and permissive CORS. Requirements:
+QuantumPACS handles medical imaging data (PHI under HIPAA). The original security model had several gaps: default passwords in config, no rate limiting, no audit trail for file access, and permissive CORS. Requirements:
 
 - Authentication required for all API endpoints
 - Role-based access (admin vs. regular user)

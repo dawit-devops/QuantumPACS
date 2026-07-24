@@ -8,7 +8,7 @@ from starlette.responses import FileResponse
 from starlette.exceptions import HTTPException
 from starlette.background import BackgroundTask
 
-from api.response import ok, not_found, no_content, validation_error
+from api.response import ok, not_found, no_content, api_error, paginated
 from api.tokens import create_token as gen_token
 from api.utils import get_id, is_admin
 from db.conn import get_conn
@@ -33,7 +33,7 @@ class Upload(HTTPEndpoint):
             async with conn.transaction():
                 master = await Replica(conn).master()
                 if not master:
-                    return validation_error('No master set')
+                    return api_error('NO_MASTER', 'No master replica set')
 
                 ds = parse_dcm(file)
                 hsh = hash_file(file)
@@ -120,6 +120,18 @@ class DownloadData(HTTPEndpoint):
 
 
 class FilesHandler(HTTPEndpoint):
+    async def get(self, request):
+        page = int(request.query_params.get('page', 1))
+        per_page = int(request.query_params.get('per_page', 20))
+        search = request.query_params.get('q')
+
+        async with get_conn() as conn:
+            data, total = await Files(conn).get_paginated(
+                page=page, per_page=per_page, search=search,
+            )
+
+        return paginated(data, total=total, page=page, per_page=per_page, request=request)
+
     async def post(self, request):
         data = await request.json()
 
@@ -166,7 +178,7 @@ class FileHandler(HTTPEndpoint):
             async with conn.transaction():
                 master = await Replica(conn).master()
                 if not master:
-                    return validation_error('No master set')
+                    return api_error('NO_MASTER', 'No master replica set')
 
                 file = await get_file_by_id(request)
                 storage = await Storage.get(master)

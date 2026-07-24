@@ -1,4 +1,4 @@
-# OpenPACS
+# QuantumPACS
 
 [![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Starlette](https://img.shields.io/badge/Starlette-000?logo=starlette)](https://www.starlette.io/)
@@ -7,21 +7,20 @@
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Ant Design](https://img.shields.io/badge/Ant%20Design-0170FE?logo=ant-design&logoColor=white)](https://ant.design/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Elasticsearch](https://img.shields.io/badge/Elasticsearch-005571?logo=elasticsearch&logoColor=white)](https://www.elastic.co/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-DA7857?logo=anthropic)](https://claude.ai/code)
-[![Claude Skills](https://img.shields.io/badge/Uses-Claude%20Skills-DA7857?logo=anthropic)](https://github.com/dmccreary/claude-skills)
+[![Backend CI](https://github.com/wooque/quantumpacs/actions/workflows/backend.yml/badge.svg)](https://github.com/wooque/quantumpacs/actions/workflows/backend.yml)
+[![Frontend CI](https://github.com/wooque/quantumpacs/actions/workflows/frontend.yml/badge.svg)](https://github.com/wooque/quantumpacs/actions/workflows/frontend.yml)
 
-Open-source Picture Archiving and Communication System (PACS) for medical image management. Built for production radiology workflows — DICOM ingestion, multi-planar reconstruction viewer, multi-site replication, and full-text search over studies and metadata.
+Open-source Picture Archiving and Communication System (PACS) for medical image management. Production-grade DICOM ingestion, zero-footprint Cornerstone3D viewer, multi-site replication, and real-time collaboration.
 
 ## Overview
 
-OpenPACS is a modern, web-based PACS that replaces traditional vendor-locked imaging systems with an open architecture. It handles the full imaging lifecycle — from DICOM modality ingestion through storage, viewing, reporting, and multi-site replication.
+QuantumPACS replaces traditional vendor-locked imaging systems with an open, modern architecture. It handles the full imaging lifecycle — from DICOM modality ingestion through storage, viewing, reporting, and multi-site replication.
 
-The backend runs on Starlette with async PostgreSQL access via asyncpg, JWT-authenticated REST APIs, and a pluggable storage abstraction that supports local filesystem, S3-compatible object stores, and Backblaze B2. The frontend is a single-page application built with React 18, Ant Design 5, and Cornerstone3D for zero-footprint DICOM viewing in the browser.
-
-DICOM modalities send studies to the built-in DICOM listener (pynetdicom), which routes them through configurable storage backends, indexes metadata into PostgreSQL and Elasticsearch, and notifies connected viewers in real time via WebSocket.
+**Backend:** Starlette with asyncpg, JWT-authenticated REST APIs, Alembic migrations, and pluggable storage (filesystem, S3, B2).  
+**Frontend:** React SPA with Ant Design 6, Cornerstone3D 5 for zero-footprint DICOM viewing in the browser.  
+**Database:** PostgreSQL 16 with 10-table schema, LISTEN/NOTIFY replication triggers.
 
 ## Site Metrics
 
@@ -29,31 +28,25 @@ DICOM modalities send studies to the built-in DICOM listener (pynetdicom), which
 |--------|-------|
 | Backend Python Modules | 61 |
 | Frontend Components | 38 |
-| Architecture Decision Records | 8 |
-| Test Files | 14 |
-| Code Lines (Backend) | 3,525 |
-| Code Lines (Frontend) | 3,105 |
-| DICOM Libraries | pydicom, pynetdicom, cornerstone3d |
+| Architecture Decision Records | 13 |
+| Backend Tests | 103 (pytest) |
+| Frontend Tests | 33 (Vitest) |
+| E2E Tests | 8 (Playwright) |
+| DB Migrations | 4 (Alembic) |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Docker and Docker Compose (for PostgreSQL and other services)
+- Python 3.12+
+- Node.js 20+
+- Docker and Docker Compose (for PostgreSQL)
 
 ### Quick Start (Docker)
 
 ```bash
-git clone https://github.com/wooque/openpacs.git
-cd openpacs
-docker compose up -d
-```
-
-If Elasticsearch fails to start with permission errors:
-```bash
-chmod -R 1000 ./es
+git clone https://github.com/wooque/quantumpacs.git
+cd quantumpacs
 docker compose up -d
 ```
 
@@ -79,51 +72,54 @@ export DB_PASS=<password> # or set in config.local.yaml
 cd frontend
 npm install
 npm run dev          # development server with HMR (http://localhost:5173)
-# or
-npm run build        # production build to build/
+npm run build        # production build to dist/
 ```
 
-Serve `build/` via Nginx/Caddy, or copy to `backend/static/` with `OPENPACS_DOCKER=true`.
+Serve `dist/` via Caddy/Nginx, or copy to `backend/static/` with `QUANTUMPACS_DOCKER=true`.
 
 ## Repository Structure
 
 ```
-openpacs/
+quantumpacs/
 ├── backend/                      # Python Starlette API server
 │   ├── api/                      # HTTP endpoints, auth, validation, schemas
 │   │   └── schemas/              # Pydantic v2 request/response models
-│   ├── db/                       # Database access layer
+│   ├── db/                       # Database access layer (asyncpg + PyPika)
 │   ├── dcm/                      # DICOM listener and processing
-│   ├── es/                       # Elasticsearch indexing and search
-│   ├── migrations/               # Alembic database migrations
+│   ├── es/                       # Elasticsearch indexing (optional)
+│   ├── migrations/               # Alembic migrations (001-004)
 │   │   └── versions/             # Version-controlled migration scripts
 │   ├── storage/                  # Pluggable storage backends
-│   ├── tests/                    # pytest test suite
-│   ├── app.py                    # Starlette application entry point
-│   ├── config.py                 # YAML + environment configuration
+│   ├── tests/                    # 103 pytest tests
+│   ├── app.py                    # Starlette app with middleware
+│   ├── config.py                 # YAML + environment config
 │   └── manage                    # Database management CLI
-├── frontend/                     # React SPA
+├── frontend/                     # React SPA (Vite + AntD 6 + Cornerstone3D 5)
+│   ├── e2e/                      # Playwright E2E tests
 │   └── src/
-│       ├── account/              # Account settings
-│       ├── common/               # Shared components and utilities
-│       ├── detail/               # Study detail and viewer
-│       ├── files/                # File management
+│       ├── common/               # Design tokens, theme, logo, sidebar
+│       ├── detail/               # Cornerstone3D DICOM viewer
+│       ├── files/                # File management + search
 │       ├── login/                # Authentication
-│       ├── logs/                 # System logs
-│       ├── notfound/             # 404 page
-│       ├── patient/              # Patient browsing
-│       ├── replicas/             # Replica management
-│       ├── test/                 # Test setup
-│       └── users/                # User administration
+│       ├── test/                 # 33 Vitest tests
+│       └── ...
 ├── docs/
-│   └── decisions/                # Architecture Decision Records (ADRs)
+│   ├── decisions/                # 13 Architecture Decision Records (ADRs)
+│   ├── component-specs.md        # UI component state/variant specs
+│   ├── design-tokens.json        # Three-layer token system
+│   ├── ops-guide.md              # Backup/restore/monitoring/DR
+│   ├── presentation/             # Brand slide deck
+│   ├── token-audit.md            # Hardcoded color audit
+│   ├── PRD.md                    # Product Requirements Document
+│   ├── REST_API_REVIEW.md        # REST API design audit
+│   ├── DB_SCHEMA_REVIEW.md       # Database schema audit
+│   └── SECURITY_AUDIT.md         # Security audit
 ├── docker/                       # Docker build files
-│   └── postgres/                 # Custom PostgreSQL image
-├── es/                           # Elasticsearch configuration
-├── storage/                      # Local storage mounts
+│   └── postgres/                 # Custom PostgreSQL 16 image
 ├── docker-compose.yaml           # Service orchestration
-├── Dockerfile                    # Backend container image
-└── Caddyfile                     # Reverse proxy configuration
+├── Dockerfile                    # Multi-stage production image
+├── Caddyfile                     # Caddy reverse proxy + security headers
+└── .github/workflows/            # CI pipelines (backend, frontend, security)
 ```
 
 ## Architecture
@@ -131,8 +127,8 @@ openpacs/
 ```
 ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
 │  Browser      │────▶│  Caddy (reverse  │────▶│  PostgreSQL   │
-│  (React SPA   │     │   proxy)         │     │  + Elastic    │
-│   + Viewer)   │◀────│                  │◀────│  Search       │
+│  (React SPA   │     │   proxy + CSP)   │     │  + LISTEN/    │
+│   + Viewer)   │◀────│   :80 → :8080   │◀────│  NOTIFY      │
 └──────────────┘     └────────┬─────────┘     └──────────────┘
                               │
                      ┌────────▼─────────┐
@@ -140,108 +136,92 @@ openpacs/
                      │  (Uvicorn/Gun)    │
                      │                   │
                      │  ┌─ JWT Auth     │
-                     │  ├─ DICOM Router │
-                     │  ├─ File Manager │
-                     │  └─ Replicator   │
+                     │  │  (Bearer +     │
+                     │  │   X-Auth-Pacs) │
+                     │  ├─ Rate Limit    │
+                     │  │  (5/min login) │
+                     │  ├─ DICOM Router  │
+                     │  ├─ File Manager  │
+                     │  └─ Replicator    │
                      └────────┬─────────┘
                               │
                      ┌────────▼─────────┐
-                     │   Filesystem      │
-                     │   (DICOM store)   │
+                     │   Storage Layer   │
+                     │  (FS / S3 / B2)   │
                      └──────────────────┘
 ```
 
-Key design decisions documented in [docs/decisions/](docs/decisions/):
-- **ADR-001**: Strangler Fig incremental modernization
-- **ADR-002**: Starlette backend framework
-- **ADR-003**: JWT token authentication
-- **ADR-004**: PostgreSQL + asyncpg + Alembic
-- **ADR-005**: REST API with Pydantic validation
-- **ADR-006**: React + Vite + Ant Design + Cornerstone3D
-- **ADR-007**: Multi-tier storage (FS + DB + ES)
-- **ADR-008**: Security architecture
+Architecture decisions: 13 ADRs in [docs/decisions/](docs/decisions/).
 
 ## Configuration
 
-Settings loaded from `config.local.yaml` (if present) and overridden by environment variables:
+Settings loaded from `config.local.yaml` + environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET` | `db_password` | JWT signing secret |
+| `SECRET` | auto-derived | JWT signing secret (warns if default) |
 | `SUPERADMIN_PASS` | `pa55w0rd` | Initial admin password |
 | `DB_HOST` | `127.0.0.1` | PostgreSQL host |
-| `DB_DATABASE` | `openpacs` | PostgreSQL database name |
-| `DB_USER` | `openpacs` | PostgreSQL user |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_DATABASE` | `quantumpacs` | PostgreSQL database |
+| `DB_USER` | `quantumpacs` | PostgreSQL user |
 | `DB_PASS` | `pa55w0rd` | PostgreSQL password |
 | `ES_HOST` | `localhost` | Elasticsearch host |
-| `OPENPACS_DOCKER` | — | Enable Docker mode (backend serves static) |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins (lock for production) |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | TrustedHost middleware |
+| `QUANTUMPACS_DOCKER` | — | Enable Docker mode (serves static files) |
+
+## Security
+
+Security audit completed ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)):
+
+| Control | Status |
+|---------|--------|
+| JWT authentication (14-day expiry) | ✅ |
+| PBKDF2-HMAC-SHA256 password hashing (600k iterations) | ✅ |
+| Rate limiting on login (5/min per IP) | ✅ |
+| CORS origin whitelist (configurable) | ✅ |
+| TrustedHost middleware | ✅ |
+| CSP + security headers (Caddy) | ✅ |
+| Default secret startup warning | ✅ |
+| Read-access audit logging | ✅ |
+| Parameterized queries (no SQL injection) | ✅ |
+| Bearer + X-Auth-Pacs token support | ✅ |
+| Soft-delete + deactivated user rejection | ✅ |
 
 ## Tech Stack
 
-- **Backend**: Python 3.11, Starlette, asyncpg, Alembic, Pydantic v2, PyJWT, pydicom, pynetdicom
-- **Frontend**: React 18, TypeScript, Vite, Ant Design 5, Cornerstone3D, dicom-parser
-- **Database**: PostgreSQL 16, Elasticsearch 8
-- **Infrastructure**: Docker, Caddy, GitHub Actions
+- **Backend:** Python 3.12+, Starlette 0.35+, asyncpg, PyPika, Alembic, Pydantic v2, PyJWT, pydicom, pynetdicom
+- **Frontend:** React 19, TypeScript, Vite, Ant Design 6, Cornerstone3D 5, dicom-parser
+- **Database:** PostgreSQL 16, Elasticsearch 8 (optional)
+- **Infrastructure:** Docker multi-stage, Caddy, GitHub Actions CI
+
+## Testing
+
+| Suite | Command | Count |
+|-------|---------|-------|
+| Backend unit | `cd backend && python -m pytest` | 103 tests |
+| Frontend unit | `cd frontend && npx vitest run` | 33 tests |
+| E2E (Playwright) | `cd frontend && npx playwright test` | 8 tests |
+| TypeScript | `cd frontend && npx tsc --noEmit` | 0 errors |
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `./manage db init` | Initialize database and create superadmin user |
-| `./manage db create` | Create database schema |
+| `./manage db init` | Initialize database + superadmin user |
+| `./manage db create` | Create schema |
 | `./manage db drop` | Drop database |
-| `./manage db reset` | Drop and recreate database |
 | `./manage db shell` | Open database shell |
 | `./manage db import` | Import DICOM files |
 | `./start.sh` | Start all backend processes |
-| `docker compose up -d` | Start all services (PostgreSQL, etc.) |
-| `npm run dev` | Start frontend dev server |
-| `npm run build` | Production frontend build |
-| `npm test` | Run frontend tests |
-| `npm run lint` | Lint frontend code |
-| `npm run typecheck` | TypeScript type checking |
-| `pytest` | Run backend tests (from `backend/`) |
-| `flake8` | Lint backend code (from `backend/`) |
-
-## Reporting Issues
-
-Found a bug, typo, or have a suggestion? Please report it on [GitHub Issues](https://github.com/wooque/openpacs/issues).
-
-When reporting issues, include:
-- Description of the problem or suggestion
-- Steps to reproduce (for bugs)
-- Expected vs actual behavior
-- Browser/environment details (for viewer issues)
-
-## Contributing
-
-1. Open an issue to discuss changes before implementing
-2. Write tests for new endpoints and DICOM processing logic
-3. Run `pytest` and `npm test` before opening a PR
-4. Update ADRs for architectural decisions
-5. Follow existing code conventions — match the patterns you find
+| `alembic upgrade head` | Apply pending migrations |
+| `docker compose up -d` | Start all services |
+| `npm run dev` | Frontend dev server (HMR) |
+| `npm run build` | Production build |
+| `npm test` | Vitest |
+| `cd frontend && npx playwright test` | E2E tests |
 
 ## License
 
 MIT — see [LICENSE](LICENSE). Copyright (c) 2019 Vuk Mirovic.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the conditions in the full license.
-
-## Acknowledgements
-
-This project builds on several open-source projects:
-
-- **[Starlette](https://www.starlette.io/)** — Lightweight ASGI framework for the Python backend
-- **[Cornerstone3D](https://www.cornerstonejs.org/)** — Medical image visualization in the browser
-- **[pydicom](https://pydicom.github.io/)** — DICOM file parsing for Python
-- **[pynetdicom](https://pydicom.github.io/pynetdicom/stable/)** — DICOM networking protocol
-- **[Ant Design](https://ant.design/)** — React UI component library
-- **[asyncpg](https://magicstack.github.io/asyncpg/)** — High-performance PostgreSQL driver
-- **[Alembic](https://alembic.sqlalchemy.org/)** — Database migration management
-- **[Vite](https://vitejs.dev/)** — Frontend build tooling
-
-## Contact
-
-**Vuk Mirovic** — Copyright holder and maintainer
-
-Questions or collaboration opportunities? Open an issue on [GitHub](https://github.com/wooque/openpacs).

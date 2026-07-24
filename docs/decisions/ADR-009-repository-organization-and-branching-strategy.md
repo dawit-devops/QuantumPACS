@@ -7,7 +7,7 @@ Accepted
 2026-07-23
 
 ## Context
-OpenPACS is a monorepo containing a Python/Starlette backend, a React SPA frontend, Docker infrastructure, and documentation. As more engineers contribute and the feature set grows (RIS integration, HL7/FHIR gateways, AI/ML pipelines), the repository needs a clear organization and branching model that supports:
+QuantumPACS is a monorepo containing a Python/Starlette backend, a React SPA frontend, Docker infrastructure, and documentation. As more engineers contribute and the feature set grows (RIS integration, HL7/FHIR gateways, AI/ML pipelines), the repository needs a clear organization and branching model that supports:
 
 - Multiple features in parallel without stepping on each other
 - Versioned releases for PACS deployments (hospitals pin versions)
@@ -23,7 +23,7 @@ The current setup has a single `dev` branch with direct commits. This does not s
 ### Repository Structure
 
 ```
-openpacs/
+quantumpacs/
 ├── .github/
 │   ├── workflows/               # CI/CD (lint, test, build, deploy)
 │   ├── dependabot.yml

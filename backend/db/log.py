@@ -1,5 +1,6 @@
 from db.table import Table
 from pypika import Order
+from pypika.functions import Count
 
 
 class Log(Table):
@@ -25,5 +26,5 @@ class Log(Table):
         return await self.fetch(q)
 
     async def count_logs(self):
-        q = self.select('COUNT(1)')
+        q = self.select(Count(1))
         return await self.fetchval(q)

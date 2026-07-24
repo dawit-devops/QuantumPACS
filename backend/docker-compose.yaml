@@ -3,22 +3,22 @@ services:
     build:
       context: ../docker/postgres
       dockerfile: Dockerfile
-    image: openpacs-postgres:16
-    container_name: openpacs-postgres-1
+    image: quantumpacs-postgres:16
+    container_name: quantumpacs-postgres-1
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: openpacs
+      POSTGRES_USER: quantumpacs
       POSTGRES_PASSWORD: pa55w0rd
-      POSTGRES_DB: openpacs
+      POSTGRES_DB: quantumpacs
     volumes:
-      - openpacs_pgdata:/var/lib/postgresql/data
+      - quantumpacs_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openpacs"]
+      test: ["CMD-SHELL", "pg_isready -U quantumpacs"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
-  openpacs_pgdata:
+  quantumpacs_pgdata:

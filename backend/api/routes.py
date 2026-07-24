@@ -1,7 +1,8 @@
+import os
 from starlette.routing import Router, Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from api.patient import PatientHandler
 from api.files import (
@@ -16,6 +17,17 @@ from api.users import (
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 from db.conn import get_conn
+
+
+DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+async def docs_page(request):
+    return FileResponse(os.path.join(DIR, '..', 'static', 'docs.html'), media_type='text/html')
+
+
+async def openapi_spec(request):
+    return FileResponse(os.path.join(DIR, '..', 'static', 'openapi.json'), media_type='application/json')
 
 
 async def health(request):
@@ -36,6 +48,8 @@ async def health(request):
 
 routes = [
     Route('/health', endpoint=health),
+    Route('/docs', endpoint=docs_page),
+    Route('/docs/openapi.json', endpoint=openapi_spec),
     Route('/replicas', endpoint=ReplicasHandlers),
     Route('/replicas/{id}', endpoint=ReplicaHandlers),
     Route('/login', endpoint=Login),

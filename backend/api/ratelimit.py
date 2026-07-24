@@ -1,7 +1,8 @@
-"""Simple in-memory token-bucket rate limiter for login endpoint.
+"""Simple token-bucket rate limiter for login endpoint.
 
 Limits to N attempts per IP per window_seconds.
-Not for distributed deployment — state is process-local.
+Uses in-memory state for speed, with optional DB persistence layer.
+For multi-worker deployments, add Redis backend.
 """
 import time
 from collections import defaultdict
@@ -37,11 +38,21 @@ class TokenBucket:
             return False, 'Too many attempts. Try again later.'
         return True, None
 
-    def record(self, ip):
+    def record(self, ip, success=False):
         now = time.monotonic()
         self._attempts[ip].append(now)
         if len(self._attempts[ip]) >= self.lockout_attempts:
             self._lockouts[ip] = now + self.lockout_seconds
+
+    async def record_db(self, ip, conn, success=False):
+        self.record(ip, success=success)
+        try:
+            await conn.execute(
+                'INSERT INTO login_attempts (ip, endpoint, success) VALUES ($1, $2, $3)',
+                ip, 'login', success,
+            )
+        except Exception:
+            pass
 
     def remaining(self, ip):
         self._prune(ip)

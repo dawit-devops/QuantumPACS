@@ -152,6 +152,30 @@ class Files(Table):
         files = await self.fetch(q)
         return [self.from_row(f) for f in files]
 
+    async def get_paginated(self, page=1, per_page=20, search=None):
+        q = self.q()
+        if search:
+            like = f'%{search}%'
+            q = q.where(
+                (self.table.name.ilike(like)) |
+                (Patient().table.patient_id.cast('text').ilike(like))
+            )
+        q = q.orderby(self.table.id.desc()).limit(per_page).offset((page - 1) * per_page)
+        files = await self.fetch(q)
+        data = [self.from_row(f) for f in files]
+
+        count_q = self.select(self.table.id).from_(self.table)
+        if search:
+            like = f'%{search}%'
+            PatientT = Patient().table
+            count_q = count_q.join(PatientT).on(PatientT.id == self.table.patient_id)
+            count_q = count_q.where(
+                (self.table.name.ilike(like)) |
+                (PatientT.patient_id.cast('text').ilike(like))
+            )
+        total = len(await self.fetch(count_q))
+        return data, total
+
     async def unindexed(self):
         q = self.q().where(self.table.indexed == False)
         files = await self.fetch(q)

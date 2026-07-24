@@ -7,6 +7,7 @@ import string
 from config import config
 from exceptions import ApiException
 from db.table import Table
+from pypika.functions import Count
 
 
 def rand_pswd(length=12):
@@ -96,7 +97,7 @@ class Users(Table):
         return await self.fetch(q)
 
     async def count_users(self, username=None):
-        q = self.select('COUNT(1)')
+        q = self.select(Count(1))
         if username:
             q = q.where(self.table.username.ilike('%' + username + '%'))
         return await self.fetchval(q)

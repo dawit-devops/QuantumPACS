@@ -53,6 +53,18 @@ handle_db() {
             drop_db "$DBNAME"
             create_db "$DBNAME"
             ;;
+        migrate)
+            venv/bin/alembic upgrade head
+            ;;
+        rollback)
+            venv/bin/alembic downgrade -1
+            ;;
+        current)
+            venv/bin/alembic current
+            ;;
+        history)
+            venv/bin/alembic history
+            ;;
         shell)
             psql -h "$DBHOST" "$DBNAME" -U "$DBUSER"
             ;;
@@ -60,7 +72,7 @@ handle_db() {
             psql -h "$DBHOST" "$DBNAME" -U "$DBUSER" < dump.sql
             ;;
         *)
-            echo "Invalid command"
+            echo "Usage: db {init|create|drop|reset|migrate|rollback|current|history|shell|import}"
             exit 1
             ;;
     esac

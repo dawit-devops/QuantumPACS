@@ -1,5 +1,7 @@
 import time
 
+import sentry_sdk
+from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
@@ -17,6 +19,12 @@ from log import setup_logging, get_logger
 
 setup_logging()
 log = get_logger(__name__)
+
+if config.get('sentry_dsn'):
+    sentry_sdk.init(
+        dsn=config['sentry_dsn'],
+        integrations=[StarletteIntegration()],
+    )
 
 
 class CustomMiddleware(BaseHTTPMiddleware):

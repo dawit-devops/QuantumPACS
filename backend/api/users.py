@@ -1,6 +1,6 @@
 from starlette.endpoints import HTTPEndpoint
 
-from api.response import ok, paginated, validation_error
+from api.response import ok, paginated, api_error
 from api.tokens import create_token as gen_token
 from api.utils import is_admin
 from api.ratelimit import login_bucket
@@ -14,7 +14,7 @@ class Login(HTTPEndpoint):
         ip = request.client.host if request.client else 'unknown'
         allowed, msg = login_bucket.check(ip)
         if not allowed:
-            return validation_error(msg)
+            return api_error('RATE_LIMITED', msg, status=429)
 
         data = await request.json()
 
@@ -22,9 +22,10 @@ class Login(HTTPEndpoint):
             try:
                 data = await Users(conn).login(data['username'], data['password'])
             except ApiException as e:
-                login_bucket.record(ip)
-                return validation_error(str(e))
+                await login_bucket.record_db(ip, conn, success=False)
+                return api_error('AUTH_FAILED', str(e), status=401)
 
+            await login_bucket.record_db(ip, conn, success=True)
             token = gen_token(data)
             resp = ok({
                 'id': data['id'],
@@ -42,7 +43,7 @@ class ChangePassword(HTTPEndpoint):
             try:
                 data = await Users(conn).change_password(request.user, data['password'])
             except ApiException as e:
-                return validation_error(str(e))
+                return api_error('PASSWORD_ERROR', str(e), status=400)
 
             return ok({})
 

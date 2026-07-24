@@ -12,3 +12,6 @@
 | 008 | [Security Architecture](ADR-008-security-architecture.md) | Accepted |
 | 009 | [Repository Organization and Branching Strategy](ADR-009-repository-organization-and-branching-strategy.md) | Accepted |
 | 010 | [QuantumPACS Brand Identity](ADR-010-quantumpacs-brand-identity.md) | Accepted |
+| 011 | [DICOM Modality Worklist (MWL) SCP](ADR-011-dicom-mwl-scp.md) | Accepted |
+| 012 | [HL7 v2.x ADT/ORM Ingestion](ADR-012-hl7-adt-orm-ingestion.md) | Accepted |
+| 013 | [FHIR R4 API for EHR Integration](ADR-013-fhir-r4-api.md) | Accepted |

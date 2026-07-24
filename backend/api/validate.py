@@ -4,7 +4,7 @@ Returns validated model or raises _ValidationException caught by middleware."""
 from pydantic import BaseModel, ValidationError
 from starlette.requests import Request
 
-from api.response import validation_error
+from api.response import api_error
 
 
 async def parse_body(model_class, request):
@@ -13,17 +13,26 @@ async def parse_body(model_class, request):
         return model_class(**data)
     except ValidationError as e:
         errors = e.errors()
-        message = '; '.join(
-            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+        details = [
+            {
+                'field': '.'.join(str(p) for p in err['loc']),
+                'message': err['msg'],
+                'type': err.get('type', ''),
+            }
             for err in errors
-        )
-        raise _ValidationException(message)
+        ]
+        raise _ValidationException(details)
 
 
 class _ValidationException(Exception):
-    def __init__(self, message):
-        self.message = message
+    def __init__(self, details):
+        self.details = details
 
 
 def validation_exception_handler(request, exc):
-    return validation_error(exc.message)
+    return api_error(
+        'VALIDATION_ERROR',
+        'Request validation failed',
+        details=exc.details,
+        status=422,
+    )
