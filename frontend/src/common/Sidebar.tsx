@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
 import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, LogoutOutlined } from '@ant-design/icons';
-import { useFetch } from '../hooks';
 import { isAdmin } from '../helpers';
 import { PAGINATION } from '../config';
 import QuantumLogo from './QuantumLogo';
@@ -35,11 +34,8 @@ function Sidebar() {
     setCollapsed(collapsed);
   };
 
-  const { exec } = useFetch('logout', { method: 'POST' });
-
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
-    await exec();
     localStorage.removeItem('userId');
     localStorage.removeItem('admin');
     localStorage.removeItem('token');

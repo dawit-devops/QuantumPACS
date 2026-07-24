@@ -20,8 +20,8 @@ default_config = {
 
 config = default_config.copy()
 try:
-    local_file = open('config.local.yaml').read()
-    local_config = yaml.load(local_file, Loader=FullLoader)
+    with open('config.local.yaml') as f:
+        local_config = yaml.load(f.read(), Loader=FullLoader)
     for k, v in config.items():
         if k in local_config:
             config[k] = local_config[k]

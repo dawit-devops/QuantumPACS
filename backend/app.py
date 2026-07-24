@@ -14,6 +14,7 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
+from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config
 from log import setup_logging, get_logger
 
@@ -33,9 +34,6 @@ class CustomMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         elapsed = time.monotonic() - start
 
-        if response.status_code == 405:
-            response.status_code = 200
-
         if is_docker and not request.url.path.startswith('/api') and response.status_code == 404:
             response = FileResponse('./static/index.html')
 
@@ -46,7 +44,8 @@ class CustomMiddleware(BaseHTTPMiddleware):
         else:
             log.info('%s %s -> %s (%.3fs)', request.method, request.url.path, response.status_code, elapsed)
 
-        response.headers['Access-Control-Allow-Origin'] = '*'
+        cors_origin = config.get('cors_origins', '*')
+        response.headers['Access-Control-Allow-Origin'] = cors_origin
         response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
         response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
         return response
@@ -54,7 +53,8 @@ class CustomMiddleware(BaseHTTPMiddleware):
 
 async def http_exception(request, exc):
     resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    cors_origin = config.get('cors_origins', '*')
+    resp.headers['Access-Control-Allow-Origin'] = cors_origin
     return resp
 
 
@@ -71,6 +71,7 @@ app = Starlette(
     ],
     exception_handlers={
         HTTPException: http_exception,
+        _ValidationException: validation_exception_handler,
     },
     on_startup=[startup],
 )

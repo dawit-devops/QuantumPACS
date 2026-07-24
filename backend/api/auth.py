@@ -88,7 +88,8 @@ class TokenAuth(AuthenticationBackend):
     @staticmethod
     def on_auth_error(request, exc):
         resp = unauthorized(str(exc))
-        resp.headers['Access-Control-Allow-Origin'] = '*'
+        cors_origin = config.get('cors_origins', '*')
+        resp.headers['Access-Control-Allow-Origin'] = cors_origin
         resp.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
         resp.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
         return resp

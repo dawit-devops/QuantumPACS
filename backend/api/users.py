@@ -4,6 +4,9 @@ from api.response import ok, paginated, api_error
 from api.tokens import create_token as gen_token
 from api.utils import is_admin
 from api.ratelimit import login_bucket
+from api.validate import parse_body
+from api.schemas.auth import LoginRequest, ChangePasswordRequest
+from api.schemas.users import CreateUserRequest, UserActionRequest
 from db.conn import get_conn
 from db.users import Users
 from exceptions import ApiException
@@ -16,11 +19,11 @@ class Login(HTTPEndpoint):
         if not allowed:
             return api_error('RATE_LIMITED', msg, status=429)
 
-        data = await request.json()
+        body = await parse_body(LoginRequest, request)
 
         async with get_conn() as conn:
             try:
-                data = await Users(conn).login(data['username'], data['password'])
+                data = await Users(conn).login(body.username, body.password)
             except ApiException as e:
                 await login_bucket.record_db(ip, conn, success=False)
                 return api_error('AUTH_FAILED', str(e), status=401)
@@ -37,11 +40,11 @@ class Login(HTTPEndpoint):
 
 class ChangePassword(HTTPEndpoint):
     async def post(self, request):
-        data = await request.json()
+        body = await parse_body(ChangePasswordRequest, request)
 
         async with get_conn() as conn:
             try:
-                data = await Users(conn).change_password(request.user, data['password'])
+                data = await Users(conn).change_password(request.user, body.password)
             except ApiException as e:
                 return api_error('PASSWORD_ERROR', str(e), status=400)
 
@@ -67,21 +70,21 @@ class UsersHandler(HTTPEndpoint):
 
     async def post(self, request):
         is_admin(request)
-        data = await request.json()
+        body = await parse_body(CreateUserRequest, request)
 
         async with get_conn() as conn:
-            result = await Users(conn).add_user(data['username'], data['admin'])
+            result = await Users(conn).add_user(body.username, body.admin)
 
-        return ok({'password': result['password'], 'username': data['username']})
+        return ok({'password': result['password'], 'username': body.username})
 
 
 class UsersDeactivate(HTTPEndpoint):
     async def post(self, request):
         is_admin(request)
-        data = await request.json()
+        body = await parse_body(UserActionRequest, request)
 
         async with get_conn() as conn:
-            await Users(conn).deactivate(data['id'])
+            await Users(conn).deactivate(body.id)
 
         resp = ok({})
         resp.headers['X-API-Deprecated'] = 'true'
@@ -93,10 +96,10 @@ class UsersDeactivate(HTTPEndpoint):
 class UsersNewPassword(HTTPEndpoint):
     async def post(self, request):
         is_admin(request)
-        data = await request.json()
+        body = await parse_body(UserActionRequest, request)
 
         async with get_conn() as conn:
-            result = await Users(conn).new_pswd(data['id'])
+            result = await Users(conn).new_pswd(body.id)
 
         resp = ok({'password': result})
         resp.headers['X-API-Deprecated'] = 'true'
