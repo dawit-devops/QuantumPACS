@@ -1,6 +1,10 @@
+import asyncio
+
+
 class Storage:
     storage_types = {}
     storages = {}
+    _init_locks = {}
 
     @staticmethod
     def register(cls):
@@ -23,10 +27,14 @@ class Storage:
         rid = replica['id']
 
         if rid not in Storage.storages:
-            cls = Storage.get_class(replica['type'])
-            s = cls(replica)
-            await s.init()
-            Storage.storages[rid] = s
+            if rid not in Storage._init_locks:
+                Storage._init_locks[rid] = asyncio.Lock()
+            async with Storage._init_locks[rid]:
+                if rid not in Storage.storages:
+                    cls = Storage.get_class(replica['type'])
+                    s = cls(replica)
+                    await s.init()
+                    Storage.storages[rid] = s
 
         return Storage.storages[rid]
 

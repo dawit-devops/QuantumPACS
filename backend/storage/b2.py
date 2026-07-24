@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import functools
 import os.path
+import tempfile
 from io import BytesIO
 
 from b2sdk.v2 import InMemoryAccountInfo, B2Api
@@ -9,7 +10,7 @@ from starlette.responses import StreamingResponse, RedirectResponse
 
 from storage.storage import Storage
 
-executor = concurrent.futures.ThreadPoolExecutor(4)
+executor = concurrent.futures.ThreadPoolExecutor(16)
 
 
 def run_in_executor(f):
@@ -125,10 +126,11 @@ class B2Storage(Storage):
         path = self.get_path(filedata)
         bucket = self.api.get_bucket_by_name(self.bucket)
         downloaded = bucket.download_file_by_name(path)
-        buf = BytesIO()
-        downloaded.save(buf)
-        buf.seek(0)
-        return buf
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        downloaded.save(tmp)
+        tmp.flush()
+        tmp.seek(0)
+        return tmp
 
     async def serve(self, file):
         bucket = self.api.get_bucket_by_name(self.bucket)

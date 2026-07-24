@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
 import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, LogoutOutlined } from '@ant-design/icons';
-import { useFetch } from '../hooks';
 import { isAdmin } from '../helpers';
-import { PAGINATION } from '../config';
 import QuantumLogo from './QuantumLogo';
 import './Sidebar.css';
 
@@ -35,11 +33,8 @@ function Sidebar() {
     setCollapsed(collapsed);
   };
 
-  const { exec } = useFetch('logout', { method: 'POST' });
-
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
-    await exec();
     localStorage.removeItem('userId');
     localStorage.removeItem('admin');
     localStorage.removeItem('token');
@@ -56,11 +51,7 @@ function Sidebar() {
     <Sider collapsible collapsed={collapsed} onCollapse={onCollapse} theme="dark"
       breakpoint="lg"
       collapsedWidth="0"
-      onBreakpoint={broke => {
-        if (broke) {
-          PAGINATION.limit = 5;
-        }
-      }}
+      onBreakpoint={() => {}}
     >
       <div style={{
         padding: collapsed ? '16px 8px' : '16px 24px',

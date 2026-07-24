@@ -12,7 +12,7 @@ async def reindex_main():
     await reset_index()
 
     async with get_conn() as conn:
-        files = await Files(conn).get_all()
+        files = await Files(conn).get_all(limit=0)
 
     for f in files:
         await index_file(f)

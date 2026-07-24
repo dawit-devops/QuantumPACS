@@ -28,16 +28,24 @@ interface RequestOptions {
   [key: string]: any;
 }
 
+async function fetchWithRetry(url: string, options: RequestOptions, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    const resp = await fetch(url, options);
+    if (resp.ok || resp.status < 500) {
+      return resp;
+    }
+    if (i < retries - 1) {
+      await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, i), 8000)));
+    }
+  }
+  return fetch(url, options);
+}
+
 export const request = async (url: string, options: RequestOptions = {}): Promise<any> => {
   if (!url.startsWith('http')) {
     url = `${API_URL}/${url}`;
   }
-  let token = localStorage.getItem('token');
-  if (!token) {
-    token = localStorage.getItem('tempKey');
-  }
   options.headers = new Headers({
-    'X-Auth-Pacs': token || '',
     'Content-Type': 'application/json',
   });
   if (options.data) {
@@ -50,7 +58,7 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
     delete options.query;
   }
   try {
-    const resp = await fetch(url, options);
+    const resp = await fetchWithRetry(url, options);
     return await handleResponse(resp);
   } catch (error: any) {
     if (error.error === 401) {

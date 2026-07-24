@@ -9,9 +9,9 @@ class TestPatient:
     @pytest.mark.asyncio
     async def test_insert_or_select_returns_existing(self):
         conn = AsyncMock()
-        conn.fetchrow.return_value = {'id': 1}
+        conn.fetchval.return_value = 1
         p = Patient(conn=conn)
-        result = await p.insert_or_select({'patient_id': 'P001'})
+        result = await p.insert_or_select({'patient_id': 'P001', 'patient_name': 'Test', 'patient_birth_date': '', 'patient_sex': ''})
         assert result['id'] == 1
 
     @pytest.mark.asyncio

@@ -10,4 +10,10 @@ __pycache__
 /backend/config.local.yaml
 /frontend/node_modules
 /frontend/build
+/frontend/dist
+/frontend/test-results
+/graphify-out
+*.log
+.coverage
+opencode.json
 SCRATCH

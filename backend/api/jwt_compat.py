@@ -9,7 +9,7 @@ def encode(payload, key, algorithm='HS256'):
     return token
 
 
-def decode(token, key, algorithms=None):
+def decode(token, key, algorithms=None, **kwargs):
     if algorithms is None:
         algorithms = ['HS256']
-    return _jwt.decode(token, key, algorithms=algorithms)
+    return _jwt.decode(token, key, algorithms=algorithms, **kwargs)

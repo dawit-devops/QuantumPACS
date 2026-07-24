@@ -23,11 +23,6 @@ class Patient(Table):
         """)
 
     async def insert_or_select(self, data):
-        q = self.select('*').where(self.table.patient_id == data['patient_id'])
-        p = await self.fetchone(q)
-        if p:
-            return p
-
         q = self.insert().columns(
             'patient_id', 'name', 'birth_date', 'sex',
         ).insert((

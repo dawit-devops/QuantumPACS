@@ -63,15 +63,23 @@ class Users(Table):
             raise ApiException('Password is not correct')
         if data['status'] != 'active':
             raise ApiException('User deactivated')
+
+        raw = binascii.unhexlify(data['password'])
+        if len(raw) == 32:
+            ph = hash_password(password)
+            q = self.update().where(self.table.id == data['id']).set(self.table.password, ph)
+            await self.exec(q)
+
         return data
 
     async def add_superadmin(self):
-        q = self.select('*').where(self.table.username == 'admin')
-        data = await self.fetchone(q)
-        if not data:
-            pswd = hash_password(config['superadmin_pass'])
-            q = self.insert().columns('username', 'password', 'admin').insert('admin', pswd, True)
-            await self.exec(q)
+        async with self.conn.transaction():
+            q = self.select('*').where(self.table.username == 'admin')
+            data = await self.fetchone(q)
+            if not data:
+                pswd = hash_password(config['superadmin_pass'])
+                q = self.insert().columns('username', 'password', 'admin').insert('admin', pswd, True)
+                await self.exec(q)
 
     async def change_password(self, user, password):
         pswd = hash_password(password)
@@ -81,8 +89,8 @@ class Users(Table):
     async def add_user(self, username, is_admin):
         pswd = rand_pswd()
         ph = hash_password(pswd)
-        q = self.insert().columns('username', 'password', 'admin').insert(username, ph, is_admin)
-        await self.exec(q)
+        q = self.insert().columns('username', 'password', 'admin').insert(username, ph, is_admin).returning('id')
+        await self.fetchval(q)
         return {'password': pswd}
 
     async def get_users(self, offset=None, limit=None, username=None):

@@ -11,12 +11,12 @@ from api.files import (
 )
 from api.logs import LogsHandler
 from api.replicas import ReplicasHandlers, ReplicaHandlers
+from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, UsersHandler, UsersDeactivate, UsersNewPassword,
 )
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
-from db.conn import get_conn
 
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,24 +30,9 @@ async def openapi_spec(request):
     return FileResponse(os.path.join(DIR, '..', 'static', 'openapi.json'), media_type='application/json')
 
 
-async def health(request):
-    db_ok = False
-    db_error = None
-    try:
-        async with get_conn() as conn:
-            val = await conn.fetchval('SELECT 1')
-            db_ok = val == 1
-    except Exception as e:
-        db_error = str(e)
-    status = 503 if not db_ok else 200
-    return JSONResponse({
-        'status': 'ok' if db_ok else 'degraded',
-        'database': 'connected' if db_ok else f'error: {db_error}',
-    }, status_code=status)
-
-
 routes = [
-    Route('/health', endpoint=health),
+    Route('/health', endpoint=health_endpoint),
+    Route('/metrics', endpoint=metrics_endpoint),
     Route('/docs', endpoint=docs_page),
     Route('/docs/openapi.json', endpoint=openapi_spec),
     Route('/replicas', endpoint=ReplicasHandlers),

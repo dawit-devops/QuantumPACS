@@ -17,8 +17,10 @@ class Database:
             database=config['db_database'],
             host=config['db_host'],
             port=int(config.get('db_port', '5432')),
+            min_size=2,
             max_size=pool_size,
-            min_size=pool_size,
+            command_timeout=30,
+            statement_cache_size=100,
         )
 
     async def close(self):
@@ -27,7 +29,9 @@ class Database:
             self._pool = None
 
     def acquire(self):
-        return self._pool.acquire() if self._pool else None
+        if not self._pool:
+            raise RuntimeError('Database pool not initialized — call setup() first')
+        return self._pool.acquire(timeout=10)
 
     @property
     def pool(self):

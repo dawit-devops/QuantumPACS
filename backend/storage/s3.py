@@ -1,4 +1,5 @@
 import os.path
+import tempfile
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
@@ -44,17 +45,6 @@ class S3Storage(Storage):
                     'LocationConstraint': self.region,
                 },
             )
-            await client.put_bucket_cors(
-                Bucket=self.bucket,
-                CORSConfiguration={
-                    'CORSRules': [{
-                        'AllowedHeaders': ['Authorization'],
-                        'AllowedMethods': ['GET'],
-                        'AllowedOrigins': ['*'],
-                        'MaxAgeSeconds': 3600
-                    }]
-                }
-            )
         except Exception as e:
             if 'BucketAlreadyOwnedByYou' not in str(e):
                 raise
@@ -95,7 +85,7 @@ class S3Storage(Storage):
 
         if isinstance(src, SpooledTemporaryFile):
             src.seek(0)
-            body = BytesIO(src.read())
+            body = src
         elif isinstance(src, str):
             body = open(src, 'rb')
         elif isinstance(src, BytesIO):
@@ -107,6 +97,8 @@ class S3Storage(Storage):
         await client.put_object(
             Bucket=self.bucket, Key=key, Body=body,
         )
+        if isinstance(src, str):
+            body.close()
         return {
             'location': key
         }
@@ -115,10 +107,16 @@ class S3Storage(Storage):
         key = self.get_key(filedata)
         client = await self._get_client()
         response = await client.get_object(Bucket=self.bucket, Key=key)
+        tmp = tempfile.NamedTemporaryFile(delete=False)
         async with response['Body'] as stream:
-            data = await stream.read()
-            tmp_file = BytesIO(data)
-        return tmp_file
+            while True:
+                chunk = await stream.read(65536)
+                if not chunk:
+                    break
+                tmp.write(chunk)
+        tmp.flush()
+        tmp.seek(0)
+        return tmp
 
     async def serve(self, filedata):
         client = await self._get_client()

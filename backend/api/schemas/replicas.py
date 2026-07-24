@@ -1,8 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class CreateReplicaRequest(BaseModel):
-    type: str
+    type: Literal['local', 's3', 'b2']
     location: str | None = None
     delay: int = 0
     app_key_id: str | None = None

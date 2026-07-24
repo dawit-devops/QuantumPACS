@@ -1,21 +1,88 @@
+import asyncio
 from collections import defaultdict
-from threading import Lock
 
 from starlette.endpoints import HTTPEndpoint, WebSocketEndpoint
-from starlette.websockets import WebSocket
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from api.response import ok
 from api.tokens import create_token as gen_token
+
+local_clients = defaultdict(dict)
+_sub_lock = asyncio.Lock()
+_pubsub = None
+
+
+async def _get_pubsub():
+    global _pubsub
+    if _pubsub is not None:
+        return _pubsub
+    try:
+        import redis.asyncio as aioredis
+        from config import config
+        host = config.get('redis_host', 'localhost')
+        port = int(config.get('redis_port', '6379'))
+        password = config.get('redis_password') or None
+        r = aioredis.Redis(
+            host=host, port=port, password=password, db=4,
+            socket_connect_timeout=1,
+            socket_timeout=2,
+        )
+        await r.ping()
+        _pubsub = r.pubsub()
+        return _pubsub
+    except Exception:
+        return None
+
+
+def _channel(file_id):
+    return f'channel:file:{file_id}'
+
+
+async def _pubsub_listener():
+    ps = await _get_pubsub()
+    if ps is None:
+        return
+    try:
+        async for message in ps.listen():
+            if message['type'] != 'message':
+                continue
+            channel = message['channel']
+            if isinstance(channel, bytes):
+                channel = channel.decode()
+            file_id = channel.split(':', 2)[-1]
+            data = message['data']
+            if isinstance(data, bytes):
+                data = data.decode()
+            import json
+            try:
+                payload = json.loads(data)
+            except Exception:
+                continue
+            async with _sub_lock:
+                conns = list(local_clients.get(file_id, {}).values())
+            for c in conns:
+                if isinstance(c, WebSocket):
+                    try:
+                        await c.send_json(payload)
+                    except WebSocketDisconnect:
+                        pass
+    except Exception:
+        pass
+
+
+_listener_task = None
+
+
+def _ensure_listener():
+    global _listener_task
+    if _listener_task is None or _listener_task.done():
+        _listener_task = asyncio.create_task(_pubsub_listener())
 
 
 class WSToken(HTTPEndpoint):
     async def get(self, request):
         token = gen_token(request.user.to_dict(), {'minutes': 1})
         return ok({'token': token})
-
-
-files = defaultdict(lambda: {'ver': 0, 'state': None})
-mutex = Lock()
 
 
 class WebsocketHandler(WebSocketEndpoint):
@@ -29,51 +96,74 @@ class WebsocketHandler(WebSocketEndpoint):
 
         if type_ == 'open':
             f = data['file']
-            state = None
-            mutex.acquire()
-            try:
-                files[f][id(websocket)] = websocket
-                if files[f]['state']:
-                    state = files[f]['state']
-            finally:
-                mutex.release()
-
-            if state:
-                await websocket.send_json(
-                    {
-                        'type': 'send_state',
-                        'file': f,
-                        'state': state,
-                    },
-                )
+            async with _sub_lock:
+                local_clients[f][str(id(websocket))] = websocket
+            ps = await _get_pubsub()
+            if ps is not None:
+                try:
+                    await ps.subscribe(_channel(f))
+                    _ensure_listener()
+                except Exception:
+                    pass
+            await websocket.send_json(
+                {
+                    'type': 'send_state',
+                    'file': f,
+                    'state': data.get('state', {}),
+                },
+            )
             websocket.file = f
 
         elif type_ == 'send_state':
             f = data['file']
-            conns = []
-
-            mutex.acquire()
+            payload = {
+                'type': 'send_state',
+                'file': f,
+                'state': data['state'],
+            }
+            import json
+            r = None
             try:
-                fdata = files.get(f, {})
-                fdata['state'] = data['state']
-                fdata['ver'] = fdata['ver'] + 1
-
-                conns = list(fdata.values())
+                import redis.asyncio as aioredis
+                from config import config
+                host = config.get('redis_host', 'localhost')
+                port = int(config.get('redis_port', '6379'))
+                password = config.get('redis_password') or None
+                r = aioredis.Redis(
+                    host=host, port=port, password=password, db=4,
+                    socket_connect_timeout=1,
+                    socket_timeout=1,
+                )
+                await r.publish(_channel(f), json.dumps(payload))
+                await r.aclose()
+            except Exception:
+                async with _sub_lock:
+                    conns = list(local_clients.get(f, {}).values())
+                for c in conns:
+                    if c == websocket:
+                        continue
+                    if isinstance(c, WebSocket):
+                        try:
+                            await c.send_json(payload)
+                        except WebSocketDisconnect:
+                            pass
             finally:
-                mutex.release()
-
-            for c in conns:
-                if c == websocket: continue
-                if not isinstance(c, WebSocket): continue
-                await c.send_json(data)
+                if r is not None:
+                    try:
+                        await r.aclose()
+                    except Exception:
+                        pass
 
     async def on_disconnect(self, websocket, close_code):
         f = getattr(websocket, 'file', None)
         if f:
-            mutex.acquire()
-            try:
-                del files[f][id(websocket)]
-            except Exception:
-                pass
-            finally:
-                mutex.release()
+            async with _sub_lock:
+                local_clients[f].pop(str(id(websocket)), None)
+                if not local_clients[f]:
+                    del local_clients[f]
+                    ps = await _get_pubsub()
+                    if ps is not None:
+                        try:
+                            await ps.unsubscribe(_channel(f))
+                        except Exception:
+                            pass

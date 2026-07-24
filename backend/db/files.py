@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import json
 
+from pypika.functions import Count
+
 from es import es
 from db.patient import Patient
 from db.study import Study
@@ -65,10 +67,10 @@ class Files(Table):
 
         filedata['id'] = file_id
         filedata['meta'] = filedata['cleaned']
-        await es.index_file(filedata)
-
-        q = self.update().where(self.table.id == file_id).set(self.table.indexed, True)
-        await self.exec(q)
+        async with self.conn.transaction():
+            await es.index_file(filedata)
+            q = self.update().where(self.table.id == file_id).set(self.table.indexed, True)
+            await self.exec(q)
 
         return filedata
 
@@ -133,47 +135,90 @@ class Files(Table):
         )
 
     async def get_extra(self, file_id):
-        q = self.q().where(self.table.id == file_id)
-        file = await self.fetchone(q)
-        if not file:
+        PatientT = Patient().table
+        StudyT = Study().table
+        SeriesT = Series().table
+        ReplicaT = ReplicaFiles().table
+        table = self.table
+
+        q = self.select(
+            table.id, table.name,
+            table.patient_id.as_('patient_db_id'),
+            table.study_id.as_('study_db_id'),
+            table.series_id.as_('series_db_id'),
+            PatientT.patient_id,
+            StudyT.study_id,
+            SeriesT.number.as_('series_number'),
+            table.meta, table.tools_state, table.deleted,
+            ReplicaT.id.as_('replica_id'),
+            ReplicaT.replica_id.as_('replica_replica_id'),
+            ReplicaT.file_id.as_('replica_file_id'),
+            ReplicaT.location,
+            ReplicaT.status.as_('replica_status'),
+            ReplicaT.meta.as_('replica_meta'),
+        ).join(PatientT).on(
+            PatientT.id == table.patient_id
+        ).join(StudyT).on(
+            StudyT.id == table.study_id
+        ).join(SeriesT).on(
+            SeriesT.id == table.series_id
+        ).left_join(ReplicaT).on(
+            ReplicaT.file_id == table.id
+        ).where(
+            table.id == file_id
+        )
+
+        rows = await self.fetch(q)
+        if not rows:
             return None
 
-        file = self.from_row(file)
-
+        file = self.from_row(rows[0])
+        replicas = []
+        seen = set()
+        for row in rows:
+            rid = row['replica_id']
+            if rid and rid not in seen:
+                seen.add(rid)
+                replicas.append({
+                    'id': rid,
+                    'replica_id': row['replica_replica_id'],
+                    'file_id': row['replica_file_id'],
+                    'location': row['location'],
+                    'status': row['replica_status'],
+                    'meta': json.loads(row['replica_meta']) if row.get('replica_meta') else {},
+                })
+        file['files'] = replicas
         file['patient'] = await Patient(self.conn).get_extra(file['patient_db_id'])
-
-        data = await ReplicaFiles(self.conn).get_for_file(file_id)
-        file['files'] = [dict(d) for d in data]
 
         return file
 
-    async def get_all(self):
+    async def get_all(self, limit=None):
         q = self.q()
+        if limit:
+            q = q.limit(limit)
         files = await self.fetch(q)
         return [self.from_row(f) for f in files]
 
     async def get_paginated(self, page=1, per_page=20, search=None):
         q = self.q()
         if search:
-            like = f'%{search}%'
             q = q.where(
-                (self.table.name.ilike(like)) |
-                (Patient().table.patient_id.cast('text').ilike(like))
+                (self.table.name.ilike(f'%{search}%')) |
+                (Patient().table.patient_id.cast('text').ilike(f'%{search}%'))
             )
         q = q.orderby(self.table.id.desc()).limit(per_page).offset((page - 1) * per_page)
         files = await self.fetch(q)
         data = [self.from_row(f) for f in files]
 
-        count_q = self.select(self.table.id).from_(self.table)
+        count_q = self.select(Count(1)).from_(self.table)
         if search:
-            like = f'%{search}%'
             PatientT = Patient().table
             count_q = count_q.join(PatientT).on(PatientT.id == self.table.patient_id)
             count_q = count_q.where(
-                (self.table.name.ilike(like)) |
-                (PatientT.patient_id.cast('text').ilike(like))
+                (self.table.name.ilike(f'%{search}%')) |
+                (PatientT.patient_id.cast('text').ilike(f'%{search}%'))
             )
-        total = len(await self.fetch(count_q))
+        total = await self.fetchval(count_q) or 0
         return data, total
 
     async def unindexed(self):
@@ -215,12 +260,15 @@ class Files(Table):
         async with self.conn.transaction():
             q = self.update().where(self.table.id == file_id).set(self.table.deleted, True)
             await self.exec(q)
-            cnt = await ReplicaFiles(self.conn).delete(master_id, file_id)
-            if cnt == 1:
+            remaining = await ReplicaFiles(self.conn).delete(master_id, file_id)
+            if remaining == 0:
                 q = self.query().where(self.table.id == file_id).delete()
                 await self.exec(q)
 
     async def delete_all(self):
-        await es.reset_index()
+        try:
+            await es.reset_index()
+        except Exception:
+            pass
         q = self.query().delete()
         await self.exec(q)

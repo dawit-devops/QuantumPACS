@@ -1,13 +1,10 @@
-"""Database connection management — legacy per-process pool + new Database singleton.
-Prefer get_database() for new code; get_conn() maintains backward compatibility."""
-import os
-
+"""Database connection management — unified singleton pool.
+Use get_conn() or get_database().acquire() interchangeably; both return from the same pool."""
 import asyncpg
 
 from config import config
 from db.database import Database
 
-db = {}
 database = Database()
 
 
@@ -21,7 +18,7 @@ async def init_db():
     )
     try:
         await conn.execute('CREATE DATABASE quantumpacs')
-    except Exception:
+    except asyncpg.DuplicateDatabaseError:
         pass
     await conn.close()
 
@@ -35,25 +32,13 @@ async def init_db():
     try:
         await conn.execute('CREATE EXTENSION intarray')
         await conn.execute('CREATE EXTENSION citext')
-    except Exception:
+    except asyncpg.DuplicateObjectError:
         pass
     await conn.close()
 
 
 async def setup(pool_size=None):
-    global db
     pool_size = pool_size or int(config.get('db_pool_size', '8'))
-    pool = await asyncpg.create_pool(
-        user=config['db_user'],
-        password=config['db_password'],
-        database=config['db_database'],
-        host=config['db_host'],
-        port=int(config.get('db_port', '5432')),
-        max_size=pool_size,
-        min_size=pool_size,
-    )
-    db[os.getpid()] = pool
-
     await database.setup(pool_size)
 
 
@@ -68,7 +53,7 @@ async def create_conn():
 
 
 def get_conn():
-    return db[os.getpid()].acquire()
+    return database.acquire()
 
 
 def get_database():
@@ -76,8 +61,4 @@ def get_database():
 
 
 async def teardown():
-    pid = os.getpid()
-    await db[pid].close()
-    del db[pid]
-
     await database.close()
