@@ -9,8 +9,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Backend CI](https://github.com/wooque/quantumpacs/actions/workflows/backend.yml/badge.svg)](https://github.com/wooque/quantumpacs/actions/workflows/backend.yml)
-[![Frontend CI](https://github.com/wooque/quantumpacs/actions/workflows/frontend.yml/badge.svg)](https://github.com/wooque/quantumpacs/actions/workflows/frontend.yml)
+[![Backend CI](https://github.com/dawit-devops/QuantumPACS/actions/workflows/backend.yml/badge.svg)](https://github.com/dawit-devops/QuantumPACS/actions/workflows/backend.yml)
+[![Frontend CI](https://github.com/dawit-devops/QuantumPACS/actions/workflows/frontend.yml/badge.svg)](https://github.com/dawit-devops/QuantumPACS/actions/workflows/frontend.yml)
 
 Open-source Picture Archiving and Communication System (PACS) for medical image management. Production-grade DICOM ingestion, zero-footprint Cornerstone3D viewer, multi-site replication, and real-time collaboration.
 
@@ -45,7 +45,7 @@ QuantumPACS replaces traditional vendor-locked imaging systems with an open, mod
 ### Quick Start (Docker)
 
 ```bash
-git clone https://github.com/wooque/quantumpacs.git
+git clone https://github.com/dawit-devops/QuantumPACS.git
 cd quantumpacs
 docker compose up -d
 ```

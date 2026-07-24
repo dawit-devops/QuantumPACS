@@ -1,0 +1,59 @@
+name: Branch name convention
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  create:
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const patterns = [
+              /^main$/,
+              /^feature\/.+/,
+              /^fix\/.+/,
+              /^release\/.+/,
+              /^hotfix\/.+/,
+              /^dependabot\/.+/,
+              /^renovate\/.+/
+            ];
+
+            const ref = context.payload.ref;
+            const refType = context.payload.ref_type;
+            const branch = refType === 'branch' ? ref : (
+              context.payload.pull_request?.head?.ref
+            );
+
+            if (!branch) {
+              console.log('No branch found in payload, skipping');
+              return;
+            }
+
+            const allowed = patterns.some(p => p.test(branch));
+
+            if (allowed) {
+              console.log(`Branch '${branch}' matches naming convention`);
+              return;
+            }
+
+            const allowedPatterns = [
+              'main',
+              'feature/*',
+              'fix/*',
+              'release/*',
+              'hotfix/*',
+              'dependabot/*',
+              'renovate/*'
+            ];
+
+            const msg = `Branch name '${branch}' does not match convention.\n\nAllowed patterns:\n${allowedPatterns.map(p => `  - ${p}`).join('\n')}\n\nSee ADR-009 for details.`;
+
+            if (refType === 'branch') {
+              core.setFailed(msg);
+            } else {
+              core.setFailed(msg);
+            }
