@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import sentry_sdk
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.applications import Starlette
@@ -60,9 +62,12 @@ async def http_exception(request, exc):
     return resp
 
 
-async def startup():
+@asynccontextmanager
+async def lifespan(app):
     assert_production_secret()
     await lifecycle.setup()
+    yield
+    await lifecycle.teardown()
 
 
 app = Starlette(
@@ -77,7 +82,7 @@ app = Starlette(
         HTTPException: http_exception,
         _ValidationException: validation_exception_handler,
     },
-    on_startup=[startup],
+    lifespan=lifespan,
 )
 
 
