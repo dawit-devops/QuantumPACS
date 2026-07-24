@@ -42,7 +42,7 @@ async def init_db():
 
 async def setup(pool_size=None):
     global db
-    pool_size = pool_size or 8
+    pool_size = pool_size or int(config.get('db_pool_size', '8'))
     pool = await asyncpg.create_pool(
         user=config['db_user'],
         password=config['db_password'],

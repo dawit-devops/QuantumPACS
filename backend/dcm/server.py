@@ -81,19 +81,24 @@ def handle_store(event):
 
 handlers = [(evt.EVT_C_STORE, handle_store)]
 _scp = None
+_loop = None
 
 
 def _signal_handler(sig, frame):
+    if _loop and not _loop.is_closed():
+        _loop.create_task(teardown())
     if _scp:
         _scp.shutdown()
-    asyncio.run(teardown())
-    sys.exit(0)
 
 
 def main():
-    global _scp
+    global _scp, _loop
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
 
     signal.signal(signal.SIGINT, _signal_handler)
     ae = AE()
     ae.supported_contexts = StoragePresentationContexts
     _scp = ae.start_server(('', 11112), evt_handlers=handlers)
+    _scp.blocking_run()
+    _loop.close()

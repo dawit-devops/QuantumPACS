@@ -14,6 +14,7 @@ default_config = {
     'es_host': 'localhost',
     'cors_origins': '*',
     'allowed_hosts': 'localhost,127.0.0.1',
+    'db_pool_size': '8',
     'sentry_dsn': '',
 }
 

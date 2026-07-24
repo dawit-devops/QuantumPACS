@@ -24,6 +24,36 @@ test.describe('Admin', () => {
     await expect(page.getByText('Files').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Logout').first()).toBeVisible({ timeout: 5000 });
   });
+
+  test('full session flow: login, browse files, logout', async ({ page }) => {
+    await expect(page.getByText('Files').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Account').first()).toBeVisible();
+
+    await page.getByText('Account').first().click();
+    await page.waitForTimeout(2000);
+    await expect(page).toHaveURL(/\/account/);
+
+    await page.getByText('Files').first().click();
+    await page.waitForTimeout(2000);
+    await expect(page).toHaveURL(/\/$/);
+
+    await page.getByText('Logout').first().click();
+    await page.waitForTimeout(3000);
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('admin submenu navigation', async ({ page }) => {
+    await expect(page.getByText('Admin').first()).toBeVisible({ timeout: 10000 });
+
+    await page.getByText('Admin').first().click();
+    await expect(page.getByText('Replicas').first()).toBeVisible();
+    await expect(page.getByText('Users').first()).toBeVisible();
+    await expect(page.getByText('Logs').first()).toBeVisible();
+
+    await page.getByText('Users').first().click();
+    await page.waitForTimeout(2000);
+    await expect(page).toHaveURL(/\/users/);
+  });
 });
 
 test.describe('404', () => {
