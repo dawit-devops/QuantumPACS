@@ -20,7 +20,8 @@ jobs:
               /^hotfix\/.+/,
               /^dependabot\/.+/,
               /^renovate\/.+/,
-              /^production-hardening\/.+/
+              /^v3-dev$/,
+              /^phase\/.+/
             ];
 
             const ref = context.payload.ref;
@@ -49,7 +50,8 @@ jobs:
               'hotfix/*',
               'dependabot/*',
               'renovate/*',
-              'production-hardening/*'
+              'v3-dev',
+              'phase/*'
             ];
 
             const msg = `Branch name '${branch}' does not match convention.\n\nAllowed patterns:\n${allowedPatterns.map(p => `  - ${p}`).join('\n')}`;
