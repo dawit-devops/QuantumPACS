@@ -21,6 +21,7 @@ from api.users import (
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
+from api.worklist import WorklistHandler, WorklistEntryHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
@@ -75,6 +76,8 @@ routes = [
     Route('/api-keys/{id}', endpoint=ApiKeyHandler),
     Route('/oauth/providers', endpoint=OAuthProvidersHandler),
     Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler),
+    Route('/worklist', endpoint=WorklistHandler),
+    Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler)
 ]
