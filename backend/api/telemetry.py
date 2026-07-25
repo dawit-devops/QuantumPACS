@@ -1,5 +1,6 @@
 import time
 from collections import defaultdict
+from typing import Any, Optional
 
 from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -8,6 +9,17 @@ from es import es
 from log import request_id_var, get_logger
 
 log = get_logger(__name__)
+
+_monitor: Any = None
+
+
+def set_stream_monitor(monitor: Any) -> None:
+    global _monitor
+    _monitor = monitor
+
+
+def get_stream_monitor():
+    return _monitor
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -37,14 +49,18 @@ def record_request(method, path, status_code, elapsed):
 async def metrics_endpoint(request):
     total = sum(_metrics['requests_total'].values())
     avg_latency = _metrics['latency_sum'] / _metrics['latency_count'] if _metrics['latency_count'] else 0.0
-    return JSONResponse({
+    result = {
         'requests_total': total,
         'requests_by_status': {
             f'{method} {code}': count
             for (method, code), count in sorted(_metrics['requests_total'].items())
         },
         'average_latency_seconds': round(avg_latency, 4),
-    })
+    }
+    monitor = get_stream_monitor()
+    if monitor is not None:
+        result['streams'] = monitor.metrics()
+    return JSONResponse(result)
 
 
 async def health_endpoint(request):

@@ -7,10 +7,16 @@ from db.users import Users
 from db.table import Table
 from log import get_logger
 from api.redis_client import get_client as get_redis
+from api.redis_client import is_available as redis_available
+from api.telemetry import set_stream_monitor
+from services.pg_notify_bridge import PgNotifyBridge
+from services.stream_monitor import StreamMonitor
 
 log = get_logger(__name__)
 
 _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
+_bridge: PgNotifyBridge | None = None
+_monitor: StreamMonitor | None = None
 
 
 async def setup(db_pool_size=None, sync_db=False):
@@ -43,6 +49,28 @@ async def setup(db_pool_size=None, sync_db=False):
     log.info('Connected to database')
     await get_redis()
 
+    global _bridge, _monitor
+    if redis_available():
+        try:
+            redis = await get_redis()
+            _bridge = PgNotifyBridge(
+                redis=redis,
+                create_conn=db.conn.create_conn,
+            )
+            await _bridge.start()
+            log.info('PG notify bridge started')
+
+            from services.redis_streams import StreamConsumer
+            _monitor = StreamMonitor(StreamConsumer(redis), poll_interval=15.0)
+            _monitor.register('events:ingestion', 'ingestion-service')
+            set_stream_monitor(_monitor)
+            await _monitor.start()
+            log.info('Stream monitor started')
+        except Exception:
+            log.warning('Failed to start bridge/monitor', exc_info=True)
+            _bridge = None
+            _monitor = None
+
     if sync_db:
         async with db.conn.get_conn() as conn:
             for t in Table.tables:
@@ -57,6 +85,19 @@ async def setup(db_pool_size=None, sync_db=False):
 
 
 async def teardown():
+    global _bridge, _monitor
+    if _monitor is not None:
+        try:
+            await _monitor.stop()
+        except Exception:
+            log.warning('Monitor stop error', exc_info=True)
+        _monitor = None
+    if _bridge is not None:
+        try:
+            await _bridge.stop()
+        except Exception:
+            log.warning('Bridge stop error', exc_info=True)
+        _bridge = None
     await db.conn.teardown()
     await es.teardown()
     from api.redis_client import close_client as close_redis

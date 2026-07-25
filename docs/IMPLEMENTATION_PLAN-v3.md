@@ -1,0 +1,969 @@
+# QuantumPACS v3.0 — Implementation Plan
+
+**Derived from:** `docs/PRD-v3.md`
+**Prerequisite:** `docs/IMPLEMENTATION_PLAN.md` (Production Hardening S0–S8)
+**Total phases:** 9 (Phase 0 = existing hardening + 8 new phases)
+**Estimate:** 30–40 weeks from Phase 0 completion
+**Parallel tracks:** Up to 4 concurrent agents per phase
+
+---
+
+## Dependency Graph
+
+```
+Phase 0: Hardening ─────────────────────────────────────────  (see IMPLEMENTATION_PLAN.md)
+  │
+  ▼
+Phase 1: Foundation ────────────────────────────────────────  (Redis Streams, module boundaries)
+  │
+  ▼
+Phase 2: Auth & Tenancy ────────────────────────────────────  (DB-per-tenant, OAuth, RBAC)
+  │
+  ├──────────────────────────────────────┐
+  ▼                                      ▼
+Phase 3: DICOM Core                 Phase 4: Integration
+  (MWL, C-MOVE, DICOMweb)              (HL7 MLLP, FHIR R4)
+  │                                      │
+  └──────────┬───────────────────────────┘
+             ▼
+        Phase 5: Observability ─────────────────────────────  (Prometheus, OTLP, JSON logs)
+             │
+             ▼
+        Phase 6: Frontend v3 ───────────────────────────────  (RBAC UI, tenant switcher, OAuth, mobile)
+             │
+             ▼
+        Phase 7: Verification ──────────────────────────────  (k6 nightly, IHE, OWASP, dep audit)
+             │
+             ▼
+        Phase 8: v1→v2 Migration ───────────────────────────  (dual-write, dep headers, docs)
+             │
+             ▼
+        v3.0 GA ●
+             │
+             ▼
+        Phase 9: v3.1 RIS ──────────────────────────────────  (scheduling, worklist, reporting, portal)
+```
+
+---
+
+## TDD Workflow
+
+Every feature in Phases 1–8 follows the vertical-slice TDD pattern established in the TDD skill:
+
+```
+RED:   Write one integration test for the behavior → test fails
+GREEN: Write minimal code to pass → test passes
+REFACTOR: Clean up, deepen modules, run tests after each change
+```
+
+**Test location conventions:**
+- Integration tests for Phase 1–2 (infrastructure): `backend/tests/integration/test_redis_streams.py`, etc.
+- Integration tests for Phase 3–4 (DICOM, HL7, FHIR): `backend/tests/integration/test_dicomweb.py`, etc.
+- API endpoint tests: `backend/tests/integration/test_api_v2_*.py`
+- Auth/RBAC tests: `backend/tests/integration/test_auth_v2.py`, `backend/tests/integration/test_rbac.py`
+- Frontend tests per file: `frontend/src/<module>/<Component>.test.tsx`
+
+**Test fixtures:**
+- `conftest.py` at `backend/tests/` provides async fixtures:
+  - `test_db` — temporary PostgreSQL database (via testcontainers or ephemeral PG)
+  - `test_redis` — ephemeral Redis instance (via testcontainers)
+  - `test_client` — Starlette TestClient authenticated as specific roles
+  - `test_tenant` — provisioned test tenant with known data
+  - `test_dicom_file` — synthetic DICOM file with known metadata
+
+**Coverage gates:**
+- Backend: `pytest --cov --cov-fail-under=80`
+- Frontend: `vitest run --coverage --coverage.threshold.functions=60`
+
+---
+
+## Phase 0 — Production Hardening (Prerequisite)
+
+**Reference:** `docs/IMPLEMENTATION_PLAN.md` (Sprints 0–8)
+**Effort:** 9 sprints, ~15–25 engineer-days
+**Gate:** All 12 critical and 32 high-severity findings fixed. Backend tests pass with `-W error::Warning`.
+
+No v3 feature work begins until Phase 0 is complete. The hardening work is tracked in the existing `IMPLEMENTATION_PLAN.md` and is not duplicated here.
+
+---
+
+## Phase 1 — Foundation (Weeks 1–2)
+
+### Objective
+Lay the infrastructure that all v3 features depend on: Redis Streams message bus, modular monolith internal service boundaries, tenant registry database, and the OpenTelemetry instrumentation foundation.
+
+### Features
+
+#### F1.1: Redis Streams Message Bus
+**Effort:** 1 week | **Parallel tracks:** 2
+**TDD pattern:** One integration test per stream consumer group.
+
+- [ ] **F1.1a — Stream setup**
+  - [ ] Add `redis_streams.py` module: `StreamProducer`, `StreamConsumer` classes wrapping `aioredis`
+  - [ ] RED: write test that publishes to `events:ingestion` and consumer group receives the message
+  - [ ] GREEN: implement `StreamProducer.publish(stream, data)` and `StreamConsumer.poll(stream, group, consumer)`
+  - [ ] Streams: `events:ingestion`, `events:sync`, `events:notify`, `events:auth`
+  - [ ] `maxlen=100000` per stream with approximate trimming
+  - [ ] Consumer group creation on module init (idempotent)
+
+- [ ] **F1.1b — Bridge from LISTEN/NOTIFY**
+  - [ ] RED: write test verifying that a PG notify event produces a Redis Stream message
+  - [ ] GREEN: implement `PgNotifyBridge` — subscribes to PG `events` channel, publishes to `events:ingestion`
+  - [ ] This allows legacy `sync.py` to coexist during transition
+
+- [ ] **F1.1c — Monitoring**
+  - [ ] Expose consumer group lag per stream via Prometheus gauge
+  - [ ] RED: verify metric appears after publish
+  - [ ] GREEN: add counter metrics for messages produced/consumed, latency histogram
+
+#### F1.2: Modular Monolith Service Boundaries
+**Effort:** 1 week | **Parallel tracks:** 1
+**TDD pattern:** Refactor tests — existing behavior must not change.
+
+- [ ] **F1.2a — Module interfaces**
+  - [ ] Define Python package-internal interfaces for: `MetadataService`, `StorageService`, `SearchService`, `AuthService`, `NotificationService`
+  - [ ] Each interface is an Abstract Base Class or Protocol in a `services/` package
+  - [ ] Existing `db/`, `storage/`, `es/`, `api/auth.py` implementations become concrete classes implementing the interfaces
+  - [ ] RED: existing tests continue to pass (refactor safety)
+  - [ ] GREEN: wire implementations through the interface (no behavior change)
+
+- [ ] **F1.2b — Dependency injection**
+  - [ ] Replace module-level singletons with a `ServiceRegistry` class
+  - [ ] `ServiceRegistry` initialized in `app.py` lifespan, passed to route handlers via `request.state.services`
+  - [ ] RED: test that a route handler receives the expected service instance
+  - [ ] GREEN: implement `ServiceRegistry.get()` and injection middleware
+
+- [ ] **F1.2c — Ingestion service scaffold**
+  - [ ] Create `backend/services/ingestion/` package with its own `main()`, entry point
+  - [ ] Ingestion service subscribes to `events:ingestion` stream
+  - [ ] RED: publish `study.stored` event, verify ingestion service processes it
+  - [ ] GREEN: implement minimal consumer that logs received events (real processing in Phase 3)
+
+#### F1.3: Tenant Registry Database
+**Effort:** 0.5 week
+**TDD pattern:** Integration test against dedicated registry DB.
+
+- [ ] **F1.3a — Schema and provisioning**
+  - [ ] Create `tenants` table in registry database (`quantumpacs_tenants`):
+    - `id UUID PK`, `name TEXT`, `slug TEXT UNIQUE`, `domain TEXT`, `db_name TEXT`, `db_host TEXT`, `db_port INT`, `db_user TEXT`, `db_password_encrypted TEXT`, `status TEXT`, `storage_quota_bytes BIGINT`, `storage_used_bytes BIGINT`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`
+  - [ ] RED: test that provisioning a tenant creates a new database, runs migrations, inserts registry row
+  - [ ] GREEN: implement `TenantProvisioner.provision(slug, domain, admin_email)` — creates PG database, runs `alembic upgrade head` on it, creates initial `tenant_admin` user, inserts registry row
+  - [ ] Add `TenantConnectionPool.get(slug) → asyncpg.Pool` — lazy-create pool per tenant, TTL-based eviction
+  - [ ] RED: test that cross-tenant query returns data only from the correct database
+  - [ ] GREEN: verify connection isolation
+
+- [ ] **F1.3b — Tenant resolution middleware**
+  - [ ] Extract tenant from: `X-Tenant-ID` header, JWT `tenant` claim, or domain-based resolution for super-admin
+  - [ ] RED: test that request with `X-Tenant-ID: hospital-a` routes to `hospital_a` pool
+  - [ ] GREEN: implement `TenantMiddleware` that attaches `request.state.tenant` and `request.state.db_pool`
+
+#### F1.4: OpenTelemetry Foundation (Scaffold)
+**Effort:** 0.5 week
+
+- [ ] **F1.4a — Instrumentation**
+  - [ ] Add `opentelemetry-api`, `opentelemetry-sdk`, `opentelemetry-instrumentation-starlette` to requirements
+  - [ ] RED: verify that a traced request produces a span with `http.method`, `http.route`
+  - [ ] GREEN: install OTel middleware in `app.py`, configure `OTEL_EXPORTER_OTLP_ENDPOINT` env var
+  - [ ] Export spans to console in development, to OTLP collector in production
+
+- [ ] **F1.4b — Trace propagation**
+  - [ ] Inject `traceparent` header into Redis Stream messages, asyncpg queries, outbound HTTP calls
+  - [ ] RED: test that a stream consumer span has the parent trace ID from the producer
+  - [ ] GREEN: implement W3C Trace Context propagator for Redis Streams and asyncpg
+
+### Phase 1 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/ -v --tb=short -W error::Warning --cov --cov-fail-under=80
+cd backend && python -m pytest tests/ -v --tb=short -W error::Warning  # existing tests must still pass
+```
+
+---
+
+## Phase 2 — Auth & Tenancy (Weeks 3–8)
+
+### Objective
+Replace the v2 `admin` boolean with full RBAC, add OAuth/OIDC SSO, and make all auth flows tenant-aware.
+
+### Features
+
+#### F2.1: RBAC Model
+**Effort:** 1.5 weeks | **Parallel tracks:** 2
+
+- [ ] **F2.1a — Database schema**
+  - [ ] Add `roles` table: `id UUID PK`, `name TEXT`, `slug TEXT UNIQUE`, `permissions JSONB`, `built_in BOOL DEFAULT false`, `tenant_id TEXT` (null for global roles)
+  - [ ] Add `users.role_id` FK to `roles`, `users.oauth_sub` nullable text, `users.groups` JSONB
+  - [ ] Mark `users.admin` as deprecated (keep for v1 compat)
+  - [ ] RED: test that a user with `technologist` role cannot call `DELETE /api/v2/users`
+  - [ ] GREEN: implement permission check in auth middleware — decode role+permissions from JWT, compare against required permission for route
+
+- [ ] **F2.1b — Permission registry**
+  - [ ] Define `Permission` enum: `FILE_READ`, `FILE_WRITE`, `FILE_DELETE`, `PATIENT_READ`, `PATIENT_WRITE`, `STUDY_READ`, `STUDY_WRITE`, `USER_READ`, `USER_WRITE`, `USER_DELETE`, `USER_ADMIN`, `REPLICA_READ`, `REPLICA_WRITE`, `REPLICA_DELETE`, `LOG_READ`, `TENANT_READ`, `TENANT_WRITE`, `TENANT_ADMIN`, `ROLE_READ`, `ROLE_WRITE`, `ROLE_DELETE`
+  - [ ] Decorate each v2 route with `@requires_permission(Permission.FILE_READ)`
+  - [ ] RED: test that requesting a route without the required permission returns 403
+  - [ ] GREEN: implement `requires_permission` decorator that checks JWT permissions
+
+- [ ] **F2.1c — Role CRUD API**
+  - [ ] `GET /api/v2/roles`, `POST /api/v2/roles`, `PUT /api/v2/roles/{id}`, `DELETE /api/v2/roles/{id}`
+  - [ ] Seed default roles on tenant provision
+  - [ ] RED: test admin creates custom role, assigns to user, user exercises new permissions
+  - [ ] GREEN: implement role CRUD in `api/v2/roles.py`
+
+#### F2.2: OAuth/OIDC Provider Integration
+**Effort:** 2 weeks | **Parallel tracks:** 2
+
+- [ ] **F2.2a — Provider configuration**
+  - [ ] Add `oauth_providers` table: `id UUID PK`, `tenant_id TEXT`, `issuer TEXT`, `client_id TEXT`, `client_secret_encrypted TEXT`, `jwks_uri TEXT`, `groups_claim TEXT`, `auto_provision BOOL`, `enabled BOOL`
+  - [ ] Add `api/v2/oauth/providers` CRUD endpoints (super/tenant admin)
+  - [ ] RED: test that configuring an OIDC provider and attempting login returns a redirect to the IdP
+  - [ ] GREEN: implement OIDC discovery document fetch, PKCE code verifier generation, authorization URL redirect
+
+- [ ] **F2.2b — Login and callback**
+  - [ ] `GET /api/v2/oauth/login?idp=<slug>` — initiate flow
+  - [ ] `GET /api/v2/oauth/callback?code=...&state=...` — handle IdP redirect
+  - [ ] RED: test callback with valid code returns JWT; invalid code returns 401
+  - [ ] GREEN: implement token exchange, JWKS verification, `id_token` parsing, user lookup/provision
+
+- [ ] **F2.2c — JIT provisioning and group→role mapping**
+  - [ ] On first OAuth login for an email, auto-create user in the resolved tenant
+  - [ ] Map IdP `groups` claim to QuantumPACS role via configurable rules
+  - [ ] RED: test that a user logging in via OAuth for the first time gets a JIT-provisioned account with the correct role
+  - [ ] GREEN: implement provisioning logic in callback handler
+
+- [ ] **F2.2d — OIDC discovery endpoint**
+  - [ ] `GET /api/v2/.well-known/openid-configuration` returns standard OIDC discovery doc
+  - [ ] RED: test that external client can discover auth endpoints
+  - [ ] GREEN: implement `/api/v2/oauth/login` as `authorization_endpoint`, `/api/v2/oauth/token` as `token_endpoint`
+
+#### F2.3: DB-per-Tenant Connection Routing
+**Effort:** 1.5 weeks | **Parallel tracks:** 1
+
+- [ ] **F2.3a — Pool management**
+  - [ ] `TenantConnectionPool` with per-tenant pool lifecycle
+  - [ ] Max pools configurable (default: 50); idle eviction after 5 min TTL
+  - [ ] RED: test that connecting to an unknown tenant raises `TenantNotFound`
+  - [ ] GREEN: implement pool creation, caching, eviction, error handling
+
+- [ ] **F2.3b — Tenant-aware Alembic**
+  - [ ] `alembic upgrade --tenant=<slug>` runs migrations against that tenant's database
+  - [ ] `./manage tenant migrate` iterates all tenants
+  - [ ] RED: test that adding a new column in a migration is applied to all tenant databases
+  - [ ] GREEN: modify Alembic `env.py` to accept `--tenant` parameter
+
+- [ ] **F2.3c — Cross-tenant isolation fuzz test**
+  - [ ] Property-based test: for N tenant pairs, verify that querying tenant A's connection never returns tenant B's data
+  - [ ] RED: fuzz test reveals isolation breach → fix routing bug
+  - [ ] GREEN: all isolation checks pass
+
+#### F2.4: JWT Enhancements
+**Effort:** 1 week
+
+- [ ] **F2.4a — Token claims**
+  - [ ] Add `role`, `permissions`, `tenant`, `jti` claims to all new tokens (v2 compatibility: tokens without these claims still work but get `admin`-boolean behavior)
+  - [ ] RED: test that a v3 token with `role=technologist` is denied from admin routes
+  - [ ] GREEN: implement claim encoding in `tokens.py`
+
+- [ ] **F2.4b — Token blocklist (Redis)**
+  - [ ] Extend existing `tokens.py` blocklist (already uses Redis db=1)
+  - [ ] On logout, password change, role change, permission change → blocklist `jti` with TTL of token expiry
+  - [ ] RED: test that a blocked token returns 401 on next request
+  - [ ] GREEN: implement blocklist middleware
+
+- [ ] **F2.4c — Token refresh**
+  - [ ] Issue refresh tokens (14-day TTL) alongside access tokens (1-hour TTL)
+  - [ ] `POST /api/v2/auth/refresh` — exchange refresh token for new access token
+  - [ ] RED: test that access token expiry returns 401, refresh returns new token
+  - [ ] GREEN: implement refresh flow
+
+#### F2.5: Tenant Admin UI (Backend)
+**Effort:** 1 week
+
+- [ ] **F2.5a — Tenant provisioning API**
+  - [ ] `POST /api/v2/tenants` — super admin creates tenant
+  - [ ] `GET /api/v2/tenants` — list all tenants with health status
+  - [ ] `DELETE /api/v2/tenants/{id}` — decommission (soft-delete, quarantine period)
+  - [ ] RED: test full provision→use→decommission lifecycle
+  - [ ] GREEN: implement tenant CRUD with provisioning orchestration
+
+- [ ] **F2.5b — Tenant stats API**
+  - [ ] `GET /api/v2/tenants/{id}/stats` — storage used, user count, study count, last activity
+  - [ ] RED: test that stats reflect actual usage after study upload
+  - [ ] GREEN: implement stats aggregation queries
+
+### Phase 2 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/test_auth_v2.py tests/integration/test_rbac.py tests/integration/test_tenancy.py -v --tb=short --cov --cov-fail-under=80
+cd backend && python -m pytest tests/ -v --tb=short  # existing tests must still pass
+```
+
+---
+
+## Phase 3 — DICOM Core (Weeks 9–16)
+
+### Objective
+Add MWL SCP, C-MOVE/C-GET, and full DICOMweb (QIDO-RS, STOW-RS, WADO-RS, WADO-URI).
+
+### Features
+
+#### F3.1: DICOM Modality Worklist SCP
+**Effort:** 2 weeks | **Parallel tracks:** 1
+
+- [ ] **F3.1a — MWL SCP listener**
+  - [ ] Add MWL C-FIND handler to `dcm/server.py` on port 11113 (configurable)
+  - [ ] RED: test that a modality C-FIND with `ScheduledProcedureStepStartDate=20260725` returns matching worklist entries
+  - [ ] GREEN: implement `c_find_handler` that queries `worklist_entries` table and returns DICOM MWL attributes
+
+- [ ] **F3.1b — Worklist entry management**
+  - [ ] Add `worklist_entries` table: `id UUID PK`, `patient_id TEXT`, `patient_name TEXT`, `accession_number TEXT`, `requested_procedure_id TEXT`, `scheduled_procedure_step_start_date DATE`, `scheduled_procedure_step_start_time TIME`, `modality TEXT`, `station_ae_title TEXT`, `status TEXT`, `created_at TIMESTAMPTZ`
+  - [ ] RED: test that a worklist entry created via API appears in C-FIND results
+  - [ ] GREEN: implement `POST /api/v2/worklist` admin endpoint for manual entry creation
+  - [ ] Entries can be created by: admin UI, HL7 ORM handler (Phase 4), or automated import
+
+- [ ] **F3.1c — MWL status tracking**
+  - [ ] When C-STORE receives a study matching a worklist entry, mark entry as `performed`
+  - [ ] RED: test that C-STORE with matching accession number updates worklist status
+  - [ ] GREEN: implement worklist status update in C-STORE handler
+
+#### F3.2: DICOM C-MOVE / C-GET
+**Effort:** 2 weeks | **Parallel tracks:** 1
+
+- [ ] **F3.2a — C-MOVE SCP**
+  - [ ] Add C-MOVE handler to `dcm/server.py` on port 11114
+  - [ ] RED: test that a C-MOVE request for a study UID initiates transfer to requesting AE
+  - [ ] GREEN: implement C-MOVE SCP that reads study from storage and transmits via C-STORE to the requesting AE
+
+- [ ] **F3.2b — C-GET SCP**
+  - [ ] Add C-GET handler (subset: sub-operations per instance)
+  - [ ] RED: test that C-GET retrieves all instances of a series
+  - [ ] GREEN: implement C-GET SCP
+
+- [ ] **F3.2c — Remote PACS management**
+  - [ ] Add `remote_aets` table: `slug TEXT PK`, `ae_title TEXT`, `host TEXT`, `port INT`, `description TEXT`
+  - [ ] `GET/POST/DELETE /api/v2/remote-aets` admin endpoints
+  - [ ] RED: test C-MOVE to a configured remote PACS destination
+  - [ ] GREEN: implement C-MOVE SCU (outgoing move) using `pynetdicom` Association
+
+#### F3.3: DICOMweb QIDO-RS
+**Effort:** 1.5 weeks | **Parallel tracks:** 2
+
+- [ ] **F3.3a — Study search**
+  - [ ] `GET /api/v2/dicomweb/studies?PatientID=...&Modality=...&StudyDate=...`
+  - [ ] Return `application/dicom+json` with DICOM JSON model for each study
+  - [ ] RED: test that QIDO-RS returns matching studies in correct DICOM JSON format
+  - [ ] GREEN: implement query builder mapping DICOM tags to DB columns, return DICOM JSON Model per PS3.18
+
+- [ ] **F3.3b — Series and instance search**
+  - [ ] `GET /api/v2/dicomweb/series?StudyInstanceUID=...`
+  - [ ] `GET /api/v2/dicomweb/instances?SeriesInstanceUID=...`
+  - [ ] RED: test hierarchical search (study→series→instance)
+  - [ ] GREEN: extend query builder to series and instances tables
+
+- [ ] **F3.3c — Pagination and error handling**
+  - [ ] `offset`/`limit` parameters; `X-Total-Count` header
+  - [ ] Unsupported query parameters return 400 with DICOMweb error body
+  - [ ] RED: test that an unsupported query parameter returns 400
+  - [ ] GREEN: implement parameter validation
+
+#### F3.4: DICOMweb STOW-RS
+**Effort:** 1.5 weeks | **Parallel tracks:** 2
+
+- [ ] **F3.4a — Multipart receive**
+  - [ ] `POST /api/v2/dicomweb/studies` with `Content-Type: multipart/related; type=application/dicom`
+  - [ ] Parse multipart body, extract DICOM datasets per part
+  - [ ] RED: test STOW-RS with valid multipart body → returns 200 with success
+  - [ ] GREEN: implement multipart parser delegating to existing `dcm/file.py::parse_dcm` for each part
+
+- [ ] **F3.4b — STOW→C-STORE bridge**
+  - [ ] STOW-RS received instances stored identically to C-STORE (same metadata extraction, SHA-256 dedup, storage backend write, indexing, sync trigger)
+  - [ ] RED: test that STOW-RS and C-STORE produce identical DB state for the same DICOM content
+  - [ ] GREEN: STOW handler reuses the same `files.add()` code path
+
+- [ ] **F3.4c — Error responses**
+  - [ ] Malformed body → `400` with DICOMweb error JSON
+  - [ ] Duplicate instance → `409` with existing instance UID
+  - [ ] RED: test each error case
+  - [ ] GREEN: implement error handling per PS3.18
+
+#### F3.5: DICOMweb WADO-RS
+**Effort:** 1.5 weeks | **Parallel tracks:** 2
+
+- [ ] **F3.5a — Retrieve study**
+  - [ ] `GET /api/v2/dicomweb/studies/{studyUID}` → `multipart/related; type=application/dicom`
+  - [ ] `GET /api/v2/dicomweb/studies/{studyUID}/metadata` → `application/dicom+json`
+  - [ ] RED: test that retrieving a study returns all instances as multipart DICOM
+  - [ ] GREEN: implement study retrieval from storage backend, assemble multipart response
+
+- [ ] **F3.5b — Retrieve series and instance**
+  - [ ] Series-level and instance-level WADO-RS
+  - [ ] RED: test series-level retrieve returns correct subset
+  - [ ] GREEN: implement scoped retrieval
+
+- [ ] **F3.5c — Frame retrieval and thumbnails**
+  - [ ] `GET .../frames/{frameNumbers}` → `application/octet-stream` or `image/png`
+  - [ ] `?viewport=100,100` renders thumbnail using pydicom + PIL
+  - [ ] RED: test that thumbnail endpoint returns valid PNG
+  - [ ] GREEN: implement single-frame extraction and PNG rendering
+
+#### F3.6: DICOMweb WADO-URI
+**Effort:** 0.5 week
+
+- [ ] **F3.6a — Legacy URI endpoint**
+  - [ ] `GET /api/v2/wado?requestType=WADO&studyUID=...&seriesUID=...&objectUID=...&contentType=application/dicom`
+  - [ ] RED: test that WADO-URI returns same data as WADO-RS for same study
+  - [ ] GREEN: WADO-URI handler delegates to WADO-RS internals
+
+### Phase 3 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/test_dicomweb.py tests/integration/test_dicom_v3.py -v --tb=short --cov --cov-fail-under=80
+cd backend && python -m pytest tests/test_dcm.py tests/test_dcm_file.py -v --tb=short  # existing DICOM tests pass
+```
+
+---
+
+## Phase 4 — Integration (Weeks 17–22)
+
+### Objective
+Add HL7 v2.x MLLP listener and FHIR R4 API for external RIS/EHR integration.
+
+### Features
+
+#### F4.1: HL7 v2.x MLLP Listener
+**Effort:** 3 weeks | **Parallel tracks:** 2
+
+- [ ] **F4.1a — MLLP server**
+  - [ ] Create `backend/services/ingestion/hl7_server.py` — TCP server with MLLP framing (start块 `0x0B`, end块 `0x1C0D`)
+  - [ ] Configurable port (default 12579), TLS support
+  - [ ] `hl7` library (or `python-hl7`) for message parsing
+  - [ ] RED: test that a raw HL7 ADT-A01 message sent to MLLP port results in a new patient record
+  - [ ] GREEN: implement MLLP receiver, basic HL7 parser, patient upsert logic
+
+- [ ] **F4.1b — ADT message handlers**
+  - [ ] ADT-A01 (admit) → create/update patient; `PatientClass` mapping
+  - [ ] ADT-A08 (update) → update patient demographics
+  - [ ] ADT-A03 (discharge) → mark patient inactive; optional `DischargeDatetime`
+  - [ ] ADT-A04 (registration), ADT-A05 (preadmit) → create patient if new
+  - [ ] RED: test each ADT event type produces correct DB state
+  - [ ] GREEN: implement per-event-type handlers with field mapping
+
+- [ ] **F4.1c — ORM message handler**
+  - [ ] ORM-O01 → create/update worklist entry (links to patient, stores requested procedure)
+  - [ ] Map HL7 ORC and OBR segments to DICOM MWL attributes
+  - [ ] RED: test that ORM-O01 creates a queryable MWL entry
+  - [ ] GREEN: implement ORM handler delegating to `worklist_entries` table
+
+- [ ] **F4.1d — Audit and error handling**
+  - [ ] Every received HL7 message logged with SHA-256 hash for non-repudiation
+  - [ ] Unknown segment types logged but non-fatal
+  - [ ] Malformed messages rejected with MLLP NACK
+  - [ ] RED: test each error path
+  - [ ] GREEN: implement error handling, audit logging
+
+#### F4.2: FHIR R4 API
+**Effort:** 3 weeks | **Parallel tracks:** 2
+
+- [ ] **F4.2a — FHIR server scaffold**
+  - [ ] Add `fhir.resources` or build minimal FHIR resource serializers
+  - [ ] CapabilityStatement at `GET /api/v2/fhir/metadata`
+  - [ ] RED: test that `GET /fhir/metadata` returns valid CapabilityStatement with `application/fhir+json`
+  - [ ] GREEN: implement CapabilityStatement builder (supported resources, interactions, operations)
+
+- [ ] **F4.2b — Patient resource**
+  - [ ] `GET /api/v2/fhir/Patient` — search by `identifier`, `name`, `birthdate`, `_lastUpdated`
+  - [ ] `GET /api/v2/fhir/Patient/{id}` — read by database ID
+  - [ ] RED: test search and read return FHIR Patient resources with correct fields
+  - [ ] GREEN: implement Patient→FHIR mapping (mapping table: `patients.name`→`Patient.name[0].text`, `patients.birth_date`→`Patient.birthDate`, etc.)
+
+- [ ] **F4.2c — ImagingStudy resource**
+  - [ ] `GET /api/v2/fhir/ImagingStudy` — search by `patient`, `accession`, `modality`, `started`, `_lastUpdated`
+  - [ ] `GET /api/v2/fhir/ImagingStudy/{id}` — read with nested `series` and `instance` entries
+  - [ ] `ImagingStudy.endpoint` references the DICOMweb WADO-RS base URL
+  - [ ] RED: test that ImagingStudy search returns studies with correct modality and date range
+  - [ ] GREEN: implement ImagingStudy→FHIR mapping
+
+- [ ] **F4.2d — DocumentReference resource (report placeholder)**
+  - [ ] `GET /api/v2/fhir/DocumentReference` — search by `patient`, `type`, `period`
+  - [ ] `GET /api/v2/fhir/DocumentReference/{id}` — read
+  - [ ] Initially returns references to share links or external report URLs (full SR integration in v3.1)
+  - [ ] RED: test DocumentReference search returns correct references
+  - [ ] GREEN: implement basic DocumentReference resource
+
+#### F4.3: Study Routing Rules
+**Effort:** 1 week
+
+- [ ] **F4.3a — Rule engine**
+  - [ ] Add `routing_rules` table: `id UUID PK`, `tenant_id TEXT`, `priority INT`, `condition JSONB` (e.g., `{"modality": "CT", "study_description": {"contains": "CHEST"}}`), `action JSONB` (`{"replica_target": "replica_2"}`), `enabled BOOL`
+  - [ ] RED: test that uploading a CT CHEST study routes to `replica_2`
+  - [ ] GREEN: implement rule evaluation triggered on file ingestion (in Redis Streams consumer)
+
+- [ ] **F4.3b — Rule CRUD API**
+  - [ ] `GET/POST /api/v2/routing-rules`, `PUT/DELETE /api/v2/routing-rules/{id}`
+  - [ ] RED: test admin creates, modifies, deletes rule
+  - [ ] GREEN: implement CRUD endpoints
+
+### Phase 4 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/test_hl7.py tests/integration/test_fhir.py tests/integration/test_routing.py -v --tb=short --cov --cov-fail-under=80
+```
+
+---
+
+## Phase 5 — Observability (Weeks 23–24)
+
+### Objective
+Structured JSON logging, Prometheus metrics in exposition format, OpenTelemetry tracing end-to-end, component health checks.
+
+### Features
+
+#### F5.1: Structured Logging
+**Effort:** 0.5 week
+
+- [ ] **F5.1a — JSON formatter**
+  - [ ] Replace plain-text `logging.Formatter` with JSON formatter in `log.py`
+  - [ ] Fields: `timestamp` (ISO8601), `level`, `logger`, `message`, `request_id`, `tenant`, `user_id`, `trace_id`, `span_id`, `error` (if exception)
+  - [ ] RED: test that log output is valid JSON with required fields
+  - [ ] GREEN: implement JSON formatter; add `request_id` propagation (already scaffolded)
+
+- [ ] **F5.1b — Structured error logging**
+  - [ ] All unhandled errors logged with stack trace in the `error.stack` field (not in message)
+  - [ ] RED: test that a 500 error produces a structured JSON log entry
+  - [ ] GREEN: implement error middleware that captures exception context
+
+#### F5.2: Prometheus Metrics
+**Effort:** 1 week
+
+- [ ] **F5.2a — Standard metrics**
+  - [ ] Replace `backend/api/telemetry.py` in-memory counters with `prometheus_client` metrics
+  - [ ] `starlette_exporter` or manual metrics middleware:
+    - `http_requests_total` (labels: method, path, status)
+    - `http_request_duration_seconds` (histogram, labels: method, path)
+    - `http_request_in_progress` (gauge)
+    - `db_pool_available`, `db_pool_in_use` (per-tenant gauge)
+    - `redis_stream_lag_seconds` (gauge per stream per consumer group)
+    - `dicom_cstore_throughput_bytes` (counter)
+    - `dicomweb_requests_total` (labels: method, resource)
+  - [ ] RED: test that `/api/v2/metrics` returns valid Prometheus exposition format
+  - [ ] GREEN: instrument all metric sources
+
+- [ ] **F5.2b — Metrics endpoint**
+  - [ ] `GET /api/v2/metrics` returns Prometheus text format
+  - [ ] Protected: admin/read-only access
+  - [ ] RED: test that non-admin gets 403 on metrics endpoint
+  - [ ] GREEN: add auth guard
+
+#### F5.3: Health Checks
+**Effort:** 0.5 week
+
+- [ ] **F5.3a — Component-level health**
+  - [ ] `GET /api/v2/health` returns JSON:
+    ```json
+    {
+      "status": "ok",
+      "components": {
+        "database": { "status": "ok", "latency_ms": 2 },
+        "redis": { "status": "ok", "latency_ms": 1 },
+        "storage": { "status": "ok", "master": "local", "replicas": ["s3", "b2"] },
+        "elasticsearch": { "status": "degraded", "message": "ES unavailable, search fallback active" },
+        "dicom_listener": { "status": "ok", "port": 11112, "uptime_seconds": 86400 },
+        "ingestion_service": { "status": "ok", "stream_lag": 0 }
+      }
+    }
+    ```
+  - [ ] RED: test that component health reflects actual state (e.g., stop Redis → `redis` status `down`)
+  - [ ] GREEN: implement per-component health probes
+
+#### F5.4: OpenTelemetry Tracing (Deepen)
+**Effort:** 0.5 week
+
+- [ ] **F5.4a — AsyncPG tracing**
+  - [ ] Instrument `asyncpg` connection pool with OTel spans for each query
+  - [ ] RED: test that a DB query span appears in the trace with `db.statement` attribute
+  - [ ] GREEN: implement asyncpg tracing middleware (or use `opentelemetry-instrumentation-asyncpg`)
+
+- [ ] **F5.4b — Redis Streams tracing**
+  - [ ] Instrument each publish and consume operation with OTel spans
+  - [ ] Trace context propagation across stream producer→consumer boundary
+  - [ ] RED: test that consumer span has `messaging.destination` attribute
+  - [ ] GREEN: implement stream tracing
+
+### Phase 5 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/test_observability.py -v --tb=short --cov --cov-fail-under=80
+curl -s http://localhost:8080/api/v2/health | python -m json.tool  # all components OK
+curl -s http://localhost:8080/api/v2/metrics | head -20  # valid prom format
+```
+
+---
+
+## Phase 6 — Frontend v3 (Weeks 25–32)
+
+### Objective
+Update the React SPA for v3: RBAC-aware UI, tenant switcher, OAuth login, mobile-responsive viewer, DICOMweb client, metrics dashboard.
+
+### Features
+
+#### F6.1: RBAC-Aware UI
+**Effort:** 1.5 weeks | **Parallel tracks:** 3
+
+- [ ] **F6.1a — Auth store**
+  - [ ] Replace localStorage-based auth (`userId`, `admin`, `token`) with a React Context `AuthProvider`
+  - [ ] Context holds: `token`, `user`, `role`, `permissions`, `tenant`, `isAuthenticated`, `isLoading`
+  - [ ] Token refresh logic (intercept 401 → try refresh → redirect to login)
+  - [ ] RED (Playwright): test that a technician user does not see the "Admin" menu item
+  - [ ] GREEN: implement `AuthProvider`, `useAuth()` hook, `ProtectedRoute` with role/permission check
+
+- [ ] **F6.1b — Permission-gated components**
+  - [ ] Create `<RequirePermission perm="FILE_DELETE">` wrapper component
+  - [ ] Gate delete buttons, admin tabs, user management, replica management behind permissions
+  - [ ] RED (unit): test that `<RequirePermission perm="FILE_DELETE">` renders children for admin, null for technician
+  - [ ] GREEN: implement guard component reading from `AuthContext`
+
+- [ ] **F6.1c — Admin user/role management UI**
+  - [ ] Users page: show role column, dropdown to change role
+  - [ ] Roles page (new): list roles, create/edit/delete, permission checkboxes (grouped by resource)
+  - [ ] RED (Playwright): test that super admin can create a custom role with read-only files permission and assign it to a user
+  - [ ] GREEN: implement `Users.tsx` role management, `Roles.tsx` CRUD
+
+#### F6.2: Tenant Switcher (Super Admin)
+**Effort:** 1 week | **Parallel tracks:** 2
+
+- [ ] **F6.2a — Tenant selector**
+  - [ ] Sidebar header shows current tenant name; click opens tenant dropdown
+  - [ ] Dropdown lists all tenants with health indicator (green/yellow/red dot)
+  - [ ] Switching tenant re-fetches all data scoped to that tenant
+  - [ ] RED (Playwright): test that super admin switches tenant and dashboard shows that tenant's data
+  - [ ] GREEN: implement `TenantSwitcher` component, `TenantProvider` context
+
+- [ ] **F6.2b — Tenant management page**
+  - [ ] List view: tenants table with name, slug, domain, storage used/quota, study count, user count, status
+  - [ ] Provision tenant dialog: form with `slug`, `domain`, `admin_email`, `storage_quota`
+  - [ ] Decommission flow: confirmation dialog → soft delete → quarantine → purge after 30 days
+  - [ ] RED (Playwright): test provision→verify→decommission cycle
+  - [ ] GREEN: implement `Tenants.tsx`, `ProvisionTenant.tsx`
+
+#### F6.3: OAuth Login Screen
+**Effort:** 1 week | **Parallel tracks:** 2
+
+- [ ] **F6.3a — Login page update**
+  - [ ] Existing username/password form remains (for local JWT auth)
+  - [ ] Add "Sign in with SSO" section listing configured providers (Azure AD, Okta, Keycloak)
+  - [ ] Each provider has a branded button extracted from OIDC `issuer` metadata
+  - [ ] RED (Playwright): test that clicking "Sign in with Azure AD" redirects to IdP login
+  - [ ] GREEN: implement SSO button rendering from `/api/v2/oauth/providers` list
+
+- [ ] **F6.3b — OAuth callback handling**
+  - [ ] On return from IdP, the callback URL contains code in query params
+  - [ ] Frontend calls `POST /api/v2/oauth/token` with authorization code
+  - [ ] On success, stores httpOnly cookie (set by backend) and updates `AuthProvider`
+  - [ ] On failure, redirects back to login page with error message
+  - [ ] RED (Playwright): test full OAuth flow with mocked IdP
+  - [ ] GREEN: implement callback handler
+
+#### F6.4: Mobile-Responsive Viewer
+**Effort:** 2.5 weeks | **Parallel tracks:** 2
+
+- [ ] **F6.4a — Touch-optimized controls**
+  - [ ] Cornerstone3D touch gestures: pinch zoom, two-finger pan, tap-to-center, swipe-to-scroll-stack
+  - [ ] Custom toolbar for mobile: larger touch targets (min 44px), collapsible, bottom-anchored
+  - [ ] RED (Playwright mobile emulation): test that scroll tool works via swipe gesture
+  - [ ] GREEN: implement mobile interaction layer on top of Cornerstone3D tools
+
+- [ ] **F6.4b — Responsive layout**
+  - [ ] Below `768px`: sidebar collapses to bottom tab bar (Files, Patient, Viewer, Account tabs)
+  - [ ] Viewer: single-column layout, metadata table as collapsible drawer
+  - [ ] Thumbnail filmstrip for series navigation (horizontal scroll)
+  - [ ] RED (Playwright mobile): test responsive layout at 375×667 viewport
+  - [ ] GREEN: implement CSS Grid layout with breakpoint-aware component switching
+
+- [ ] **F6.4c — Progressive image loading**
+  - [ ] Load thumbnail first (JPEG, 256×256), then full-resolution viewport
+  - [ ] Configurable: always-thumbnail-first-on-mobile, optionally on desktop
+  - [ ] RED (Playwright): test that mobile viewport loads thumbnail before full-res
+  - [ ] GREEN: implement progressive loading in `CornerstoneElement` using `wadouri:` with `?viewport=` parameter
+
+- [ ] **F6.4d — PWA scaffold**
+  - [ ] Add `vite-plugin-pwa`, `public/manifest.json`
+  - [ ] Service worker caches static assets and recent study thumbnails
+  - [ ] "Install" prompt on supported browsers
+  - [ ] RED (Playwright): test that app registers service worker
+  - [ ] GREEN: implement PWA manifest, SW registration, basic cache strategy
+
+#### F6.5: Metrics Dashboard
+**Effort:** 1 week
+
+- [ ] **F6.5a — Dashboard page**
+  - [ ] `GET /api/v2/metrics` → render as dashboard cards: request rate, latency, active viewers, storage usage, DICOM throughput
+  - [ ] Charts: line chart for latency (p50/p95/p99) over last hour, bar chart for storage by tier
+  - [ ] RED (Playwright): test that dashboard loads and displays correct metrics
+  - [ ] GREEN: implement `Dashboard.tsx` with Chart.js or Ant Design Charts
+
+- [ ] **F6.5b — Health status summary**
+  - [ ] Component health pills (green/yellow/red) from `/api/v2/health`
+  - [ ] Click to expand: show component details and recent events
+  - [ ] RED: test that health pills reflect mock component states
+  - [ ] GREEN: implement health status display
+
+#### F6.6: DICOMweb Client (Viewer)
+**Effort:** 1 week
+
+- [ ] **F6.6a — WADO-RS retrieve in viewer**
+  - [ ] Add option to retrieve study via WADO-RS (`/api/v2/dicomweb/studies/{uid}`) instead of WADO-URI per-file
+  - [ ] Parse multipart DICOM response, load into Cornerstone3D stack
+  - [ ] RED: test that viewer loads study from WADO-RS endpoint
+  - [ ] GREEN: implement WADO-RS retrieve path in `CornerstoneElement`
+
+- [ ] **F6.6b — QIDO-RS search**
+  - [ ] Replace v2 search POST (`/api/files` → ES) with QIDO-RS GET (`/api/v2/dicomweb/studies?...`)
+  - [ ] Backward-compatible: keep v2 search as fallback
+  - [ ] RED: test that search results match between v2 and QIDO-RS
+  - [ ] GREEN: implement QIDO-RS search in `Files.tsx`
+
+### Phase 6 Gate
+
+```bash
+cd frontend && npx tsc --noEmit && npx vitest run --coverage --coverage.threshold.functions=60 && npx vite build
+cd frontend && npx playwright test --reporter=json  # all 10+ specs pass
+```
+
+---
+
+## Phase 7 — Verification (Weeks 33–35)
+
+### Objective
+Load testing, security scanning, IHE Connectathon preparation, and CI pipeline hardening.
+
+### Features
+
+#### F7.1: Load Testing (k6)
+**Effort:** 1 week
+
+- [ ] **F7.1a — API load test scenarios**
+  - Create `backend/tests/load/` with k6 scripts:
+    - `study_search.js` — QIDO-RS search at 50 RPS with 10k-study dataset
+    - `dicom_store.js` — C-STORE load at 150 MB/s sustained
+    - `dicomweb_store.js` — STOW-RS at 50 concurrent uploads
+    - `viewer_sessions.js` — 200 concurrent WebSocket clients
+    - `auth_flow.js` — OAuth login flow at 10 RPS
+  - [ ] RED: run scenarios against staging → identify bottlenecks
+  - [ ] GREEN: tune until p95 < 300ms at target RPS for all scenarios
+
+- [ ] **F7.1b — CI pipeline integration**
+  - [ ] k6 tests run nightly against staging environment
+  - [ ] Slack/email notification on regression (p95 exceeds threshold by >20%)
+  - [ ] RED: test that CI fails when latency exceeds threshold
+  - [ ] GREEN: implement CI workflow for k6
+
+#### F7.2: Security Scan (OWASP ZAP)
+**Effort:** 1 week
+
+- [ ] **F7.2a — Baseline scan**
+  - [ ] OWASP ZAP baseline scan against all `/api/v2/*` endpoints
+  - [ ] RED: scan reveals issues → fix or document as false positive
+  - [ ] GREEN: 0 high-risk findings; medium/low findings have documented justification
+
+- [ ] **F7.2b — CI integration**
+  - [ ] ZAP scan runs on every merge to `main`
+  - [ ] Fails build if any new high-risk finding introduced
+  - [ ] RED: intentionally introduce a finding → verify CI blocks merge
+  - [ ] GREEN: implement ZAP CI workflow
+
+#### F7.3: Dependency Auditing
+**Effort:** 0.5 week
+
+- [ ] **F7.3a — pip-audit + npm audit in CI**
+  - [ ] Already in CI from Phase 0 (hardening)
+  - [ ] Add `pip-audit` to pre-commit hooks
+  - [ ] RED: test that CI fails on known CVE dependency
+  - [ ] GREEN: configure audit tooling
+
+#### F7.4: IHE Connectathon Preparation
+**Effort:** 2 weeks
+
+- [ ] **F7.4a — DICOMweb self-certification**
+  - [ ] Run [IHE DICOMweb Test Suite](https://github.com/IHE/dicomweb-test-tool) against `/api/v2/dicomweb/*`
+  - [ ] RED: test suite reveals compliance gaps → fix before GA
+  - [ ] GREEN: all QIDO-RS, STOW-RS, WADO-RS tests pass
+
+- [ ] **F7.4b — Integration test suite**
+  - [ ] Implement the test tool's scenarios as pytest integration tests
+  - [ ] These tests run in CI, ensuring regression doesn't break conformance
+  - [ ] RED: test that a regression in WADO-RS is caught by CI
+  - [ ] GREEN: write pytest wrappers for all test tool assertions
+
+#### F7.5: Cross-Tenant Isolation Property Test
+**Effort:** 0.5 week
+
+- [ ] **F7.5a — Property-based isolation fuzzing**
+  - [ ] Using `hypothesis` (Python property-based testing):
+    ```python
+    @given(
+      tenant_a=strategies.text(min_size=1),
+      tenant_b=strategies.text(min_size=1).filter(lambda x: x != tenant_a)
+    )
+    async def test_isolation(tenant_a, tenant_b):
+        # Insert known data in tenant_a
+        # Query tenant_b's connection
+        # Assert no tenant_a data visible
+    ```
+  - [ ] RED: fuzz discovers isolation leak → fix routing bug
+  - [ ] GREEN: property test runs 1000 iterations, zero failures
+
+#### F7.6: E2E Test Expansion (Playwright)
+**Effort:** 1 week
+
+- [ ] **F7.6a — Ten critical flows**
+  1. Login (local JWT) → search → open study → scroll slices → logout
+  2. OAuth login (mocked IdP) → verify role-based sidebar
+  3. Super admin provisions new tenant → verifies in dashboard
+  4. Admin creates custom role → assigns to user → user exercises permission
+  5. Study upload via C-STORE → verify in search → verify in viewer
+  6. STOW-RS upload (via API) → verify same as C-STORE
+  7. HL7 ADT message → verify patient created → verify in FHIR /Patient
+  8. MWL C-FIND (via DICOM tool) → verify worklist entry returned
+  9. Share link generation → open in incognito → verify study accessible
+  10. Mobile viewport: login → search → open study → verify responsive layout
+  - [ ] RED: each flow starts as a failing test
+  - [ ] GREEN: all 10 flows pass in CI
+
+### Phase 7 Gate
+
+```bash
+cd backend/tests/load && k6 run study_search.js  # p95 < 300ms
+cd backend && python -m pytest tests/integration/test_isolation.py -v --tb=short  # 1000 property iterations
+cd frontend && npx playwright test --reporter=json  # 10/10 E2E specs pass
+pip-audit --fail-on=high  # 0 high-severity findings
+npm audit --audit-level=high  # 0 high-severity findings
+```
+
+---
+
+## Phase 8 — v1→v2 API Migration (Weeks 36–37)
+
+### Objective
+Make the v2 API the default, add version prefixes, deprecation headers, and dual-write compatibility.
+
+### Features
+
+#### F8.1: API Version Aliasing
+**Effort:** 1 week
+
+- [ ] **F8.1a — v1 route aliasing**
+  - [ ] Existing `/api/*` routes remain functional but now also register under `/api/v1/*`
+  - [ ] Internal implementation: Starlette `Mount` at `/api/v1` with the same route table
+  - [ ] New v2 routes under `/api/v2/*` using the new route modules
+  - [ ] RED: test that existing client calling `/api/files` gets same response as `/api/v1/files`
+  - [ ] GREEN: implement route aliasing in `routes.py`
+
+- [ ] **F8.1b — Deprecation headers**
+  - [ ] All `/api/v1/*` responses include `X-API-Deprecated: true` and `X-API-Sunset-Date: <v4.0 release date>`
+  - [ ] Upgrade guide published: `docs/migration-v1-to-v2.md`
+  - [ ] RED: test that v1 endpoints return deprecation headers
+  - [ ] GREEN: implement middleware adding deprecation headers to v1 routes
+
+#### F8.2: Dual-Write during Transition
+**Effort:** 0.5 week
+
+- [ ] **F8.2a — Shared data layer**
+  - [ ] v1 and v2 write operations (file upload, patient update, etc.) write to the same underlying tables
+  - [ ] No data duplication — v2 endpoints use the same `services/` interfaces as v1
+  - [ ] RED: test that uploading via v1 POST `/api/files/upload` makes the study visible via v2 GET `/api/v2/dicomweb/studies`
+  - [ ] GREEN: verify data sharing in integration tests
+
+#### F8.3: Documentation
+**Effort:** 0.5 week
+
+- [ ] **F8.3a — OpenAPI specs**
+  - [ ] `/api/docs` serves both v1 and v2 OpenAPI specs side by side
+  - [ ] Each spec annotated with version, deprecation status, and sunset date where applicable
+  - [ ] RED: test that both specs are valid OpenAPI 3.0
+  - [ ] GREEN: generate specs from route decorators
+
+### Phase 8 Gate
+
+```bash
+cd backend && python -m pytest tests/integration/test_api_v2.py tests/ -v --tb=short -W error::Warning  # all tests pass
+curl -sI http://localhost:8080/api/v1/files | grep -i "X-API-Deprecated"  # header present
+curl -s http://localhost:8080/api/v2/dicomweb/studies | python -m json.tool  # returns valid response
+```
+
+---
+
+## v3.0 GA ●
+
+**Release criteria (all must pass):**
+
+```bash
+# 1. All tests pass
+cd backend && python -m pytest tests/ -v --tb=short -W error::Warning --cov --cov-fail-under=80
+cd frontend && npx vitest run --coverage --coverage.threshold.functions=60
+cd frontend && npx playwright test --reporter=json
+
+# 2. TypeScript strict pass
+cd frontend && npx tsc --noEmit --strict
+
+# 3. Build pass
+cd frontend && npx vite build
+
+# 4. Security pass
+pip-audit --fail-on=high
+npm audit --audit-level=high
+
+# 5. Load test pass
+cd backend/tests/load && k6 run study_search.js && k6 run dicom_store.js && k6 run viewer_sessions.js
+
+# 6. Multi-tenant isolation pass
+cd backend && python -m pytest tests/integration/test_isolation.py -v --tb=short
+
+# 7. DICOMweb conformance pass
+cd backend && python -m pytest tests/integration/test_dicomweb_conformance.py -v --tb=short
+
+# 8. Upgrade from v2.0 (dry-run)
+./manage db backup
+alembic upgrade head
+./manage db restore --verify
+```
+
+---
+
+## Phase 9 — v3.1 RIS (Post-GA)
+
+**Scoped in `docs/ROADMAP-v3.md`:** Scheduling, worklist, reporting, billing-lite, physician portal.
+
+Not detailed here — a separate `IMPLEMENTATION_PLAN-v3.1.md` will be written after v3.0 GA.
+
+---
+
+## Rollback Plan
+
+| Scenario | Action |
+|----------|--------|
+| Phase 1 Redis Streams migration fails | `git revert` the Phase 1 branch; LISTEN/NOTIFY still works unmodified |
+| Phase 2 tenant provisioning creates broken DB | `./manage tenant deprovision <slug>` drops DB, removes registry row |
+| Phase 2 OAuth integration breaks login | Revert OAuth config; users fall back to local JWT login |
+| Phase 3 DICOMweb breaks existing viewer | Remove `/api/v2/*` nginx location; existing `/api/*` still serves WADO-URI |
+| Phase 4 HL7 integration corrupts patient data | `git revert` HL7 handler; restore patient data from pre-HL7 backup |
+| Phase 6 frontend regressions | Revert frontend branch; old SPA still works with v1 API |
+| Phase 8 API versioning confuses clients | Keep `/api/*` aliased to `/api/v1/*` indefinitely; extend sunset date |
+| Cross-cutting: any phase | Each phase is a feature branch → `git revert` restores main to working state |
+
+---
+
+## Risk Register
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Phase 0 hardening slips into v3 timeline | Medium | High | Hardening runs in parallel with Phase 1 planning; hard gate at Phase 2 |
+| DB-per-tenant connection pool memory exhaustion at scale | Medium | High | Idle pool eviction (TTL: 5 min); max pools configurable; per-pool cap at 8 conns |
+| OIDC integration failure with hospital IdP | High | High | Test against Azure AD + Okta + Keycloak before GA; maintain local JWT as fallback |
+| Redis Streams consumer lag during ingestion burst | Medium | Medium | Monitor lag via Prometheus; auto-scale consumers; configure maxlen |
+| DICOMweb spec interpretation differs from IHE expectations | Medium | High | Self-certification test suite runs in CI; external Connectathon before GA |
+| FHIR mapping complexity exceeds estimate | Medium | Medium | Ship only Patient + ImagingStudy in v3; DocumentReference + DiagnosticReport deferred to v3.1 |
+| Frontend v3 scope exceeds frontend capacity | High | Medium | Feature flags for mobile viewer and metrics dashboard; defer to v3.1 if needed |
+| Single team context-switching across 8 phases | High | Medium | Parallel tracks with dedicated sub-branches; one phase owner per track |
+
+---
+
+*This implementation plan covers Phases 1–8 of the v3.0 delivery. Phase 0 is tracked separately in `IMPLEMENTATION_PLAN.md`. Phase 9 (v3.1 RIS) will be planned after v3.0 GA. Each feature block follows the TDD vertical-slice pattern: RED → GREEN → REFACTOR.*

@@ -14,10 +14,12 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
+from api.service_middleware import ServiceMiddleware
 from api.telemetry import RequestIDMiddleware, record_request
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
 from log import setup_logging, get_logger
+from services.interfaces import ServiceRegistry
 
 setup_logging()
 log = get_logger(__name__)
@@ -65,6 +67,8 @@ async def http_exception(request, exc):
 @asynccontextmanager
 async def lifespan(app):
     assert_production_secret()
+    registry = ServiceRegistry()
+    app.state.services = registry
     await lifecycle.setup()
     yield
     await lifecycle.teardown()
@@ -74,6 +78,7 @@ app = Starlette(
     routes=routes,
     middleware=[
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
+        Middleware(ServiceMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
         Middleware(CustomMiddleware),

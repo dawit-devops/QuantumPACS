@@ -27,6 +27,7 @@ Production PACS (Picture Archiving and Communication System) for medical image m
 ### Documentation
 - Architectural decisions go in `docs/decisions/ADR-NNN-title.md` — follow existing ADR format
 - README covers quick start, commands, architecture overview
+- v3 planning documents: `docs/PRD-v3.md`, `docs/IMPLEMENTATION_PLAN-v3.md`, `docs/ROADMAP-v3.md`, plus ADRs 014–021 in `docs/decisions/`
 - Inline comments explain *why*, not *what*
 - No commented-out code — git history preserves it
 
