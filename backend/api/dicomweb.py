@@ -1,5 +1,7 @@
 import json
+from io import BytesIO
 
+from pydicom import dcmread
 from starlette.endpoints import HTTPEndpoint
 from starlette.responses import Response
 
@@ -7,6 +9,7 @@ from api.rbac import requires_permission
 from api.permissions import Permission
 from db.conn import get_conn
 from dcm.dicom_json import row_to_study_json
+from dcm.store import store_instance
 
 
 class DicomJsonResponse(Response):
@@ -124,3 +127,56 @@ class DicomWebStudies(HTTPEndpoint):
                     row['instance_number'] = meta.get('InstanceNumber', '')
                 result.append(row_to_instance_json(row))
             return result
+
+    @requires_permission(Permission.DICOMWEB_WRITE)
+    async def post(self, request):
+        body = await request.body()
+        content_type = request.headers.get('content-type', '')
+
+        parts = _parse_multipart_related(body, content_type)
+        stored = []
+        for part_bytes in parts:
+            try:
+                buf = BytesIO(part_bytes)
+                ds = dcmread(buf)
+                buf.seek(0)
+            except Exception:
+                return Response(
+                    json.dumps({'error': 'Malformed DICOM instance'}),
+                    status_code=400,
+                    media_type='application/dicom+json',
+                )
+            ok = await store_instance(ds, buf)
+            if ok:
+                stored.append(str(ds.SOPInstanceUID))
+
+        return DicomJsonResponse(json.dumps(stored))
+
+
+def _parse_multipart_related(body, content_type):
+    boundary = None
+    for part in content_type.split(';'):
+        part = part.strip()
+        if part.startswith('boundary='):
+            boundary = part[len('boundary='):]
+            if boundary.startswith('"') and boundary.endswith('"'):
+                boundary = boundary[1:-1]
+            break
+
+    if not boundary:
+        return [body]
+
+    boundary_bytes = boundary.encode('latin-1')
+    parts = []
+    for raw in body.split(b'--' + boundary_bytes):
+        raw = raw.strip(b'\r\n').strip()
+        if raw == b'' or raw == b'--':
+            continue
+        header_end = raw.find(b'\r\n\r\n')
+        if header_end == -1:
+            continue
+        part_body = raw[header_end + 4:]
+        if b'Content-Type: application/dicom' in raw[:header_end]:
+            parts.append(part_body)
+
+    return parts
