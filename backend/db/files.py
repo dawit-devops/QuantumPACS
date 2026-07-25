@@ -25,6 +25,7 @@ class Files(Table):
             name TEXT NOT NULL,
             indexed BOOLEAN NOT NULL DEFAULT FALSE,
             hash TEXT NOT NULL,
+            sop_instance_uid TEXT,
             created TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             updated TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -57,10 +58,10 @@ class Files(Table):
             now = datetime.now(timezone.utc)
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
-                'indexed', 'hash', 'created', 'updated',
+                'indexed', 'hash', 'sop_instance_uid', 'created', 'updated',
             ).insert((
                 filedata['name'], patient['id'], study['id'], series['id'], json.dumps(filedata['cleaned']),
-                False, filedata['hash'], now, now,
+                False, filedata['hash'], filedata.get('sop_instance_uid', ''), now, now,
             ), ).returning('id')
 
             file_id = await self.fetchval(q)

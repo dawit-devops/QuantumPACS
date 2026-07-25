@@ -12,6 +12,8 @@ class Study(Table):
             patient_id INTEGER NOT NULL REFERENCES patients(id),
             study_id TEXT NOT NULL,
             description TEXT,
+            study_instance_uid TEXT,
+            accession_number TEXT,
             UNIQUE(patient_id, study_id)
         );
         """)
@@ -22,8 +24,10 @@ class Study(Table):
     async def insert_or_select(self, data):
         q = self.insert().columns(
             'patient_id', 'study_id', 'description',
+            'study_instance_uid', 'accession_number',
         ).insert((
-            data['patient_db_id'], data['study_id'], data.get('study_description', ''),
+            data['study_db_id'], data['study_id'], data.get('study_description', ''),
+            data.get('study_instance_uid', ''), data.get('accession_number', ''),
         ), ).on_conflict(
             'patient_id, study_id'
         ).do_update(
