@@ -65,3 +65,23 @@ class TestRoles:
         await r.delete('role-1')
         sql = conn.execute.call_args[0][0]
         assert 'DELETE' in sql
+
+    @pytest.mark.asyncio
+    async def test_seed_built_in_roles_inserts_all(self):
+        conn = AsyncMock()
+        r = Roles(conn=conn)
+        await r.seed_built_in_roles()
+        calls = conn.execute.call_args_list
+        assert len(calls) == 6
+        sql = calls[0][0][0]
+        assert 'INSERT INTO' in sql
+        assert 'super_admin' in sql
+
+    @pytest.mark.asyncio
+    async def test_seed_built_in_roles_uses_upsert(self):
+        conn = AsyncMock()
+        r = Roles(conn=conn)
+        await r.seed_built_in_roles()
+        sql = conn.execute.call_args[0][0]
+        assert 'ON CONFLICT (slug)' in sql
+        assert 'DO UPDATE' in sql

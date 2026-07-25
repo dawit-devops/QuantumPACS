@@ -4,6 +4,7 @@ import sys
 from es import es
 import db.conn
 from db.users import Users
+from db.roles import Roles
 from db.table import Table
 from log import get_logger
 from api.redis_client import get_client as get_redis
@@ -80,6 +81,7 @@ async def setup(db_pool_size=None, sync_db=False):
                     log.error('Table sync failed: %s', t.name)
                     raise
 
+            await Roles(conn).seed_built_in_roles()
             await Users(conn).add_superadmin()
             log.info('Database schema synced')
 

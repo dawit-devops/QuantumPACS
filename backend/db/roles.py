@@ -1,9 +1,18 @@
 import json
 
 from pypika.dialects import PostgreSQLQuery as Query_
-from pypika.functions import Count
 
 from db.table import Table
+
+
+NAME_BY_SLUG = {
+    'super_admin': 'Super Admin',
+    'admin': 'Administrator',
+    'technologist': 'Technologist',
+    'radiologist': 'Radiologist',
+    'physician': 'Physician',
+    'cashier': 'Cashier',
+}
 
 
 class Roles(Table):
@@ -49,3 +58,19 @@ class Roles(Table):
     async def delete(self, role_id):
         q = self.query().where(self.table.id == role_id).delete()
         await self.exec(q)
+
+    async def seed_built_in_roles(self):
+        from api.permissions import BUILT_IN_ROLES
+
+        for slug, permissions in BUILT_IN_ROLES.items():
+            name = NAME_BY_SLUG.get(slug, slug.replace('_', ' ').title())
+            perms_json = json.dumps(permissions)
+            await self.exec(f"""
+                INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at)
+                VALUES ('{slug}', '{name}', '{perms_json}'::jsonb, TRUE, now(), now())
+                ON CONFLICT (slug) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    permissions = EXCLUDED.permissions,
+                    built_in = TRUE,
+                    updated_at = now()
+            """)
