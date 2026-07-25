@@ -67,7 +67,7 @@ def _make_mini_dicom(sop_uid=None):
     for attr in ('PatientName', 'PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'SOPInstanceUID', 'Modality', 'StudyDate'):
         setattr(fd, attr, getattr(ds, attr))
     buf = BytesIO()
-    fd.save_as(buf, write_like_original=False)
+    fd.save_as(buf, enforce_file_format=False)
     return buf.getvalue()
 
 
@@ -108,3 +108,73 @@ class TestWadoInstance:
         assert resp.status_code == 200
         assert resp.headers['content-type'] == 'application/dicom'
         assert len(resp.content) > 0
+
+
+class TestWadoUri:
+    def _make_conn(self, instance_uid='1.2.3.4.5.6.7.8'):
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+        return conn
+
+    def _make_app(self, user=None):
+        from api.dicomweb import DicomWebWadoUri
+        return Starlette(
+            routes=[Route('/wado', endpoint=DicomWebWadoUri)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_returns_single_instance(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_mini_dicom()
+        conn = self._make_conn()
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                    resp = client.get(
+                        '/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8'
+                    )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/dicom'
+        assert len(resp.content) > 0
+
+    def test_missing_requestType_returns_400(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+
+        resp = client.get('/wado?studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8')
+
+        assert resp.status_code == 400
+        assert 'requestType' in resp.text
+
+    def test_missing_object_uid_returns_400(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+
+        resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6')
+
+        assert resp.status_code == 400
+        assert 'studyUID' in resp.text
+
+    def test_requires_dicomweb_read_permission(self):
+        user = User({'id': 1, 'permissions': []})
+        client = TestClient(self._make_app(user))
+
+        resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8')
+
+        assert resp.status_code == 403

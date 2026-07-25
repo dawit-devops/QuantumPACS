@@ -21,7 +21,7 @@ from api.users import (
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
-from api.dicomweb import DicomWebStudies, DicomWebWado
+from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.worklist import WorklistHandler, WorklistEntryHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -83,6 +83,7 @@ routes = [
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado),
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies),
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado),
+    Route('/wado', endpoint=DicomWebWadoUri),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/ws_token', endpoint=WSToken),
