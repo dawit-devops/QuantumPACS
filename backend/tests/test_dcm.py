@@ -21,6 +21,10 @@ def _make_minimal_dicom():
     ds.Modality = 'CR'
     ds.SeriesDescription = 'AP View'
     ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.1'
+    ds.StudyInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.1'
+    ds.SeriesInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.2'
+    ds.SOPInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.3'
+    ds.AccessionNumber = 'ACC001'
     ds.file_meta = FileMetaDataset()
     ds.file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.1'
     ds.file_meta.MediaStorageSOPInstanceUID = '1.2.3.4.5.6.7.8'
@@ -64,6 +68,10 @@ class TestGetMeta:
         assert meta['series_number'] == '1'
         assert meta['modality'] == 'CR'
         assert meta['series_description'] == 'AP View'
+        assert meta['study_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.1'
+        assert meta['series_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.2'
+        assert meta['sop_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.3'
+        assert meta['accession_number'] == 'ACC001'
 
     def test_get_meta_includes_cleaned_dict(self):
         ds = _make_minimal_dicom()
