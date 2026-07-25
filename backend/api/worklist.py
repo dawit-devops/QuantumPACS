@@ -4,7 +4,7 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created
+from api.response import not_found, ok, created
 from api.validate import parse_body
 from api.schemas.worklist import CreateWorklistRequest, UpdateWorklistRequest
 from db.audit_log import AuditLog
@@ -77,7 +77,7 @@ class WorklistEntryHandler(HTTPEndpoint):
                 entry_id,
             )
         if not row:
-            return ok({'error': 'Not found'})
+            return not_found('Worklist entry not found')
         return ok({'data': dict(row)})
 
     @requires_permission(Permission.WORKLIST_WRITE)
@@ -93,7 +93,7 @@ class WorklistEntryHandler(HTTPEndpoint):
                 entry_id,
             )
             if not existing:
-                return ok({'error': 'Not found'})
+                return not_found('Worklist entry not found')
             now = datetime.now(timezone.utc)
             keys = list(updates.keys()) + ['updated_at']
             values = list(updates.values()) + [now]
