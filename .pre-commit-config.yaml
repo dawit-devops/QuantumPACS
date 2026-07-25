@@ -17,6 +17,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: no-direct-push-to-protected
+        name: Prevent direct push to main/v3-dev
+        entry: sh -c '! git rev-parse --abbrev-ref HEAD | grep -qE "^(main|v3-dev)$"'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: tsc
         name: TypeScript type check
         entry: sh -c 'cd frontend && npx tsc --noEmit'

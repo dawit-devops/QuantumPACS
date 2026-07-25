@@ -2,13 +2,13 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, v3-dev, phase/**]
     paths:
       - 'backend/**'
       - 'requirements*.txt'
       - 'pyproject.toml'
   pull_request:
-    branches: [main]
+    branches: [main, v3-dev]
 
 jobs:
   test:
