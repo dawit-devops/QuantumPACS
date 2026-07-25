@@ -80,7 +80,7 @@ def _make_dicom_bytes(patient_id='P001', study_uid=None):
     fd.StudyDate = ds.StudyDate
 
     buf = BytesIO()
-    fd.save_as(buf, write_like_original=False)
+    fd.save_as(buf, enforce_file_format=False)
     return buf.getvalue()
 
 

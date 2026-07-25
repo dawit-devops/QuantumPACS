@@ -140,6 +140,7 @@ class _AsyncContextMock(AsyncMock):
 
 def _make_mock_conn():
     conn = _AsyncContextMock()
+    conn.fetchrow = AsyncMock(return_value=None)
     tx = _AsyncContextMock()
     conn.transaction = MagicMock(return_value=tx)
     return conn

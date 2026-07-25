@@ -44,7 +44,7 @@ def handle_store(event):
     dst = BytesIO()
 
     try:
-        ds.save_as(dst, write_like_original=False)
+        ds.save_as(dst, enforce_file_format=False)
     except Exception as e:
         log.error('DICOM save failed: %s', traceback.format_exc())
         return 0x0001
