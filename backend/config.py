@@ -27,6 +27,10 @@ default_config = {
     'oauth_token_url': '',
     'oauth_default_role': 'radiologist',
     'oauth_scope': 'openid email profile',
+    'dicom_ae_title': 'QUANTUMPACS',
+    'dicom_cstore_port': '11112',
+    'dicom_mwl_port': '11113',
+    'dicom_cmove_port': '11114',
 }
 
 

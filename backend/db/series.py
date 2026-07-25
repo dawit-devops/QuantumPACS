@@ -13,6 +13,7 @@ class Series(Table):
             number TEXT NOT NULL,
             modality TEXT NOT NULL,
             description TEXT,
+            series_instance_uid TEXT,
             UNIQUE(study_id, number)
         );
         """)
@@ -22,9 +23,10 @@ class Series(Table):
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
-            'study_id', 'number', 'modality', 'description',
+            'study_id', 'number', 'modality', 'description', 'series_instance_uid',
         ).insert((
-            data['study_db_id'], data['series_number'], data.get('modality', ''), data.get('series_description', ''),
+            data['study_db_id'], data['series_number'], data.get('modality', ''),
+            data.get('series_description', ''), data.get('series_instance_uid', ''),
         ),).on_conflict(
             'study_id, number'
         ).do_update(

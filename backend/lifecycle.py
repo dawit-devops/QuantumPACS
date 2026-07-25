@@ -7,6 +7,7 @@ from db.roles import Roles
 from db.table import Table
 from db.tenants import TenantConnectionPool
 from db.users import Users
+from config import config
 from log import get_logger
 from api.redis_client import get_client as get_redis
 from api.redis_client import is_available as redis_available
@@ -19,6 +20,34 @@ log = get_logger(__name__)
 _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
 _bridge: PgNotifyBridge | None = None
 _monitor: StreamMonitor | None = None
+_dicom_scp = None
+
+
+def _start_dicom():
+    global _dicom_scp
+    try:
+        from pynetdicom import AE, StoragePresentationContexts
+        from dcm.server import handlers
+        ae = AE()
+        ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+        ae.supported_contexts = StoragePresentationContexts
+        port = int(config.get('dicom_cstore_port', '11112'))
+        _dicom_scp = ae.start_server(('', port), evt_handlers=handlers)
+        log.info('DICOM C-STORE server started on port %s', port)
+    except Exception:
+        log.warning('Failed to start DICOM server', exc_info=True)
+        _dicom_scp = None
+
+
+def _stop_dicom():
+    global _dicom_scp
+    if _dicom_scp is not None:
+        try:
+            _dicom_scp.shutdown()
+            log.info('DICOM server stopped')
+        except Exception:
+            log.warning('DICOM server shutdown error', exc_info=True)
+        _dicom_scp = None
 
 
 async def setup(db_pool_size=None, sync_db=False):
@@ -73,6 +102,8 @@ async def setup(db_pool_size=None, sync_db=False):
             _bridge = None
             _monitor = None
 
+    _start_dicom()
+
     if sync_db:
         async with db.conn.get_conn() as conn:
             for t in Table.tables:
@@ -88,7 +119,8 @@ async def setup(db_pool_size=None, sync_db=False):
 
 
 async def teardown():
-    global _bridge, _monitor
+    global _bridge, _monitor, _dicom_scp
+    _stop_dicom()
     if _monitor is not None:
         try:
             await _monitor.stop()
