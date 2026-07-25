@@ -16,6 +16,7 @@ from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, UsersHandler, UsersDeactivate, UsersNewPassword,
 )
+from api.oauth import oauth_login, oauth_callback
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
@@ -39,6 +40,8 @@ routes = [
     Route('/replicas', endpoint=ReplicasHandlers),
     Route('/replicas/{id}', endpoint=ReplicaHandlers),
     Route('/login', endpoint=Login),
+    Route('/oauth/login', endpoint=oauth_login),
+    Route('/oauth/callback', endpoint=oauth_callback),
     Route('/change_password', endpoint=ChangePassword),
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),

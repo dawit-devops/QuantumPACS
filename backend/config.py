@@ -19,6 +19,14 @@ default_config = {
     'redis_password': '',
     'db_pool_size': '8',
     'sentry_dsn': '',
+    'oauth_issuer': '',
+    'oauth_client_id': '',
+    'oauth_client_secret': '',
+    'oauth_redirect_uri': '',
+    'oauth_jwks_uri': '',
+    'oauth_token_url': '',
+    'oauth_default_role': 'radiologist',
+    'oauth_scope': 'openid email profile',
 }
 
 
