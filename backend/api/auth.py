@@ -70,6 +70,8 @@ class User(BaseUser):
     def __init__(self, data):
         self.id = data['id']
         self.admin = data.get('admin', False)
+        self.role_slug = data.get('role', '')
+        self.permissions = data.get('permissions', [])
 
     @property
     def is_authenticated(self):
@@ -83,6 +85,8 @@ class User(BaseUser):
         return {
             'id': self.id,
             'admin': self.admin,
+            'role': self.role_slug,
+            'permissions': self.permissions,
         }
 
 

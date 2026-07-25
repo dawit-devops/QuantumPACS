@@ -30,12 +30,16 @@ def _get_blocklist_redis():
     return _blocklist_redis
 
 
-def create_token(user, expire=None):
+def create_token(user, expire=None, role=None, permissions=None):
     payload = {
         'jti': str(uuid4()),
         'id': user['id'],
         'admin': user['admin'],
     }
+    if role is not None:
+        payload['role'] = role
+    if permissions is not None:
+        payload['permissions'] = permissions
     if not expire:
         expire = {'days': 14}
 

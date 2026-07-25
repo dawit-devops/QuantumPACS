@@ -29,10 +29,13 @@ class Login(HTTPEndpoint):
                 return api_error('AUTH_FAILED', str(e), status=401)
 
             await login_bucket.record_db(ip, conn, success=True)
-            token = gen_token(data)
+            role_slug, permissions = await Users(conn).get_user_role(data['id'])
+            token = gen_token(data, role=role_slug, permissions=permissions)
             resp = ok({
                 'id': data['id'],
                 'admin': data['admin'],
+                'role': role_slug or '',
+                'permissions': permissions or [],
                 'token': token,
             })
             resp.set_cookie(

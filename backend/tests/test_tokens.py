@@ -84,3 +84,23 @@ class TestTokens:
         decoded = jwt.decode(token, self.SECRET, algorithms=['HS256'])
         assert decoded['admin'] is True
         assert decoded['id'] == 42
+
+    def test_create_token_with_role(self, user):
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            token = create_token(user, role='admin', permissions=['files:read', 'files:write'])
+            payload = verify_token(token)
+        assert payload['role'] == 'admin'
+        assert 'files:read' in payload['permissions']
+
+    def test_create_token_without_role_no_claims(self, user):
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            token = create_token(user)
+            payload = verify_token(token)
+        assert 'role' not in payload
+
+    def test_create_token_empty_permissions(self, user):
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            token = create_token(user, role='viewer', permissions=[])
+            payload = verify_token(token)
+        assert payload['role'] == 'viewer'
+        assert payload['permissions'] == []

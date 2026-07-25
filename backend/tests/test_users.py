@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -118,3 +118,48 @@ class TestUsers:
         assert total == 2
         sql = conn.fetchval.call_args[0][0]
         assert 'ILIKE' in sql.upper()
+
+    @pytest.mark.asyncio
+    async def test_get_user_role_returns_role(self):
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            {'role_id': 1},
+            {'slug': 'admin', 'permissions': ['files:read', 'files:write']},
+        ]
+        u = Users(conn=conn)
+        slug, perms = await u.get_user_role(1)
+        assert slug == 'admin'
+        assert 'files:read' in perms
+
+    @pytest.mark.asyncio
+    async def test_get_user_role_no_role_returns_empty(self):
+        conn = AsyncMock()
+        conn.fetchrow.return_value = None
+        u = Users(conn=conn)
+        slug, perms = await u.get_user_role(99)
+        assert slug is None
+        assert perms == []
+
+    @pytest.mark.asyncio
+    async def test_get_user_role_role_id_none_returns_empty(self):
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {'role_id': None}
+        u = Users(conn=conn)
+        slug, perms = await u.get_user_role(1)
+        assert slug is None
+        assert perms == []
+
+    @pytest.mark.asyncio
+    async def test_add_superadmin_assigns_role_id(self):
+        conn = AsyncMock()
+        conn.fetchrow.return_value = None
+        conn.fetchval.return_value = 1
+        ctx = AsyncMock()
+        conn.transaction = MagicMock(return_value=ctx)
+        ctx.__aenter__ = AsyncMock(return_value=conn)
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        u = Users(conn=conn)
+        await u.add_superadmin()
+        sql = conn.execute.call_args[0][0]
+        assert 'role_id' in sql
+        assert 'super_admin' not in sql

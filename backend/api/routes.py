@@ -11,6 +11,7 @@ from api.files import (
 )
 from api.logs import LogsHandler
 from api.replicas import ReplicasHandlers, ReplicaHandlers
+from api.roles import RolesHandler, RoleHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, UsersHandler, UsersDeactivate, UsersNewPassword,
@@ -53,6 +54,8 @@ routes = [
     Route('/files/{id}/share', endpoint=ShareFilesHandler),
     Route('/files/{id}/data', endpoint=ServeFile),
     Route('/logs', endpoint=LogsHandler),
+    Route('/roles', endpoint=RolesHandler),
+    Route('/roles/{id}', endpoint=RoleHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler)
 ]
