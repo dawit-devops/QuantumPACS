@@ -2,10 +2,53 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
 from api.oauth import (
     _code_verifier, _code_challenge, _verify_id_token,
-    oauth_login, oauth_callback,
+    oauth_login, oauth_callback, oidc_discovery,
 )
+
+
+class TestOidcDiscovery:
+    def test_discovery_returns_valid_config(self):
+        app = Starlette(routes=[Route('/api/.well-known/openid-configuration', endpoint=oidc_discovery)])
+        client = TestClient(app)
+        resp = client.get('/api/.well-known/openid-configuration')
+
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data['issuer'].endswith('/api')
+        assert 'authorization_endpoint' in data
+        assert 'token_endpoint' in data
+        assert 'jwks_uri' in data
+        assert 'code' in data['response_types_supported']
+        assert 'S256' in data['code_challenge_methods_supported']
+        assert 'authorization_code' in data['grant_types_supported']
+        assert 'HS256' in data['id_token_signing_alg_values_supported']
+
+    def test_discovery_endpoints_contain_base_url(self):
+        app = Starlette(routes=[Route('/api/.well-known/openid-configuration', endpoint=oidc_discovery)])
+        client = TestClient(app)
+        resp = client.get('/api/.well-known/openid-configuration')
+
+        data = resp.json()
+        assert '/api/oauth/login' in data['authorization_endpoint']
+        assert '/api/oauth/token' in data['token_endpoint']
+        assert '/api/oauth/jwks' in data['jwks_uri']
+
+    def test_discovery_includes_required_claims(self):
+        app = Starlette(routes=[Route('/api/.well-known/openid-configuration', endpoint=oidc_discovery)])
+        client = TestClient(app)
+        resp = client.get('/api/.well-known/openid-configuration')
+
+        claims = resp.json()['claims_supported']
+        for claim in ('sub', 'iss', 'aud', 'exp', 'iat'):
+            assert claim in claims
 
 
 class TestOAuthUtils:

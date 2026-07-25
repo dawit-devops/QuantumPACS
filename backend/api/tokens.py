@@ -40,6 +40,8 @@ def create_token(user, expire=None, role=None, permissions=None):
         payload['role'] = role
     if permissions is not None:
         payload['permissions'] = permissions
+    if user.get('tenant'):
+        payload['tenant'] = user['tenant']
     if not expire:
         expire = {'days': 14}
 
@@ -77,6 +79,34 @@ async def is_blocked(jti):
         return await r.exists(f'blocklist:{jti}') == 1
     except Exception:
         return False
+
+
+def create_token_pair(user, role=None, permissions=None):
+    access = create_token(user, expire={'hours': 1}, role=role, permissions=permissions)
+    refresh_payload = {
+        'jti': str(uuid4()),
+        'id': user['id'],
+        'type': 'refresh',
+        'admin': user['admin'],
+    }
+    if user.get('tenant'):
+        refresh_payload['tenant'] = user['tenant']
+    exp = datetime.now(timezone.utc) + timedelta(days=14)
+    refresh_payload['exp'] = exp
+    refresh = jwt_encode(refresh_payload, config['secret'], algorithm='HS256')
+    return access, refresh
+
+
+def verify_refresh_token(token):
+    try:
+        data = jwt_decode(token, config['secret'], options={'require': ['exp'], 'verify_exp': True})
+        if data.get('type') != 'refresh':
+            raise _jwt.InvalidTokenError('Not a refresh token')
+        return data
+    except _jwt.ExpiredSignatureError:
+        raise
+    except _jwt.InvalidTokenError:
+        raise
 
 
 def verify_token(token):

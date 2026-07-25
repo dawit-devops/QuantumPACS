@@ -85,12 +85,21 @@ case $1 in
     db)
         handle_db "${@:2}"
         ;;
-    *)
-        cmd="./cmd/$1.py"
-        if [ ! -f "$cmd" ]; then
-            echo "Unsupported command $1"
+    tenant)
+        shift
+        if [ "$1" = "migrate" ]; then
+            shift
+            venv/bin/python -m management.tenant_migrate "$@"
+        elif [ "$1" = "migrate-one" ]; then
+            shift
+            venv/bin/python -m management.tenant_migrate "$1"
+        else
+            echo "Usage: tenant {migrate|migrate-one <slug>}"
             exit 1
         fi
-        python "$cmd" "${@:2}"
+        ;;
+    *)
+        echo "Unsupported command $1"
+        exit 1
         ;;
 esac

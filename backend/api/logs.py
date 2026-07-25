@@ -1,14 +1,15 @@
 from starlette.endpoints import HTTPEndpoint
 
+from api.rbac import requires_permission
+from api.permissions import Permission
 from api.response import paginated
-from api.utils import is_admin
 from db.conn import get_conn
 from db.log import Log
 
 
 class LogsHandler(HTTPEndpoint):
+    @requires_permission(Permission.LOG_READ)
     async def get(self, request):
-        is_admin(request)
         offset = int(request.query_params.get('offset', 0))
         limit = int(request.query_params.get('limit', 20))
 

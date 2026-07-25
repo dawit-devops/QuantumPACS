@@ -60,7 +60,7 @@ async def _set_cached_active(user_id, active, ttl=60):
     r = _get_cache_redis()
     if r is not None:
         try:
-            await r.setex(f'auth:active:{user_id}', ttl, b'1' if active else b'0')
+            await r.set(f'auth:active:{user_id}', b'1' if active else b'0', ex=ttl)
         except Exception:
             pass
     _active_cache[user_id] = (active, time.monotonic() + ttl)
@@ -72,6 +72,7 @@ class User(BaseUser):
         self.admin = data.get('admin', False)
         self.role_slug = data.get('role', '')
         self.permissions = data.get('permissions', [])
+        self.tenant = data.get('tenant')
 
     @property
     def is_authenticated(self):
@@ -81,13 +82,23 @@ class User(BaseUser):
     def display_name(self):
         return str(self.id)
 
+    def can_access_tenant(self, tenant_slug):
+        if not tenant_slug:
+            return True
+        if self.admin:
+            return True
+        return self.tenant == tenant_slug
+
     def to_dict(self):
-        return {
+        d = {
             'id': self.id,
             'admin': self.admin,
             'role': self.role_slug,
             'permissions': self.permissions,
         }
+        if self.tenant:
+            d['tenant'] = self.tenant
+        return d
 
 
 class TokenAuth(AuthenticationBackend):
@@ -95,7 +106,9 @@ class TokenAuth(AuthenticationBackend):
         path = request.url.path
         if not path.startswith('/api'):
             return
-        if path == '/api/login' or path == '/api/health':
+        if path in ('/api/login', '/api/health', '/api/auth/refresh', '/api/auth/logout',
+                     '/api/oauth/login', '/api/oauth/callback',
+                     '/api/.well-known/openid-configuration', '/api/oauth/token'):
             return
         if request.scope.get('method') == 'OPTIONS':
             return

@@ -15,7 +15,7 @@ class TestDefaultConfig:
             assert key in default_config, f'Missing key: {key}'
 
     def test_default_secret_is_default(self):
-        assert default_config['secret'] == 'default'
+        assert default_config['secret'] == 'quantumpacs-default-secret-32-bytes-long!!'
 
     def test_db_defaults_are_reasonable(self):
         assert default_config['db_host'] == '127.0.0.1'
@@ -26,9 +26,9 @@ class TestDefaultConfig:
     def test_es_host_default(self):
         assert default_config['es_host'] == 'localhost'
 
-    def test_secret_falls_back_to_db_password(self):
+    def test_secret_falls_back_to_dev_default(self):
         cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})
-        assert cfg['secret'] == 'pa55w0rd'
+        assert cfg['secret'] == 'quantumpacs-dev-secret-replace-in-production-32b'
 
     def test_env_overrides_default(self, monkeypatch):
         monkeypatch.setenv('DB_HOST', '10.0.0.1')

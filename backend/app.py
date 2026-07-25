@@ -15,6 +15,7 @@ from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
 from api.service_middleware import ServiceMiddleware
+from api.tenant_middleware import TenantMiddleware
 from api.telemetry import RequestIDMiddleware, record_request
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
@@ -78,6 +79,7 @@ app = Starlette(
     routes=routes,
     middleware=[
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
+        Middleware(TenantMiddleware),
         Middleware(ServiceMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),

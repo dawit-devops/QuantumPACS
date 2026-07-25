@@ -134,6 +134,29 @@ async def _find_or_create_user(oauth_sub, email, name):
                 'oauth_sub': oauth_sub, 'email': email}
 
 
+def _base_url(request):
+    return f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+
+
+async def oidc_discovery(request):
+    base = _base_url(request)
+    return JSONResponse({
+        'issuer': f'{base}/api',
+        'authorization_endpoint': f'{base}/api/oauth/login',
+        'token_endpoint': f'{base}/api/oauth/token',
+        'jwks_uri': f'{base}/api/oauth/jwks',
+        'response_types_supported': ['code'],
+        'response_modes_supported': ['query', 'form_post'],
+        'grant_types_supported': ['authorization_code', 'refresh_token'],
+        'subject_types_supported': ['public'],
+        'id_token_signing_alg_values_supported': ['HS256', 'RS256'],
+        'scopes_supported': ['openid', 'email', 'profile'],
+        'token_endpoint_auth_methods_supported': ['client_secret_basic', 'client_secret_post'],
+        'claims_supported': ['sub', 'iss', 'aud', 'exp', 'iat', 'email', 'name'],
+        'code_challenge_methods_supported': ['S256'],
+    })
+
+
 async def oauth_login(request):
     issuer = config.get('oauth_issuer', '')
     client_id = config.get('oauth_client_id', '')

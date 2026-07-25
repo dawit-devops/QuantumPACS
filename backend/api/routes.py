@@ -12,11 +12,14 @@ from api.files import (
 from api.logs import LogsHandler
 from api.replicas import ReplicasHandlers, ReplicaHandlers
 from api.roles import RolesHandler, RoleHandler
+from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
-    Login, ChangePassword, UsersHandler, UsersDeactivate, UsersNewPassword,
+    Login, ChangePassword, RefreshToken, Logout, RevokeToken,
+    UsersHandler, UsersDeactivate, UsersNewPassword,
 )
-from api.oauth import oauth_login, oauth_callback
+from api.oauth import oauth_login, oauth_callback, oidc_discovery
+from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
@@ -40,8 +43,13 @@ routes = [
     Route('/replicas', endpoint=ReplicasHandlers),
     Route('/replicas/{id}', endpoint=ReplicaHandlers),
     Route('/login', endpoint=Login),
+    Route('/auth/refresh', endpoint=RefreshToken),
+    Route('/auth/logout', endpoint=Logout),
+    Route('/auth/revoke', endpoint=RevokeToken),
     Route('/oauth/login', endpoint=oauth_login),
     Route('/oauth/callback', endpoint=oauth_callback),
+    Route('/.well-known/openid-configuration', endpoint=oidc_discovery),
+    Route('/oauth/token', endpoint=oidc_discovery),  # placeholder — returns discovery info
     Route('/change_password', endpoint=ChangePassword),
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),
@@ -59,6 +67,11 @@ routes = [
     Route('/logs', endpoint=LogsHandler),
     Route('/roles', endpoint=RolesHandler),
     Route('/roles/{id}', endpoint=RoleHandler),
+    Route('/tenants', endpoint=TenantsHandler),
+    Route('/tenants/{id}', endpoint=TenantHandler),
+    Route('/tenants/{id}/stats', endpoint=TenantStatsHandler),
+    Route('/oauth/providers', endpoint=OAuthProvidersHandler),
+    Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler)
 ]

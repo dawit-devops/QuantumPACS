@@ -8,9 +8,11 @@ from starlette.responses import FileResponse
 from starlette.exceptions import HTTPException
 from starlette.background import BackgroundTask
 
+from api.rbac import requires_permission
+from api.permissions import Permission
 from api.response import ok, not_found, no_content, api_error, paginated
 from api.tokens import create_token as gen_token
-from api.utils import get_id, is_admin
+from api.utils import get_id
 from api.validate import parse_body
 from api.schemas.files import FileUpdateRequest, ShareRequest
 from db.conn import get_conn
@@ -26,6 +28,7 @@ from utils import hash_file
 
 
 class Upload(HTTPEndpoint):
+    @requires_permission(Permission.FILE_WRITE)
     async def post(self, request):
         form = await request.form()
         filename = form['file'].filename
@@ -68,6 +71,7 @@ def zip_files(files, zipname):
 
 
 class DownloadFiles(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         data = [int(i) for i in request.query_params['ids'].split(',')]
         files = []
@@ -94,6 +98,7 @@ class DownloadFiles(HTTPEndpoint):
 
 
 class DownloadData(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         data = [int(i) for i in request.query_params['ids'].split(',')]
         columns = set([])
@@ -181,8 +186,8 @@ class FileHandler(HTTPEndpoint):
                 )
         return ok(body.model_dump(exclude_none=True))
 
+    @requires_permission(Permission.FILE_DELETE)
     async def delete(self, request):
-        is_admin(request)
         async with get_conn() as conn:
             async with conn.transaction():
                 master = await Replica(conn).master()
@@ -207,6 +212,7 @@ class FileChangesHandler(HTTPEndpoint):
 
 
 class ServeFile(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         file_id = get_id(request)
         if not file_id:
@@ -228,6 +234,7 @@ class ServeFile(HTTPEndpoint):
 
 
 class ShareFilesHandler(HTTPEndpoint):
+    @requires_permission(Permission.FILE_WRITE)
     async def post(self, request):
         file_id = get_id(request)
         body = await parse_body(ShareRequest, request)
@@ -238,6 +245,7 @@ class ShareFilesHandler(HTTPEndpoint):
 
 
 class DownloadToken(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         token = gen_token(request.user.to_dict(), {'minutes': 1})
         return ok({'token': token})

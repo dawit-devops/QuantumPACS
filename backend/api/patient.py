@@ -1,5 +1,7 @@
 from starlette.endpoints import HTTPEndpoint
 
+from api.rbac import requires_permission
+from api.permissions import Permission
 from api.response import ok, not_found
 from api.utils import get_id
 from db.conn import get_conn
@@ -13,6 +15,7 @@ async def get_patient_by_id(request):
 
 
 class PatientHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
     async def get(self, request):
         data = await get_patient_by_id(request)
         if not data:

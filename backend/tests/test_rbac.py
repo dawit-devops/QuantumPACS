@@ -86,3 +86,36 @@ class TestGetRolePermissions:
         perms = get_role_permissions('admin')
         assert Permission.FILE_DELETE.value in perms
         assert Permission.USER_WRITE.value in perms
+
+
+class TestUserCanAccessTenant:
+    def test_admin_can_access_any_tenant(self):
+        from api.auth import User
+        u = User({'id': 1, 'admin': True})
+        assert u.can_access_tenant('hospital-a') is True
+        assert u.can_access_tenant('clinic-42') is True
+
+    def test_user_can_access_own_tenant(self):
+        from api.auth import User
+        u = User({'id': 2, 'admin': False, 'tenant': 'hospital-a'})
+        assert u.can_access_tenant('hospital-a') is True
+
+    def test_user_cannot_access_other_tenant(self):
+        from api.auth import User
+        u = User({'id': 2, 'admin': False, 'tenant': 'hospital-a'})
+        assert u.can_access_tenant('clinic-42') is False
+
+    def test_user_without_tenant_can_access_no_tenant(self):
+        from api.auth import User
+        u = User({'id': 3, 'admin': False})
+        assert u.can_access_tenant('hospital-a') is False
+
+    def test_access_none_tenant_returns_true(self):
+        from api.auth import User
+        u = User({'id': 1, 'admin': False, 'tenant': 'hospital-a'})
+        assert u.can_access_tenant(None) is True
+
+    def test_tenant_from_jwt_data(self):
+        from api.auth import User
+        u = User({'id': 4, 'admin': False, 'tenant': 'my-clinic'})
+        assert u.tenant == 'my-clinic'

@@ -3,9 +3,10 @@ import sys
 
 from es import es
 import db.conn
-from db.users import Users
 from db.roles import Roles
 from db.table import Table
+from db.tenants import TenantConnectionPool
+from db.users import Users
 from log import get_logger
 from api.redis_client import get_client as get_redis
 from api.redis_client import is_available as redis_available
@@ -100,6 +101,7 @@ async def teardown():
         except Exception:
             log.warning('Bridge stop error', exc_info=True)
         _bridge = None
+    await TenantConnectionPool.close_all()
     await db.conn.teardown()
     await es.teardown()
     from api.redis_client import close_client as close_redis
