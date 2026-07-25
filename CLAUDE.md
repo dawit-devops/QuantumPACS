@@ -65,14 +65,23 @@ Services managed via systemd user services — auto-start on boot:
 - Frontend runs via `vite --host 0.0.0.0 --port 5173`
 - Database port config centralized in `config.py` default_config via `db_port` key
 
+## Git Workflow (v3)
+- **Branch model**: Phased Git Flow per ADR-022
+  - `main` — production v2.x (until v3.0 GA); no direct pushes
+  - `v3-dev` — v3 integration; no direct pushes, merge via PR
+  - `phase/N-*` — per-phase feature branches off `v3-dev`; delete after merge
+  - `release/v3.N` — release candidates from `v3-dev` → `main` + `v3-dev`
+  - `fix/*` — hotfixes from `main`, cherry-pick to `v3-dev`
+- **Commit style**: Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
+- **Pre-commit gates**: ruff, prettier, tsc, pytest, protected-branch guard (pre-push)
+- **CI**: Full suite runs on push to `main`, `v3-dev`, `phase/**`
+
 ## Common Gotchas
 - `network_mode: host` in docker-compose — services bind directly to host ports
 - Elasticsearch 8 needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
 - Database init (`./manage db init`) generates a random password — capture it from output
 - Token expiry defaults to 14 days — extend via `create_token(user, expire={'days': 30})`
 - CORS allows all origins — tighten before production deployment
-- The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
-- Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
 - The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
 - Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
 - PostgreSQL runs via `quantumpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`)

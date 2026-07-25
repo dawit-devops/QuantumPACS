@@ -4,7 +4,7 @@ import sys
 import yaml
 
 default_config = {
-    'secret': 'default',
+    'secret': 'quantumpacs-default-secret-32-bytes-long!!',
     'superadmin_pass': 'pa55w0rd',
     'db_host': '127.0.0.1',
     'db_port': '5432',
@@ -19,6 +19,14 @@ default_config = {
     'redis_password': '',
     'db_pool_size': '8',
     'sentry_dsn': '',
+    'oauth_issuer': '',
+    'oauth_client_id': '',
+    'oauth_client_secret': '',
+    'oauth_redirect_uri': '',
+    'oauth_jwks_uri': '',
+    'oauth_token_url': '',
+    'oauth_default_role': 'radiologist',
+    'oauth_scope': 'openid email profile',
 }
 
 
@@ -42,8 +50,8 @@ def load_config(overrides=None):
     if overrides:
         cfg.update(overrides)
 
-    if cfg['secret'] == 'default':
-        cfg['secret'] = cfg['db_password']
+    if cfg['secret'] in ('default', 'pa55w0rd'):
+        cfg['secret'] = 'quantumpacs-dev-secret-replace-in-production-32b'
 
     return cfg
 
@@ -52,7 +60,8 @@ config = load_config()
 
 
 def assert_production_secret():
-    if config['secret'] in ('default', 'pa55w0rd'):
+    if config['secret'] in ('default', 'pa55w0rd', 'quantumpacs-default-secret-32-bytes-long!!',
+                            'quantumpacs-dev-secret-replace-in-production-32b'):
         import logging
         logging.getLogger(__name__).critical(
             'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'

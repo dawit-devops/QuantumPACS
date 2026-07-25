@@ -9,6 +9,8 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
 from db.users import Users
+from db.tenants import Tenants
+from db.oauth_providers import OAuthProviders
 
 
 Table.register(Log)
@@ -21,3 +23,5 @@ Table.register(Users)
 Table.register(FileChange)
 Table.register(ReplicaFiles)
 Table.register(SharedFiles)
+Table.register(Tenants)
+Table.register(OAuthProviders)

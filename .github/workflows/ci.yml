@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v3-dev, phase/**]
   pull_request:
-    branches: [main]
+    branches: [main, v3-dev]
 
 jobs:
   lint-backend:
