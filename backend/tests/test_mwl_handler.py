@@ -70,8 +70,8 @@ class TestEntryToDataset:
             'patient_id': 'P001',
             'modality': 'CT',
             'station_ae_title': 'CT01',
-            'scheduled_date': '2026-07-25',
-            'scheduled_time': '10:30:00',
+            'scheduled_date': '20260725',
+            'scheduled_time': '103000',
         }
         ds = _entry_to_dataset(entry)
         assert hasattr(ds, 'ScheduledProcedureStepSequence')
@@ -79,7 +79,7 @@ class TestEntryToDataset:
         sps = ds.ScheduledProcedureStepSequence[0]
         assert sps.Modality == 'CT'
         assert sps.ScheduledStationAETitle == 'CT01'
-        assert sps.ScheduledProcedureStepStartDate == '2026-07-25'
+        assert sps.ScheduledProcedureStepStartDate == '20260725'
 
     def test_handles_empty_entry(self):
         ds = _entry_to_dataset({})
