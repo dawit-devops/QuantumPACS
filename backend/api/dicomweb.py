@@ -8,8 +8,10 @@ from starlette.responses import Response
 from api.rbac import requires_permission
 from api.permissions import Permission
 from db.conn import get_conn
+from db.replica import Replica
 from dcm.dicom_json import row_to_study_json
 from dcm.store import store_instance
+from storage.storage import Storage
 
 
 class DicomJsonResponse(Response):
@@ -151,6 +153,101 @@ class DicomWebStudies(HTTPEndpoint):
                 stored.append(str(ds.SOPInstanceUID))
 
         return DicomJsonResponse(json.dumps(stored))
+
+
+class DicomWebWado(HTTPEndpoint):
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        study_uid = request.path_params.get('study_uid')
+        series_uid = request.path_params.get('series_uid')
+        instance_uid = request.path_params.get('instance_uid')
+
+        async with get_conn() as conn:
+            master = await Replica(conn).master()
+            if not master:
+                return Response(json.dumps({'error': 'No storage available'}), status_code=503)
+
+            if instance_uid:
+                return await self._retrieve_instance(conn, master, instance_uid)
+
+            if series_uid:
+                return await self._retrieve_series(conn, master, study_uid, series_uid)
+
+            return await self._retrieve_study(conn, master, study_uid)
+
+    async def _retrieve_instance(self, conn, master, instance_uid):
+        row = await conn.fetchrow("""
+            SELECT rf.id, rf.location, f.name, f.patient_id, f.study_id, f.series_id,
+                   f.meta, rf.meta AS replica_meta
+            FROM replica_files rf
+            JOIN files f ON f.id = rf.file_id
+            WHERE f.sop_instance_uid = $1 AND rf.replica_id = $2
+            LIMIT 1
+        """, instance_uid, master['id'])
+        if not row:
+            return Response(json.dumps({'error': 'Instance not found'}), status_code=404)
+
+        storage = await Storage.get(master)
+        file_data = dict(row)
+        file_data['meta'] = json.loads(file_data.get('meta') or '{}')
+        file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
+        path = await storage.fetch(file_data)
+        with open(path, 'rb') as f:
+            content = f.read()
+        return Response(content, media_type='application/dicom')
+
+    async def _retrieve_series(self, conn, master, study_uid, series_uid):
+        rows = await conn.fetch("""
+            SELECT rf.id, rf.location, f.name, f.patient_id, f.study_id, f.series_id,
+                   f.meta, rf.meta AS replica_meta
+            FROM replica_files rf
+            JOIN files f ON f.id = rf.file_id
+            JOIN series s ON s.id = f.series_id
+            JOIN studies st ON st.id = s.study_id
+            WHERE st.study_instance_uid = $1
+              AND s.series_instance_uid = $2
+              AND rf.replica_id = $3
+        """, study_uid, series_uid, master['id'])
+        if not rows:
+            return Response(json.dumps({'error': 'Series not found'}), status_code=404)
+        return await self._build_multipart(rows, master)
+
+    async def _retrieve_study(self, conn, master, study_uid):
+        rows = await conn.fetch("""
+            SELECT rf.id, rf.location, f.name, f.patient_id, f.study_id, f.series_id,
+                   f.meta, rf.meta AS replica_meta
+            FROM replica_files rf
+            JOIN files f ON f.id = rf.file_id
+            JOIN studies st ON st.id = f.study_id
+            WHERE st.study_instance_uid = $1 AND rf.replica_id = $2
+        """, study_uid, master['id'])
+        if not rows:
+            return Response(json.dumps({'error': 'Study not found'}), status_code=404)
+        return await self._build_multipart(rows, master)
+
+    async def _build_multipart(self, rows, master):
+        storage = await Storage.get(master)
+        boundary = 'WADO_BOUNDARY'
+        body_parts = []
+        for row in rows:
+            file_data = dict(row)
+            file_data['meta'] = json.loads(file_data.get('meta') or '{}')
+            file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
+            path = await storage.fetch(file_data)
+            with open(path, 'rb') as f:
+                content = f.read()
+            part = (
+                f'--{boundary}\r\n'
+                f'Content-Type: application/dicom\r\n\r\n'
+            ).encode('latin-1') + content + b'\r\n'
+            body_parts.append(part)
+        body_parts.append(f'--{boundary}--\r\n'.encode('latin-1'))
+        body = b''.join(body_parts)
+
+        return Response(
+            body,
+            media_type=f'multipart/related; type=application/dicom; boundary={boundary}',
+        )
 
 
 def _parse_multipart_related(body, content_type):
