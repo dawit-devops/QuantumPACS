@@ -26,6 +26,12 @@ class TestDefaultConfig:
     def test_es_host_default(self):
         assert default_config['es_host'] == 'localhost'
 
+    def test_has_dicom_config_keys(self):
+        assert default_config['dicom_ae_title'] == 'QUANTUMPACS'
+        assert default_config['dicom_cstore_port'] == '11112'
+        assert default_config['dicom_mwl_port'] == '11113'
+        assert default_config['dicom_cmove_port'] == '11114'
+
     def test_secret_falls_back_to_dev_default(self):
         cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})
         assert cfg['secret'] == 'quantumpacs-dev-secret-replace-in-production-32b'
