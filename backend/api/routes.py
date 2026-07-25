@@ -18,6 +18,7 @@ from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
     UsersHandler, UsersDeactivate, UsersNewPassword,
 )
+from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.ws import WSToken, WebsocketHandler
@@ -70,6 +71,8 @@ routes = [
     Route('/tenants', endpoint=TenantsHandler),
     Route('/tenants/{id}', endpoint=TenantHandler),
     Route('/tenants/{id}/stats', endpoint=TenantStatsHandler),
+    Route('/api-keys', endpoint=ApiKeysHandler),
+    Route('/api-keys/{id}', endpoint=ApiKeyHandler),
     Route('/oauth/providers', endpoint=OAuthProvidersHandler),
     Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler),
     Route('/ws_token', endpoint=WSToken),

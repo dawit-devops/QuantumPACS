@@ -6,8 +6,11 @@ from api.response import ok, created, not_found
 from api.validate import parse_body
 from api.schemas.tenants import CreateTenantRequest, UpdateTenantRequest
 from config import config
+from db.audit_log import AuditLog
 from db.conn import get_conn
+from db.tenant_provisioner import TenantProvisioner
 from db.tenants import Tenants
+from log import request_id_var
 
 
 class TenantsHandler(HTTPEndpoint):
@@ -24,14 +27,30 @@ class TenantsHandler(HTTPEndpoint):
             existing = await Tenants(conn).get_by_slug(body.slug)
             if existing:
                 return ok({'error': 'Tenant slug already exists'})
-            tenant_id = await Tenants(conn).create(
-                name=body.name, slug=body.slug,
-                domain=body.domain, db_name=body.db_name,
-                db_host=body.db_host, db_port=body.db_port,
-                db_user=body.db_user, db_password=body.db_password,
-                storage_quota_bytes=body.storage_quota_bytes,
+
+        result = await TenantProvisioner.provision(
+            slug=body.slug, name=body.name,
+            domain=body.domain, db_name=body.db_name,
+            db_host=body.db_host, db_port=body.db_port,
+            db_user=body.db_user, db_password=body.db_password,
+            storage_quota_bytes=body.storage_quota_bytes,
+            admin_email=body.admin_email,
+        )
+
+        async with get_conn() as conn:
+            await AuditLog(conn).log_event(
+                event_type='tenant.provisioned',
+                actor_id=request.user.id,
+                resource_type='tenant',
+                resource_id=result['tenant_id'],
+                details={'name': body.name, 'slug': body.slug},
+                tenant=body.slug,
+                request_id=request_id_var.get(),
             )
-        return created({'id': tenant_id})
+        return created({
+            'id': result['tenant_id'],
+            'admin_password': result.get('admin_password'),
+        })
 
 
 class TenantHandler(HTTPEndpoint):
@@ -66,6 +85,15 @@ class TenantHandler(HTTPEndpoint):
             if not tenant:
                 return not_found('Tenant not found')
             await Tenants(conn).delete(tenant_id)
+            await AuditLog(conn).log_event(
+                event_type='tenant.deleted',
+                actor_id=request.user.id,
+                resource_type='tenant',
+                resource_id=tenant_id,
+                details={'name': tenant.get('name'), 'slug': tenant.get('slug')},
+                tenant=tenant.get('slug'),
+                request_id=request_id_var.get(),
+            )
         return ok({})
 
 

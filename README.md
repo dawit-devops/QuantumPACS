@@ -58,13 +58,15 @@ Open `http://localhost` — default credentials: `admin` / `pa55w0rd`
 
 ```bash
 cd backend
-python -m venv venv
+python -m venv venv        # creates venv at backend/venv/ (canonical location)
 source venv/bin/activate
 pip install -r requirements.txt
 ./manage db init          # creates database, outputs random password
 export DB_PASS=<password> # or set in config.local.yaml
 ./start.sh                # starts DICOM listener, sync, HTTP server
 ```
+
+> The virtual environment is at `backend/venv/`. This is the sole canonical venv used by the systemd service, pre-commit hooks, and `manage` script. Run tests with `cd backend && python -m pytest tests/` (with venv activated).
 
 #### Frontend
 

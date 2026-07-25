@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV="$DIR/venv"
+
 if [ -z "${1:-}" ]; then
     echo "Command needed (run, db)"
     exit 1
@@ -54,16 +57,16 @@ handle_db() {
             create_db "$DBNAME"
             ;;
         migrate)
-            venv/bin/alembic upgrade head
+            $VENV/bin/alembic upgrade head
             ;;
         rollback)
-            venv/bin/alembic downgrade -1
+            $VENV/bin/alembic downgrade -1
             ;;
         current)
-            venv/bin/alembic current
+            $VENV/bin/alembic current
             ;;
         history)
-            venv/bin/alembic history
+            $VENV/bin/alembic history
             ;;
         shell)
             psql -h "$DBHOST" "$DBNAME" -U "$DBUSER"
@@ -80,7 +83,7 @@ handle_db() {
 
 case $1 in
     run)
-        venv/bin/python app.py
+        $VENV/bin/python app.py
         ;;
     db)
         handle_db "${@:2}"
@@ -89,10 +92,10 @@ case $1 in
         shift
         if [ "$1" = "migrate" ]; then
             shift
-            venv/bin/python -m management.tenant_migrate "$@"
+            $VENV/bin/python -m management.tenant_migrate "$@"
         elif [ "$1" = "migrate-one" ]; then
             shift
-            venv/bin/python -m management.tenant_migrate "$1"
+            $VENV/bin/python -m management.tenant_migrate "$1"
         else
             echo "Usage: tenant {migrate|migrate-one <slug>}"
             exit 1

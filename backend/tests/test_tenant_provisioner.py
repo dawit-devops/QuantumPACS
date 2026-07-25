@@ -55,17 +55,21 @@ class TestTenantProvisioner:
             patch('asyncpg.connect', new=AsyncMock(return_value=conn_mock)),
             patch('db.tenant_provisioner.get_conn') as mock_get_conn,
             patch('alembic.command.upgrade'),
+            patch('db.tenant_provisioner.TenantProvisioner.create_initial_admin',
+                  new=AsyncMock(return_value='admin-password-123')),
         ):
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value = conn_mock
             mock_get_conn.return_value = mock_ctx
 
-            tenant_id = await TenantProvisioner.provision(
+            result = await TenantProvisioner.provision(
                 slug='test-clinic', name='Test Clinic',
                 domain='test.clinic.com',
             )
 
-            assert tenant_id == 'new-tenant-id'
+            assert isinstance(result, dict)
+            assert result['tenant_id'] == 'new-tenant-id'
+            assert result['admin_password'] == 'admin-password-123'
 
     @pytest.mark.asyncio
     async def test_provision_uses_slug_for_db_name(self):
@@ -77,6 +81,8 @@ class TestTenantProvisioner:
             patch('asyncpg.connect', new=AsyncMock(return_value=conn_mock)),
             patch('db.tenant_provisioner.get_conn') as mock_get_conn,
             patch('alembic.command.upgrade'),
+            patch('db.tenant_provisioner.TenantProvisioner.create_initial_admin',
+                  new=AsyncMock(return_value='pass')),
         ):
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value = conn_mock

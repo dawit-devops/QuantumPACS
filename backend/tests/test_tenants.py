@@ -83,12 +83,13 @@ class TestTenants:
         assert 'updated_at' in sql
 
     @pytest.mark.asyncio
-    async def test_delete_removes_tenant(self):
+    async def test_delete_soft_deletes_tenant(self):
         conn = AsyncMock()
         t = Tenants(conn=conn)
         await t.delete('tenant-1')
         sql = conn.execute.call_args[0][0]
-        assert 'DELETE' in sql
+        assert 'UPDATE' in sql
+        assert 'decommissioned' in sql
 
     @pytest.mark.asyncio
     async def test_to_json_removes_db_password(self):

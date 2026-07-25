@@ -72,7 +72,7 @@ class TestRoles:
         r = Roles(conn=conn)
         await r.seed_built_in_roles()
         calls = conn.execute.call_args_list
-        assert len(calls) == 6
+        assert len(calls) == 7
         sql = calls[0][0][0]
         assert 'INSERT INTO' in sql
         assert 'super_admin' in sql

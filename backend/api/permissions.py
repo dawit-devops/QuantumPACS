@@ -23,6 +23,9 @@ class Permission(str, Enum):
     ROLE_READ = 'ROLE_READ'
     ROLE_WRITE = 'ROLE_WRITE'
     ROLE_DELETE = 'ROLE_DELETE'
+    SERVICE_KEY_READ = 'SERVICE_KEY_READ'
+    SERVICE_KEY_WRITE = 'SERVICE_KEY_WRITE'
+    SERVICE_KEY_DELETE = 'SERVICE_KEY_DELETE'
 
 
 SUPER_ADMIN_PERMISSIONS = {p.value for p in Permission}
@@ -38,6 +41,8 @@ BUILT_IN_ROLES = {
         Permission.REPLICA_READ.value, Permission.REPLICA_WRITE.value,
         Permission.LOG_READ.value,
         Permission.ROLE_READ.value, Permission.ROLE_WRITE.value,
+        Permission.SERVICE_KEY_READ.value, Permission.SERVICE_KEY_WRITE.value,
+        Permission.SERVICE_KEY_DELETE.value,
     ],
     'technologist': [
         Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
@@ -53,6 +58,15 @@ BUILT_IN_ROLES = {
         Permission.FILE_READ.value,
         Permission.PATIENT_READ.value,
         Permission.STUDY_READ.value,
+    ],
+    'tenant_admin': [
+        Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
+        Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
+        Permission.STUDY_READ.value, Permission.STUDY_WRITE.value,
+        Permission.USER_READ.value, Permission.USER_WRITE.value,
+        Permission.REPLICA_READ.value, Permission.REPLICA_WRITE.value,
+        Permission.LOG_READ.value,
+        Permission.ROLE_READ.value, Permission.ROLE_WRITE.value,
     ],
     'cashier': [
         Permission.PATIENT_READ.value,

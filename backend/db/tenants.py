@@ -77,8 +77,11 @@ class Tenants(Table):
         data['updated_at'] = str(data.get('updated_at', ''))
         return data
 
-    async def get_all(self):
-        q = self.select('*').orderby(self.table.name)
+    async def get_all(self, include_decommissioned=False):
+        q = self.select('*')
+        if not include_decommissioned:
+            q = q.where(self.table.status != 'decommissioned')
+        q = q.orderby(self.table.name)
         data = await self.fetch(q)
         return [self.to_json(d) for d in data]
 
@@ -123,7 +126,20 @@ class Tenants(Table):
 
     async def delete(self, tenant_id):
         await TenantConnectionPool.close(str(tenant_id))
-        q = self.query().where(self.table.id == tenant_id).delete()
+        q = self.update().where(self.table.id == tenant_id).set(
+            self.table.status, 'decommissioned',
+        ).set(
+            self.table.decommissioned_at, 'NOW()',
+        ).set(
+            self.table.updated_at, 'NOW()',
+        )
+        await self.exec(q)
+
+    async def hard_delete(self, slug: str):
+        row = await self.get_by_slug(slug)
+        if row:
+            await TenantConnectionPool.close(str(row['id']))
+        q = self.query().where(self.table.slug == slug).delete()
         await self.exec(q)
 
     async def get_stats(self, tenant_slug: str, tenant_info: dict):

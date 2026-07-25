@@ -11,6 +11,7 @@ class CreateTenantRequest(BaseModel):
     db_user: str | None = None
     db_password: str | None = None
     storage_quota_bytes: int = 0
+    admin_email: str | None = None
 
 
 class UpdateTenantRequest(BaseModel):

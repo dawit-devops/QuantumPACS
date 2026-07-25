@@ -8,6 +8,7 @@ from db.table import Table
 NAME_BY_SLUG = {
     'super_admin': 'Super Admin',
     'admin': 'Administrator',
+    'tenant_admin': 'Tenant Admin',
     'technologist': 'Technologist',
     'radiologist': 'Radiologist',
     'physician': 'Physician',

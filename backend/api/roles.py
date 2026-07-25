@@ -5,8 +5,10 @@ from api.permissions import Permission
 from api.response import ok, created, not_found
 from api.validate import parse_body
 from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
+from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.roles import Roles
+from log import request_id_var
 
 
 class RolesHandler(HTTPEndpoint):
@@ -24,6 +26,15 @@ class RolesHandler(HTTPEndpoint):
                 name=body.name,
                 slug=body.slug,
                 permissions=body.permissions,
+            )
+            await AuditLog(conn).log_event(
+                event_type='role.created',
+                actor_id=request.user.id,
+                resource_type='role',
+                resource_id=role_id,
+                details={'name': body.name, 'slug': body.slug, 'permissions': body.permissions},
+                tenant=request.user.tenant,
+                request_id=request_id_var.get(),
             )
         return created({'id': role_id})
 
@@ -50,6 +61,15 @@ class RoleHandler(HTTPEndpoint):
                 role_id,
                 body.model_dump(exclude_none=True),
             )
+            await AuditLog(conn).log_event(
+                event_type='role.updated',
+                actor_id=request.user.id,
+                resource_type='role',
+                resource_id=role_id,
+                details=body.model_dump(exclude_none=True),
+                tenant=request.user.tenant,
+                request_id=request_id_var.get(),
+            )
         return ok({})
 
     @requires_permission(Permission.ROLE_DELETE)
@@ -62,4 +82,13 @@ class RoleHandler(HTTPEndpoint):
             if role.get('built_in'):
                 return ok({'error': 'Cannot delete built-in role'})
             await Roles(conn).delete(role_id)
+            await AuditLog(conn).log_event(
+                event_type='role.deleted',
+                actor_id=request.user.id,
+                resource_type='role',
+                resource_id=role_id,
+                details={'name': role.get('name'), 'slug': role.get('slug')},
+                tenant=request.user.tenant,
+                request_id=request_id_var.get(),
+            )
         return ok({})

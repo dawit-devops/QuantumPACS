@@ -84,6 +84,7 @@ class TestOAuthLogin:
     @pytest.mark.asyncio
     async def test_login_redirects_when_configured(self):
         request = MagicMock()
+        request.query_params = {}
         cfg = {
             'oauth_issuer': 'https://accounts.google.com',
             'oauth_client_id': 'my-client-id',
@@ -102,6 +103,7 @@ class TestOAuthLogin:
     @pytest.mark.asyncio
     async def test_login_returns_501_when_not_configured(self):
         request = MagicMock()
+        request.query_params = {}
         cfg = {'oauth_issuer': '', 'oauth_client_id': ''}
         with patch('api.oauth.config', cfg):
             resp = await oauth_login(request)
@@ -127,7 +129,7 @@ class TestOAuthCallback:
     async def test_callback_invalid_state_returns_401(self):
         request = MagicMock()
         request.query_params = {'code': 'abc', 'state': 'bad'}
-        with patch('api.oauth._verify_state', AsyncMock(return_value=None)):
+        with patch('api.oauth._verify_state', AsyncMock(return_value=(None, None))):
             resp = await oauth_callback(request)
         assert resp.status_code == 401
 
@@ -150,12 +152,12 @@ class TestOAuthCallback:
         claims = MockClaims(sub='oauth-user-1', email='dr@example.com', name='Dr Smith')
 
         with patch('api.oauth.config', cfg):
-            with patch('api.oauth._verify_state', AsyncMock(return_value='code-verifier')):
+            with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None))):
                 with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
                     with patch('api.oauth._verify_id_token', return_value=claims):
-                        with patch('api.oauth._find_or_create_user', AsyncMock(return_value={
-                            'id': 42, 'admin': False, 'username': 'dr'
-                        })):
+                        with patch('api.oauth._find_or_create_user', AsyncMock(return_value=(
+                            {'id': 42, 'admin': False, 'username': 'dr'}, [], None,
+                        ))):
                             with patch('api.oauth.create_token', return_value='qp-jwt-token'):
                                 resp = await oauth_callback(request)
 

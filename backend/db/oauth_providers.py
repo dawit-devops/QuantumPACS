@@ -33,16 +33,19 @@ class OAuthProviders(Table):
     async def create(self, issuer, client_id, client_secret='',
                      jwks_uri=None, token_url=None, redirect_uri=None,
                      scope='openid email profile', groups_claim='groups',
-                     auto_provision=True, enabled=True, tenant_id=None):
+                     auto_provision=True, enabled=True, tenant_id=None,
+                     slug=None, default_role='cashier'):
         q = self.insert().columns(
             self.table.tenant_id, self.table.issuer, self.table.client_id,
             self.table.client_secret, self.table.jwks_uri, self.table.token_url,
             self.table.redirect_uri, self.table.scope, self.table.groups_claim,
             self.table.auto_provision, self.table.enabled,
+            self.table.slug, self.table.default_role,
         ).insert(
             tenant_id, issuer, client_id, client_secret,
             jwks_uri, token_url, redirect_uri, scope, groups_claim,
             auto_provision, enabled,
+            slug, default_role,
         ).returning(self.table.id)
         return await self.fetchval(q)
 

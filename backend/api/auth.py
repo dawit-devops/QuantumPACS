@@ -113,6 +113,24 @@ class TokenAuth(AuthenticationBackend):
         if request.scope.get('method') == 'OPTIONS':
             return
 
+        api_key = request.headers.get('X-API-Key')
+        if api_key:
+            from db.api_keys import ApiKeys
+            try:
+                async with get_conn() as conn:
+                    record = await ApiKeys(conn).validate(api_key)
+            except Exception:
+                raise AuthenticationError('Invalid auth')
+            if not record:
+                raise AuthenticationError('Invalid auth')
+            user = User({
+                'id': f'svc_{record["service_name"]}',
+                'admin': False,
+                'role': '',
+                'permissions': record.get('permissions', []),
+            })
+            return AuthCredentials(["authenticated"]), user
+
         data = None
         if request.url.scheme != 'ws':
             auth = request.headers.get('X-Auth-Pacs')
