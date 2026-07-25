@@ -84,6 +84,7 @@ routes = [
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies),
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado),
     Route('/wado', endpoint=DicomWebWadoUri),
+    Route('/api/v2/wado', endpoint=DicomWebWadoUri),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/ws_token', endpoint=WSToken),
