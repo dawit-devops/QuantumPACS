@@ -150,6 +150,23 @@ class TestUsers:
         assert perms == []
 
     @pytest.mark.asyncio
+    async def test_get_users_returns_role_info(self):
+        conn = AsyncMock()
+        conn.fetch.return_value = [
+            {'id': 1, 'username': 'admin', 'admin': True, 'status': 'active',
+             'role_name': 'Administrator', 'role_slug': 'admin'},
+            {'id': 2, 'username': 'tech1', 'admin': False, 'status': 'active',
+             'role_name': 'Technologist', 'role_slug': 'technologist'},
+        ]
+        u = Users(conn=conn)
+        users = await u.get_users()
+        assert users[0]['role_name'] == 'Administrator'
+        assert users[1]['role_slug'] == 'technologist'
+        sql = conn.fetch.call_args[0][0]
+        assert 'JOIN' in sql.upper()
+        assert 'roles' in sql.lower()
+
+    @pytest.mark.asyncio
     async def test_add_superadmin_assigns_role_id(self):
         conn = AsyncMock()
         conn.fetchrow.return_value = None

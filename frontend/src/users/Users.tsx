@@ -28,6 +28,12 @@ function Users() {
       width: '20%',
     },
     {
+      title: 'Role',
+      dataIndex: 'role_name',
+      render: (name: string) =>
+        name ? <Tag color="purple">{name}</Tag> : null,
+    },
+    {
       title: 'Admin',
       dataIndex: 'admin',
       render: (is_admin: boolean) => {
