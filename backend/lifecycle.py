@@ -163,7 +163,7 @@ async def setup(db_pool_size=None, sync_db=False):
 
 
 async def teardown():
-    global _bridge, _monitor, _dicom_scp, _mllp_task
+    global _bridge, _monitor
     _stop_dicom()
     _stop_mllp()
     if _monitor is not None:

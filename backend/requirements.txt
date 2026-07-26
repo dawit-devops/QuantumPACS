@@ -21,3 +21,5 @@ sentry-sdk>=2.0,<3.0
 starlette>=1.0.1,<2.0
 ujson>=1.35,<6.0
 uvicorn>=0.8.6,<0.52
+httpx<1.0
+prometheus_client>=0.20,<1.0
