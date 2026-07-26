@@ -1,3 +1,6 @@
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -60,11 +63,31 @@ class TestMetricsEndpoint:
 
         assert 'http_requests_total{method="GET",path="/ping",status_code="200"}' in after_body
 
+    def test_includes_db_pool_gauges(self):
+        client = TestClient(_make_metrics_app())
+        fake_pool = AsyncMock()
+        fake_pool.get_idle_size = lambda: 5
+        fake_pool.get_size = lambda: 10
+        fake_pool.get_active_size = lambda: 3
+        fake_db = AsyncMock()
+        fake_db.pool = fake_pool
+        with patch('db.conn.get_database', return_value=fake_db):
+            resp = client.get('/metrics')
+        assert resp.status_code == 200
+        assert 'db_connections_available' in resp.text
+        assert 'db_connections_in_use' in resp.text
+
+
+_mock_probes = [
+    patch('api.telemetry._check_redis', return_value={'status': 'ok', 'latency_ms': 1}),
+    patch('api.telemetry._check_storage', return_value={'status': 'ok', 'latency_ms': 1}),
+    patch('api.telemetry._check_dicom_listener', return_value={'status': 'ok', 'port': 11112, 'latency_ms': 1}),
+]
+
 
 class TestHealthEndpoint:
     def test_returns_adr020_structure(self):
         from api.telemetry import health_endpoint
-        from unittest.mock import patch, AsyncMock
         app = Starlette(routes=[Route('/health', endpoint=health_endpoint)])
         client = TestClient(app)
         fake_conn = AsyncMock()
@@ -73,10 +96,11 @@ class TestHealthEndpoint:
         fake_conn.fetchval = AsyncMock(return_value=1)
         fake_es = AsyncMock()
         fake_es.ping = AsyncMock(return_value=True)
-        with (
-            patch('db.conn.get_conn', return_value=fake_conn),
-            patch('es.es.get_client', return_value=fake_es),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(patch('db.conn.get_conn', return_value=fake_conn))
+            stack.enter_context(patch('es.es.get_client', return_value=fake_es))
+            for p in _mock_probes:
+                stack.enter_context(p)
             resp = client.get('/health')
         assert resp.status_code == 200
         data = resp.json()
@@ -86,7 +110,6 @@ class TestHealthEndpoint:
 
     def test_health_includes_component_keys(self):
         from api.telemetry import health_endpoint
-        from unittest.mock import patch, AsyncMock
         app = Starlette(routes=[Route('/health', endpoint=health_endpoint)])
         client = TestClient(app)
         fake_conn = AsyncMock()
@@ -95,10 +118,11 @@ class TestHealthEndpoint:
         fake_conn.fetchval = AsyncMock(return_value=1)
         fake_es = AsyncMock()
         fake_es.ping = AsyncMock(return_value=True)
-        with (
-            patch('db.conn.get_conn', return_value=fake_conn),
-            patch('es.es.get_client', return_value=fake_es),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(patch('db.conn.get_conn', return_value=fake_conn))
+            stack.enter_context(patch('es.es.get_client', return_value=fake_es))
+            for p in _mock_probes:
+                stack.enter_context(p)
             resp = client.get('/health')
         data = resp.json()
         components = data.get('components', {})
@@ -107,3 +131,25 @@ class TestHealthEndpoint:
             assert 'status' in components[key]
             assert 'latency_ms' in components[key]
             assert isinstance(components[key]['latency_ms'], int)
+
+    def test_health_includes_all_component_keys(self):
+        from api.telemetry import health_endpoint
+        app = Starlette(routes=[Route('/health', endpoint=health_endpoint)])
+        client = TestClient(app)
+        fake_conn = AsyncMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=None)
+        fake_conn.fetchval = AsyncMock(return_value=1)
+        fake_conn.fetch = AsyncMock(return_value=[{'id': 1, 'type': 'local', 'master': True}])
+        fake_es = AsyncMock()
+        fake_es.ping = AsyncMock(return_value=True)
+        with ExitStack() as stack:
+            stack.enter_context(patch('db.conn.get_conn', return_value=fake_conn))
+            stack.enter_context(patch('es.es.get_client', return_value=fake_es))
+            for p in _mock_probes:
+                stack.enter_context(p)
+            resp = client.get('/health')
+        data = resp.json()
+        components = data.get('components', {})
+        for key in ('database', 'elasticsearch', 'redis', 'storage_master', 'dicom_listener'):
+            assert key in components, f'{key} missing from health response'

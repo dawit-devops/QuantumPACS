@@ -91,6 +91,9 @@ def _stop_mllp():
 
 
 async def setup(db_pool_size=None, sync_db=False):
+    from api.tracing import setup_tracing
+    setup_tracing()
+
     success = False
     last_exc = None
     for i in range(30):
