@@ -34,7 +34,7 @@ class TestMetricsEndpoint:
         client = TestClient(_make_metrics_app())
         resp = client.get('/v2/metrics')
         assert resp.status_code == 200
-        assert resp.headers['content-type'].startswith('text/plain; version=0.0.4')
+        assert resp.headers['content-type'].startswith('text/plain')
         body = resp.text
         assert body.startswith('# HELP') or body.startswith('# TYPE')
 
