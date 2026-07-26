@@ -21,6 +21,7 @@ _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
 _bridge: PgNotifyBridge | None = None
 _monitor: StreamMonitor | None = None
 _dicom_scp = None
+_mllp_task: asyncio.Task | None = None
 
 
 def _start_dicom():
@@ -48,6 +49,43 @@ def _stop_dicom():
         except Exception:
             log.warning('DICOM server shutdown error', exc_info=True)
         _dicom_scp = None
+
+
+async def _start_mllp():
+    global _mllp_task
+    try:
+        import ssl
+        from services.ingestion.hl7_server import MllpServer
+        port = int(config.get('hl7_mllp_port', '12579'))
+        ssl_context = None
+        cert_file = config.get('hl7_mllp_tls_cert', '')
+        key_file = config.get('hl7_mllp_tls_key', '')
+        if cert_file and key_file:
+            ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            ssl_context.load_cert_chain(cert_file, key_file)
+        server = MllpServer(host='', port=port, ssl_context=ssl_context)
+
+        async def _run():
+            await server.start()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                pass
+            await server.stop()
+
+        _mllp_task = asyncio.create_task(_run())
+        log.info('MLLP server started on port %s', port)
+    except Exception:
+        log.warning('Failed to start MLLP server', exc_info=True)
+        _mllp_task = None
+
+
+def _stop_mllp():
+    global _mllp_task
+    if _mllp_task is not None:
+        _mllp_task.cancel()
+        _mllp_task = None
+        log.info('MLLP server stopped')
 
 
 async def setup(db_pool_size=None, sync_db=False):
@@ -103,6 +141,7 @@ async def setup(db_pool_size=None, sync_db=False):
             _monitor = None
 
     _start_dicom()
+    await _start_mllp()
 
     if sync_db:
         async with db.conn.get_conn() as conn:
@@ -119,8 +158,9 @@ async def setup(db_pool_size=None, sync_db=False):
 
 
 async def teardown():
-    global _bridge, _monitor, _dicom_scp
+    global _bridge, _monitor, _dicom_scp, _mllp_task
     _stop_dicom()
+    _stop_mllp()
     if _monitor is not None:
         try:
             await _monitor.stop()

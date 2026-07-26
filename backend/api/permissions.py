@@ -30,6 +30,8 @@ class Permission(str, Enum):
     WORKLIST_WRITE = 'WORKLIST_WRITE'
     DICOMWEB_READ = 'DICOMWEB_READ'
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
+    ROUTING_READ = 'ROUTING_READ'
+    ROUTING_WRITE = 'ROUTING_WRITE'
 
 
 SUPER_ADMIN_PERMISSIONS = {p.value for p in Permission}
@@ -49,6 +51,7 @@ BUILT_IN_ROLES = {
         Permission.SERVICE_KEY_DELETE.value,
         Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
         Permission.DICOMWEB_READ.value, Permission.DICOMWEB_WRITE.value,
+        Permission.ROUTING_READ.value, Permission.ROUTING_WRITE.value,
     ],
     'technologist': [
         Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,

@@ -1,0 +1,293 @@
+import asyncio
+import hashlib
+import json
+
+import hl7
+
+from config import config
+from db.conn import get_conn
+from db.patient import Patient
+from db.worklist import Worklist
+from db.hl7_message import Hl7Message
+from log import get_logger
+
+log = get_logger(__name__)
+
+MLLP_START = b'\x0b'
+MLLP_END = b'\x1c\x0d'
+
+
+class MllpServer:
+    def __init__(self, host='', port=12579, handler=None, ssl_context=None):
+        self._host = host
+        self._port = port
+        self._handler = handler or default_handler
+        self._ssl_context = ssl_context
+        self._server = None
+
+    async def start(self):
+        self._server = await asyncio.start_server(
+            self._on_connect, self._host, self._port,
+            ssl=self._ssl_context,
+        )
+        addr = self._server.sockets[0].getsockname()
+        log.info('MLLP server listening on %s:%s', addr[0], addr[1])
+
+    async def stop(self):
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+            log.info('MLLP server stopped')
+
+    async def _on_connect(self, reader, writer):
+        try:
+            while True:
+                data = await reader.readuntil(MLLP_END)
+                if not data:
+                    break
+                if data.startswith(MLLP_START):
+                    msg_bytes = data[1:-2]
+                else:
+                    msg_bytes = data[:-2]
+
+                raw_hash = hashlib.sha256(msg_bytes).hexdigest()
+                log.info('HL7 message received (SHA-256: %s)', raw_hash[:16])
+
+                try:
+                    result = await self._handler(msg_bytes)
+                    writer.write(MLLP_START + result + MLLP_END)
+                    await writer.drain()
+                except Exception:
+                    log.exception('handler error')
+                    nack = b'NACK'
+                    writer.write(MLLP_START + nack + MLLP_END)
+                    await writer.drain()
+        except asyncio.IncompleteReadError:
+            pass
+        except Exception:
+            log.exception('connection error')
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+
+async def _store_hl7_message(msg_bytes: bytes, parsed: dict | None, status: str, error: str = ''):
+    raw_hash = hashlib.sha256(msg_bytes).hexdigest()
+    try:
+        raw_body = msg_bytes.decode('utf-8', errors='replace')
+        parsed_fields = None
+        if parsed:
+            cleaned = {k: v for k, v in parsed.items() if v is not None}
+            parsed_fields = json.dumps(cleaned)
+        async with get_conn() as conn:
+            msg = Hl7Message(conn)
+            await msg.create({
+                'raw_hash': raw_hash,
+                'raw_content': raw_body,
+                'message_type': (parsed or {}).get('message_type', ''),
+                'event_type': (parsed or {}).get('event_type', ''),
+                'patient_id': (parsed or {}).get('patient_id', ''),
+                'accession_number': (parsed or {}).get('accession_number', ''),
+                'sending_facility': (parsed or {}).get('sending_facility', ''),
+                'parsed_fields': parsed_fields,
+                'parse_status': status,
+                'error_message': error,
+            })
+    except Exception:
+        log.exception('Failed to store HL7 message')
+
+
+async def default_handler(msg_bytes: bytes) -> bytes:
+    parsed = parse_hl7_message(msg_bytes)
+    if parsed is None:
+        await _store_hl7_message(msg_bytes, None, 'failed', 'Unparseable message')
+        return b'ERR Unparseable message'
+
+    await _store_hl7_message(msg_bytes, parsed, 'ok')
+
+    msg_type = parsed['message_type']
+    event_type = parsed['event_type']
+
+    if msg_type == 'ADT':
+        success = await handle_adt_message(parsed)
+        if not success:
+            return b'ERR ADT processing failed'
+        log.info('ADT-%s processed for patient %s', event_type, parsed.get('patient_id', '?'))
+        return b'ACK'
+
+    if msg_type == 'ORM':
+        success = await handle_orm_message(parsed)
+        if not success:
+            return b'ERR ORM processing failed'
+        log.info('ORM-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
+        return b'ACK'
+
+    log.warning('Unknown message type: %s', msg_type)
+    return b'ACK'
+
+
+def _seg_field(seg, hl7_field, comp=0, sub=0, default=''):
+    if hl7_field >= len(seg) or hl7_field < 0:
+        return default
+    try:
+        val = seg[hl7_field]
+        if isinstance(val, str):
+            return val
+        val = val[comp]
+        if isinstance(val, str):
+            return val
+        val = val[sub]
+        return str(val)
+    except (IndexError, TypeError):
+        return default
+
+
+def _seg_field_raw(seg, hl7_field, default=''):
+    if hl7_field >= len(seg) or hl7_field < 0:
+        return default
+    try:
+        return str(seg[hl7_field])
+    except Exception:
+        return default
+
+
+def parse_hl7_message(data) -> dict | None:
+    if isinstance(data, bytes):
+        data = data.decode('utf-8', errors='replace')
+    try:
+        msg = hl7.parse(data)
+    except Exception:
+        return None
+
+    segments = {seg[0][0]: seg for seg in msg}
+    msh = segments.get('MSH')
+    if msh is None:
+        return None
+
+    result = {
+        'message_type': _seg_field(msh, 9, 0, 0),
+        'event_type': _seg_field(msh, 9, 0, 1),
+        'sending_facility': _seg_field(msh, 4, 0, 0),
+    }
+
+    pid = segments.get('PID')
+    if pid is not None:
+        result['patient_id'] = _seg_field(pid, 3, 0, 0)
+        result['patient_name'] = _seg_field_raw(pid, 5)
+        result['birth_date'] = _seg_field(pid, 7, 0, 0)
+        result['sex'] = _seg_field(pid, 8, 0, 0)
+        address = _seg_field(pid, 11, 0, 0)
+        result['address'] = address or None
+
+    orc = segments.get('ORC')
+    if orc is not None:
+        result['accession_number'] = _seg_field(orc, 2, 0, 0)
+
+    obr = segments.get('OBR')
+    if obr is not None:
+        result['requested_procedure_id'] = _seg_field(obr, 3, 0, 0)
+        result['requested_procedure_desc'] = _seg_field_raw(obr, 4)
+        result['modality'] = _seg_field(obr, 24, 0, 0)
+        result['station_ae_title'] = _seg_field(obr, 18, 0, 0)
+        start_dt = _seg_field(obr, 7, 0, 0)
+        result['scheduled_date'] = start_dt[:8] if start_dt else ''
+        result['scheduled_time'] = start_dt[8:14] if len(start_dt) >= 14 else (start_dt[8:12] if len(start_dt) >= 12 else '')
+
+    return result
+
+
+async def handle_adt_message(parsed: dict) -> bool:
+    event = parsed.get('event_type', '')
+    patient_id = parsed.get('patient_id', '')
+    if not patient_id:
+        return False
+
+    if event == 'A03':
+        data = {'patient_id': patient_id}
+        return await _deactivate_patient(data)
+
+    if event in ('A01', 'A04', 'A05', 'A08'):
+        data = {
+            'patient_id': patient_id,
+            'patient_name': parsed.get('patient_name', ''),
+            'patient_birth_date': parsed.get('birth_date', ''),
+            'patient_sex': parsed.get('sex', ''),
+        }
+        return await _upsert_patient(data)
+
+    return False
+
+
+async def _upsert_patient(data: dict) -> bool:
+    try:
+        async with get_conn() as conn:
+            p = Patient(conn)
+            await p.insert_or_select(data)
+            pid = data.get('patient_id', '')
+            if pid:
+                await conn.execute(
+                    "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{sync_source}', '\"hl7\"') WHERE patient_id = $1",
+                    pid,
+                )
+        return True
+    except Exception:
+        log.exception('patient upsert failed')
+        return False
+
+
+async def _deactivate_patient(data: dict) -> bool:
+    try:
+        async with get_conn() as conn:
+            q = "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1"
+            await conn.execute(q, data['patient_id'])
+        return True
+    except Exception:
+        log.exception('patient deactivation failed')
+        return False
+
+
+async def handle_orm_message(parsed: dict) -> bool:
+    patient_id = parsed.get('patient_id', '')
+    accession = parsed.get('accession_number', '')
+    if not patient_id or not accession:
+        return False
+
+    birth_date = parsed.get('birth_date', '')
+    sex = parsed.get('sex', '')
+    patient_name = parsed.get('patient_name', '')
+
+    try:
+        async with get_conn() as conn:
+            p = Patient(conn)
+            await p.insert_or_select({
+                'patient_id': patient_id,
+                'patient_name': patient_name,
+                'patient_birth_date': birth_date,
+                'patient_sex': sex,
+            })
+
+            wl = Worklist(conn)
+            existing = await wl.get_by_accession(accession)
+            if existing:
+                return True
+
+            await wl.create({
+                'patient_id': patient_id,
+                'patient_name': patient_name,
+                'patient_birth_date': birth_date,
+                'patient_sex': sex,
+                'accession_number': accession,
+                'requested_procedure_id': parsed.get('requested_procedure_id', ''),
+                'requested_procedure_desc': parsed.get('requested_procedure_desc', ''),
+                'modality': parsed.get('modality', ''),
+                'station_ae_title': parsed.get('station_ae_title', ''),
+                'scheduled_date': parsed.get('scheduled_date', ''),
+                'scheduled_time': parsed.get('scheduled_time', ''),
+            })
+        return True
+    except Exception:
+        log.exception('ORM processing failed')
+        return False

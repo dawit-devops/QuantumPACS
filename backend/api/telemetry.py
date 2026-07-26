@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from es import es
-from log import request_id_var, get_logger
+from log import request_id_var, tenant_var, user_id_var, trace_id_var, span_id_var, get_logger
 
 log = get_logger(__name__)
 
@@ -26,9 +26,15 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         rid = request.headers.get('X-Request-ID', '')
         request_id_var.set(rid)
+        tenant_var.set(request.headers.get('X-Tenant-ID', ''))
+        user_id_var.set(request.headers.get('X-User-ID', ''))
+        trace_id_var.set(request.headers.get('X-Trace-ID', ''))
+        span_id_var.set(request.headers.get('X-Span-ID', ''))
         response = await call_next(request)
         if rid:
             response.headers['X-Request-ID'] = rid
+        if request.headers.get('X-Trace-ID'):
+            response.headers['X-Trace-ID'] = request.headers['X-Trace-ID']
         return response
 
 
