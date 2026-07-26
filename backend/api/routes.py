@@ -30,6 +30,7 @@ from api.fhir import (
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.worklist import WorklistHandler, WorklistEntryHandler
+from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
@@ -103,6 +104,7 @@ routes = [
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/routing', endpoint=RoutingHandler),
     Route('/routing/{id}', endpoint=RoutingRuleHandler),
+    Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler)
 ]

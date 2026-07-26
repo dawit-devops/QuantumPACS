@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined } from '@ant-design/icons';
 import { isAdmin } from '../helpers';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
@@ -72,6 +72,13 @@ function Sidebar() {
           <Link to="/">
             <FileSearchOutlined />
             <span className="nav-text">Files</span>
+          </Link>
+        </Menu.Item>
+
+        <Menu.Item key="metrics">
+          <Link to="/metrics">
+            <DashboardOutlined />
+            <span className="nav-text">Metrics</span>
           </Link>
         </Menu.Item>
 
