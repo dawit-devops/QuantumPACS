@@ -31,6 +31,10 @@ default_config = {
     'dicom_cstore_port': '11112',
     'dicom_mwl_port': '11113',
     'dicom_cmove_port': '11114',
+    'hl7_mllp_port': '12579',
+    'hl7_mllp_tls_cert': '',
+    'hl7_mllp_tls_key': '',
+    'hl7_mllp_allowed_ips': '',
 }
 
 

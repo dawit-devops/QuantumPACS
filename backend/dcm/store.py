@@ -10,6 +10,7 @@ from db.replica_files import ReplicaFiles
 from db.worklist import Worklist
 from dcm.file import get_meta
 from log import get_logger
+from services.ingestion.routing import evaluate_routing_rules
 from storage.storage import Storage
 from utils import hash_file
 
@@ -61,4 +62,7 @@ async def store_instance(ds, data):
             await Log(conn).add(str(e))
             return False
     await match_worklist_performed(ds)
+    routes = await evaluate_routing_rules(ds)
+    if routes:
+        log.info('Study %s matched %d routing rule(s)', ds.get('study_instance_uid', '?'), len(routes))
     return True

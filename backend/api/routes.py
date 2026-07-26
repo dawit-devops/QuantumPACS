@@ -22,6 +22,13 @@ from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
+from api.fhir import (
+    FhirMetadata,
+    FhirPatientRead, FhirPatientSearch,
+    FhirImagingStudyRead, FhirImagingStudySearch,
+    FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
+)
+from api.routing import RoutingHandler, RoutingRuleHandler
 from api.worklist import WorklistHandler, WorklistEntryHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -85,8 +92,17 @@ routes = [
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado),
     Route('/wado', endpoint=DicomWebWadoUri),
     Route('/api/v2/wado', endpoint=DicomWebWadoUri),
+    Route('/fhir/metadata', endpoint=FhirMetadata),
+    Route('/fhir/Patient', endpoint=FhirPatientSearch),
+    Route('/fhir/Patient/{id}', endpoint=FhirPatientRead),
+    Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch),
+    Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
+    Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
+    Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
+    Route('/routing', endpoint=RoutingHandler),
+    Route('/routing/{id}', endpoint=RoutingRuleHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler)
 ]
