@@ -1,8 +1,14 @@
 import json
 from typing import Any, Optional
+
 from log import get_logger
 
 log = get_logger(__name__)
+
+
+def _tracer():
+    from opentelemetry import trace
+    return trace.get_tracer('quantumpacs.redis')
 
 
 class StreamProducer:
@@ -22,8 +28,12 @@ class StreamProducer:
         data: dict[str, Any],
         maxlen: int = 100000,
     ) -> str:
-        data_bytes = {k: _serialize(v) for k, v in data.items()}
-        msg_id = await self.redis.xadd(stream, data_bytes, maxlen=maxlen, approximate=True)
+        with _tracer().start_as_current_span('redis.publish') as span:
+            span.set_attribute('messaging.destination', stream)
+            span.set_attribute('messaging.system', 'redis')
+            data_bytes = {k: _serialize(v) for k, v in data.items()}
+            msg_id = await self.redis.xadd(stream, data_bytes, maxlen=maxlen, approximate=True)
+            span.set_attribute('messaging.message_id', msg_id)
         return msg_id
 
 
@@ -46,17 +56,23 @@ class StreamConsumer:
         count: int = 10,
         block: int = 5000,
     ) -> list[tuple[str, str, dict[bytes, bytes]]]:
-        result = await self.redis.xreadgroup(
-            group, consumer, {stream: '>'}, count=count, block=block
-        )
-        messages: list[tuple[str, str, dict[bytes, bytes]]] = []
-        for stream_name, entries in result:
-            for msg_id, msg_data in entries:
-                messages.append((
-                    stream_name.decode() if isinstance(stream_name, bytes) else stream_name,
-                    msg_id,
-                    msg_data,
-                ))
+        with _tracer().start_as_current_span('redis.consume') as span:
+            span.set_attribute('messaging.destination', stream)
+            span.set_attribute('messaging.system', 'redis')
+            span.set_attribute('messaging.consumer_id', consumer)
+            span.set_attribute('messaging.consumer_group', group)
+            result = await self.redis.xreadgroup(
+                group, consumer, {stream: '>'}, count=count, block=block
+            )
+            messages: list[tuple[str, str, dict[bytes, bytes]]] = []
+            for stream_name, entries in result:
+                for msg_id, msg_data in entries:
+                    messages.append((
+                        stream_name.decode() if isinstance(stream_name, bytes) else stream_name,
+                        msg_id,
+                        msg_data,
+                    ))
+            span.set_attribute('messaging.message_count', len(messages))
         return messages
 
     async def ack(self, stream: str, group: str, msg_id: str) -> None:

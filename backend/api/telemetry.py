@@ -52,6 +52,14 @@ http_requests_in_progress = Gauge(
     'http_requests_in_progress', 'HTTP requests currently in progress',
     ['method', 'path'],
 )
+db_connections_available = Gauge(
+    'db_connections_available', 'Database connections available in pool',
+    ['tenant'],
+)
+db_connections_in_use = Gauge(
+    'db_connections_in_use', 'Database connections currently in use',
+    ['tenant'],
+)
 
 
 _legacy_metrics = {
@@ -70,7 +78,24 @@ def record_request(method, path, status_code, elapsed):
     _legacy_metrics['latency_count'] += 1
 
 
+def _sample_db_pool():
+    from db.conn import get_database
+    db = get_database()
+    pool = db.pool
+    if pool is None:
+        return
+    try:
+        idle = pool.get_idle_size()
+        total = pool.get_size()
+        in_use = pool.get_active_size()
+        db_connections_available.labels(tenant='default').set(idle)
+        db_connections_in_use.labels(tenant='default').set(in_use)
+    except Exception:
+        pass
+
+
 async def metrics_endpoint(request):
+    _sample_db_pool()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -108,12 +133,58 @@ async def _check_es():
         return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
 
 
+async def _check_redis():
+    start = time.monotonic()
+    try:
+        from api.redis_client import get_client, is_available
+        if not is_available():
+            return {'status': 'degraded', 'latency_ms': 0, 'message': 'Redis not configured'}
+        client = await get_client()
+        if client:
+            await client.ping()
+            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
+        return {'status': 'degraded', 'latency_ms': 0, 'message': 'Redis unavailable'}
+    except Exception as e:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+
+
+async def _check_storage():
+    start = time.monotonic()
+    try:
+        from db.conn import get_conn
+        async with get_conn() as conn:
+            row = await conn.fetchrow("SELECT id, type, master FROM replicas WHERE master = TRUE LIMIT 1")
+        if row:
+            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000), 'backend': row['type']}
+        return {'status': 'degraded', 'latency_ms': 0, 'message': 'No master replica configured'}
+    except Exception as e:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+
+
+async def _check_dicom_listener():
+    from config import config
+    port = int(config.get('dicom_cstore_port', '11112'))
+    try:
+        import socket
+        with socket.create_connection(('127.0.0.1', port), timeout=2):
+            pass
+        return {'status': 'ok', 'port': port, 'latency_ms': 0}
+    except Exception:
+        return {'status': 'degraded', 'port': port, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
+
+
 async def health_endpoint(request):
     db_result = await _check_db()
     es_result = await _check_es()
+    redis_result = await _check_redis()
+    storage_result = await _check_storage()
+    dicom_result = await _check_dicom_listener()
     components = {
         'database': db_result,
         'elasticsearch': es_result,
+        'redis': redis_result,
+        'storage_master': storage_result,
+        'dicom_listener': dicom_result,
     }
     all_ok = all(c.get('status') == 'ok' for c in components.values())
     overall_status = 'ok' if all_ok else 'degraded'
