@@ -61,26 +61,26 @@ class _TracedConnection:
     def __setattr__(self, name, value):
         setattr(self._conn, name, value)
 
-    async def fetchval(self, query, *args, **kwargs):
+    async def _trace_query(self, query, method, *args, **kwargs):
+        import time
+        from api.telemetry import db_query_duration_seconds
+        start = time.monotonic()
         with self._tracer.start_as_current_span('db.query') as span:
             span.set_attribute('db.statement', query)
             span.set_attribute('db.system', 'postgresql')
-            return await self._conn.fetchval(query, *args, **kwargs)
+            result = await getattr(self._conn, method)(query, *args, **kwargs)
+        elapsed = time.monotonic() - start
+        db_query_duration_seconds.labels(operation=method.upper()).observe(elapsed)
+        return result
+
+    async def fetchval(self, query, *args, **kwargs):
+        return await self._trace_query(query, 'fetchval', *args, **kwargs)
 
     async def fetch(self, query, *args, **kwargs):
-        with self._tracer.start_as_current_span('db.query') as span:
-            span.set_attribute('db.statement', query)
-            span.set_attribute('db.system', 'postgresql')
-            return await self._conn.fetch(query, *args, **kwargs)
+        return await self._trace_query(query, 'fetch', *args, **kwargs)
 
     async def fetchrow(self, query, *args, **kwargs):
-        with self._tracer.start_as_current_span('db.query') as span:
-            span.set_attribute('db.statement', query)
-            span.set_attribute('db.system', 'postgresql')
-            return await self._conn.fetchrow(query, *args, **kwargs)
+        return await self._trace_query(query, 'fetchrow', *args, **kwargs)
 
     async def execute(self, query, *args, **kwargs):
-        with self._tracer.start_as_current_span('db.query') as span:
-            span.set_attribute('db.statement', query)
-            span.set_attribute('db.system', 'postgresql')
-            return await self._conn.execute(query, *args, **kwargs)
+        return await self._trace_query(query, 'execute', *args, **kwargs)
