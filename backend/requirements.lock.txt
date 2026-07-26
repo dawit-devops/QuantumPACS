@@ -36,6 +36,7 @@ MarkupSafe==3.0.3
 multidict==6.7.1
 packaging==26.2
 pluggy==1.6.0
+prometheus-client==0.21.1
 propcache==0.5.2
 psycopg2-binary==2.9.12
 pycparser==3.0
