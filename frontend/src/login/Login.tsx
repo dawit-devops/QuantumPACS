@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import withRouter from '../withRouter';
 import { useFetch } from '../hooks';
-import { Form, Input, Button, message, Layout, Card, Typography } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { request } from '../helpers';
+import { Form, Input, Button, message, Layout, Card, Typography, Divider } from 'antd';
+import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
+import { useAuth } from '../auth/AuthContext';
 import QuantumLogo from '../common/QuantumLogo';
 import './Login.css';
 const { Content } = Layout;
@@ -51,13 +53,25 @@ function LoginForm(props: any) {
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch('login');
   const [lockoutSeconds, setLockoutSeconds] = useState(getLoginDelay);
+  const [providers, setProviders] = useState<any[]>([]);
+  const { signIn } = useAuth();
+
+  useEffect(() => {
+    request('oauth/providers').then((res: any) => {
+      if (res?.data) setProviders(res.data);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!data) return;
     clearAttempts();
-    localStorage.setItem('userId', data.id);
-    localStorage.setItem('admin', data.admin);
-    localStorage.setItem('token', data.token);
+    signIn(data.token, {
+      id: data.id,
+      username: data.username || '',
+      admin: data.admin === true || data.admin === 'true',
+      role: data.role || (data.admin ? 'admin' : 'user'),
+      tenant_id: data.tenant_id,
+    });
     props.history.push('/');
   }, [data]);
 
@@ -133,6 +147,26 @@ function LoginForm(props: any) {
               </Button>
             </Form.Item>
           </Form>
+          {providers.length > 0 && (
+            <>
+              <Divider plain style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', margin: '16px 0' }}>
+                or continue with SSO
+              </Divider>
+              {providers.map((p: any) => (
+                <Button
+                  key={p.slug}
+                  block
+                  icon={<LoginOutlined />}
+                  style={{ marginBottom: 8 }}
+                  onClick={() => {
+                    window.location.href = `${window.location.origin}/api/oauth/login?idp=${p.slug}`;
+                  }}
+                >
+                  Sign in with {p.name}
+                </Button>
+              ))}
+            </>
+          )}
           <Text type="secondary" style={{ display: 'block', textAlign: 'center', fontSize: 11, marginTop: 16 }}>
             QuantumPACS v1.0 — Diagnostic Clarity, Quantum Fast
           </Text>
