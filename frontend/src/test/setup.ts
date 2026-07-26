@@ -23,6 +23,13 @@ window.matchMedia = window.matchMedia || function matchMedia(this: any) {
   };
 };
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as any).ResizeObserver = ResizeObserverMock;
+
 (globalThis as any).fetch = (globalThis as any).fetch || function fetch() {
   return Promise.resolve({
     ok: true,

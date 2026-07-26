@@ -7,6 +7,7 @@ import string
 from config import config
 from exceptions import ApiException
 from db.table import Table
+from pypika import Table as Table_
 from pypika.functions import Count
 from api.rbac import get_role_permissions
 from api.permissions import BUILT_IN_ROLES
@@ -121,7 +122,12 @@ class Users(Table):
             offset = 0
         if limit is None:
             limit = 20
-        q = self.select('id', 'username', 'admin', 'created', 'status')
+        roles_t = Table_('roles')
+        q = self.select(
+            'id', 'username', 'admin', 'created', 'status',
+            roles_t.name.as_('role_name'),
+            roles_t.slug.as_('role_slug'),
+        ).left_join(roles_t).on(self.table.role_id == roles_t.id)
         if username:
             q = q.where(self.table.username.ilike('%' + username + '%'))
         q = q.orderby('username').offset(offset).limit(limit)

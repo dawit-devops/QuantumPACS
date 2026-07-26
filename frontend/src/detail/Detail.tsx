@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import withRouter from '../withRouter';
-import { Layout, message, Menu, Breadcrumb } from 'antd';
+import { Layout, message, Menu, Breadcrumb, Grid } from 'antd';
 import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
+
+const { useBreakpoint } = Grid;
 import { request, isAdmin } from '../helpers';
+import { wadoRsUrl } from '../dicomweb/dicomweb';
 import { API_URL } from '../config';
 import CornerstoneElement from './CornerstoneElement';
 import EditableTable from './EditableTable';
@@ -23,6 +26,8 @@ function wrap(txt: string) {
 function Detail(props: any) {
   document.title = 'QuantumPACS - Detail';
   const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
 
   let [tab, setTab] = useState('image');
   let [data, setData] = useState<any>({});
@@ -31,6 +36,7 @@ function Detail(props: any) {
   let [study, setStudy] = useState<any>(null);
   let [series, setSeries] = useState<any>(null);
   let [image, setImage] = useState(imagePath);
+  let [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -39,6 +45,10 @@ function Detail(props: any) {
     setImage(`wadouri:${API_URL}/files/${params.id}/data`);
 
     request(`files/${params.id}`).then((data: any) => {
+      const meta = data?.meta || {};
+      if (meta.study_instance_uid && meta.series_instance_uid && meta.sop_instance_uid) {
+        setWadoRsImage(wadoRsUrl(meta.study_instance_uid, meta.series_instance_uid, meta.sop_instance_uid));
+      }
       setLoading(false);
       for (let s of data.patient.studies) {
         if (s.id === data.study_db_id) {
@@ -155,17 +165,17 @@ function Detail(props: any) {
         <Breadcrumb style={{ background: '#fff', padding: '5px' }}>
           <Breadcrumb.Item>
             <Link to={`/patients/${data.patient_id}`}>
-              {`${data.patient.name} (${data.patient.patient_id})`}
+              {isMobile ? data.patient.name : `${data.patient.name} (${data.patient.patient_id})`}
             </Link>
           </Breadcrumb.Item>
           <Breadcrumb.Item menu={{ items: studiesDrop(data.patient.studies) }}>
-            {`Study ${study?.study_id} ${wrap(study?.description)}`}
+            {isMobile ? `S:${study?.study_id}` : `Study ${study?.study_id} ${wrap(study?.description)}`}
           </Breadcrumb.Item>
           <Breadcrumb.Item menu={{ items: seriesDrop(study?.series) }}>
-            {`Series ${series?.number} ${wrap(series?.description)}`}
+            {isMobile ? `Ser:${series?.number}` : `Series ${series?.number} ${wrap(series?.description)}`}
           </Breadcrumb.Item>
           <Breadcrumb.Item menu={{ items: filesDrop(series?.files) }}>
-            {`File ${data.name}`}
+            {isMobile ? data.name : `File ${data.name}`}
           </Breadcrumb.Item>
         </Breadcrumb>
       }
@@ -174,6 +184,7 @@ function Detail(props: any) {
         files={series?.files || null}
         changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
         image={image}
+        wadoRsImage={wadoRsImage}
         visible={tab === 'image'}
       />
       <EditableTable

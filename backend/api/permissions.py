@@ -32,6 +32,7 @@ class Permission(str, Enum):
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
     ROUTING_READ = 'ROUTING_READ'
     ROUTING_WRITE = 'ROUTING_WRITE'
+    METRICS_READ = 'METRICS_READ'
 
 
 SUPER_ADMIN_PERMISSIONS = {p.value for p in Permission}
@@ -52,6 +53,7 @@ BUILT_IN_ROLES = {
         Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
         Permission.DICOMWEB_READ.value, Permission.DICOMWEB_WRITE.value,
         Permission.ROUTING_READ.value, Permission.ROUTING_WRITE.value,
+        Permission.METRICS_READ.value,
     ],
     'technologist': [
         Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
@@ -81,6 +83,7 @@ BUILT_IN_ROLES = {
         Permission.LOG_READ.value,
         Permission.ROLE_READ.value, Permission.ROLE_WRITE.value,
         Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+        Permission.METRICS_READ.value,
     ],
     'cashier': [
         Permission.PATIENT_READ.value,

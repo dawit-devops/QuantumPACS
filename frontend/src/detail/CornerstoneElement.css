@@ -3,6 +3,7 @@
     margin: 20px;
     position: relative;
     color: white;
+    touch-action: none;
 }
 
 @media only screen and (max-width: 420px) {
@@ -10,13 +11,31 @@
         min-width: 350px;
         min-height: 350px;
         max-height: 350px;
-        max-height: 350px;
     }
 }
 
-@media only screen and (min-width: 600px) {
+@media only screen and (min-width: 600px) and (max-width: 767px) {
+    .viewportElement {
+        min-width: 500px;
+        min-height: 500px;
+        max-height: 500px;
+    }
+}
+
+@media only screen and (min-width: 768px) {
     .viewportElement {
         min-width: 700px;
         min-height: 700px;
+    }
+}
+
+.metadata-collapse {
+    max-width: 600px;
+    margin: 8px auto;
+}
+
+@media only screen and (max-width: 767px) {
+    .metadata-collapse {
+        margin: 8px;
     }
 }
