@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Table, message, Tag, Divider, Popconfirm, Modal } from 'antd';
+import { Layout, Table, message, Tag, Divider, Popconfirm, Modal, Select } from 'antd';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
 import { AddUser } from './EditUser';
@@ -13,13 +13,21 @@ function Users() {
   let [pagination, setPagination] = useState<any>({});
   let [loading, setLoading] = useState(false);
   let [password, setPassword] = useState<string | null>(null);
+  let [roles, setRoles] = useState<any[]>([]);
+  let [changingRole, setChangingRole] = useState<{ userId: number; roleId: number | null } | null>(null);
+
+  useEffect(() => {
+    request('roles').then((res: any) => {
+      setRoles(res.data || []);
+    }).catch(() => {});
+  }, []);
 
   const columns: any[] = [
     {
       title: 'ID',
       dataIndex: 'id',
       sorter: true,
-      width: '20%',
+      width: '10%',
     },
     {
       title: 'Username',
@@ -30,8 +38,18 @@ function Users() {
     {
       title: 'Role',
       dataIndex: 'role_name',
-      render: (name: string) =>
-        name ? <Tag color="purple">{name}</Tag> : null,
+      render: (name: string, record: any) => {
+        if (!name) return null;
+        return (
+          <Select
+            value={record.role_id}
+            style={{ width: 160 }}
+            onChange={(roleId) => handleRoleChange(record.id, roleId)}
+            options={roles.map((r: any) => ({ value: r.id, label: r.name }))}
+            size="small"
+          />
+        );
+      },
     },
     {
       title: 'Admin',
@@ -107,6 +125,17 @@ function Users() {
     });
   };
 
+  const handleRoleChange = (userId: number, roleId: number) => {
+    setChangingRole({ userId, roleId });
+    request('users/role', { data: { user_id: userId, role_id: roleId } }).then(() => {
+      setChangingRole(null);
+      fetch();
+    }).catch((e: any) => {
+      setChangingRole(null);
+      message.error(e.message);
+    });
+  };
+
   const deactivate = (id: number) => {
     request('users/deactivate', { data: { id: id } }).then(fetch);
   };
@@ -133,7 +162,7 @@ function Users() {
         <p>{password}</p>
       </Modal>
       <Table
-        scroll={{ x: 500 }}
+        scroll={{ x: 600 }}
         columns={columns}
         rowKey={(record: any) => record.id}
         dataSource={data}

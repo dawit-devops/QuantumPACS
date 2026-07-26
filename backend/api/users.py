@@ -12,7 +12,7 @@ from api.ratelimit import login_bucket
 from api.validate import parse_body
 from api.schemas.auth import LoginRequest, ChangePasswordRequest
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
-from api.schemas.users import CreateUserRequest, UserActionRequest
+from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRoleRequest
 from db.conn import get_conn
 from db.users import Users
 from exceptions import ApiException
@@ -155,6 +155,17 @@ class UsersNewPassword(HTTPEndpoint):
         resp.headers['X-API-Sunset'] = 'v3.0'
         resp.headers['X-API-Replacement'] = 'POST /api/users/{id}/reset-password'
         return resp
+
+
+class UserRoleUpdate(HTTPEndpoint):
+    @requires_permission(Permission.USER_WRITE)
+    async def put(self, request):
+        body = await parse_body(UpdateUserRoleRequest, request)
+
+        async with get_conn() as conn:
+            await Users(conn).update_role(body.user_id, body.role_id)
+
+        return ok({})
 
 
 class RefreshToken(HTTPEndpoint):

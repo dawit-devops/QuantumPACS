@@ -16,7 +16,7 @@ from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
-    UsersHandler, UsersDeactivate, UsersNewPassword,
+    UsersHandler, UsersDeactivate, UsersNewPassword, UserRoleUpdate,
 )
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery
@@ -65,6 +65,7 @@ routes = [
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),
     Route('/users/new_password', endpoint=UsersNewPassword),
+    Route('/users/role', endpoint=UserRoleUpdate),
     Route('/patients/{id}', endpoint=PatientHandler),
     Route('/files/upload', endpoint=Upload),
     Route('/files/download_token', endpoint=DownloadToken),

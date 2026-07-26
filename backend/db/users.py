@@ -125,6 +125,7 @@ class Users(Table):
         roles_t = Table_('roles')
         q = self.select(
             'id', 'username', 'admin', 'created', 'status',
+            roles_t.id.as_('role_id'),
             roles_t.name.as_('role_name'),
             roles_t.slug.as_('role_slug'),
         ).left_join(roles_t).on(self.table.role_id == roles_t.id)
@@ -149,6 +150,10 @@ class Users(Table):
         q = self.update().where(self.table.id == user_id).set(self.table.password, ph)
         await self.exec(q)
         return pswd
+
+    async def update_role(self, user_id, role_id):
+        q = self.update().where(self.table.id == user_id).set(self.table.role_id, role_id)
+        await self.exec(q)
 
     async def is_active(self, user_id):
         q = self.select('status').where(self.table.id == user_id)
