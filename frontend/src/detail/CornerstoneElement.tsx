@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { Button, message, Slider } from 'antd';
+import { Button, message, Slider, Collapse, Descriptions } from 'antd';
 import { ReloadOutlined, ColumnWidthOutlined, ColumnHeightOutlined, DragOutlined, RightOutlined, ArrowRightOutlined, LineOutlined, BorderOutlined, PlusCircleOutlined, ScissorOutlined, SaveOutlined, CloseCircleOutlined, DownloadOutlined } from '@ant-design/icons';
 import {
   init as csCoreInit,
@@ -80,11 +80,23 @@ async function ensureGlobalInit() {
   tg.addTool(EraserTool.toolName);
   tg.addTool(StackScrollTool.toolName);
 
-  const bindings = (tg as any).setToolActive;
-  bindings.call(tg, PanTool.toolName, { mouseButtonMask: 1 });
-  bindings.call(tg, ZoomTool.toolName, { mouseButtonMask: 2 });
-  bindings.call(tg, WindowLevelTool.toolName, { mouseButtonMask: 4 });
-  bindings.call(tg, StackScrollTool.toolName);
+  const setActive = (tg as any).setToolActive;
+  setActive.call(tg, PanTool.toolName, { mouseButtonMask: 1 });
+  setActive.call(tg, ZoomTool.toolName, { mouseButtonMask: 2 });
+  setActive.call(tg, WindowLevelTool.toolName, { mouseButtonMask: 4 });
+  setActive.call(tg, StackScrollTool.toolName);
+
+  tg.setToolConfiguration(ZoomTool.toolName, {
+    mouseButtonMask: 2,
+    touchPinchCallback: true,
+  });
+  tg.setToolConfiguration(PanTool.toolName, {
+    mouseButtonMask: 1,
+    touchDragCallback: true,
+  });
+  tg.setToolConfiguration(StackScrollTool.toolName, {
+    touchDragCallback: true,
+  });
 }
 
 const bottomLeftStyle: React.CSSProperties = {
@@ -524,6 +536,21 @@ class CornerstoneElement extends Component<CEProps, CEState> {
           <ActionBtn icon={<CloseCircleOutlined />} onClick={this.clearToolState} />
           <ActionBtn icon={<DownloadOutlined />} onClick={this.download} />
         </div>
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          display: 'flex', justifyContent: 'center', gap: 8, padding: '4px 8px',
+          background: 'rgba(0,0,0,0.6)', zIndex: 10,
+          minHeight: 44,
+        }}>
+          <Button type="default" shape="round" size="small" icon={<DragOutlined />}
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateDrag} />
+          <Button type="default" shape="round" size="small" icon={<LineOutlined />}
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateLine} />
+          <Button type="default" shape="round" size="small" icon={<BorderOutlined />}
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateRect} />
+          <Button type="default" shape="round" size="small" icon={<ScissorOutlined />}
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateEraser} />
+        </div>
         <div
           className="viewportElement"
           ref={(el: HTMLDivElement | null) => {
@@ -534,6 +561,26 @@ class CornerstoneElement extends Component<CEProps, CEState> {
           <div style={bottomRightStyle}>
             WW/WC: {this.state.ww} / {this.state.wc}
           </div>
+        </div>
+        <div className="metadata-collapse">
+          <Collapse
+            ghost
+            items={[
+              {
+                key: 'meta',
+                label: 'Metadata',
+                children: (
+                  <Descriptions size="small" column={1} bordered>
+                    <Descriptions.Item label="Patient">{file?.patient?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Study">{file?.study || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Series">{file?.series || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Modality">{file?.modality || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Size">{file?.size ? `${(file.size / 1024).toFixed(1)} KB` : '-'}</Descriptions.Item>
+                  </Descriptions>
+                ),
+              },
+            ]}
+          />
         </div>
       </div>
     );
