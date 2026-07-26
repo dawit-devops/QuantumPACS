@@ -30,10 +30,20 @@ function SignInTestConsumer() {
       {user && <div data-testid="auth-user">{user.username}</div>}
       <button
         data-testid="signin-btn"
-        onClick={() => signIn('test-token', { id: 'u1', username: 'alice', admin: false, role: 'user' })}
+        onClick={() => signIn('test-token', { id: 'u1', username: 'alice', admin: false, role: 'user', permissions: [] })}
       >
         Sign In
       </button>
+    </div>
+  );
+}
+
+function PermissionTestConsumer() {
+  const { hasPermission } = useAuth();
+  return (
+    <div>
+      <div data-testid="perm-file-read">{hasPermission('FILE_READ') ? 'yes' : 'no'}</div>
+      <div data-testid="perm-user-delete">{hasPermission('USER_DELETE') ? 'yes' : 'no'}</div>
     </div>
   );
 }
@@ -177,6 +187,40 @@ describe('AuthProvider', () => {
 
   it('throws when useAuth is used outside AuthProvider', () => {
     expect(() => render(<BrokenComponent />)).toThrow('useAuth must be used within an AuthProvider');
+  });
+
+  it('hasPermission returns true when user permissions include the required permission', () => {
+    localStorage.setItem('token', 'test-token');
+    localStorage.setItem('userId', 'u1');
+    localStorage.setItem('username', 'tech-user');
+    localStorage.setItem('admin', 'false');
+    localStorage.setItem('role', 'technologist');
+    localStorage.setItem('permissions', JSON.stringify(['FILE_READ', 'STUDY_READ', 'WORKLIST_READ']));
+
+    render(
+      <AuthProvider>
+        <PermissionTestConsumer />
+      </AuthProvider>
+    );
+    expect(screen.getByTestId('perm-file-read')).toHaveTextContent('yes');
+    expect(screen.getByTestId('perm-user-delete')).toHaveTextContent('no');
+  });
+
+  it('hasPermission returns true for admin users regardless of permissions list', () => {
+    localStorage.setItem('token', 'test-token');
+    localStorage.setItem('userId', 'u1');
+    localStorage.setItem('username', 'admin-user');
+    localStorage.setItem('admin', 'true');
+    localStorage.setItem('role', 'super_admin');
+    localStorage.setItem('permissions', JSON.stringify([]));
+
+    render(
+      <AuthProvider>
+        <PermissionTestConsumer />
+      </AuthProvider>
+    );
+    expect(screen.getByTestId('perm-file-read')).toHaveTextContent('yes');
+    expect(screen.getByTestId('perm-user-delete')).toHaveTextContent('yes');
   });
 
   it('provides isAuthenticated=true when token and userId exist in localStorage', () => {

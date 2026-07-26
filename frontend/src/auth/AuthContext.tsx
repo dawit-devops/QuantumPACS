@@ -5,6 +5,7 @@ export interface AuthUser {
   username: string;
   admin: boolean;
   role: string;
+  permissions: string[];
   tenant_id?: string;
 }
 
@@ -36,11 +37,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const id = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
     if (!id || !token) return null;
+    let permissions: string[] = [];
+    try {
+      const raw = localStorage.getItem('permissions');
+      if (raw) permissions = JSON.parse(raw);
+    } catch {}
     return {
       id,
       username: localStorage.getItem('username') || '',
       admin: localStorage.getItem('admin') === 'true',
       role: localStorage.getItem('role') || (localStorage.getItem('admin') === 'true' ? 'admin' : 'user'),
+      permissions,
       tenant_id: localStorage.getItem('tenant_id') || undefined,
     };
   });
@@ -48,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAuthenticated = user !== null && !!localStorage.getItem('token');
 
   const hasPermission = useCallback(
-    (permission: string) => isAuthenticated && (user?.admin || user?.role === permission),
+    (permission: string) => isAuthenticated && (user?.admin || user?.permissions?.includes(permission)),
     [isAuthenticated, user],
   );
 
@@ -58,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('username', userData.username);
     localStorage.setItem('admin', String(userData.admin));
     localStorage.setItem('role', userData.role);
+    localStorage.setItem('permissions', JSON.stringify(userData.permissions));
     if (userData.tenant_id) {
       localStorage.setItem('tenant_id', userData.tenant_id);
     }
@@ -70,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('username');
     localStorage.removeItem('admin');
     localStorage.removeItem('role');
+    localStorage.removeItem('permissions');
     localStorage.removeItem('tenant_id');
     setUser(null);
   }, []);

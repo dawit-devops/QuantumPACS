@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
 import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined } from '@ant-design/icons';
-import { isAdmin } from '../helpers';
+import { useAuth } from '../auth/AuthContext';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
 import './Sidebar.css';
@@ -20,7 +20,16 @@ function getOpenKey(key: string) {
   return key;
 }
 
+type PermissionCheck = { permission: string } | { adminOnly: true };
+
+function hasAnyAdminPermission(hasPermission: (p: string) => boolean, userAdmin: boolean | undefined): boolean {
+  if (userAdmin) return true;
+  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ'];
+  return adminPermissions.some(p => hasPermission(p));
+}
+
 function Sidebar() {
+  const { hasPermission, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const loc = location.pathname;
@@ -89,7 +98,7 @@ function Sidebar() {
           </Link>
         </Menu.Item>
         {
-          isAdmin() &&
+          hasAnyAdminPermission(hasPermission, user?.admin) &&
           <Menu.SubMenu key="admin"
             title={
               <span>
@@ -97,36 +106,46 @@ function Sidebar() {
                 <span>Admin</span>
               </span>
             }>
-            <Menu.Item key="replicas">
-              <Link to="/replicas">
-                <DatabaseOutlined />
-                <span className="nav-text">Replicas</span>
-              </Link>
-            </Menu.Item>
-            <Menu.Item key="users">
-              <Link to="/users">
-                <TeamOutlined />
-                <span className="nav-text">Users</span>
-              </Link>
-            </Menu.Item>
-            <Menu.Item key="tenants">
-              <Link to="/tenants">
-                <BankOutlined />
-                <span className="nav-text">Tenants</span>
-              </Link>
-            </Menu.Item>
-            <Menu.Item key="roles">
-              <Link to="/roles">
-                <SafetyCertificateOutlined />
-                <span className="nav-text">Roles</span>
-              </Link>
-            </Menu.Item>
-            <Menu.Item key="logs">
-              <Link to="/logs">
-                <AlignLeftOutlined />
-                <span className="nav-text">Logs</span>
-              </Link>
-            </Menu.Item>
+            {hasPermission('REPLICA_READ') && (
+              <Menu.Item key="replicas">
+                <Link to="/replicas">
+                  <DatabaseOutlined />
+                  <span className="nav-text">Replicas</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('USER_READ') && (
+              <Menu.Item key="users">
+                <Link to="/users">
+                  <TeamOutlined />
+                  <span className="nav-text">Users</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('TENANT_READ') && (
+              <Menu.Item key="tenants">
+                <Link to="/tenants">
+                  <BankOutlined />
+                  <span className="nav-text">Tenants</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('ROLE_READ') && (
+              <Menu.Item key="roles">
+                <Link to="/roles">
+                  <SafetyCertificateOutlined />
+                  <span className="nav-text">Roles</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('LOG_READ') && (
+              <Menu.Item key="logs">
+                <Link to="/logs">
+                  <AlignLeftOutlined />
+                  <span className="nav-text">Logs</span>
+                </Link>
+              </Menu.Item>
+            )}
           </Menu.SubMenu>
         }
         <Menu.Item key="logout">

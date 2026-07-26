@@ -2,86 +2,88 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
 import Sidebar from '../common/Sidebar';
-
-vi.mock('../helpers', () => ({
-  isAdmin: () => true,
-}));
 
 vi.mock('../hooks', () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+function renderWithAuth(ui: React.ReactElement) {
+  return render(
+    <AuthProvider>
+      <MemoryRouter initialEntries={['/']}>
+        {ui}
+      </MemoryRouter>
+    </AuthProvider>
+  );
+}
+
 describe('Sidebar', () => {
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/']}>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
-    );
-  }
+  beforeEach(() => {
+    localStorage.clear();
+  });
 
   it('renders Files nav item', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
     renderWithAuth(<Sidebar />);
     expect(screen.getByText('Files')).toBeInTheDocument();
   });
 
   it('renders Account nav item', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
     renderWithAuth(<Sidebar />);
     expect(screen.getByText('Account')).toBeInTheDocument();
   });
 
   it('renders Logout nav item', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
     renderWithAuth(<Sidebar />);
     expect(screen.getByText('Logout')).toBeInTheDocument();
   });
 
-  it('renders Admin submenu for admin users', () => {
+  it('shows Admin submenu and items for user with admin-level permission', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
+    localStorage.setItem('admin', 'false');
+    localStorage.setItem('role', 'tenant_admin');
+    localStorage.setItem('permissions', JSON.stringify(['TENANT_READ', 'USER_READ']));
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText('Admin')).toBeInTheDocument();
+    await user.click(screen.getByText('Admin'));
+    expect(screen.getByText('Tenants')).toBeInTheDocument();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.queryByText('Replicas')).not.toBeInTheDocument();
+  });
+
+  it('hides Admin submenu for user without any admin permission', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
+    localStorage.setItem('admin', 'false');
+    localStorage.setItem('role', 'cashier');
+    localStorage.setItem('permissions', JSON.stringify(['PATIENT_READ', 'PATIENT_WRITE']));
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+  });
+
+  it('shows Admin submenu for admin user', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
+    localStorage.setItem('admin', 'true');
     renderWithAuth(<Sidebar />);
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
-  it('shows submenu items when Admin is clicked', async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<Sidebar />);
-    await user.click(screen.getByText('Admin'));
-    expect(screen.getByText('Replicas')).toBeInTheDocument();
-    expect(screen.getByText('Users')).toBeInTheDocument();
-    expect(screen.getByText('Logs')).toBeInTheDocument();
-  });
-
   it('renders QuantumLogo', () => {
+    localStorage.setItem('token', 't');
+    localStorage.setItem('userId', 'u1');
     renderWithAuth(<Sidebar />);
     const svg = document.querySelector('svg');
     expect(svg?.textContent).toContain('Quantum');
-  });
-
-  it('does not render Admin submenu for non-admin users', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('admin', 'false');
-    localStorage.setItem('role', 'user');
-
-    vi.resetModules();
-    vi.doMock('../helpers', () => ({
-      isAdmin: () => false,
-      request: () => Promise.resolve({}),
-    }));
-
-    const NonAdminSidebar = React.lazy(() => import('../common/Sidebar'));
-    render(
-      <AuthProvider>
-        <MemoryRouter initialEntries={['/']}>
-          <React.Suspense fallback={null}>
-            <NonAdminSidebar />
-          </React.Suspense>
-        </MemoryRouter>
-      </AuthProvider>
-    );
-    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
   });
 });
