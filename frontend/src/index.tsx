@@ -16,6 +16,7 @@ const Replicas = React.lazy(() => import('./replicas/Replicas'));
 const Users = React.lazy(() => import('./users/Users'));
 const Logs = React.lazy(() => import('./logs/Logs'));
 const Roles = React.lazy(() => import('./roles/Roles'));
+const Tenants = React.lazy(() => import('./tenants/Tenants'));
 const Patient = React.lazy(() => import('./patient/Patient'));
 const Files = React.lazy(() => import('./files/Files'));
 const Detail = React.lazy(() => import('./detail/Detail'));
@@ -49,8 +50,9 @@ function App() {
               <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
               <Route path="/replicas" element={<ProtectedRoute><Replicas /></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
-              <Route path="/roles" element={<ProtectedRoute><Roles /></ProtectedRoute>} />
-              <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
+            <Route path="/roles" element={<ProtectedRoute><Roles /></ProtectedRoute>} />
+            <Route path="/tenants" element={<ProtectedRoute><Tenants /></ProtectedRoute>} />
+            <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
               <Route path="/patients/:id" element={<ProtectedRoute><Patient /></ProtectedRoute>} />
               <Route path="/files/:id" element={<ProtectedRoute><Detail /></ProtectedRoute>} />
               <Route path="/" element={<ProtectedRoute><Files /></ProtectedRoute>} />

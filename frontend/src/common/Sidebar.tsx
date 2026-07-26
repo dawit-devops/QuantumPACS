@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, LogoutOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined } from '@ant-design/icons';
 import { isAdmin } from '../helpers';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
@@ -14,7 +14,7 @@ function getKey(loc: string) {
 }
 
 function getOpenKey(key: string) {
-  if (['replicas', 'users', 'roles', 'logs'].includes(key)) {
+  if (['replicas', 'users', 'roles', 'tenants', 'logs'].includes(key)) {
     return 'admin';
   }
   return key;
@@ -100,6 +100,12 @@ function Sidebar() {
               <Link to="/users">
                 <TeamOutlined />
                 <span className="nav-text">Users</span>
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="tenants">
+              <Link to="/tenants">
+                <BankOutlined />
+                <span className="nav-text">Tenants</span>
               </Link>
             </Menu.Item>
             <Menu.Item key="roles">
