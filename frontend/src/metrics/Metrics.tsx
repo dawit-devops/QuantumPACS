@@ -1,21 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Card, Col, Row, Statistic, Table, Spin, message } from 'antd';
-import { DatabaseOutlined, TeamOutlined, FileOutlined, HddOutlined, FolderOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { Layout, Card, Col, Row, Statistic, Table, Spin, message, Tag } from 'antd';
+import { DatabaseOutlined, TeamOutlined, FileOutlined, HddOutlined, FolderOutlined, ExperimentOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Bar, Line } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
 import './Metrics.css';
 
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
+
 const Content = Layout.Content;
+
+const CHART_OPTIONS = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+};
+
+function healthColor(status: string): string {
+  if (status === 'ok') return 'green';
+  if (status === 'degraded') return 'orange';
+  return 'red';
+}
+
+function healthIcon(status: string) {
+  if (status === 'ok') return <CheckCircleOutlined />;
+  if (status === 'degraded') return <WarningOutlined />;
+  return <CloseCircleOutlined />;
+}
 
 function Metrics() {
   document.title = 'QuantumPACS - Metrics';
 
   let [data, setData] = useState<any>(null);
+  let [health, setHealth] = useState<any>(null);
   let [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    request('v2/dashboard/metrics').then((resp: any) => {
-      setData(resp);
+    Promise.all([
+      request('v2/dashboard/metrics'),
+      request('v2/health').catch(() => null),
+    ]).then(([metricsResp, healthResp]) => {
+      setData(metricsResp);
+      setHealth(healthResp);
       setLoading(false);
     }).catch((e: any) => {
       message.error(e.message);
@@ -36,11 +62,23 @@ function Metrics() {
   const ingestion30d = data?.ingestion_30d || [];
   const latestFiles = data?.latest_files || [];
 
-  const modalityData = Object.entries(modalities).map(([modality, count]) => ({
-    key: modality,
-    modality,
-    count,
-  }));
+  const modalityLabels = Object.keys(modalities);
+  const modalityValues = Object.values(modalities) as number[];
+
+  const modalityChartData = {
+    labels: modalityLabels,
+    datasets: [{ data: modalityValues, backgroundColor: ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2'] }],
+  };
+
+  const ingestionLabels = ingestion30d.map((d: any) => d.date);
+  const ingestionValues = ingestion30d.map((d: any) => d.count);
+
+  const ingestionChartData = {
+    labels: ingestionLabels,
+    datasets: [{ data: ingestionValues, borderColor: '#1677ff', backgroundColor: 'rgba(22,119,255,0.1)', fill: true, tension: 0.3 }],
+  };
+
+  const components = health?.components || {};
 
   return (
     <Content style={{ padding: 24 }}>
@@ -66,36 +104,35 @@ function Metrics() {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-        <Col xs={24} md={12}>
-          <Card title="Modality Distribution">
-            <Table
-              dataSource={modalityData}
-              columns={[
-                { title: 'Modality', dataIndex: 'modality', key: 'modality' },
-                { title: 'Count', dataIndex: 'count', key: 'count' },
-              ]}
-              pagination={false}
-              size="small"
-            />
+        <Col xs={24} md={8}>
+          <Card title="System Health">
+            {Object.entries(components).length > 0 ? (
+              Object.entries(components).map(([name, comp]: [string, any]) => (
+                <div key={name} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {healthIcon(comp.status)}
+                  <span style={{ flex: 1, fontWeight: 500 }}>{labelName(name)}</span>
+                  <Tag color={healthColor(comp.status)}>{comp.status.toUpperCase()}</Tag>
+                </div>
+              ))
+            ) : (
+              <Tag color="green">OK</Tag>
+            )}
           </Card>
         </Col>
-        <Col xs={24} md={12}>
-          <Card title="Recent Ingestion (30 days)">
-            <Table
-              dataSource={ingestion30d}
-              columns={[
-                { title: 'Date', dataIndex: 'date', key: 'date' },
-                { title: 'Files', dataIndex: 'count', key: 'count' },
-              ]}
-              pagination={false}
-              size="small"
-            />
+        <Col xs={24} md={16}>
+          <Card title="Modality Distribution">
+            <Bar data={modalityChartData} options={CHART_OPTIONS} />
           </Card>
         </Col>
       </Row>
 
-      <Row style={{ marginTop: 16 }}>
-        <Col span={24}>
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} md={12}>
+          <Card title="Ingestion (30 days)">
+            <Line data={ingestionChartData} options={CHART_OPTIONS} />
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
           <Card title="Latest Files">
             <Table
               dataSource={latestFiles}
@@ -112,6 +149,18 @@ function Metrics() {
       </Row>
     </Content>
   );
+}
+
+function labelName(key: string): string {
+  const map: Record<string, string> = {
+    database: 'Database',
+    elasticsearch: 'Elasticsearch',
+    redis: 'Redis',
+    storage: 'Storage',
+    dicom_listener: 'DICOM Listener',
+    ingestion_service: 'Ingestion Service',
+  };
+  return map[key] || key;
 }
 
 function formatBytes(bytes: number): string {
