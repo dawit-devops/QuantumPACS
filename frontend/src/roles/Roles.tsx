@@ -166,7 +166,7 @@ function Roles() {
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={data}
+        dataSource={Array.isArray(data) ? data : []}
         loading={loading}
       />
       <Modal
