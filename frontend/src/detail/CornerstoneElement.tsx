@@ -132,6 +132,7 @@ interface CEProps {
   files: any;
   changeFile: (v: number) => void;
   image: any;
+  wadoRsImage?: string | null;
   visible: boolean;
   [key: string]: any;
 }
@@ -159,7 +160,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       zoom: 1,
       ww: 0,
       wc: 0,
-      image: props.image,
+      image: props.wadoRsImage || props.image,
       state: {},
       stateVer: 0,
       stateVerSent: 0,
@@ -450,15 +451,17 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   }
 
   componentDidUpdate(_prevProps: CEProps) {
-    if (_prevProps.image !== this.props.image) {
-      this.setState({ image: this.props.image });
+    const prevUrl = _prevProps.wadoRsImage || _prevProps.image;
+    const nextUrl = this.props.wadoRsImage || this.props.image;
+    if (prevUrl !== nextUrl) {
+      this.setState({ image: nextUrl });
       const vp = this.getViewport();
       if (vp) {
-        vp.setStack([this.props.image]).then(() => {
+        vp.setStack([nextUrl]).then(() => {
           this.restoreToolState(this.props.file.tools_state);
         });
       }
-      ws.send({ type: 'open', file: this.props.image });
+      ws.send({ type: 'open', file: nextUrl });
     }
   }
 

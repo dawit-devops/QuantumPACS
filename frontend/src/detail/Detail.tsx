@@ -6,8 +6,9 @@ import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutl
 import withSidebar from '../common/base';
 
 const { useBreakpoint } = Grid;
-import { request, isAdmin } from '../helpers';
+import { request } from '../helpers';
 import { wadoRsUrl } from '../dicomweb/dicomweb';
+import { useAuth } from '../auth/AuthContext';
 import { API_URL } from '../config';
 import CornerstoneElement from './CornerstoneElement';
 import EditableTable from './EditableTable';
@@ -28,6 +29,7 @@ function Detail(props: any) {
   const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+  const { hasPermission } = useAuth();
 
   let [tab, setTab] = useState('image');
   let [data, setData] = useState<any>({});
@@ -153,7 +155,7 @@ function Detail(props: any) {
           </Menu.Item>
         }
         {
-          !tempKey && isAdmin() &&
+          !tempKey && hasPermission('USER_ADMIN') &&
           <Menu.Item key="admin" onClick={() => setTab('admin')} >
             <LockOutlined />
             Admin
@@ -196,7 +198,7 @@ function Detail(props: any) {
       />
       {tab === 'changes' && <Changes file={data}></Changes>}
       {tab === 'share' && <Share file={data}></Share>}
-      {tab === 'admin' && isAdmin() && <Managment file={data}></Managment>}
+      {tab === 'admin' && hasPermission('USER_ADMIN') && <Managment file={data}></Managment>}
     </Content>
   );
 }

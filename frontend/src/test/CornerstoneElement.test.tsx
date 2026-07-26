@@ -102,4 +102,10 @@ describe('CornerstoneElement', () => {
       expect(btn.style.minWidth).toBe('44px');
     });
   });
+
+  it('uses wadoRsImage when provided instead of fallback image', () => {
+    const wadoRsUrl = 'wadors:https://pacs.example.com/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9';
+    render(<CornerstoneElement {...defaultProps} wadoRsImage={wadoRsUrl} />);
+    expect(screen.getByText(/Zoom/)).toBeInTheDocument();
+  });
 });
