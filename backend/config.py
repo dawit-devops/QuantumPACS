@@ -34,6 +34,7 @@ default_config = {
     'hl7_mllp_port': '12579',
     'hl7_mllp_tls_cert': '',
     'hl7_mllp_tls_key': '',
+    'hl7_mllp_allowed_ips': '',
 }
 
 

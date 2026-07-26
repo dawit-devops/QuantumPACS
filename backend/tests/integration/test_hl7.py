@@ -187,6 +187,29 @@ class TestMllpServer:
             os.unlink(cert_path)
             os.unlink(key_path)
 
+    @pytest.mark.asyncio
+    async def test_ip_whitelist_rejects_unlisted(self):
+        handler = AsyncMock()
+        from services.ingestion.hl7_server import MllpServer
+        server = MllpServer(host='127.0.0.1', port=0, handler=handler, allowed_ips=['10.0.0.1'])
+        try:
+            await server.start()
+            port = server._server.sockets[0].getsockname()[1]
+
+            reader, writer = await asyncio.open_connection('127.0.0.1', port)
+            writer.write(_mllp_encode(SAMPLE_ADT_A01))
+            await writer.drain()
+            await asyncio.sleep(0.1)
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionResetError, ConnectionError):
+                pass
+
+            handler.assert_not_awaited()
+        finally:
+            await server.stop()
+
 
 class TestHl7MessageParsing:
     def test_parse_adt_a01_extracts_patient_fields(self):

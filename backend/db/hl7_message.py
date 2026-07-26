@@ -64,3 +64,17 @@ class Hl7ParseError(Table):
         )
         """)
         await self.exec("CREATE INDEX IF NOT EXISTS ix_hl7_parse_errors_msg ON hl7_parse_errors(hl7_message_id)")
+
+    async def create(self, data):
+        q = self.insert().columns(
+            'hl7_message_id', 'segment', 'field_number',
+            'field_name', 'raw_value', 'error_message',
+        ).insert((
+            data['hl7_message_id'],
+            data.get('segment', ''),
+            int(data.get('field_number', 0)),
+            data.get('field_name', ''),
+            data.get('raw_value', ''),
+            data.get('error_message', ''),
+        ),)
+        await self.exec(q)

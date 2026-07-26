@@ -18,11 +18,12 @@ MLLP_END = b'\x1c\x0d'
 
 
 class MllpServer:
-    def __init__(self, host='', port=12579, handler=None, ssl_context=None):
+    def __init__(self, host='', port=12579, handler=None, ssl_context=None, allowed_ips=None):
         self._host = host
         self._port = port
         self._handler = handler or default_handler
         self._ssl_context = ssl_context
+        self._allowed_ips = allowed_ips or []
         self._server = None
 
     async def start(self):
@@ -40,6 +41,12 @@ class MllpServer:
             log.info('MLLP server stopped')
 
     async def _on_connect(self, reader, writer):
+        peer = writer.get_extra_info('peername')
+        peer_ip = peer[0] if peer else ''
+        if self._allowed_ips and peer_ip not in self._allowed_ips:
+            log.warning('MLLP connection rejected from %s (not in whitelist)', peer_ip)
+            writer.close()
+            return
         try:
             while True:
                 data = await reader.readuntil(MLLP_END)
@@ -84,7 +91,7 @@ async def _store_hl7_message(msg_bytes: bytes, parsed: dict | None, status: str,
             parsed_fields = json.dumps(cleaned)
         async with get_conn() as conn:
             msg = Hl7Message(conn)
-            await msg.create({
+            msg_id = await msg.create({
                 'raw_hash': raw_hash,
                 'raw_content': raw_body,
                 'message_type': (parsed or {}).get('message_type', ''),
@@ -96,6 +103,16 @@ async def _store_hl7_message(msg_bytes: bytes, parsed: dict | None, status: str,
                 'parse_status': status,
                 'error_message': error,
             })
+            if status == 'failed':
+                from db.hl7_message import Hl7ParseError
+                pe = Hl7ParseError(conn)
+                await pe.create({
+                    'hl7_message_id': msg_id,
+                    'segment': 'MSH',
+                    'field_name': 'raw_message',
+                    'raw_value': raw_body[:500],
+                    'error_message': error or 'Unparseable message',
+                })
     except Exception:
         log.exception('Failed to store HL7 message')
 

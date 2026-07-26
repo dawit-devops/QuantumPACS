@@ -63,7 +63,9 @@ async def _start_mllp():
         if cert_file and key_file:
             ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             ssl_context.load_cert_chain(cert_file, key_file)
-        server = MllpServer(host='', port=port, ssl_context=ssl_context)
+        allowed_ips_str = config.get('hl7_mllp_allowed_ips', '')
+        allowed_ips = [ip.strip() for ip in allowed_ips_str.split(',') if ip.strip()] if allowed_ips_str else []
+        server = MllpServer(host='', port=port, ssl_context=ssl_context, allowed_ips=allowed_ips)
 
         async def _run():
             await server.start()

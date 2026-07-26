@@ -223,8 +223,12 @@ class FhirPatientSearch(HTTPEndpoint):
                 col = allowed.get(field, 'id')
                 q = q.orderby(col, order=direction)
 
+            conds, vals, idx = _apply_last_updated(params, q, 'patients', 1)
+            if conds:
+                q = q.where(PseudoColumn(f" {' AND '.join(conds)}"))
+
             if limit:
-                rows = await p.conn.fetch(str(q.limit(limit)))
+                rows = await p.conn.fetch(str(q.limit(limit)), *vals)
             else:
                 rows = await p.fetch(q)
             rows = [dict(r) for r in rows]
@@ -232,6 +236,25 @@ class FhirPatientSearch(HTTPEndpoint):
         resources = [_patient_resource(r) for r in rows]
         bundle = _build_bundle(resources, len(rows), params)
         return FhirJsonResponse(bundle)
+
+
+def _apply_last_updated(params, query, table_ref, idx):
+    conds = []
+    vals = []
+    if '_lastUpdated' in params:
+        val = params['_lastUpdated']
+        prefix = ''
+        for pfx in ('ge', 'gt', 'le', 'lt', 'eq', 'ne', 'sa', 'eb', 'ap'):
+            if val.startswith(pfx):
+                prefix = pfx
+                val = val[len(pfx):]
+                break
+        op_map = {'ge': '>=', 'gt': '>', 'le': '<=', 'lt': '<', 'eq': '=', 'ne': '!='}
+        op = op_map.get(prefix, '=')
+        conds.append(f"{table_ref}.updated_at {op} ${idx}::timestamptz")
+        vals.append(val)
+        idx += 1
+    return conds, vals, idx
 
 
 class FhirImagingStudyRead(HTTPEndpoint):
@@ -288,8 +311,12 @@ class FhirImagingStudySearch(HTTPEndpoint):
                 col = allowed.get(field, 'id')
                 q = q.orderby(col, order=direction)
 
+            conds, vals, idx = _apply_last_updated(params, q, 'studies', 1)
+            if conds:
+                q = q.where(PseudoColumn(f" {' AND '.join(conds)}"))
+
             if limit:
-                rows = await st.conn.fetch(str(q.limit(limit)))
+                rows = await st.conn.fetch(str(q.limit(limit)), *vals)
             else:
                 rows = await st.fetch(q)
 
@@ -364,6 +391,24 @@ class FhirDocumentReferenceSearch(HTTPEndpoint):
                 conds.append(f"fi.meta->>'type' = ${idx}")
                 vals.append(params['type'])
                 idx += 1
+            if 'period' in params:
+                period = params['period']
+                prefix = ''
+                val = period
+                for pfx in ('ge', 'gt', 'le', 'lt', 'eq', 'ne', 'sa', 'eb', 'ap'):
+                    if period.startswith(pfx):
+                        prefix = pfx
+                        val = period[len(pfx):]
+                        break
+                op_map = {'ge': '>=', 'gt': '>', 'le': '<=', 'lt': '<', 'eq': '=', 'ne': '!='}
+                op = op_map.get(prefix, '=')
+                conds.append(f"sf.created {op} ${idx}::timestamptz")
+                vals.append(val)
+                idx += 1
+            if '_lastUpdated' in params:
+                lu_conds, lu_vals, idx = _apply_last_updated(params, query, 'sf', idx)
+                conds.extend(lu_conds)
+                vals.extend(lu_vals)
             if conds:
                 query += ' WHERE ' + ' AND '.join(conds)
 
