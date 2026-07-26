@@ -35,6 +35,9 @@ default_config = {
     'hl7_mllp_tls_cert': '',
     'hl7_mllp_tls_key': '',
     'hl7_mllp_allowed_ips': '',
+    'otel_exporter_otlp_endpoint': '',
+    'otel_service_name': 'quantumpacs-backend',
+    'prometheus_enabled': 'true',
 }
 
 
