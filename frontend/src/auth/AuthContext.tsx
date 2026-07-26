@@ -8,17 +8,30 @@ export interface AuthUser {
   tenant_id?: string;
 }
 
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface AuthContextType {
   isAuthenticated: boolean;
   user: AuthUser | null;
   signIn: (token: string, user: AuthUser) => void;
   signOut: () => void;
   hasPermission: (permission: string) => boolean;
+  activeTenant: Tenant | null;
+  setActiveTenant: (tenant: Tenant | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [activeTenant, setActiveTenant] = useState<Tenant | null>(() => {
+    const slug = localStorage.getItem('tenant_id');
+    if (!slug) return null;
+    return { id: slug, name: localStorage.getItem('tenant_name') || slug, slug };
+  });
   const [user, setUser] = useState<AuthUser | null>(() => {
     const id = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
@@ -62,8 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, user, signIn, signOut, hasPermission }),
-    [isAuthenticated, user, signIn, signOut, hasPermission],
+    () => ({ isAuthenticated, user, signIn, signOut, hasPermission, activeTenant, setActiveTenant }),
+    [isAuthenticated, user, signIn, signOut, hasPermission, activeTenant, setActiveTenant],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -4,6 +4,7 @@ import { Layout, Menu } from 'antd';
 import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, LogoutOutlined } from '@ant-design/icons';
 import { isAdmin } from '../helpers';
 import QuantumLogo from './QuantumLogo';
+import TenantSelector from '../auth/TenantSelector';
 import './Sidebar.css';
 
 const { Sider } = Layout;
@@ -63,6 +64,7 @@ function Sidebar() {
       }}>
         <QuantumLogo size={32} showText={!collapsed} />
       </div>
+      <TenantSelector />
       <Menu mode="inline" theme="dark"
         defaultOpenKeys={[openKey]} defaultSelectedKeys={[selectedKey]} >
 

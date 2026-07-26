@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AuthProvider } from '../auth/AuthContext';
 import Users from '../users/Users';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -27,23 +28,25 @@ describe('Users', () => {
     mockRequest.mockResolvedValue({ data: mockUsers });
   });
 
-  it('renders Role column header', async () => {
-    render(
-      <MemoryRouter>
-        <Users />
-      </MemoryRouter>
+  function renderWithAuth(ui: React.ReactElement) {
+    return render(
+      <AuthProvider>
+        <MemoryRouter>
+          {ui}
+        </MemoryRouter>
+      </AuthProvider>
     );
+  }
+
+  it('renders Role column header', async () => {
+    renderWithAuth(<Users />);
 
     const headers = await screen.findAllByText('Role');
     expect(headers.length).toBeGreaterThanOrEqual(1);
   });
 
   it('displays role name for each user', async () => {
-    render(
-      <MemoryRouter>
-        <Users />
-      </MemoryRouter>
-    );
+    renderWithAuth(<Users />);
 
     const admins = await screen.findAllByText('Administrator');
     expect(admins.length).toBeGreaterThanOrEqual(1);
