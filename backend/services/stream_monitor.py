@@ -43,12 +43,14 @@ class StreamMonitor:
         }
 
     async def collect(self) -> None:
+        from api.telemetry import redis_stream_lag_seconds
         redis = self.consumer.redis
         for stream, info in self.streams.items():
             try:
                 info['length'] = await redis.xlen(stream)
                 pending = await self.consumer.pending(stream, info['group'])
                 info['pending'] = pending.get('pending', 0) if isinstance(pending, dict) else 0
+                redis_stream_lag_seconds.labels(stream=stream, consumer_group=info['group']).set(info['pending'])
             except Exception:
                 log.debug('failed to collect metrics for %s', stream)
             info['last_checked'] = time.monotonic()

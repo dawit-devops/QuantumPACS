@@ -31,7 +31,7 @@ case "$CMD" in
     systemctl --user status quantumpacs-frontend.service --no-pager 2>&1 | head -10
     echo ""
     echo "=== Health Check ==="
-    echo -n "Backend (8080): "; curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>&1 || echo "down"
+    echo -n "Backend (8080): "; curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v2/health 2>&1 || echo "down"
     echo ""
     echo -n "Frontend (5173): "; curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>&1 || echo "down"
     echo ""

@@ -60,6 +60,15 @@ db_connections_in_use = Gauge(
     'db_connections_in_use', 'Database connections currently in use',
     ['tenant'],
 )
+db_query_duration_seconds = Histogram(
+    'db_query_duration_seconds', 'Database query duration in seconds',
+    ['operation'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+redis_stream_lag_seconds = Gauge(
+    'redis_stream_lag_seconds', 'Redis stream consumer lag',
+    ['stream', 'consumer_group'],
+)
 
 
 _legacy_metrics = {
@@ -95,6 +104,13 @@ def _sample_db_pool():
 
 
 async def metrics_endpoint(request):
+    from config import config
+    if not config.get('prometheus_enabled', True):
+        from starlette.responses import PlainTextResponse
+        return PlainTextResponse('Metrics disabled', status_code=404)
+    if 'user' in request.scope:
+        from api.utils import is_admin
+        is_admin(request)
     _sample_db_pool()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
@@ -153,10 +169,12 @@ async def _check_storage():
     try:
         from db.conn import get_conn
         async with get_conn() as conn:
-            row = await conn.fetchrow("SELECT id, type, master FROM replicas WHERE master = TRUE LIMIT 1")
-        if row:
-            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000), 'backend': row['type']}
-        return {'status': 'degraded', 'latency_ms': 0, 'message': 'No master replica configured'}
+            rows = await conn.fetch("SELECT id, type, master FROM replicas")
+        masters = [r['type'] for r in rows if r.get('master')]
+        backends = list({r['type'] for r in rows})
+        if masters:
+            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000), 'master': masters[0], 'replicas': backends}
+        return {'status': 'degraded', 'latency_ms': 0, 'replicas': backends, 'message': 'No master replica configured'}
     except Exception as e:
         return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
 
@@ -168,9 +186,21 @@ async def _check_dicom_listener():
         import socket
         with socket.create_connection(('127.0.0.1', port), timeout=2):
             pass
-        return {'status': 'ok', 'port': port, 'latency_ms': 0}
+        return {'status': 'ok', 'port': port, 'uptime_seconds': int(time.time() - _start_time), 'latency_ms': 0}
     except Exception:
-        return {'status': 'degraded', 'port': port, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
+        return {'status': 'degraded', 'port': port, 'uptime_seconds': 0, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
+
+
+async def _check_ingestion_service():
+    try:
+        monitor = get_stream_monitor()
+        if monitor is None:
+            return {'status': 'degraded', 'stream_lag': -1, 'message': 'Stream monitor not started'}
+        metrics = monitor.metrics()
+        total_pending = sum(info.get('pending', 0) for info in metrics.values())
+        return {'status': 'ok', 'stream_lag': total_pending}
+    except Exception as e:
+        return {'status': 'error', 'stream_lag': -1, 'message': str(e)}
 
 
 async def health_endpoint(request):
@@ -179,12 +209,14 @@ async def health_endpoint(request):
     redis_result = await _check_redis()
     storage_result = await _check_storage()
     dicom_result = await _check_dicom_listener()
+    ingestion_result = await _check_ingestion_service()
     components = {
         'database': db_result,
         'elasticsearch': es_result,
         'redis': redis_result,
-        'storage_master': storage_result,
+        'storage': storage_result,
         'dicom_listener': dicom_result,
+        'ingestion_service': ingestion_result,
     }
     all_ok = all(c.get('status') == 'ok' for c in components.values())
     overall_status = 'ok' if all_ok else 'degraded'

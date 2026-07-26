@@ -46,8 +46,8 @@ async def openapi_spec(request):
 
 
 routes = [
-    Route('/health', endpoint=health_endpoint),
-    Route('/metrics', endpoint=metrics_endpoint),
+    Route('/v2/health', endpoint=health_endpoint),
+    Route('/v2/metrics', endpoint=metrics_endpoint),
     Route('/docs', endpoint=docs_page),
     Route('/docs/openapi.json', endpoint=openapi_spec),
     Route('/replicas', endpoint=ReplicasHandlers),
