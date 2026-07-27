@@ -217,8 +217,13 @@ class TestApiKeyCrud:
         user = MagicMock()
         user.is_authenticated = True
         user.permissions = []
-        client = TestClient(self._make_app(user))
-        resp = client.get('/api/api-keys')
+        user.admin = False
+        with patch('api.api_keys.get_conn') as mock_get_conn:
+            mock_conn = AsyncMock()
+            mock_conn.__aenter__.return_value = mock_conn
+            mock_get_conn.return_value = mock_conn
+            client = TestClient(self._make_app(user))
+            resp = client.get('/api/api-keys')
         assert resp.status_code == 403
 
     def test_list_keys_with_permission(self):
@@ -247,8 +252,13 @@ class TestApiKeyCrud:
         user = MagicMock()
         user.is_authenticated = True
         user.permissions = []
-        client = TestClient(self._make_app(user))
-        resp = client.delete('/api/api-keys/k1')
+        user.admin = False
+        with patch('api.api_keys.get_conn') as mock_get_conn:
+            mock_conn = AsyncMock()
+            mock_conn.__aenter__.return_value = mock_conn
+            mock_get_conn.return_value = mock_conn
+            client = TestClient(self._make_app(user))
+            resp = client.delete('/api/api-keys/k1')
         assert resp.status_code == 403
 
     def test_revoke_key_with_permission(self):

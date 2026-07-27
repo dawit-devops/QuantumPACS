@@ -11,6 +11,8 @@ class Table:
         Table.tables.append(cls)
 
     def __init__(self, conn=None, alias=None):
+        if conn is None:
+            raise ValueError('conn required')
         self.conn = conn
         self.table = Table_(self.name, alias=alias)
 
