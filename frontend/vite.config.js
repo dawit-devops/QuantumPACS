@@ -26,14 +26,6 @@ export default defineConfig({
       maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
     },
   })],
-  resolve: {
-    alias: {
-      events: 'events',
-    },
-  },
-  optimizeDeps: {
-    include: ['events'],
-  },
   build: {
     rollupOptions: {
       output: {
@@ -44,7 +36,6 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 4000,
   },
   server: {
     host: '0.0.0.0',
