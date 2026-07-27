@@ -4,17 +4,13 @@ import withRouter from '../withRouter';
 import { Layout, message, Menu, Breadcrumb, Grid } from 'antd';
 import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
-
-const { useBreakpoint } = Grid;
 import { request } from '../helpers';
-import { wadoRsUrl } from '../dicomweb/dicomweb';
-import { useAuth } from '../auth/AuthContext';
 import { API_URL } from '../config';
 import CornerstoneElement from './CornerstoneElement';
 import EditableTable from './EditableTable';
 import Changes from './Changes';
 import Share from './Share';
-import Managment from './Managment';
+import Management from './Management';
 import './Detail.css';
 
 const Content = Layout.Content;
@@ -198,7 +194,7 @@ function Detail(props: any) {
       />
       {tab === 'changes' && <Changes file={data}></Changes>}
       {tab === 'share' && <Share file={data}></Share>}
-      {tab === 'admin' && hasPermission('USER_ADMIN') && <Managment file={data}></Managment>}
+{tab === 'admin' && hasPermission('USER_ADMIN') && <Management file={data}></Management>}
     </Content>
   );
 }
