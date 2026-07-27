@@ -1,30 +1,50 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1
 
-RUN apt-get update && apt-get install -y gcc musl-dev make && rm -rf /var/lib/apt/lists/* \
-&& pip3 install --no-cache-dir \
-'aiobotocore>=2.16.0,<3.0.0' \
-aiofiles>=23.0.0 \
-asyncpg>=0.29.0 \
-'b2sdk>=2.0.0,<3.0.0' \
-gunicorn>=22.0.0 \
-'elasticsearch>=8.0,<9.0' \
-'email-validator>=2.0.0' \
-pydicom>=2.4.0 \
-pynetdicom>=2.0.0 \
-'PyJWT>=2.0,<3.0' \
-PyPika>=0.48.0 \
-PyYAML>=6.0 \
-python-dateutil>=2.8.0 \
-python-multipart>=0.0.5 \
-'starlette>=0.35.0,<0.36.0' \
-ujson>=5.0.0 \
-uvicorn>=0.24.0 \
-&& apt-get remove -y gcc musl-dev make && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+# ---- Stage 1: Python dependencies ----
+FROM python:3.13-slim AS deps
 
-ADD ./ /quantumpacs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc musl-dev make \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /quantumpacs
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir \
+    --target=/install \
+    -r /tmp/requirements.txt \
+    && rm -rf /root/.cache/pip \
+    && find /install -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null \
+    && find /install -type f -name "*.pyc" -delete
 
-ENV QUANTUMPACS_DOCKER=true
+RUN find /install/bin -type f -exec sed -i '1s|^#!/usr/local/bin/python[0-9.]*$|#!/usr/bin/python3|' {} + 2>/dev/null || true
 
-CMD ./start.sh
+# ---- Stage 2: Production ----
+FROM gcr.io/distroless/python3:nonroot
+
+ARG VERSION=0.0.0
+ARG BUILD_DATE
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="QuantumPACS Backend" \
+      org.opencontainers.image.description="QuantumPACS medical image management backend" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.created="$BUILD_DATE" \
+      org.opencontainers.image.revision="$VCS_REF" \
+      org.opencontainers.image.licenses="MIT"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    QUANTUMPACS_DOCKER=true \
+    PYTHONPATH=/app/packages \
+    PATH=/app/packages/bin:$PATH
+
+COPY --link --from=deps /install/ /app/packages
+
+COPY --link --chown=65532:65532 . /quantumpacs/backend
+
+WORKDIR /quantumpacs/backend
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v2/health')"]
+
+CMD ["/quantumpacs/backend/docker_entrypoint.py"]

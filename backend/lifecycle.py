@@ -145,8 +145,11 @@ async def setup(db_pool_size=None, sync_db=False):
             _bridge = None
             _monitor = None
 
-    _start_dicom()
-    await _start_mllp()
+    asyncio.create_task(_start_mllp())
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_start_dicom), timeout=5)
+    except (asyncio.TimeoutError, Exception):
+        log.warning('DICOM server start timed out or failed')
 
     if sync_db:
         async with db.conn.get_conn() as conn:

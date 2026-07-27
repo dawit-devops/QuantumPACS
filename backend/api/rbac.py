@@ -14,6 +14,8 @@ def requires_permission(permission: Permission):
             user = request.user
             if not user.is_authenticated:
                 raise HTTPException(status_code=401, detail='Not authenticated')
+            if getattr(user, 'admin', False):
+                return await func(self, request, *args, **kwargs)
             perms = getattr(user, 'permissions', [])
             if permission.value not in perms:
                 return JSONResponse(

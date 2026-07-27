@@ -53,6 +53,7 @@ function LoginForm(props: any) {
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch('login');
   const [lockoutSeconds, setLockoutSeconds] = useState(getLoginDelay);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [providers, setProviders] = useState<any[]>([]);
   const { signIn } = useAuth();
 
@@ -80,9 +81,14 @@ function LoginForm(props: any) {
     if (!loading && error) {
       recordFailedAttempt();
       setLockoutSeconds(getLoginDelay());
-      message.error(error.error || error);
+      const msg = typeof error === 'object' ? (error.message || error.error || JSON.stringify(error)) : String(error);
+      setLoginError(msg);
     }
   }, [loading, error]);
+
+  useEffect(() => {
+    if (data) setLoginError(null);
+  }, [data]);
 
   useEffect(() => {
     if (lockoutSeconds <= 0) return;
@@ -95,8 +101,9 @@ function LoginForm(props: any) {
   }, [lockoutSeconds]);
 
   const handleSubmit = (values: any) => {
+    setLoginError(null);
     if (lockoutSeconds > 0) {
-      message.warning(`Too many attempts. Try again in ${lockoutSeconds}s.`);
+      setLoginError(`Too many attempts. Try again in ${lockoutSeconds}s.`);
       return;
     }
     exec(
@@ -141,6 +148,11 @@ function LoginForm(props: any) {
                 size="large"
               />
             </Form.Item>
+            {loginError && (
+              <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                <Text type="danger" data-testid="login-error">{loginError}</Text>
+              </div>
+            )}
             <Form.Item>
               <Button type="primary" htmlType="submit" className="login-form-button"
                 size="large" loading={showLoading} disabled={lockoutSeconds > 0}>

@@ -5,17 +5,19 @@ export const handleResponse = async (response: Response): Promise<any> => {
   if (!response) {
     return;
   }
-  if (!response.ok && response.status !== 400) {
-    const error = {error: response.status};
-    throw error;
+  const body = await response.text();
+  let json;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    json = {};
   }
-  const json = await response.json();
   if (response.ok) {
     return json;
-  } else {
-    const error = {error: json};
-    throw error;
   }
+  const apiMessage = json?.error?.message || json?.message || '';
+  const error = {error: response.status, message: apiMessage};
+  throw error;
 };
 
 interface RequestOptions {
@@ -48,6 +50,8 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
   options.headers = new Headers({
     'Content-Type': 'application/json',
   });
+  const token = localStorage.getItem('token');
+  if (token) options.headers.set('X-Auth-Pacs', token);
   if (options.data) {
     options.method = 'POST';
     options.body = JSON.stringify(options.data);
@@ -70,7 +74,7 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
       }
     }
     if (!error.code || error.code !== 20) {
-      throw Error(error.error || error.message || error);
+      throw Error(error.message || error.error || error);
     }
   }
 };

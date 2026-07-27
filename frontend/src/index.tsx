@@ -68,4 +68,11 @@ function App() {
   }
 
 const rootEl = document.getElementById('root')!;
-createRoot(rootEl).render(<App />);
+let root: ReturnType<typeof createRoot>;
+if (!(window as any).__react_root) {
+  root = createRoot(rootEl);
+  (window as any).__react_root = root;
+} else {
+  root = (window as any).__react_root;
+}
+root.render(<App />);

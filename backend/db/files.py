@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import json
 
 from pypika.functions import Count
+from pypika import Order
 
 from es import es
 from db.patient import Patient
@@ -207,11 +208,11 @@ class Files(Table):
                 (self.table.name.ilike(f'%{search}%')) |
                 (Patient().table.patient_id.cast('text').ilike(f'%{search}%'))
             )
-        q = q.orderby(self.table.id.desc()).limit(per_page).offset((page - 1) * per_page)
+        q = q.orderby(self.table.id, order=Order.desc).limit(per_page).offset((page - 1) * per_page)
         files = await self.fetch(q)
         data = [self.from_row(f) for f in files]
 
-        count_q = self.select(Count(1)).from_(self.table)
+        count_q = self.select(Count(1))
         if search:
             PatientT = Patient().table
             count_q = count_q.join(PatientT).on(PatientT.id == self.table.patient_id)

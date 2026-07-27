@@ -1,5 +1,5 @@
 :80 {
-    root * /openpacs/frontend/dist
+    root * /quantumpacs/frontend/dist
     try_files {path} /index.html
 
     header {

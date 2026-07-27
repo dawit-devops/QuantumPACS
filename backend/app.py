@@ -7,7 +7,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
 
 import lifecycle
@@ -36,6 +36,15 @@ if config.get('sentry_dsn'):
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         import time
+        
+        if request.method == 'OPTIONS':
+            response = Response(status_code=200)
+            cors_origin = config.get('cors_origins', '*')
+            response.headers['Access-Control-Allow-Origin'] = cors_origin
+            response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,PUT,DELETE'
+            response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+            return response
+        
         start = time.monotonic()
         try:
             response = await call_next(request)

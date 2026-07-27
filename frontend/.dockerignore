@@ -1,8 +1,12 @@
 node_modules/
+dist/
 .git/
 .gitignore
 .env*
 *.local.*
+.vite/
+test-results/
+e2e/
 __pycache__/
 *.pyc
 *.pyo
@@ -10,8 +14,3 @@ __pycache__/
 .vscode/
 .DS_Store
 Thumbs.db
-venv/
-.pytest_cache/
-.coverage
-*.egg-info/
-SCRATCH/

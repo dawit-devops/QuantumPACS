@@ -36,6 +36,8 @@ export function useFetch(url: string, options: any = {}) {
     options.headers = new Headers({
       'Content-Type': 'application/json',
     });
+    const token = localStorage.getItem('token');
+    if (token) options.headers.set('X-Auth-Pacs', token);
     controller.current = new AbortController();
     options.signal = controller.current.signal;
     try {
@@ -54,7 +56,7 @@ export function useFetch(url: string, options: any = {}) {
         }
       }
       if (!error.code || error.code !== 20) {
-        setError(error.error || error.message || error);
+        setError(error);
       }
       finish();
     }
