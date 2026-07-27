@@ -4,13 +4,13 @@ import withRouter from '../withRouter';
 import { Layout, message, Menu, Breadcrumb } from 'antd';
 import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
-import { request, isAdmin } from '../helpers';
+import { request } from '../helpers';
 import { API_URL } from '../config';
 import CornerstoneElement from './CornerstoneElement';
 import EditableTable from './EditableTable';
 import Changes from './Changes';
 import Share from './Share';
-import Managment from './Managment';
+import Management from './Management';
 import './Detail.css';
 
 const Content = Layout.Content;
@@ -143,7 +143,7 @@ function Detail(props: any) {
           </Menu.Item>
         }
         {
-          !tempKey && isAdmin() &&
+          !tempKey && hasPermission('USER_ADMIN') &&
           <Menu.Item key="admin" onClick={() => setTab('admin')} >
             <LockOutlined />
             Admin
@@ -185,7 +185,7 @@ function Detail(props: any) {
       />
       {tab === 'changes' && <Changes file={data}></Changes>}
       {tab === 'share' && <Share file={data}></Share>}
-      {tab === 'admin' && isAdmin() && <Managment file={data}></Managment>}
+{tab === 'admin' && hasPermission('USER_ADMIN') && <Management file={data}></Management>}
     </Content>
   );
 }
