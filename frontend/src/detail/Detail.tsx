@@ -4,7 +4,11 @@ import withRouter from '../withRouter';
 import { Layout, message, Menu, Breadcrumb, Grid } from 'antd';
 import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
+
+const { useBreakpoint } = Grid;
 import { request } from '../helpers';
+import { wadoRsUrl } from '../dicomweb/dicomweb';
+import { useAuth } from '../auth/AuthContext';
 import { API_URL } from '../config';
 import CornerstoneElement from './CornerstoneElement';
 import EditableTable from './EditableTable';
