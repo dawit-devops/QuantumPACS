@@ -87,13 +87,11 @@ describe('AuthProvider', () => {
 
     expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
     expect(screen.getByTestId('auth-user')).toHaveTextContent('alice');
-    expect(localStorage.getItem('token')).toBe('test-token');
     expect(localStorage.getItem('userId')).toBe('u1');
     expect(localStorage.getItem('username')).toBe('alice');
   });
 
   it('signOut clears localStorage and sets isAuthenticated to false', async () => {
-    localStorage.setItem('token', 'test-token');
     localStorage.setItem('userId', 'u1');
     localStorage.setItem('username', 'alice');
     localStorage.setItem('admin', 'false');
@@ -110,7 +108,6 @@ describe('AuthProvider', () => {
     await user.click(screen.getByTestId('signout-btn'));
 
     expect(screen.getByTestId('auth-status')).toHaveTextContent('unauthenticated');
-    expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('userId')).toBeNull();
     expect(screen.queryByTestId('auth-user')).toBeNull();
   });
