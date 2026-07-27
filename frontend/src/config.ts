@@ -5,6 +5,6 @@ if (base_url === 'http://localhost:5173') {
 }
 export const API_URL = base_url + '/api';
 export const LOADING_DELAY = 300;
-export let PAGINATION = {
+export const PAGINATION = {
   limit: 10,
 };

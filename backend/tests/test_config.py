@@ -52,17 +52,13 @@ class TestDefaultConfig:
 
     def test_is_docker_set_by_env(self, monkeypatch):
         monkeypatch.setenv('QUANTUMPACS_DOCKER', '1')
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.is_docker is True
+        from config import is_docker
+        assert is_docker() is True
 
     def test_is_docker_false_by_default(self, monkeypatch):
         monkeypatch.delenv('QUANTUMPACS_DOCKER', raising=False)
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.is_docker is False
+        from config import is_docker
+        assert is_docker() is False
 
     def test_env_keys_are_upper_case(self, monkeypatch):
         monkeypatch.setenv('SUPERADMIN_PASS', 's3cret!')

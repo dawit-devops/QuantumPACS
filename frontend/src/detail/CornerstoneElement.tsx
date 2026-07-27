@@ -43,10 +43,7 @@ async function ensureGlobalInit() {
   globalInitCalled = true;
 
   initDicomImageLoader({
-    beforeSend: (xhr: any) => {
-      const token = localStorage.getItem('token') || localStorage.getItem('tempKey');
-      if (token) xhr.setRequestHeader('X-Auth-Pacs', token);
-    },
+    beforeSend: (_xhr: any) => {},
   });
 
   await csCoreInit();
@@ -485,8 +482,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   }
 
   download() {
-    const token = localStorage.getItem('token');
-    window.open(`${API_URL}/files/${this.props.file.id}/data?token=${token}`, '_blank');
+    window.open(`${API_URL}/files/${this.props.file.id}/data`, '_blank');
   }
 
   tipFormatter(value: any) {
