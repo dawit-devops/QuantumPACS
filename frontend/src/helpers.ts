@@ -50,8 +50,6 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
   options.headers = new Headers({
     'Content-Type': 'application/json',
   });
-  const token = localStorage.getItem('token');
-  if (token) options.headers.set('X-Auth-Pacs', token);
   if (options.data) {
     options.method = 'POST';
     options.body = JSON.stringify(options.data);

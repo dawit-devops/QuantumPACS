@@ -35,8 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const [user, setUser] = useState<AuthUser | null>(() => {
     const id = localStorage.getItem('userId');
-    const token = localStorage.getItem('token');
-    if (!id || !token) return null;
+    if (!id) return null;
     let permissions: string[] = [];
     try {
       const raw = localStorage.getItem('permissions');
@@ -52,15 +51,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   });
 
-  const isAuthenticated = user !== null && !!localStorage.getItem('token');
+  const isAuthenticated = user !== null;
 
   const hasPermission = useCallback(
     (permission: string) => isAuthenticated && (user?.admin || user?.permissions?.includes(permission)),
     [isAuthenticated, user],
   );
 
-  const signIn = useCallback((token: string, userData: AuthUser) => {
-    localStorage.setItem('token', token);
+  const signIn = useCallback((_token: string, userData: AuthUser) => {
     localStorage.setItem('userId', userData.id);
     localStorage.setItem('username', userData.username);
     localStorage.setItem('admin', String(userData.admin));
@@ -73,7 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
-    localStorage.removeItem('token');
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('admin');

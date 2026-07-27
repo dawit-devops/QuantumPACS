@@ -5,6 +5,7 @@ import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamO
 import { useAuth } from '../auth/AuthContext';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
+import { request } from '../helpers';
 import './Sidebar.css';
 
 const { Sider } = Layout;
@@ -45,9 +46,12 @@ function Sidebar() {
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
+    try {
+      await request('auth/logout', { method: 'POST' });
+    } catch {
+    }
     localStorage.removeItem('userId');
     localStorage.removeItem('admin');
-    localStorage.removeItem('token');
     navigate('/login');
   };
 

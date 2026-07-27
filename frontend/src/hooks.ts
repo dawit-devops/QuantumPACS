@@ -3,6 +3,19 @@ import { LOADING_DELAY, API_URL } from './config';
 import { handleResponse } from './helpers';
 import { navigate } from './navigator';
 
+async function fetchWithRetry(url: string, options: any, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    const resp = await fetch(url, options);
+    if (resp.ok || resp.status < 500) {
+      return resp;
+    }
+    if (i < retries - 1) {
+      await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, i), 8000)));
+    }
+  }
+  return fetch(url, options);
+}
+
 export function useFetch(url: string, options: any = {}) {
   const [loading, setLoading] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
@@ -36,12 +49,10 @@ export function useFetch(url: string, options: any = {}) {
     options.headers = new Headers({
       'Content-Type': 'application/json',
     });
-    const token = localStorage.getItem('token');
-    if (token) options.headers.set('X-Auth-Pacs', token);
     controller.current = new AbortController();
     options.signal = controller.current.signal;
     try {
-      const resp = await fetch(url, Object.assign({}, options, execOptions));
+      const resp = await fetchWithRetry(url, Object.assign({}, options, execOptions));
       const data = await handleResponse(resp);
       setData(data);
       finish();
