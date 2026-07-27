@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import withRouter from '../withRouter';
-import { Layout, message, Menu, Breadcrumb, Grid } from 'antd';
+import { Layout, message, Menu, Breadcrumb, Grid, Spin } from 'antd';
 import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
 
@@ -10,7 +10,7 @@ import { request } from '../helpers';
 import { wadoRsUrl } from '../dicomweb/dicomweb';
 import { useAuth } from '../auth/AuthContext';
 import { API_URL } from '../config';
-import CornerstoneElement from './CornerstoneElement';
+const CornerstoneElement = React.lazy(() => import('./CornerstoneElement'));
 import EditableTable from './EditableTable';
 import Changes from './Changes';
 import Share from './Share';
@@ -181,14 +181,16 @@ function Detail(props: any) {
           </Breadcrumb.Item>
         </Breadcrumb>
       }
-      <CornerstoneElement key={key}
-        file={data}
-        files={series?.files || null}
-        changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
-        image={image}
-        wadoRsImage={wadoRsImage}
-        visible={tab === 'image'}
-      />
+      <Suspense fallback={<Spin size="large" style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />}>
+        <CornerstoneElement key={key}
+          file={data}
+          files={series?.files || null}
+          changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
+          image={image}
+          wadoRsImage={wadoRsImage}
+          visible={tab === 'image'}
+        />
+      </Suspense>
       <EditableTable
         style={tab !== 'data' ? { display: 'none' } : {}}
         rowKey={(record: any) => record.key}

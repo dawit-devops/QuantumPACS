@@ -74,8 +74,9 @@ class TestRoles:
         calls = conn.execute.call_args_list
         assert len(calls) == 7
         sql = calls[0][0][0]
+        args = calls[0][0][1:]
         assert 'INSERT INTO' in sql
-        assert 'super_admin' in sql
+        assert 'super_admin' in args
 
     @pytest.mark.asyncio
     async def test_seed_built_in_roles_uses_upsert(self):

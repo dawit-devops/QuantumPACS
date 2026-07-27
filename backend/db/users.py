@@ -81,28 +81,27 @@ class Users(Table):
             data = await self.fetchone(q)
             if not data:
                 pswd = hash_password(config['superadmin_pass'])
-                role_id = await self.fetchval(
-                    "SELECT id FROM roles WHERE slug = 'super_admin'"
-                )
+                from db.roles import Roles
+                role = await Roles(self.conn).get_by_slug('super_admin')
+                role_id = role['id'] if role else None
                 q = self.insert().columns('username', 'password', 'admin', 'role_id').insert(
                     'admin', pswd, True, role_id,
                 )
                 await self.exec(q)
 
     async def get_user_role(self, user_id):
+        from db.roles import Roles
         q = self.select('role_id').where(self.table.id == user_id)
         row = await self.fetchone(q)
         if not row or not row['role_id']:
             return None, []
-        result = await self.fetchone(
-            f"SELECT slug, permissions FROM roles WHERE id = '{row['role_id']}'"
-        )
-        if result:
-            perms = result.get('permissions') or []
+        role = await Roles(self.conn).get(row['role_id'])
+        if role:
+            perms = role.get('permissions') or []
             if isinstance(perms, str):
                 import json
                 perms = json.loads(perms)
-            return result['slug'], perms
+            return role['slug'], perms
         return None, []
 
     async def change_password(self, user, password):

@@ -8,3 +8,24 @@ filterwarnings = [
     "ignore::UserWarning:jwt.warnings",
     'ignore:Using `httpx` with `starlette.testclient`:UserWarning',
 ]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "migrations/*",
+    "venv/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

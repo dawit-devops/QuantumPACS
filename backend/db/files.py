@@ -10,6 +10,9 @@ from db.series import Series
 from db.replica_files import ReplicaFiles
 from db.table import Table
 from db.file_changes import FileChange
+from log import get_logger
+
+log = get_logger(__name__)
 
 
 class Files(Table):
@@ -68,8 +71,12 @@ class Files(Table):
 
         filedata['id'] = file_id
         filedata['meta'] = filedata['cleaned']
-        async with self.conn.transaction():
+        try:
             await es.index_file(filedata)
+        except Exception as e:
+            log.warning('ES indexing failed for file %s: %s, will retry via sync loop', file_id, e)
+            return filedata
+        async with self.conn.transaction():
             q = self.update().where(self.table.id == file_id).set(self.table.indexed, True)
             await self.exec(q)
 
@@ -193,7 +200,7 @@ class Files(Table):
 
         return file
 
-    async def get_all(self, limit=None):
+    async def get_all(self, limit=1000):
         q = self.q()
         if limit:
             q = q.limit(limit)

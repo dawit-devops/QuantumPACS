@@ -12,7 +12,7 @@ default_config = {
     'db_user': 'quantumpacs',
     'db_password': 'pa55w0rd',
     'es_host': 'localhost',
-    'cors_origins': '*',
+    'cors_origins': 'http://localhost:5173',
     'allowed_hosts': 'localhost,127.0.0.1',
     'redis_host': 'localhost',
     'redis_port': '6379',
@@ -38,6 +38,7 @@ default_config = {
     'otel_exporter_otlp_endpoint': '',
     'otel_service_name': 'quantumpacs-backend',
     'prometheus_enabled': 'true',
+    'b2_cors_origins': 'http://localhost:5173',
 }
 
 
