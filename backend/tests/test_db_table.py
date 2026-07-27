@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -34,7 +34,7 @@ class TestTableRegistry:
         class C(Table):
             name = 'c'
         Table.register(C)
-        t = Table()
+        t = Table(conn=MagicMock())
         assert C in t.tables
 
     def test_register_same_class_twice(self):
@@ -57,14 +57,14 @@ class TestTableQuery:
     def test_query_returns_pypika_query_object(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable()
+        t = PatientTable(conn=MagicMock())
         q = t.query()
         assert 'Query' in type(q).__name__
 
     def test_select_returns_valid_sql(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable()
+        t = PatientTable(conn=MagicMock())
         q = t.select('id', 'name')
         sql = str(q)
         assert 'SELECT' in sql
@@ -75,14 +75,14 @@ class TestTableQuery:
     def test_select_star(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable()
+        t = PatientTable(conn=MagicMock())
         q = t.select('*')
         assert str(q) == 'SELECT * FROM "patients"'
 
     def test_update_requires_set(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable()
+        t = PatientTable(conn=MagicMock())
         table = t.table
         q = t.update().set('name', 'test').where(table.id == 1)
         sql = str(q)
@@ -92,7 +92,7 @@ class TestTableQuery:
     def test_insert_requires_values(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable()
+        t = PatientTable(conn=MagicMock())
         q = t.insert().columns('id', 'name').insert(1, 'Alice')
         sql = str(q)
         assert sql.startswith('INSERT INTO')
@@ -101,7 +101,7 @@ class TestTableQuery:
     def test_alias_in_query(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(alias='p')
+        t = PatientTable(conn=MagicMock(), alias='p')
         q = t.select('id')
         sql = str(q)
         assert '"patients"' in sql or '"p"' in sql
@@ -120,7 +120,7 @@ class TestTableAsync:
     async def test_sync_db_raises_not_implemented(self):
         class MyTable(Table):
             name = 'test'
-        t = MyTable()
+        t = MyTable(conn=MagicMock())
         with pytest.raises(TypeError, match='NotImplemented'):
             await t.sync_db()
 

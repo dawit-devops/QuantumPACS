@@ -20,7 +20,7 @@ class TestTenantStats:
     async def test_get_stats_returns_all_fields(self):
         mock_pool, mock_conn = self._mock_pool([10, 25, 100, 5000000, None])
 
-        t = Tenants(conn=None)
+        t = Tenants(conn=MagicMock())
 
         with patch('db.tenants.TenantConnectionPool.get', new=AsyncMock(return_value=mock_pool)):
             stats = await t.get_stats('test-clinic', {'db_name': 'test_clinic'})
@@ -35,7 +35,7 @@ class TestTenantStats:
     async def test_get_stats_with_last_activity(self):
         mock_pool, mock_conn = self._mock_pool([5, 10, 50, 1000000, '2026-07-25 10:30:00+00'])
 
-        t = Tenants(conn=None)
+        t = Tenants(conn=MagicMock())
 
         with patch('db.tenants.TenantConnectionPool.get', new=AsyncMock(return_value=mock_pool)):
             stats = await t.get_stats('active-clinic', {'db_name': 'active_clinic'})
@@ -50,7 +50,7 @@ class TestTenantStats:
     async def test_get_stats_handles_empty_database(self):
         mock_pool, mock_conn = self._mock_pool([0, 0, 0, None, None])
 
-        t = Tenants(conn=None)
+        t = Tenants(conn=MagicMock())
 
         with patch('db.tenants.TenantConnectionPool.get', new=AsyncMock(return_value=mock_pool)):
             stats = await t.get_stats('empty', {'db_name': 'empty'})
@@ -65,7 +65,7 @@ class TestTenantStats:
     async def test_get_stats_coalesces_null_storage(self):
         mock_pool, mock_conn = self._mock_pool([3, 7, 15, None, None])
 
-        t = Tenants(conn=None)
+        t = Tenants(conn=MagicMock())
 
         with patch('db.tenants.TenantConnectionPool.get', new=AsyncMock(return_value=mock_pool)):
             stats = await t.get_stats('some', {'db_name': 'some'})

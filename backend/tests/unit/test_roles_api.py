@@ -29,6 +29,7 @@ def make_request(method='GET', path='/roles', params=None, body=None, permission
     request.method = method
     request.path_params = params or {}
     request.user.is_authenticated = True
+    request.user.admin = False
     request.user.id = 1
     request.user.tenant = None
     request.user.permissions = permissions or []
