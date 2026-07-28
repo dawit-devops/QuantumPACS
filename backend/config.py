@@ -81,4 +81,5 @@ def assert_production_secret():
         sys.exit(1)
 
 
-is_docker = bool(os.getenv('QUANTUMPACS_DOCKER'))
+def is_docker():
+    return bool(os.getenv('QUANTUMPACS_DOCKER'))

@@ -35,6 +35,7 @@ class Users(Table):
             password TEXT NOT NULL,
             admin BOOLEAN NOT NULL DEFAULT FALSE,
             status TEXT NOT NULL DEFAULT 'active',
+            needs_rehash BOOLEAN NOT NULL DEFAULT FALSE,
             created TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             updated TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc')
         );
@@ -69,6 +70,10 @@ class Users(Table):
 
         raw = binascii.unhexlify(data['password'])
         if len(raw) == 32:
+            ph = hash_password(password)
+            q = self.update().where(self.table.id == data['id']).set(self.table.password, ph)
+            await self.exec(q)
+        elif data.get('needs_rehash'):
             ph = hash_password(password)
             q = self.update().where(self.table.id == data['id']).set(self.table.password, ph)
             await self.exec(q)
@@ -110,10 +115,12 @@ class Users(Table):
         await self.exec(q)
 
     async def add_user(self, username, is_admin):
+        q = self.insert().columns('username', 'password', 'admin').insert(username, '', is_admin).returning('id')
+        user_id = await self.fetchval(q)
         pswd = rand_pswd()
         ph = hash_password(pswd)
-        q = self.insert().columns('username', 'password', 'admin').insert(username, ph, is_admin).returning('id')
-        await self.fetchval(q)
+        q = self.update().where(self.table.id == user_id).set(self.table.password, ph)
+        await self.exec(q)
         return {'password': pswd}
 
     async def get_users(self, offset=None, limit=None, username=None):
@@ -144,6 +151,9 @@ class Users(Table):
         await self.exec(q)
 
     async def new_pswd(self, user_id):
+        exists = await self.fetchval(self.select(self.table.id).where(self.table.id == user_id))
+        if not exists:
+            raise RuntimeError(f'User {user_id} not found')
         pswd = rand_pswd()
         ph = hash_password(pswd)
         q = self.update().where(self.table.id == user_id).set(self.table.password, ph)

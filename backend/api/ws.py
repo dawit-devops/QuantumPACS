@@ -71,12 +71,28 @@ async def _pubsub_listener():
 
 
 _listener_task = None
+_cleanup_task = None
 
 
 def _ensure_listener():
-    global _listener_task
+    global _listener_task, _cleanup_task
     if _listener_task is None or _listener_task.done():
         _listener_task = asyncio.create_task(_pubsub_listener())
+    if _cleanup_task is None or _cleanup_task.done():
+        _cleanup_task = asyncio.create_task(_stale_cleanup())
+
+
+async def _stale_cleanup():
+    while True:
+        await asyncio.sleep(30)
+        async with _sub_lock:
+            for file_id in list(local_clients):
+                file_clients = local_clients[file_id]
+                stale = [k for k, v in file_clients.items() if isinstance(v, WebSocket) and v.client_state == 3]
+                for k in stale:
+                    del file_clients[k]
+                if not file_clients:
+                    del local_clients[file_id]
 
 
 class WSToken(HTTPEndpoint):

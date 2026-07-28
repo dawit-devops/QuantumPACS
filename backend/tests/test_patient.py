@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -26,16 +26,20 @@ class TestPatient:
     async def test_get_extra_builds_study_series_tree(self):
         conn = AsyncMock()
         conn.fetchrow.return_value = {'id': 1, 'patient_id': 'P001', 'name': 'Test', 'meta': None}
-        conn.fetch.side_effect = [
-            [{'id': 10, 'patient_id': 1, 'uid': '1.2.3'}],
-            [{'id': 20, 'study_id': 10, 'number': 1}],
-            [{'id': 30, 'study_id': 10, 'series_id': 20, 'name': 'img.dcm'}],
+        conn.fetch.return_value = [
+            {'study_id': 10, 'study_uid': '1.2.3', 'study_desc': None,
+             'study_instance_uid': None, 'accession_number': None,
+             'series_id': 20, 'series_number': 1, 'series_modality': 'CT',
+             'series_desc': None, 'series_instance_uid': None,
+             'file_id': 30, 'file_name': 'img.dcm', 'file_hash': 'abc',
+             'indexed': True, 'sop_instance_uid': None, 'deleted': False,
+             'meta': None, 'tools_state': None},
         ]
         p = Patient(conn=conn)
         result = await p.get_extra(1)
         assert result['patient_id'] == 'P001'
         assert len(result['studies']) == 1
-        assert result['studies'][0]['id'] == 10
+        assert result['studies'][0]['study_id'] == '1.2.3'
         assert len(result['studies'][0]['series']) == 1
         series = result['studies'][0]['series'][0]
         assert series['number'] == 1

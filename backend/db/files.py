@@ -274,9 +274,10 @@ class Files(Table):
                 await self.exec(q)
 
     async def delete_all(self):
-        try:
-            await es.reset_index()
-        except Exception:
-            pass
-        q = self.query().delete()
-        await self.exec(q)
+        async with self.conn.transaction():
+            try:
+                await es.reset_index()
+            except Exception:
+                pass
+            q = self.query().delete()
+            await self.exec(q)

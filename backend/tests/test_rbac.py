@@ -10,6 +10,7 @@ class MockRequest:
     def __init__(self, is_authenticated=True, permissions=None):
         self.user = MagicMock()
         self.user.is_authenticated = is_authenticated
+        self.user.admin = False
         self.user.permissions = permissions or []
 
 

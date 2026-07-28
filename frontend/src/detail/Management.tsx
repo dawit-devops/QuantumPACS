@@ -8,8 +8,8 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function Managment(props: any) {
-  document.title = 'QuantumPACS - Managment';
+function Management(props: any) {
+  document.title = 'QuantumPACS - Management';
   let [loading, setLoading] = useState(false);
 
   const confirmDelete = () => {
@@ -39,4 +39,4 @@ function Managment(props: any) {
   );
 }
 
-export default withRouter(Managment);
+export default withRouter(Management);
