@@ -7,7 +7,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
 
 import lifecycle
@@ -45,7 +45,16 @@ class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         import time
         start = time.monotonic()
-        http_requests_in_progress.labels(method=request.method, path=request.url.path).inc()
+        path = request.url.path
+        if request.method == 'OPTIONS' and path.startswith('/api'):
+            cors_origin = config.get('cors_origins', '*')
+            resp = Response(status_code=200)
+            resp.headers['Access-Control-Allow-Origin'] = cors_origin
+            resp.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
+            resp.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+            record_request(request.method, path, 200, time.monotonic() - start)
+            return resp
+        http_requests_in_progress.labels(method=request.method, path=path).inc()
         try:
             response = await call_next(request)
         except Exception:
