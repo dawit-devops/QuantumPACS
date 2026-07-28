@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   plugins: [react(), VitePWA({
     registerType: 'autoUpdate',
+    selfDestroying: true,
     includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
     manifest: {
       name: 'QuantumPACS',
@@ -51,6 +52,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: {
+        pretendToBeVisual: true,
+      },
+    },
     setupFiles: './src/test/setup.ts',
     testTimeout: 120000,
     hookTimeout: 60000,
@@ -68,13 +74,9 @@ export default defineConfig({
       },
     },
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-        maxForks: 4,
-        minForks: 1,
-      },
-    },
+    singleFork: false,
+    maxForks: 4,
+    minForks: 1,
     fileParallelism: true,
     maxConcurrency: 4,
     retry: 0,

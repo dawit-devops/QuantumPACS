@@ -23,6 +23,9 @@ const Metrics = React.lazy(() => import('./metrics/Metrics'));
 const Patient = React.lazy(() => import('./patient/Patient'));
 const Files = React.lazy(() => import('./files/Files'));
 const Detail = React.lazy(() => import('./detail/Detail'));
+const Worklist = React.lazy(() => import('./worklist/Worklist'));
+const ServiceKeys = React.lazy(() => import('./servicekeys/ServiceKeys'));
+const RoutingRules = React.lazy(() => import('./routing/RoutingRules'));
 const NotFound = React.lazy(() => import('./notfound/NotFound'));
 
 function NavigatorSetter() {
@@ -58,6 +61,9 @@ function App() {
             <Route path="/tenants" element={<ProtectedRoute><Tenants /></ProtectedRoute>} />
             <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
             <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
+            <Route path="/worklist" element={<ProtectedRoute><Worklist /></ProtectedRoute>} />
+            <Route path="/service-keys" element={<ProtectedRoute><ServiceKeys /></ProtectedRoute>} />
+            <Route path="/routing" element={<ProtectedRoute><RoutingRules /></ProtectedRoute>} />
               <Route path="/patients/:id" element={<ProtectedRoute><Patient /></ProtectedRoute>} />
               <Route path="/files/:id" element={<ProtectedRoute><Detail /></ProtectedRoute>} />
               <Route path="/" element={<ProtectedRoute><Files /></ProtectedRoute>} />

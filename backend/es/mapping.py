@@ -1,7 +1,7 @@
 INDEX = {
     "settings": {
         "number_of_shards": 1,
-        "number_of_replicas": 1,
+        "number_of_replicas": 0,
         # "index.refresh_interval": "3600s",
         "analysis": {
             "analyzer": {
@@ -15,7 +15,7 @@ INDEX = {
             },
             "tokenizer": {
                 "my_ngram_tokenizer": {
-                    "type": "edgeNGram",
+                    "type": "edge_ngram",
                     "min_gram": "2",
                     "max_gram": "10",
                     "token_chars": ["letter", "digit"]

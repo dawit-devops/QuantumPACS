@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncio
+
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -26,6 +28,7 @@ async def redis():
     yield client
     await client.flushdb()
     await client.aclose()
+    await asyncio.sleep(0)
 
 
 @pytest.fixture

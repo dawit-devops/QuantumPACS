@@ -1,5 +1,15 @@
 import '@testing-library/jest-dom';
 
+const noop = () => {};
+const originalWarn = console.warn;
+console.warn = (msg: unknown, ...args: unknown[]) => {
+  if (typeof msg === 'string' && (
+    msg.includes('Not implemented: Window\'s getComputedStyle()') ||
+    msg.includes('Not implemented: HTMLCanvasElement')
+  )) return;
+  originalWarn(msg, ...args);
+};
+
 if (typeof globalThis.localStorage === 'undefined') {
   const store: Record<string, string> = {};
   (globalThis as any).localStorage = {

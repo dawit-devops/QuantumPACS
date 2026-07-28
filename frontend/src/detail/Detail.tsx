@@ -188,6 +188,7 @@ function Detail(props: any) {
           changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
           image={image}
           wadoRsImage={wadoRsImage}
+          progressive={true}
           visible={tab === 'image'}
         />
       </Suspense>

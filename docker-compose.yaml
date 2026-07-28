@@ -1,4 +1,37 @@
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+    container_name: quantumpacs-es-1
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=quantumpacs
+      - node.name=quantumpacs-es-1
+      - network.host=0.0.0.0
+      - http.host=0.0.0.0
+      - indices.memory.index_buffer_size=10%
+      - indices.fielddata.cache.size=20%
+      - thread_pool.search.queue_size=100
+    volumes:
+      - quantumpacs_esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE 'green|yellow'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    mem_limit: 1g
+    mem_reservation: 512m
+
   postgres:
     build:
       context: ./docker/postgres
@@ -22,3 +55,4 @@ services:
 
 volumes:
   quantumpacs_pgdata:
+  quantumpacs_esdata:

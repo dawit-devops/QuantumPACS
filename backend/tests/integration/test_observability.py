@@ -326,7 +326,11 @@ class TestCStoreMetrics:
         client = TestClient(_make_metrics_app())
         resp = client.get('/v2/metrics')
         assert 'dicom_cstore_throughput_bytes' in resp.text
-        assert '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[0] or '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[1] or '1024.0' in resp.text
+        lines = resp.text.split('\n')
+        matching = [l for l in lines if l and not l.startswith('#') and 'dicom_cstore_throughput_bytes_total' in l]
+        assert len(matching) == 1, f'Expected 1 metric data line, got: {matching}'
+        val = float(matching[0].split()[-1])
+        assert val >= 1024.0, f'Expected value >= 1024.0, got {val}'
 
 
 

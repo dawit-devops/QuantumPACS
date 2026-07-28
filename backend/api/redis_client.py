@@ -25,7 +25,6 @@ async def get_client():
                 host=host, port=port, password=password, db=0,
                 socket_connect_timeout=2,
                 socket_timeout=2,
-                retry_on_timeout=False,
             )
             await _redis.ping()
             _redis_available = True

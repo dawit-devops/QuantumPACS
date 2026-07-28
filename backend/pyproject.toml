@@ -7,6 +7,10 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning:multipart",
     "ignore::UserWarning:jwt.warnings",
     'ignore:Using `httpx` with `starlette.testclient`:UserWarning',
+    "ignore:unclosed <socket.socket:ResourceWarning",
+    "ignore:unclosed transport:ResourceWarning",
+    "ignore:unclosed event loop:ResourceWarning",
+    "ignore:coroutine 'handle_find_async' was never awaited:RuntimeWarning",
 ]
 
 [tool.coverage.run]
