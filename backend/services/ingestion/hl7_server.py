@@ -199,6 +199,11 @@ def parse_hl7_message(data) -> dict | None:
         address = _seg_field(pid, 11, 0, 0)
         result['address'] = address or None
 
+    mrg = segments.get('MRG')
+    if mrg is not None:
+        result['merged_patient_id'] = _seg_field(mrg, 1, 0, 0)
+        result['surviving_patient_id'] = result.get('patient_id', '')
+
     orc = segments.get('ORC')
     if orc is not None:
         result['accession_number'] = _seg_field(orc, 2, 0, 0)
@@ -226,7 +231,7 @@ async def handle_adt_message(parsed: dict) -> bool:
         data = {'patient_id': patient_id}
         return await _deactivate_patient(data)
 
-    if event in ('A01', 'A04', 'A05', 'A08'):
+    if event in ('A01', 'A02', 'A04', 'A05', 'A08'):
         data = {
             'patient_id': patient_id,
             'patient_name': parsed.get('patient_name', ''),
@@ -234,6 +239,20 @@ async def handle_adt_message(parsed: dict) -> bool:
             'patient_sex': parsed.get('sex', ''),
         }
         return await _upsert_patient(data)
+
+    if event in ('A06', 'A40'):
+        surviving_id = parsed.get('surviving_patient_id', '')
+        merged_id = parsed.get('merged_patient_id', '')
+        if not surviving_id or not merged_id:
+            return False
+        return await _merge_patients(surviving_id, parsed, merged_id)
+
+    if event == 'A07':
+        surviving_id = parsed.get('surviving_patient_id', '')
+        merged_id = parsed.get('merged_patient_id', '')
+        if not surviving_id or not merged_id:
+            return False
+        return await _unmerge_patients(surviving_id, parsed, merged_id)
 
     return False
 
@@ -263,6 +282,56 @@ async def _deactivate_patient(data: dict) -> bool:
         return True
     except Exception:
         log.exception('patient deactivation failed')
+        return False
+
+
+async def _merge_patients(surviving_id: str, parsed: dict, merged_id: str) -> bool:
+    try:
+        async with get_conn() as conn:
+            from db.patient import Patient as PatientModel
+            p = PatientModel(conn)
+            await p.insert_or_select({
+                'patient_id': surviving_id,
+                'patient_name': parsed.get('patient_name', ''),
+                'patient_birth_date': parsed.get('birth_date', ''),
+                'patient_sex': parsed.get('sex', ''),
+            })
+            await conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{merged_into}', '\"' || $1::text || '\"') WHERE patient_id = $2",
+                surviving_id, merged_id,
+            )
+            await conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1",
+                merged_id,
+            )
+        return True
+    except Exception:
+        log.exception('patient merge failed')
+        return False
+
+
+async def _unmerge_patients(surviving_id: str, parsed: dict, merged_id: str) -> bool:
+    try:
+        async with get_conn() as conn:
+            from db.patient import Patient as PatientModel
+            p = PatientModel(conn)
+            await p.insert_or_select({
+                'patient_id': surviving_id,
+                'patient_name': parsed.get('patient_name', ''),
+                'patient_birth_date': parsed.get('birth_date', ''),
+                'patient_sex': parsed.get('sex', ''),
+            })
+            await conn.execute(
+                "UPDATE patients SET meta = (meta - 'merged_into') WHERE patient_id = $1",
+                merged_id,
+            )
+            await conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"true\"') WHERE patient_id = $1",
+                merged_id,
+            )
+        return True
+    except Exception:
+        log.exception('patient unmerge failed')
         return False
 
 

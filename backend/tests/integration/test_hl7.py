@@ -38,6 +38,34 @@ SAMPLE_ADT_A05 = (
     'PID|1||PID003||Brown^Bob||19750320|M\r'
 )
 
+SAMPLE_ADT_A02 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A02|MSG006|P|2.5\r'
+    'EVN|A02|202607251030\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'PV1|1|I|WARD-A^ROOM-101^^^FACILITY|||||||||||||||||IN|||SUR|||||||||||||||||||||||||202607251030\r'
+)
+
+SAMPLE_ADT_A06 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A06|MSG007|P|2.5\r'
+    'EVN|A06|202607251030\r'
+    'PID|1||PID002||Doe^Jane||19900215|F\r'
+    'MRG|PID001^^^SENDING_FACILITY^MR\r'
+)
+
+SAMPLE_ADT_A07 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A07|MSG008|P|2.5\r'
+    'EVN|A07|202607251030\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'MRG|PID002^^^SENDING_FACILITY^MR\r'
+)
+
+SAMPLE_ADT_A40 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A40|MSG009|P|2.5\r'
+    'EVN|A40|202607251030\r'
+    'PID|1||PID003||Brown^Bob||19750320|M\r'
+    'MRG|PID001^^^SENDING_FACILITY^MR\r'
+)
+
 SAMPLE_ORM_O01 = (
     'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ORM^O01|MSG004|P|2.5\r'
     'PID|1||PID001||Smith^John||19800101|M\r'
@@ -267,6 +295,41 @@ class TestHl7MessageParsing:
         assert result['modality'] == 'CT'
         assert result['station_ae_title'] == 'CT_SCANNER'
 
+    def test_parse_adt_a02_extracts_patient_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A02)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A02'
+        assert result['patient_id'] == 'PID001'
+        assert result['patient_name'] == 'Smith^John'
+
+    def test_parse_adt_a06_extracts_merge_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A06)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A06'
+        assert result['patient_id'] == 'PID002'
+        assert result['surviving_patient_id'] == 'PID002'
+        assert result['merged_patient_id'] == 'PID001'
+
+    def test_parse_adt_a07_extracts_undo_merge_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A07)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A07'
+        assert result['patient_id'] == 'PID001'
+        assert result['surviving_patient_id'] == 'PID001'
+        assert result['merged_patient_id'] == 'PID002'
+
+    def test_parse_adt_a40_extracts_merge_list_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A40)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A40'
+        assert result['patient_id'] == 'PID003'
+        assert result['surviving_patient_id'] == 'PID003'
+        assert result['merged_patient_id'] == 'PID001'
+
     def test_parse_invalid_hl7_raises(self):
         from services.ingestion.hl7_server import parse_hl7_message
         result = parse_hl7_message(b'not even close')
@@ -399,6 +462,105 @@ class TestHl7PatientHandler:
             'message_type': 'ADT',
             'event_type': 'A99',
             'patient_id': 'PID001',
+        })
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_adt_a02_transfer_updates_patient(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A02',
+                'patient_id': 'PID001',
+                'patient_name': 'Smith^John',
+                'birth_date': '19800101',
+                'sex': 'M',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a06_merge_patients(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetch = AsyncMock(return_value=[
+            {'id': 10, 'patient_id': 'PID002', 'study_instance_uid': '1.2.3'},
+        ])
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A06',
+                'patient_id': 'PID002',
+                'patient_name': 'Doe^Jane',
+                'merged_patient_id': 'PID001',
+                'surviving_patient_id': 'PID002',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a07_undo_merge(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A07',
+                'patient_id': 'PID001',
+                'patient_name': 'Smith^John',
+                'merged_patient_id': 'PID002',
+                'surviving_patient_id': 'PID001',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a40_merge_patient_list(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetch = AsyncMock(return_value=[])
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A40',
+                'patient_id': 'PID003',
+                'patient_name': 'Brown^Bob',
+                'merged_patient_id': 'PID001',
+                'surviving_patient_id': 'PID003',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a06_missing_merge_id_returns_false(self):
+        from services.ingestion.hl7_server import handle_adt_message
+        result = await handle_adt_message({
+            'message_type': 'ADT',
+            'event_type': 'A06',
+            'patient_id': 'PID002',
+            'merged_patient_id': '',
         })
         assert result is False
 

@@ -24,7 +24,7 @@ from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.fhir import (
     FhirMetadata,
-    FhirPatientRead, FhirPatientSearch,
+    FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
 )
@@ -95,8 +95,8 @@ routes = [
     Route('/wado', endpoint=DicomWebWadoUri),
     Route('/api/v2/wado', endpoint=DicomWebWadoUri),
     Route('/fhir/metadata', endpoint=FhirMetadata),
-    Route('/fhir/Patient', endpoint=FhirPatientSearch),
-    Route('/fhir/Patient/{id}', endpoint=FhirPatientRead),
+    Route('/fhir/Patient', endpoint=FhirPatientRoot),
+    Route('/fhir/Patient/{id}', endpoint=FhirPatientResource),
     Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch),
     Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
     Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
