@@ -142,7 +142,8 @@ async def default_handler(msg_bytes: bytes) -> bytes:
         log.info('ORM-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
         return b'ACK'
 
-    log.warning('Unknown message type: %s', msg_type)
+    msg_control_id = parsed.get('message_control_id', '?')
+    log.warning('Unknown message type: %s^%s id=%s', msg_type, event_type, msg_control_id)
     return b'ACK'
 
 
@@ -188,6 +189,7 @@ def parse_hl7_message(data) -> dict | None:
         'message_type': _seg_field(msh, 9, 0, 0),
         'event_type': _seg_field(msh, 9, 0, 1),
         'sending_facility': _seg_field(msh, 4, 0, 0),
+        'message_control_id': _seg_field(msh, 10, 0, 0),
     }
 
     pid = segments.get('PID')
@@ -255,6 +257,7 @@ async def handle_adt_message(parsed: dict) -> bool:
             return False
         return await _unmerge_patients(surviving_id, parsed, merged_id)
 
+    log.warning('Unknown ADT event: %s for patient %s', event, patient_id)
     return False
 
 

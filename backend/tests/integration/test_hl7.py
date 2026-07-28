@@ -794,3 +794,34 @@ class TestHl7Audit:
         assert result is True
         execute_calls = [c for c in mock_conn.execute.call_args_list]
         assert any('sync_source' in str(c) for c in execute_calls)
+
+
+@pytest.mark.asyncio
+class TestHl7StructuredLogging:
+    async def test_unknown_adt_event_logs_warning(self, caplog):
+        from services.ingestion.hl7_server import handle_adt_message
+        import logging
+        caplog.set_level(logging.WARNING)
+        result = await handle_adt_message({
+            'message_type': 'ADT',
+            'event_type': 'A99',
+            'patient_id': 'PID001',
+        })
+        assert result is False
+        assert any('Unknown ADT event' in msg for msg in caplog.messages)
+        assert any('A99' in msg for msg in caplog.messages)
+
+    async def test_unknown_message_type_logs_structured(self, caplog):
+        with patch('services.ingestion.hl7_server._store_hl7_message', new=AsyncMock()):
+            from services.ingestion.hl7_server import default_handler
+            import logging
+            caplog.set_level(logging.WARNING)
+            msg = (
+                b'MSH|^~\\&|SENDING|FACILITY|RECV|APP|20250101000000||SIU^S12|MSG001|P|2.5\r'
+                b'SCH|12345||BOOKED|Surgery^\r'
+            )
+            result = await default_handler(msg)
+            assert b'ACK' in result
+            assert any('SIU' in msg for msg in caplog.messages)
+            assert any('S12' in msg for msg in caplog.messages)
+            assert any('MSG001' in msg for msg in caplog.messages)

@@ -1,6 +1,32 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Route
+from starlette.testclient import TestClient
+
+from api.auth import User
+from api.routing import RoutingHandler
 from services.ingestion.routing import evaluate_routing_rules, _match_condition
+
+
+class _FakeAuth(BaseHTTPMiddleware):
+    def __init__(self, app, user=None):
+        super().__init__(app)
+        self._user = user or User({'id': 1, 'permissions': ['ROUTING_READ', 'ROUTING_WRITE']})
+
+    async def dispatch(self, request, call_next):
+        request.scope['user'] = self._user
+        request.scope['auth'] = None
+        return await call_next(request)
+
+
+def _make_app(user=None):
+    return Starlette(
+        routes=[Route('/routing', endpoint=RoutingHandler)],
+        middleware=[Middleware(_FakeAuth, user=user)],
+    )
 
 
 class TestMatchCondition:
@@ -103,6 +129,19 @@ class TestRoutingEngine:
             assert len(destinations) == 1
             assert destinations[0]['destination'] == 'urgent.example.com'
 
+    async def test_list_all_with_limit(self):
+        with (
+            patch('services.ingestion.routing.get_conn') as mock_get,
+            patch('services.ingestion.routing.RoutingRule') as MockRule,
+        ):
+            mock_get.return_value.__aenter__.return_value = None
+            MockRule.return_value.list_all = AsyncMock(return_value=[
+                {'id': 'r1', 'name': 'Rule 1', 'destination': 'dest-a', 'conditions': {}, 'priority': 1, 'enabled': True},
+                {'id': 'r2', 'name': 'Rule 2', 'destination': 'dest-b', 'conditions': {}, 'priority': 2, 'enabled': True},
+            ])
+            destinations = await evaluate_routing_rules({"modality": "CT"})
+            assert len(destinations) == 2
+
     async def test_evaluate_empty_rules(self):
         with (
             patch('services.ingestion.routing.get_conn') as mock_conn,
@@ -112,3 +151,44 @@ class TestRoutingEngine:
             MockRule.return_value.list_all = AsyncMock(return_value=[])
             destinations = await evaluate_routing_rules({})
             assert destinations == []
+
+
+class TestRoutingApiPagination:
+    def test_get_routing_with_pagination(self):
+        mock_conn = MagicMock()
+        mock_conn.fetch = AsyncMock(return_value=[
+            {'id': 'r1', 'name': 'Rule 1', 'description': '', 'conditions': '{}', 'destination': 'dest-a', 'priority': 1, 'enabled': True, 'created_at': None, 'updated_at': None},
+        ])
+        mock_conn.fetchval = AsyncMock(return_value=1)
+
+        with patch('api.routing.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            client = TestClient(_make_app())
+            resp = client.get('/routing?page=1&per_page=10')
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert 'data' in body
+        assert body['pagination']['page'] == 1
+        assert body['pagination']['per_page'] == 10
+        assert body['pagination']['total'] == 1
+
+    def test_get_routing_defaults_to_all(self):
+        mock_conn = MagicMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        with patch('api.routing.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            client = TestClient(_make_app())
+            resp = client.get('/routing')
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['pagination']['page'] == 1
+        assert body['pagination']['per_page'] == 50
+        assert body['pagination']['total'] == 0
