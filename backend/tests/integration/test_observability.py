@@ -310,3 +310,15 @@ class TestCStoreMetrics:
         resp = client.get('/v2/metrics')
         assert 'dicom_cstore_throughput_bytes' in resp.text
         assert '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[0] or '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[1] or '1024.0' in resp.text
+
+
+class TestDicomWebMetrics:
+    def test_dicomweb_requests_total_defined_in_metrics(self):
+        from api.telemetry import dicomweb_requests_total
+
+        dicomweb_requests_total.labels(method='GET', resource='studies').inc()
+
+        client = TestClient(_make_metrics_app())
+        resp = client.get('/v2/metrics')
+        assert 'dicomweb_requests_total' in resp.text
+        assert 'studies' in resp.text
