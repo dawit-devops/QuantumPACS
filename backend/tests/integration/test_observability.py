@@ -169,6 +169,23 @@ class TestErrorLogging:
         assert data['components']['database']['status'] == 'error'
         assert 'DB down' in data['components']['database'].get('message', '')
 
+    def test_500_logs_structured_json_with_error_stack(self, capsys):
+        from app import CustomMiddleware
+        async def _crash(request):
+            raise RuntimeError('test explosion')
+
+        app = Starlette(
+            routes=[Route('/crash', endpoint=_crash)],
+            middleware=[Middleware(CustomMiddleware)],
+        )
+        client = TestClient(app)
+        resp = client.get('/crash')
+        assert resp.status_code == 500
+        out, _ = capsys.readouterr()
+        assert 'test explosion' in out
+        assert 'error' in out
+        assert '"stack"' in out
+
     def test_health_down_redis_reflects_state(self):
         from api.telemetry import health_endpoint
         app = Starlette(routes=[Route('/v2/health', endpoint=health_endpoint)])
