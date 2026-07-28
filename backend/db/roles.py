@@ -39,6 +39,11 @@ class Roles(Table):
         data = await self.fetchone(q)
         return self.to_json(data) if data else None
 
+    async def get_by_slug(self, slug):
+        q = self.select('*').where(self.table.slug == slug)
+        data = await self.fetchone(q)
+        return self.to_json(data) if data else None
+
     async def create(self, name, slug, permissions=None, built_in=False, tenant_id=None):
         perms_json = json.dumps(permissions or [])
         q = self.insert().columns(
@@ -66,12 +71,11 @@ class Roles(Table):
         for slug, permissions in BUILT_IN_ROLES.items():
             name = NAME_BY_SLUG.get(slug, slug.replace('_', ' ').title())
             perms_json = json.dumps(permissions)
-            await self.exec(f"""
-                INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at)
-                VALUES ('{slug}', '{name}', '{perms_json}'::jsonb, TRUE, now(), now())
-                ON CONFLICT (slug) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    permissions = EXCLUDED.permissions,
-                    built_in = TRUE,
-                    updated_at = now()
-            """)
+            await self.conn.execute(
+                'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
+                'VALUES ($1, $2, $3::jsonb, TRUE, now(), now()) '
+                'ON CONFLICT (slug) DO UPDATE SET '
+                'name = EXCLUDED.name, permissions = EXCLUDED.permissions, '
+                'built_in = TRUE, updated_at = now()',
+                slug, name, perms_json,
+            )

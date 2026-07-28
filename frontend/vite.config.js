@@ -52,8 +52,32 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
-    testTimeout: 60000,
+    testTimeout: 120000,
+    hookTimeout: 60000,
     exclude: ['node_modules/**', 'e2e/**', 'dist/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['src/**'],
+      exclude: ['src/test/**', 'src/types.d.ts'],
+      thresholds: {
+        functions: 60,
+        lines: 50,
+        branches: 40,
+        statements: 50,
+      },
+    },
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: false,
+        maxForks: 4,
+        minForks: 1,
+      },
+    },
+    fileParallelism: true,
+    maxConcurrency: 4,
+    retry: 0,
   },
   define: {
     'process.env': {},

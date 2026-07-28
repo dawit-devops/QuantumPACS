@@ -8,6 +8,7 @@ from io import BytesIO
 from b2sdk.v2 import InMemoryAccountInfo, B2Api
 from starlette.responses import StreamingResponse, RedirectResponse
 
+from config import config
 from storage.storage import Storage
 
 executor = concurrent.futures.ThreadPoolExecutor(16)
@@ -45,7 +46,7 @@ class B2Storage(Storage):
             self.api.create_bucket(self.bucket, 'allPrivate', cors_rules=[
                 {
                     "corsRuleName": "downloadFromAnyOrigin",
-                    "allowedOrigins": ["*"],
+                    "allowedOrigins": [config.get('b2_cors_origins', '*')],
                     "allowedHeaders": ["*"],
                     "allowedOperations": [
                         "b2_download_file_by_id",

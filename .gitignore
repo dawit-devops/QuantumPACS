@@ -15,5 +15,10 @@ __pycache__
 /graphify-out
 *.log
 .coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+**/__pycache__/
+*.egg-info/
 opencode.json
 SCRATCH

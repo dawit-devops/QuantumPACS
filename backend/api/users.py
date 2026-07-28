@@ -62,6 +62,7 @@ class Login(HTTPEndpoint):
                 value=token,
                 httponly=True,
                 samesite='strict',
+                secure=True,
                 path='/api',
             )
             return resp
@@ -89,7 +90,9 @@ class Logout(HTTPEndpoint):
         token = _extract_token(request)
         if token:
             await block_token(token)
-        return ok({'message': 'Logged out'})
+        resp = ok({'message': 'Logged out'})
+        resp.delete_cookie('token', path='/api')
+        return resp
 
 
 class RevokeToken(HTTPEndpoint):
