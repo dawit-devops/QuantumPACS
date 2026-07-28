@@ -31,6 +31,8 @@ class OAuthProvidersHandler(HTTPEndpoint):
                 groups_claim=body.groups_claim,
                 auto_provision=body.auto_provision, enabled=body.enabled,
                 tenant_id=body.tenant_id,
+                slug=body.slug,
+                default_role=body.default_role,
             )
         return created({'id': provider_id})
 

@@ -37,10 +37,15 @@ async def store_instance(ds, data):
     async with get_conn() as conn:
         try:
             ds = get_meta(ds)
+            hsh = hash_file(data)
+
+            existing = await Files(conn).get_by_hash(hsh)
+            if existing:
+                log.info('Deduplicated: hash %s already stored as file %s', hsh, existing['id'])
+                return True
+
             async with conn.transaction():
                 master = await Replica(conn).master()
-
-                hsh = hash_file(data)
 
                 file_data = {
                     'name': str(uuid.uuid4()) + '.dcm',
@@ -50,9 +55,10 @@ async def store_instance(ds, data):
                 file_data.update(ds)
                 f = await Files(conn).insert_or_select(file_data)
 
-                storage = await Storage.get(master)
-                ret = await storage.copy(data, f)
+            storage = await Storage.get(master)
+            ret = await storage.copy(data, f)
 
+            async with conn.transaction():
                 await ReplicaFiles(conn).add(
                     master['id'],
                     [{'id': f['id'], **ret}],
@@ -63,6 +69,19 @@ async def store_instance(ds, data):
             return False
     await match_worklist_performed(ds)
     routes = await evaluate_routing_rules(ds)
-    if routes:
-        log.info('Study %s matched %d routing rule(s)', ds.get('study_instance_uid', '?'), len(routes))
+    for route in routes:
+        try:
+            dest_id = int(route['destination'])
+            dest_replica = await Replica(conn).get(dest_id)
+            if not dest_replica:
+                log.warning('Route %s: destination replica %s not found', route.get('rule_name'), dest_id)
+                continue
+            dest_storage = await Storage.get(dest_replica)
+            data.seek(0)
+            ret = await dest_storage.copy(data, f)
+            async with conn.transaction():
+                await ReplicaFiles(conn).add(dest_id, [{'id': f['id'], **ret}])
+            log.info('Routed file %s to replica %s', f['id'], dest_id)
+        except Exception:
+            log.warning('Route %s failed: %s', route.get('rule_name', '?'), traceback.format_exc())
     return True

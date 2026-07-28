@@ -9,6 +9,13 @@ from dcm.file import get_meta, parse_dcm
 from dcm.dicom_json import row_to_study_json, row_to_series_json, row_to_instance_json
 
 
+class _TxContext:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *args):
+        pass
+
+
 
 
 
@@ -57,6 +64,7 @@ class TestDicomCoreStoreIntegration:
                 with patch('dcm.store.Files') as mock_files_cls:
                     mock_files = MagicMock()
                     mock_files.insert_or_select = AsyncMock(return_value={'id': 42})
+                    mock_files.get_by_hash = AsyncMock(return_value=None)
                     mock_files_cls.return_value = mock_files
 
                     with patch('dcm.store.Storage') as mock_storage_cls:
@@ -195,3 +203,54 @@ class TestDicomCoreWorklistMatch:
             })
 
         assert mock_conn.execute.called
+
+
+class TestPhase3Pipeline:
+    @pytest.mark.asyncio
+    async def test_full_store_with_dedup_and_routing(self):
+        buf, ds = _make_mini_dicom()
+        buf.seek(0)
+
+        mock_conn = MagicMock()
+        mock_tx = _TxContext()
+        mock_conn.transaction = MagicMock(return_value=mock_tx)
+
+        mock_replica = AsyncMock()
+        mock_replica.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/data'})
+        mock_replica.get = AsyncMock(return_value={'id': 2, 'type': 'remote', 'location': '/remote'})
+
+        with patch('dcm.store.get_conn') as mock_get_conn:
+            mock_get_conn.return_value.__aenter__.return_value = mock_conn
+            mock_get_conn.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with patch('dcm.store.Replica') as mock_replica_cls:
+                mock_replica_cls.return_value = mock_replica
+
+                with patch('dcm.store.Files') as mock_files_cls:
+                    mock_files = MagicMock()
+                    mock_files.get_by_hash = AsyncMock(return_value=None)
+                    mock_files.insert_or_select = AsyncMock(return_value={'id': 42})
+                    mock_files_cls.return_value = mock_files
+
+                    with patch('dcm.store.Storage') as mock_storage_cls:
+                        mock_storage = MagicMock()
+                        mock_storage.copy = AsyncMock(return_value={'path': '/data/test.dcm', 'size': 1024})
+                        mock_storage_cls.get = AsyncMock(return_value=mock_storage)
+
+                        with patch('dcm.store.ReplicaFiles') as mock_rf_cls:
+                            mock_rf = MagicMock()
+                            mock_rf.add = AsyncMock()
+                            mock_rf_cls.return_value = mock_rf
+
+                            with patch('dcm.store.evaluate_routing_rules',
+                                       new=AsyncMock(return_value=[
+                                           {'rule_id': '1', 'rule_name': 'Test', 'destination': '2'},
+                                       ])):
+                                from dcm.store import store_instance
+                                result = await store_instance(ds, buf)
+
+        assert result is True
+        assert mock_files.get_by_hash.called
+        assert mock_files.insert_or_select.called
+        assert mock_storage.copy.call_count == 2
+        assert mock_rf.add.call_count == 2

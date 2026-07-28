@@ -142,6 +142,11 @@ class Tenants(Table):
         q = self.query().where(self.table.slug == slug).delete()
         await self.exec(q)
 
+    async def get_connection_info(self, tenant_id):
+        q = self.select('*').where(self.table.id == tenant_id)
+        data = await self.fetchone(q)
+        return dict(data) if data else None
+
     async def get_stats(self, tenant_slug: str, tenant_info: dict):
         pool = await TenantConnectionPool.get(tenant_slug, tenant_info)
         async with pool.acquire() as conn:

@@ -8,6 +8,7 @@ from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.roles import Roles
+from db.users import Users
 from log import request_id_var
 
 
@@ -61,6 +62,8 @@ class RoleHandler(HTTPEndpoint):
                 role_id,
                 body.model_dump(exclude_none=True),
             )
+            if body.permissions is not None:
+                await Users(conn).bulk_increment_token_version_by_role(role_id)
             await AuditLog(conn).log_event(
                 event_type='role.updated',
                 actor_id=request.user.id,

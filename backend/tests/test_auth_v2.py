@@ -79,7 +79,7 @@ class TestTokenClaims:
             patch('api.auth.Users') as mock_users,
         ):
             token = create_token({'id': 1, 'admin': True})
-            mock_users.return_value.is_active = AsyncMock(return_value=True)
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
             resp = client.get('/api/protected', headers={'X-Auth-Pacs': token})
 
         assert resp.status_code == 200

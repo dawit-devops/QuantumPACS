@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 from api.oauth import (
     _code_verifier, _code_challenge, _verify_id_token,
     oauth_login, oauth_callback, oidc_discovery,
+    oauth_token_exchange,
 )
 
 
@@ -156,7 +157,7 @@ class TestOAuthCallback:
                 with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
                     with patch('api.oauth._verify_id_token', return_value=claims):
                         with patch('api.oauth._find_or_create_user', AsyncMock(return_value=(
-                            {'id': 42, 'admin': False, 'username': 'dr'}, [], None,
+                            {'id': 42, 'admin': False, 'username': 'dr'}, [],
                         ))):
                             with patch('api.oauth.create_token', return_value='qp-jwt-token'):
                                 resp = await oauth_callback(request)
@@ -165,3 +166,14 @@ class TestOAuthCallback:
         body = resp.body
         assert b'qp-jwt-token' in body
         assert b'token' in body
+
+
+class TestOAuthTokenExchange:
+    def test_empty_body_returns_unsupported_grant(self):
+        app = Starlette(routes=[Route('/api/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])])
+        client = TestClient(app)
+        resp = client.post('/api/oauth/token', json={})
+
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data['error']['code'] == 'UNSUPPORTED_GRANT'

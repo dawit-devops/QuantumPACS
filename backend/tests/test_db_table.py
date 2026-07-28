@@ -1,8 +1,15 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from db.table import Table
+
+
+class _AsyncContextMock(AsyncMock):
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *args):
+        pass
 
 
 class TestTableRegistry:
@@ -167,6 +174,48 @@ class TestTableAsync:
         result = await t.exec('INSERT INTO test VALUES (1)')
         conn.execute.assert_called_once_with('INSERT INTO test VALUES (1)')
         assert result == 'INSERT 0 1'
+
+    @pytest.mark.asyncio
+    async def test_files_insert_or_select_toctou(self):
+        import asyncpg
+        conn = MagicMock()
+        from db.files import Files
+        f = Files(conn)
+        f.get = AsyncMock(side_effect=[None, {'id': 42, 'name': 'test.dcm'}])
+        f.add = AsyncMock(side_effect=asyncpg.UniqueViolationError('duplicate key'))
+        result = await f.insert_or_select({'name': 'test.dcm'})
+        assert result['id'] == 42
+        assert f.get.call_count == 2
+        f.add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_files_insert_or_select_returns_existing(self):
+        conn = MagicMock()
+        from db.files import Files
+        f = Files(conn)
+        f.get = AsyncMock(return_value={'id': 42, 'name': 'existing.dcm'})
+        result = await f.insert_or_select({'name': 'existing.dcm'})
+        assert result['id'] == 42
+
+    @pytest.mark.asyncio
+    async def test_files_delete_calls_storage_delete(self):
+        tx = _AsyncContextMock()
+        conn = AsyncMock()
+        conn.transaction = MagicMock(return_value=tx)
+        conn.fetchval = AsyncMock(return_value=0)
+        conn.execute = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
+
+        mock_storage = MagicMock()
+        mock_storage.delete = AsyncMock()
+
+        with patch('storage.storage.Storage.get', new=AsyncMock(return_value=mock_storage)), \
+             patch('db.files.es.delete', new=AsyncMock()):
+            from db.files import Files
+            f = Files(conn)
+            await f.delete(file_id=42, master_id=1)
+
+        assert mock_storage.delete.called
 
     @pytest.mark.asyncio
     async def test_fetch_with_select_query(self):

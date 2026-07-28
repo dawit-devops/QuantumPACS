@@ -51,7 +51,7 @@ def _make_app(user=None):
     )
 
 
-def _make_dicom_bytes(patient_id='P001', study_uid=None):
+def _make_dicom_bytes(patient_id='P001', study_uid=None, modality='CT'):
     study_uid = study_uid or generate_uid()
     series_uid = generate_uid()
     sop_uid = generate_uid()
@@ -62,7 +62,7 @@ def _make_dicom_bytes(patient_id='P001', study_uid=None):
     ds.StudyInstanceUID = study_uid
     ds.SeriesInstanceUID = series_uid
     ds.SOPInstanceUID = sop_uid
-    ds.Modality = 'CT'
+    ds.Modality = modality
     ds.StudyDate = '20260725'
 
     file_meta = FileMetaDataset()
@@ -76,7 +76,7 @@ def _make_dicom_bytes(patient_id='P001', study_uid=None):
     fd.StudyInstanceUID = ds.StudyInstanceUID
     fd.SeriesInstanceUID = ds.SeriesInstanceUID
     fd.SOPInstanceUID = ds.SOPInstanceUID
-    fd.Modality = ds.Modality
+    fd.Modality = modality
     fd.StudyDate = ds.StudyDate
 
     buf = BytesIO()
@@ -154,3 +154,22 @@ class TestStowRs:
         )
 
         assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_modality(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ', 'DICOMWEB_WRITE']})
+        client = TestClient(_make_app(user))
+
+        dcm_bytes = _make_dicom_bytes(modality='QQ')
+        body, boundary = _multipart_body([dcm_bytes])
+
+        mock_store = AsyncMock(return_value=True)
+        with patch('api.dicomweb.store_instance', mock_store):
+            resp = client.post(
+                '/dicomweb/studies',
+                content=body,
+                headers={'Content-Type': f'multipart/related; type=application/dicom; boundary={boundary}'},
+            )
+
+        assert resp.status_code == 400
+        mock_store.assert_not_called()

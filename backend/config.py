@@ -38,6 +38,7 @@ default_config = {
     'otel_exporter_otlp_endpoint': '',
     'otel_service_name': 'quantumpacs-backend',
     'prometheus_enabled': 'true',
+    'oauth_secret_encryption_key': '',
 }
 
 

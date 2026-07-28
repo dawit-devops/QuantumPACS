@@ -150,6 +150,7 @@ class Users(Table):
     async def deactivate(self, user_id):
         q = self.update().where(self.table.id == user_id).set(self.table.status, 'deactivated')
         await self.exec(q)
+        await self.increment_token_version(user_id)
 
     async def new_pswd(self, user_id):
         exists = await self.fetchval(self.select(self.table.id).where(self.table.id == user_id))
@@ -164,8 +165,32 @@ class Users(Table):
     async def update_role(self, user_id, role_id):
         q = self.update().where(self.table.id == user_id).set(self.table.role_id, role_id)
         await self.exec(q)
+        await self.increment_token_version(user_id)
+
+    async def increment_token_version(self, user_id):
+        q = self.update().where(self.table.id == user_id).set(
+            self.table.token_version, self.table.token_version + 1,
+        )
+        await self.exec(q)
+
+    async def get_token_version(self, user_id):
+        q = self.select('token_version').where(self.table.id == user_id)
+        return await self.fetchval(q) or 0
+
+    async def bulk_increment_token_version_by_role(self, role_id):
+        q = self.update().where(self.table.role_id == role_id).set(
+            self.table.token_version, self.table.token_version + 1,
+        )
+        await self.exec(q)
 
     async def is_active(self, user_id):
         q = self.select('status').where(self.table.id == user_id)
         status = await self.fetchval(q)
         return status == 'active'
+
+    async def get_auth_state(self, user_id):
+        q = self.select('status', 'token_version').where(self.table.id == user_id)
+        row = await self.fetchone(q)
+        if not row:
+            return False, 0
+        return row['status'] == 'active', row.get('token_version') or 0
