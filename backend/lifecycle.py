@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import threading
 
 from es import es
 import db.conn
@@ -20,6 +21,7 @@ log = get_logger(__name__)
 _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
 _bridge: PgNotifyBridge | None = None
 _monitor: StreamMonitor | None = None
+_dicom_thread: threading.Thread | None = None
 _dicom_scp = None
 _mllp_task: asyncio.Task | None = None
 
@@ -40,8 +42,32 @@ def _start_dicom():
         _dicom_scp = None
 
 
+def _run_dicom():
+    global _dicom_thread, _dicom_scp
+    try:
+        from pynetdicom import AE, StoragePresentationContexts
+        from dcm.server import handlers
+        ae = AE()
+        ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+        ae.supported_contexts = StoragePresentationContexts
+        port = int(config.get('dicom_cstore_port', '11112'))
+        server = ae.start_server(('', port), evt_handlers=handlers)
+        _dicom_scp = server
+        log.info('DICOM C-STORE server started on port %s', port)
+        server.serve_forever()
+    except Exception:
+        log.warning('Failed to start DICOM server', exc_info=True)
+        _dicom_scp = None
+
+
+def _start_dicom():
+    global _dicom_thread
+    _dicom_thread = threading.Thread(target=_run_dicom, daemon=True)
+    _dicom_thread.start()
+
+
 def _stop_dicom():
-    global _dicom_scp
+    global _dicom_scp, _dicom_thread
     if _dicom_scp is not None:
         try:
             _dicom_scp.shutdown()
@@ -49,6 +75,7 @@ def _stop_dicom():
         except Exception:
             log.warning('DICOM server shutdown error', exc_info=True)
         _dicom_scp = None
+    _dicom_thread = None
 
 
 async def _start_mllp():

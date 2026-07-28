@@ -84,5 +84,8 @@ Services managed via systemd user services — auto-start on boot:
 - CORS allows all origins — tighten before production deployment
 - The `notify_event()` PostgreSQL trigger powers real-time replica sync via LISTEN/NOTIFY
 - Graphify analysis output in `graphify-out/` — run `/graphify` query for codebase questions
-- PostgreSQL runs via `quantumpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`)
+- PostgreSQL runs via `quantumpacs-postgres-1` Docker container on port 5432 (dedicated container built from `docker/postgres/Dockerfile`), but host port may be **5433** if 5432 was already in use — check `docker port quantumpacs-postgres-1 5432`
 - Elasticsearch Docker image cannot be pulled (network issues) — search disabled at startup, no impact on basic functionality
+- `backend/lifecycle.py` `_run_dicom()` must run in a **daemon thread** — `ae.start_server()` from pynetdicom 3.x blocks the main thread, preventing uvicorn HTTP startup. Use `threading.Thread(target=_run_dicom, daemon=True)`. Run `scripts/verify_config.sh` after any change.
+- `backend/api/tracing.py` `traced_connection()` must use `_TracedPool` wrapper — Python 3.14 enforces read-only on `Pool.acquire` attribute (both direct assignment and `object.__setattr__` fail). Wrap pool in a proxy class.
+- Backend fails to start if `backend/config.local.yaml` has `db_port: 5432` (wrong) or a default `secret` (rejected by `assert_production_secret()`). Run `scripts/dev.sh start` which auto-fixes both.
