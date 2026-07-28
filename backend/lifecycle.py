@@ -37,6 +37,7 @@ def _run_dicom():
     global _dicom_thread, _dicom_scp
     try:
         from pynetdicom import AE, StoragePresentationContexts
+        from pynetdicom.presentation import build_context
         from pynetdicom.sop_class import (
             ModalityWorklistInformationFind,
             PatientRootQueryRetrieveInformationModelMove,
@@ -54,12 +55,12 @@ def _run_dicom():
         ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
         ae.supported_contexts = (
             StoragePresentationContexts
-            + [ModalityWorklistInformationFind]
+            + [build_context(ModalityWorklistInformationFind)]
             + [
-                PatientRootQueryRetrieveInformationModelMove,
-                StudyRootQueryRetrieveInformationModelMove,
-                PatientRootQueryRetrieveInformationModelGet,
-                StudyRootQueryRetrieveInformationModelGet,
+                build_context(PatientRootQueryRetrieveInformationModelMove),
+                build_context(StudyRootQueryRetrieveInformationModelMove),
+                build_context(PatientRootQueryRetrieveInformationModelGet),
+                build_context(StudyRootQueryRetrieveInformationModelGet),
             ]
         )
         port = int(config.get('dicom_cstore_port', '11112'))
