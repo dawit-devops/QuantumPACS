@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined, KeyOutlined, ApartmentOutlined } from '@ant-design/icons';
 import { useAuth } from '../auth/AuthContext';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
@@ -15,7 +15,7 @@ function getKey(loc: string) {
 }
 
 function getOpenKey(key: string) {
-  if (['replicas', 'users', 'roles', 'tenants', 'logs'].includes(key)) {
+  if (['replicas', 'users', 'roles', 'tenants', 'logs', 'worklist', 'service-keys', 'routing'].includes(key)) {
     return 'admin';
   }
   return key;
@@ -25,7 +25,7 @@ type PermissionCheck = { permission: string } | { adminOnly: true };
 
 function hasAnyAdminPermission(hasPermission: (p: string) => boolean, userAdmin: boolean | undefined): boolean {
   if (userAdmin) return true;
-  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ'];
+  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ', 'WORKLIST_READ'];
   return adminPermissions.some(p => hasPermission(p));
 }
 
@@ -148,6 +148,30 @@ function Sidebar() {
                 <Link to="/logs">
                   <AlignLeftOutlined />
                   <span className="nav-text">Logs</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('WORKLIST_READ') && (
+              <Menu.Item key="worklist">
+                <Link to="/worklist">
+                  <FileSearchOutlined />
+                  <span className="nav-text">Worklist</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('SERVICE_KEY_READ') && (
+              <Menu.Item key="service-keys">
+                <Link to="/service-keys">
+                  <KeyOutlined />
+                  <span className="nav-text">Service Keys</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('ROUTING_READ') && (
+              <Menu.Item key="routing">
+                <Link to="/routing">
+                  <ApartmentOutlined />
+                  <span className="nav-text">Routing</span>
                 </Link>
               </Menu.Item>
             )}

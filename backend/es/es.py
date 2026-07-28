@@ -14,16 +14,34 @@ async def setup():
     host = config['es_host']
     if not host.startswith('http'):
         host = f'http://{host}:9200'
-    conn = AsyncElasticsearch(hosts=[host])
+    conn = AsyncElasticsearch(
+        hosts=[host],
+        connections_per_node=4,
+        request_timeout=30,
+        max_retries=3,
+        retry_on_timeout=True,
+    )
     client[os.getpid()] = conn
     try:
-        await get_client().indices.get(index=INDEX_NAME)
-    except NotFoundError:
-        await get_client().indices.create(index=INDEX_NAME, body=INDEX)
-    except (ESConnectionError, OSError):
+        await get_client().info()
+    except (ESConnectionError, OSError, Exception):
         from log import get_logger
         get_logger(__name__).warning('Elasticsearch not available — search disabled')
         client[os.getpid()] = None
+        return
+    try:
+        await get_client().indices.get(index=INDEX_NAME)
+    except NotFoundError:
+        try:
+            await get_client().indices.create(
+                index=INDEX_NAME,
+                settings=INDEX['settings'],
+                mappings=INDEX['mappings'],
+            )
+        except Exception:
+            from log import get_logger
+            get_logger(__name__).warning('Failed to create ES index — search disabled')
+            client[os.getpid()] = None
 
 
 async def teardown():
@@ -46,13 +64,16 @@ def get_client():
 async def index(data):
     c = get_client()
     if c:
-        await c.index(index=INDEX_NAME, id=data['id'], body=data)
+        await c.index(index=INDEX_NAME, id=str(data['id']), document=data)
 
 
 async def delete(id_):
     c = get_client()
     if c:
-        await c.delete(index=INDEX_NAME, id=id_)
+        try:
+            await c.delete(index=INDEX_NAME, id=str(id_))
+        except NotFoundError:
+            pass
 
 
 columns = [
@@ -102,11 +123,10 @@ async def search(data):
 
     res = await get_client().search(
         index=INDEX_NAME,
-        body={
-            "query": es_q,
-            "size": size,
-            "from": (page - 1) * size,
-        })
+        query=es_q,
+        size=size,
+        from_=(page - 1) * size,
+    )
     total = res['hits']['total']
     if isinstance(total, dict):
         total = total['value']
@@ -132,4 +152,8 @@ async def reset_index():
     if not c:
         return
     await c.indices.delete(index='quantumpacs')
-    await c.indices.create(index='quantumpacs', body=INDEX)
+    await c.indices.create(
+        index='quantumpacs',
+        settings=INDEX['settings'],
+        mappings=INDEX['mappings'],
+    )

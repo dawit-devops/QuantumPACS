@@ -2,8 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import asyncio
 
-import pytest
-
 
 class TestDicomLifecycleFunctions:
     def test_start_dicom_creates_ae_with_correct_title(self):
@@ -13,8 +11,8 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
-            from lifecycle import _start_dicom
-            _start_dicom()
+            from lifecycle import _run_dicom
+            _run_dicom()
 
             mock_ae_class.assert_called_once()
             assert mock_ae_instance.ae_title == 'QUANTUMPACS'
@@ -26,8 +24,8 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
-            from lifecycle import _start_dicom
-            _start_dicom()
+            from lifecycle import _run_dicom
+            _run_dicom()
 
             mock_ae_instance.start_server.assert_called_once()
             args, _ = mock_ae_instance.start_server.call_args
@@ -40,8 +38,8 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
-            from lifecycle import _start_dicom
-            _start_dicom()
+            from lifecycle import _run_dicom
+            _run_dicom()
 
             mock_ae_instance.start_server.assert_called_once()
             _, kwargs = mock_ae_instance.start_server.call_args
@@ -54,8 +52,8 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
-            from lifecycle import _start_dicom, _stop_dicom
-            _start_dicom()
+            from lifecycle import _run_dicom, _stop_dicom
+            _run_dicom()
             _stop_dicom()
 
             mock_scp.shutdown.assert_called_once()
@@ -71,9 +69,7 @@ class TestDicomLifecycleFunctions:
         assert evt.EVT_C_MOVE in handler_events
         assert evt.EVT_C_GET in handler_events
 
-    @pytest.mark.asyncio
-    async def test_start_dicom_sets_dcm_server_loop(self):
-        import dcm.server
+    def test_start_dicom_sets_dcm_server_loop(self):
         with patch('pynetdicom.AE') as mock_ae_class:
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
@@ -81,15 +77,13 @@ class TestDicomLifecycleFunctions:
             mock_ae_instance.start_server.return_value = mock_scp
 
             with patch('dcm.server') as mock_dcm_server:
-                from lifecycle import _start_dicom
-                _start_dicom()
+                from lifecycle import _run_dicom
+                _run_dicom()
 
                 assert mock_dcm_server._loop is not None
                 assert isinstance(mock_dcm_server._loop, asyncio.AbstractEventLoop)
 
-    @pytest.mark.asyncio
-    async def test_start_dicom_includes_mwl_context(self):
-        import dcm.server
+    def test_start_dicom_includes_mwl_context(self):
         from pynetdicom.sop_class import ModalityWorklistInformationFind
 
         with patch('pynetdicom.AE') as mock_ae_class:
@@ -99,14 +93,12 @@ class TestDicomLifecycleFunctions:
             mock_ae_instance.start_server.return_value = mock_scp
 
             with patch('dcm.server'):
-                from lifecycle import _start_dicom
-                _start_dicom()
+                from lifecycle import _run_dicom
+                _run_dicom()
 
                 assert ModalityWorklistInformationFind in mock_ae_instance.supported_contexts
 
-    @pytest.mark.asyncio
-    async def test_start_dicom_includes_move_get_contexts(self):
-        import dcm.server
+    def test_start_dicom_includes_move_get_contexts(self):
         from pynetdicom.sop_class import (
             PatientRootQueryRetrieveInformationModelMove,
             StudyRootQueryRetrieveInformationModelMove,
@@ -121,8 +113,8 @@ class TestDicomLifecycleFunctions:
             mock_ae_instance.start_server.return_value = mock_scp
 
             with patch('dcm.server'):
-                from lifecycle import _start_dicom
-                _start_dicom()
+                from lifecycle import _run_dicom
+                _run_dicom()
 
                 assert PatientRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts
                 assert StudyRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts

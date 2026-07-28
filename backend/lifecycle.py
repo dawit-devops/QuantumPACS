@@ -33,8 +33,8 @@ _dicom_scp = None
 _mllp_task: asyncio.Task | None = None
 
 
-def _start_dicom():
-    global _dicom_scp
+def _run_dicom():
+    global _dicom_thread, _dicom_scp
     try:
         from pynetdicom import AE, StoragePresentationContexts
         from pynetdicom.sop_class import (
@@ -63,29 +63,12 @@ def _start_dicom():
             ]
         )
         port = int(config.get('dicom_cstore_port', '11112'))
-        _dicom_scp = ae.start_server(('', port), evt_handlers=_dcm_server.handlers)
-        log.info('DICOM server started on port %s (C-STORE + MWL C-FIND)', port)
-    except Exception:
-        log.warning('Failed to start DICOM server', exc_info=True)
-        _dicom_scp = None
-
-
-def _run_dicom():
-    global _dicom_thread, _dicom_scp
-    try:
-        from pynetdicom import AE, StoragePresentationContexts
-        from dcm.server import handlers
-        ae = AE()
-        ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
-        ae.supported_contexts = StoragePresentationContexts
-        port = int(config.get('dicom_cstore_port', '11112'))
-        server = ae.start_server(('', port), evt_handlers=handlers)
+        server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers)
         _dicom_scp = server
         log.info('DICOM C-STORE server started on port %s', port)
         server.serve_forever()
     except Exception:
         log.warning('Failed to start DICOM server', exc_info=True)
-        _dicom_scp = None
 
 
 def _start_dicom():

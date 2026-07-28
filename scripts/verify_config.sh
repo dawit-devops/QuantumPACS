@@ -101,7 +101,7 @@ echo "--- 3. Port Conflicts ---"
 cleanup_ports() {
     local port=$1
     local pids
-    pids=$(fuser "$port/tcp" 2>/dev/null | tr ' ' '\n' | tail -n +2)
+    pids=$(timeout 5 fuser "$port/tcp" 2>/dev/null | tr ' ' '\n' | tail -n +2)
     if [ -n "$pids" ]; then
         warn "port $port in use by PIDs: $(echo $pids | tr '\n' ' ')"
         for pid in $pids; do

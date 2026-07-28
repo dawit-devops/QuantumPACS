@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import redis.asyncio as aioredis
 
@@ -19,6 +20,7 @@ async def redis():
     yield client
     await client.flushdb()
     await client.aclose()
+    await asyncio.sleep(0)
 
 
 @pytest.fixture

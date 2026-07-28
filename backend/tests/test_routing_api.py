@@ -71,7 +71,8 @@ class TestRoutingApi:
         user = User({'id': 1, 'permissions': ['ROUTING_READ']})
         client = TestClient(_make_app(user=user))
         fake_rr = AsyncMock()
-        fake_rr.list_all = AsyncMock(return_value=[SAMPLE_RULE])
+        fake_rr.list_paginated = AsyncMock(return_value=[SAMPLE_RULE])
+        fake_rr.count = AsyncMock(return_value=1)
         with (
             patch('api.routing.get_conn', return_value=fake_conn),
             patch('api.routing.RoutingRule', return_value=fake_rr),

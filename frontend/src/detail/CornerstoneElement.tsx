@@ -129,23 +129,26 @@ interface CEProps {
   file: any;
   files: any;
   changeFile: (v: number) => void;
-  image: any;
-  wadoRsImage?: string | null;
-  visible: boolean;
-  [key: string]: any;
+   image: any;
+   wadoRsImage?: string | null;
+   progressive?: boolean;
+   visible: boolean;
+   [key: string]: any;
 }
 
 interface CEState {
-  zoom: number;
-  ww: number;
-  wc: number;
-  image: any;
-  state: any;
-  stateVer: number;
-  stateVerSent: number;
-  interval: any;
-  loading: boolean;
-}
+   zoom: number;
+   ww: number;
+   wc: number;
+   image: any;
+   state: any;
+   stateVer: number;
+   stateVerSent: number;
+   interval: any;
+   loading: boolean;
+   progressiveLoading: boolean;
+   thumbnailUrl: string | null;
+ }
 
 class CornerstoneElement extends Component<CEProps, CEState> {
   private element: HTMLDivElement | null = null;
@@ -156,16 +159,18 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     super(props);
     this.viewportId = `stack-viewport-${Math.random().toString(36).slice(2, 9)}`;
     this.state = {
-      zoom: 1,
-      ww: 0,
-      wc: 0,
-      image: props.wadoRsImage || props.image,
-      state: {},
-      stateVer: 0,
-      stateVerSent: 0,
-      interval: null,
-      loading: true,
-    };
+       zoom: 1,
+       ww: 0,
+       wc: 0,
+       image: props.wadoRsImage || props.image,
+       state: {},
+       stateVer: 0,
+       stateVerSent: 0,
+       interval: null,
+       loading: true,
+       progressiveLoading: props.progressive || false,
+       thumbnailUrl: null,
+     };
     this.onImageRendered = this.onImageRendered.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
     this.onAnnotationAdded = this.onAnnotationAdded.bind(this);
@@ -418,10 +423,10 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       const tg = this.getToolGroup();
       if (tg) tg.addViewport(this.viewportId, ENGINE_ID);
 
-      const viewport = renderingEngine.getViewport(this.viewportId) as StackViewport;
-      await viewport.setStack([this.state.image]);
+       const viewport = renderingEngine.getViewport(this.viewportId) as StackViewport;
+       await viewport.setStack([this.state.image]);
 
-      eventTarget.addEventListener(EVENTS.IMAGE_RENDERED, this.onImageRendered);
+       eventTarget.addEventListener(EVENTS.IMAGE_RENDERED, this.onImageRendered);
       eventTarget.addEventListener(EVENTS.STACK_NEW_IMAGE, this.onImageRendered);
 
       eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_ADDED, this.onAnnotationAdded);

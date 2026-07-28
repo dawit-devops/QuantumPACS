@@ -45,6 +45,12 @@ class TestRedisNotificationService:
     async def test_subscribe_calls_pubsub_subscribe(self, svc, redis_mock):
         pubsub = AsyncMock()
         redis_mock.pubsub = MagicMock(return_value=pubsub)
+
+        async def _noop_listen():
+            if False:
+                yield
+        pubsub.listen = _noop_listen
+
         callback = AsyncMock()
         result = await svc.subscribe('test-channel', callback)
         assert result is True

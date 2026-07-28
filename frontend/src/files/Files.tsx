@@ -40,8 +40,44 @@ const initialAdvancedFields = [
   ['SOP Class UID', ''],
 ];
 
+function extractDicomValue(tag: any): string {
+  if (!tag || !tag.Value) return '';
+  if (typeof tag.Value[0] === 'object') {
+    return tag.Value.map((v: any) => v.Alphabetic || v.Value || '').join(' ');
+  }
+  return tag.Value.join(' ');
+}
+
+function dicomJsonToFlat(studies: any[]): any[] {
+  return studies.map((s: any) => ({
+    id: extractDicomValue(s['0020000D']),
+    'Patient ID': extractDicomValue(s['00100020']),
+    'Patient\'s Name': extractDicomValue(s['00100010']),
+    'Study ID': extractDicomValue(s['0020000D']),
+    'Study Description': extractDicomValue(s['00081030']),
+    'Modality': extractDicomValue(s['00080060']),
+    'Accession Number': extractDicomValue(s['00080050']),
+  }));
+}
+
+function searchToQidoParams(searchObj: any): Record<string, string> {
+  const params: Record<string, string> = {};
+  const fieldMap: Record<string, string> = {
+    'Patient ID': 'PatientID',
+    'Study ID': 'StudyInstanceUID',
+    'Accession Number': 'AccessionNumber',
+    'Modality': 'Modality',
+    'query': 'PatientID',
+  };
+  for (const [field, value] of Object.entries(searchObj)) {
+    if (field in fieldMap && value && String(value).trim()) {
+      params[fieldMap[field]] = String(value).trim();
+    }
+  }
+  return params;
+}
+
 function Files(props: any) {
-  document.title = 'QuantumPACS - Search';
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({ pageSize: PAGINATION.limit });
@@ -91,35 +127,62 @@ function Files(props: any) {
     // eslint-disable-next-line
   }, [PAGINATION.limit]);
 
-  const fetch = () => {
-    setLoading(true);
-    const searchObj = decodeUrl(window.location.search);
-    if (searchObj.query) {
-      setGlobSearch(searchObj.query);
-      setSearchText('');
-    } else {
-      let set = false;
-      for (let k in searchObj) {
-        if (Array.isArray(searchObj[k])) {
-          setSearchText(searchObj[k][0]);
-          setGlobSearch('');
-          set = true;
-        }
-      }
-      if (!set) {
-        setGlobSearch('');
-        setSearchText('');
-      }
-    }
-    request('files', { data: searchObj }).then((data: any) => {
-      setLoading(false);
-      setData(data.data);
-      setPagination(Object.assign({}, pagination, { total: data.total }));
-    }).catch((e: any) => {
-      setLoading(false);
-      message.error(e.message);
-    });
-  };
+   const fetchQidoResults = (qidoParams: Record<string, string>): Promise<any[]> => {
+     return request('v2/dicomweb/studies', { query: qidoParams }).then((res: any) => {
+       const results = Array.isArray(res) ? res : (res.data || []);
+       return dicomJsonToFlat(results);
+     });
+   };
+
+   const fetch = () => {
+     setLoading(true);
+     const searchObj = decodeUrl(window.location.search);
+     if (searchObj.query) {
+       setGlobSearch(searchObj.query);
+       setSearchText('');
+     } else {
+       let set = false;
+       for (let k in searchObj) {
+         if (Array.isArray(searchObj[k])) {
+           setSearchText(searchObj[k][0]);
+           setGlobSearch('');
+           set = true;
+         }
+       }
+       if (!set) {
+         setGlobSearch('');
+         setSearchText('');
+       }
+     }
+     const qidoParams = searchToQidoParams(searchObj);
+     const hasQidoParams = Object.keys(qidoParams).length > 0;
+     if (hasQidoParams) {
+       fetchQidoResults(qidoParams).then((results: any[]) => {
+         setLoading(false);
+         if (results.length > 0) {
+           setData(results);
+           setPagination(Object.assign({}, pagination, { total: results.length }));
+           return;
+         }
+         fallbackToV2(searchObj);
+       }).catch(() => {
+         fallbackToV2(searchObj);
+       });
+     } else {
+       fallbackToV2(searchObj);
+     }
+   };
+
+   const fallbackToV2 = (searchObj: any) => {
+     request('files', { data: searchObj }).then((data: any) => {
+       setLoading(false);
+       setData(data.data);
+       setPagination(Object.assign({}, pagination, { total: data.total }));
+     }).catch((e: any) => {
+       setLoading(false);
+       message.error(e.message);
+     });
+   };
 
   const downloadFiles = () => {
     if (!selected || !selected.length) return;

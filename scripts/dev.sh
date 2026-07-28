@@ -7,7 +7,7 @@ CMD=${1:-status}
 cleanup_port() {
     local port=$1
     local pids
-    pids=$(fuser "$port/tcp" 2>/dev/null | awk '{for(i=2;i<=NF;i++) print $i}')
+    pids=$(timeout 5 fuser "$port/tcp" 2>/dev/null | awk '{for(i=2;i<=NF;i++) print $i}')
     for pid in $pids; do
         if ps -p "$pid" -o comm= 2>/dev/null | grep -qE 'uvicorn|gunicorn|python'; then
             echo "  cleaning stale process on port $port (PID $pid)"
@@ -53,44 +53,72 @@ case "$CMD" in
     verify_config
     echo "  starting PostgreSQL (Docker)..."
     docker compose up -d 2>&1 || true
-    echo "  verifying config..."
-    bash "$DIR/scripts/verify_config.sh" 2>&1 | tail -5
     echo "  starting backend..."
-    systemctl --user start quantumpacs-backend.service
+    systemctl --user start quantumpacs-backend.service 2>/dev/null || systemctl --user restart quantumpacs-backend.service
+    sleep 2
     echo "  starting frontend..."
-    systemctl --user start quantumpacs-frontend.service
-    echo "Done."
+    systemctl --user start quantumpacs-frontend.service 2>/dev/null || systemctl --user restart quantumpacs-frontend.service
+    echo "  verifying..."
+    bash "$DIR/scripts/dev.sh" status
     ;;
   stop)
     echo "Stopping QuantumPACS dev services..."
-    systemctl --user stop quantumpacs-backend.service || true
-    systemctl --user stop quantumpacs-frontend.service || true
-    cleanup_port 11112
+    systemctl --user stop quantumpacs-backend.service 2>/dev/null || true
+    systemctl --user stop quantumpacs-frontend.service 2>/dev/null || true
     cleanup_port 8080
+    cleanup_port 11112
+    cleanup_port 5173
+    echo "  PostgreSQL container left running (docker compose stop to stop)"
     echo "Done."
     ;;
   restart)
     echo "Restarting QuantumPACS dev services..."
     systemctl --user stop quantumpacs-backend.service 2>/dev/null || true
-    cleanup_port 11112
     cleanup_port 8080
+    cleanup_port 11112
     verify_config
+    docker compose up -d 2>&1 || true
     systemctl --user start quantumpacs-backend.service
+    sleep 2
     systemctl --user restart quantumpacs-frontend.service 2>/dev/null || true
-    echo "Done."
+    echo ""
+    bash "$DIR/scripts/dev.sh" status
     ;;
   status)
-    echo "=== QuantumPACS Backend ==="
-    systemctl --user status quantumpacs-backend.service --no-pager 2>&1 | head -10
+    echo "=== QuantumPACS Status ==="
     echo ""
-    echo "=== QuantumPACS Frontend ==="
-    systemctl --user status quantumpacs-frontend.service --no-pager 2>&1 | head -10
+    BE_STATUS=$(systemctl --user is-active quantumpacs-backend.service 2>/dev/null)
+    FE_STATUS=$(systemctl --user is-active quantumpacs-frontend.service 2>/dev/null)
+    PG_STATUS=$(docker ps --filter name=quantumpacs-postgres-1 --format '{{.Status}}' 2>/dev/null || echo "not running")
+    echo "  PostgreSQL : $PG_STATUS"
+    echo "  Backend    : $BE_STATUS"
+    echo "  Frontend   : $FE_STATUS"
     echo ""
-    echo "=== Health Check ==="
-    echo -n "Backend /api/health: "; curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health 2>&1 || echo "down"
-    echo -n "Backend /api/v2/health: "; curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v2/health 2>&1 || echo "down"
-    echo -n "Frontend (5173): "; curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>&1 || echo "down"
+    if [ "$BE_STATUS" = "active" ]; then
+      echo "--- Health Endpoints ---"
+      HEALTH=$(curl -s http://localhost:8080/api/health 2>/dev/null)
+      if [ -n "$HEALTH" ]; then
+        echo "  Overall   : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"])' 2>/dev/null || echo 'unknown')"
+        echo "  DB        : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["database"]["status"])' 2>/dev/null)"
+        echo "  Redis     : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["redis"]["status"])' 2>/dev/null)"
+        echo "  ES        : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["elasticsearch"]["status"])' 2>/dev/null)"
+        echo "  Storage   : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["storage"]["status"])' 2>/dev/null)"
+        echo "  DICOM     : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["dicom_listener"]["status"])' 2>/dev/null)"
+        echo "  Ingestion : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["ingestion_service"]["status"])' 2>/dev/null)"
+      else
+        echo "  (health endpoint not responding)"
+      fi
+    fi
+    if [ "$FE_STATUS" = "active" ]; then
+      FE_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null)
+      echo "  Frontend  : HTTP $FE_CODE"
+    fi
     echo ""
+    echo "--- Last Log Lines ---"
+    echo "  Backend:"
+    journalctl --user -u quantumpacs-backend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
+    echo "  Frontend:"
+    journalctl --user -u quantumpacs-frontend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
     ;;
   verify)
     bash "$DIR/scripts/verify_config.sh"

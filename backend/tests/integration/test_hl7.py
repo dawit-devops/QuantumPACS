@@ -661,7 +661,7 @@ class TestHl7HttpEndpoint:
                     routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
                 )
                 client = TestClient(app)
-                resp = client.post('/api/hl7', data=SAMPLE_ADT_A01)
+                resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
 
         assert resp.status_code == 200
         assert resp.text == 'ACK'
@@ -676,7 +676,7 @@ class TestHl7HttpEndpoint:
             routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
         )
         client = TestClient(app)
-        resp = client.post('/api/hl7', data='NOT VALID HL7')
+        resp = client.post('/api/hl7', content='NOT VALID HL7')
         assert resp.status_code == 200
         assert 'ERR' in resp.text or 'NACK' in resp.text
 

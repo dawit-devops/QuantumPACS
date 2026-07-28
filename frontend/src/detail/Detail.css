@@ -1,3 +1,24 @@
 .ant-table-thead > tr > th, .ant-table-tbody > tr > td {
     padding: 8px !important;
 }
+
+@media (max-width: 768px) {
+    .detail-viewport {
+        height: 50vh !important;
+    }
+
+    .metadata-collapse {
+        max-height: 30vh;
+        overflow-y: auto;
+    }
+
+    .detail-actions {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .detail-actions .ant-btn {
+        font-size: 11px;
+        padding: 2px 8px;
+    }
+}

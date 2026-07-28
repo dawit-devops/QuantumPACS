@@ -28,6 +28,7 @@ async def redis():
         pass
     await client.flushdb()
     await client.aclose()
+    await asyncio.sleep(0)
 
 
 class TestStreamMonitor:
