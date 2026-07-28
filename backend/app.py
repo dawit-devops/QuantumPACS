@@ -17,7 +17,7 @@ from api.response import server_error
 from api.service_middleware import ServiceMiddleware
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
-from api.telemetry import RequestIDMiddleware, record_request
+from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
 from log import setup_logging, get_logger, tenant_var, user_id_var
@@ -37,17 +37,20 @@ class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         import time
         start = time.monotonic()
+        http_requests_in_progress.labels(method=request.method, path=request.url.path).inc()
         try:
             response = await call_next(request)
         except Exception:
             log.exception('Unhandled error processing %s %s', request.method, request.url.path)
             elapsed = time.monotonic() - start
+            http_requests_in_progress.labels(method=request.method, path=request.url.path).dec()
             record_request(request.method, request.url.path, 500, elapsed)
             cors_origin = config.get('cors_origins', '*')
             resp = server_error('Internal server error', status_code=500)
             resp.headers['Access-Control-Allow-Origin'] = cors_origin
             return resp
         elapsed = time.monotonic() - start
+        http_requests_in_progress.labels(method=request.method, path=request.url.path).dec()
 
         user = getattr(request, 'user', None)
         if user and user.is_authenticated:

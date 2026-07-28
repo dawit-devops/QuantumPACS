@@ -322,3 +322,10 @@ class TestDicomWebMetrics:
         resp = client.get('/v2/metrics')
         assert 'dicomweb_requests_total' in resp.text
         assert 'studies' in resp.text
+
+
+class TestInProgressGauge:
+    def test_http_requests_in_progress_defined_in_metrics(self):
+        client = TestClient(_make_metrics_app())
+        resp = client.get('/v2/metrics')
+        assert 'http_requests_in_progress' in resp.text
