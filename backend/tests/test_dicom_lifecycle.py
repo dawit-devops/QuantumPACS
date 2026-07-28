@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import asyncio
+
 import pytest
 
 
@@ -61,3 +63,68 @@ class TestDicomLifecycleFunctions:
     def test_stop_dicom_handles_no_server(self):
         from lifecycle import _stop_dicom
         _stop_dicom()
+
+    def test_dcm_server_handlers_include_cmove_cget(self):
+        from pynetdicom import evt
+        import dcm.server
+        handler_events = [h[0] for h in dcm.server.handlers]
+        assert evt.EVT_C_MOVE in handler_events
+        assert evt.EVT_C_GET in handler_events
+
+    @pytest.mark.asyncio
+    async def test_start_dicom_sets_dcm_server_loop(self):
+        import dcm.server
+        with patch('pynetdicom.AE') as mock_ae_class:
+            mock_ae_instance = MagicMock()
+            mock_ae_class.return_value = mock_ae_instance
+            mock_scp = MagicMock()
+            mock_ae_instance.start_server.return_value = mock_scp
+
+            with patch('dcm.server') as mock_dcm_server:
+                from lifecycle import _start_dicom
+                _start_dicom()
+
+                assert mock_dcm_server._loop is not None
+                assert isinstance(mock_dcm_server._loop, asyncio.AbstractEventLoop)
+
+    @pytest.mark.asyncio
+    async def test_start_dicom_includes_mwl_context(self):
+        import dcm.server
+        from pynetdicom.sop_class import ModalityWorklistInformationFind
+
+        with patch('pynetdicom.AE') as mock_ae_class:
+            mock_ae_instance = MagicMock()
+            mock_ae_class.return_value = mock_ae_instance
+            mock_scp = MagicMock()
+            mock_ae_instance.start_server.return_value = mock_scp
+
+            with patch('dcm.server'):
+                from lifecycle import _start_dicom
+                _start_dicom()
+
+                assert ModalityWorklistInformationFind in mock_ae_instance.supported_contexts
+
+    @pytest.mark.asyncio
+    async def test_start_dicom_includes_move_get_contexts(self):
+        import dcm.server
+        from pynetdicom.sop_class import (
+            PatientRootQueryRetrieveInformationModelMove,
+            StudyRootQueryRetrieveInformationModelMove,
+            PatientRootQueryRetrieveInformationModelGet,
+            StudyRootQueryRetrieveInformationModelGet,
+        )
+
+        with patch('pynetdicom.AE') as mock_ae_class:
+            mock_ae_instance = MagicMock()
+            mock_ae_class.return_value = mock_ae_instance
+            mock_scp = MagicMock()
+            mock_ae_instance.start_server.return_value = mock_scp
+
+            with patch('dcm.server'):
+                from lifecycle import _start_dicom
+                _start_dicom()
+
+                assert PatientRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts
+                assert StudyRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts
+                assert PatientRootQueryRetrieveInformationModelGet in mock_ae_instance.supported_contexts
+                assert StudyRootQueryRetrieveInformationModelGet in mock_ae_instance.supported_contexts

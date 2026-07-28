@@ -178,3 +178,35 @@ class TestWadoUri:
         resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8')
 
         assert resp.status_code == 403
+
+    def test_returns_single_instance_when_both_object_and_series_uid(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_mini_dicom()
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(return_value={
+            'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+            'patient_id': 1, 'study_id': 1, 'series_id': 1,
+            'meta': '{}', 'replica_meta': '{}',
+        })
+        conn.fetch = AsyncMock(return_value=[
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                    resp = client.get(
+                        '/wado?requestType=WADO&studyUID=1.2.3.4.5.6'
+                        '&seriesUID=1.2.3.4.5.6.7&objectUID=1.2.3.4.5.6.7.8'
+                    )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/dicom'
+        conn.fetch.assert_not_called()

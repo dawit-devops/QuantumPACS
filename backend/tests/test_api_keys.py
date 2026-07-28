@@ -365,7 +365,7 @@ class TestApiKeyMiddleware:
             patch('api.auth.get_conn', return_value=mock_conn),
             patch('api.auth.Users') as mock_users,
         ):
-            mock_users.return_value.is_active = AsyncMock(return_value=True)
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
             from api.tokens import create_token
             import jwt as _jwt
             with patch('api.auth.config', {'secret': SECRET, 'cors_origins': '*'}):

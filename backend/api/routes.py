@@ -19,7 +19,7 @@ from api.users import (
     UsersHandler, UsersDeactivate, UsersNewPassword, UserRoleUpdate,
 )
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
-from api.oauth import oauth_login, oauth_callback, oidc_discovery
+from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.fhir import (
@@ -62,7 +62,7 @@ _V1_ROUTES = [
     Route('/oauth/login', endpoint=oauth_login),
     Route('/oauth/callback', endpoint=oauth_callback),
     Route('/.well-known/openid-configuration', endpoint=oidc_discovery),
-    Route('/oauth/token', endpoint=oidc_discovery),
+    Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST']),
     Route('/change_password', endpoint=ChangePassword),
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),

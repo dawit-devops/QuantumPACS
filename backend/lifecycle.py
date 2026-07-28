@@ -37,13 +37,34 @@ def _start_dicom():
     global _dicom_scp
     try:
         from pynetdicom import AE, StoragePresentationContexts
-        from dcm.server import handlers
+        from pynetdicom.sop_class import (
+            ModalityWorklistInformationFind,
+            PatientRootQueryRetrieveInformationModelMove,
+            StudyRootQueryRetrieveInformationModelMove,
+            PatientRootQueryRetrieveInformationModelGet,
+            StudyRootQueryRetrieveInformationModelGet,
+        )
+        import dcm.server as _dcm_server
+        try:
+            _dcm_server._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _dcm_server._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_dcm_server._loop)
         ae = AE()
         ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
-        ae.supported_contexts = StoragePresentationContexts
+        ae.supported_contexts = (
+            StoragePresentationContexts
+            + [ModalityWorklistInformationFind]
+            + [
+                PatientRootQueryRetrieveInformationModelMove,
+                StudyRootQueryRetrieveInformationModelMove,
+                PatientRootQueryRetrieveInformationModelGet,
+                StudyRootQueryRetrieveInformationModelGet,
+            ]
+        )
         port = int(config.get('dicom_cstore_port', '11112'))
-        _dicom_scp = ae.start_server(('', port), evt_handlers=handlers)
-        log.info('DICOM C-STORE server started on port %s', port)
+        _dicom_scp = ae.start_server(('', port), evt_handlers=_dcm_server.handlers)
+        log.info('DICOM server started on port %s (C-STORE + MWL C-FIND)', port)
     except Exception:
         log.warning('Failed to start DICOM server', exc_info=True)
         _dicom_scp = None

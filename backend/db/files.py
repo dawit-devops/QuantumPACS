@@ -1,3 +1,4 @@
+import asyncpg
 from datetime import datetime, timezone
 import json
 
@@ -11,6 +12,7 @@ from db.replica_files import ReplicaFiles
 from db.table import Table
 from db.file_changes import FileChange
 from log import get_logger
+from storage.storage import Storage
 
 log = get_logger(__name__)
 
@@ -117,7 +119,10 @@ class Files(Table):
         f = await self.get(filedata)
         if f:
             return f
-        return await self.add(filedata)
+        try:
+            return await self.add(filedata)
+        except asyncpg.UniqueViolationError:
+            return await self.get(filedata)
 
     def q(self):
         PatientT = Patient().table
@@ -264,6 +269,13 @@ class Files(Table):
 
     async def delete(self, file_id, master_id):
         await es.delete(file_id)
+
+        from db.replica import Replica as ReplicaModel
+        replica = await ReplicaModel(self.conn).get(master_id)
+        if replica:
+            storage = await Storage.get(replica)
+            file_data = {'id': file_id}
+            await storage.delete(file_data)
 
         async with self.conn.transaction():
             q = self.update().where(self.table.id == file_id).set(self.table.deleted, True)

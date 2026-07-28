@@ -50,6 +50,7 @@ default_config = {
     'ingestion_poll_count': '10',
     'ingestion_poll_block_ms': '5000',
     'ingestion_max_retries': '3',
+    'oauth_secret_encryption_key': '',
 }
 
 

@@ -103,15 +103,16 @@ class TenantStatsHandler(HTTPEndpoint):
         tenant_id = request.path_params['id']
         async with get_conn() as conn:
             tenant = await Tenants(conn).get(tenant_id)
-        if not tenant:
-            return not_found('Tenant not found')
-        slug = tenant['slug']
+            if not tenant:
+                return not_found('Tenant not found')
+            slug = tenant['slug']
+            info = await Tenants(conn).get_connection_info(tenant_id)
         pool_info = {
-            'db_name': tenant.get('db_name', slug.replace('-', '_')),
-            'db_host': tenant.get('db_host', config['db_host']),
-            'db_port': tenant.get('db_port', config.get('db_port', '5432')),
-            'db_user': tenant.get('db_user', config['db_user']),
-            'db_password': config['db_password'],
+            'db_name': info.get('db_name', slug.replace('-', '_')) if info else slug.replace('-', '_'),
+            'db_host': info.get('db_host', config['db_host']) if info else config['db_host'],
+            'db_port': info.get('db_port', config.get('db_port', '5432')) if info else config.get('db_port'),
+            'db_user': info.get('db_user', config['db_user']) if info else config['db_user'],
+            'db_password': info.get('db_password', config['db_password']) if info else config['db_password'],
         }
         stats = await Tenants(None).get_stats(slug, pool_info)
         return ok(stats)

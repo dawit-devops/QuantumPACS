@@ -49,7 +49,8 @@ class Login(HTTPEndpoint):
 
             await login_bucket.record_db(ip, conn, success=True)
             role_slug, permissions = await Users(conn).get_user_role(data['id'])
-            token = gen_token(data, role=role_slug, permissions=permissions)
+            token_version = await Users(conn).get_token_version(data['id'])
+            token = gen_token(data, role=role_slug, permissions=permissions, token_version=token_version)
             resp = ok({
                 'id': data['id'],
                 'admin': data['admin'],
@@ -186,11 +187,16 @@ class RefreshToken(HTTPEndpoint):
 
         await block_token(body.refresh_token)
 
-        expires = int(datetime.now(timezone.utc).timestamp()) + 86400 * 14
+        try:
+            async with get_conn() as conn:
+                token_version = await Users(conn).get_token_version(data['id'])
+        except RuntimeError:
+            token_version = 0
+
         user = {'id': data['id'], 'admin': data.get('admin', False)}
         if data.get('tenant'):
             user['tenant'] = data['tenant']
-        access, refresh = create_token_pair(user)
+        access, refresh = create_token_pair(user, token_version=token_version)
         return ok({
             'access_token': access,
             'refresh_token': refresh,

@@ -147,9 +147,21 @@ def handle_find(event):
     yield 0x0000, None
 
 
+def handle_move(event):
+    log.warning('C-MOVE received but not fully implemented')
+    return 0x0000
+
+
+def handle_get(event):
+    log.warning('C-GET received but not fully implemented')
+    return 0x0000
+
+
 handlers = [
     (evt.EVT_C_STORE, handle_store),
     (evt.EVT_C_FIND, handle_find),
+    (evt.EVT_C_MOVE, handle_move),
+    (evt.EVT_C_GET, handle_get),
 ]
 _scp = None
 _loop = None

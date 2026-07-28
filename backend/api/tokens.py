@@ -30,7 +30,7 @@ def _get_blocklist_redis():
     return _blocklist_redis
 
 
-def create_token(user, expire=None, role=None, permissions=None):
+def create_token(user, expire=None, role=None, permissions=None, token_version=None):
     payload = {
         'jti': str(uuid4()),
         'id': user['id'],
@@ -42,6 +42,8 @@ def create_token(user, expire=None, role=None, permissions=None):
         payload['permissions'] = permissions
     if user.get('tenant'):
         payload['tenant'] = user['tenant']
+    if token_version is not None:
+        payload['token_version'] = token_version
     if not expire:
         expire = {'days': 14}
 
@@ -81,8 +83,8 @@ async def is_blocked(jti):
         return False
 
 
-def create_token_pair(user, role=None, permissions=None):
-    access = create_token(user, expire={'hours': 1}, role=role, permissions=permissions)
+def create_token_pair(user, role=None, permissions=None, token_version=None):
+    access = create_token(user, expire={'hours': 1}, role=role, permissions=permissions, token_version=token_version)
     refresh_payload = {
         'jti': str(uuid4()),
         'id': user['id'],

@@ -35,22 +35,12 @@ def _base_url(request):
 
 async def _get_provider(idp_slug: str):
     async with get_conn() as conn:
-        q = OAuthProviders(conn).select('*').where(
-            OAuthProviders.table.slug == idp_slug
-        )
-        row = await conn.fetchrow(str(q))
-        if row:
-            return dict(row)
-        q = OAuthProviders(conn).select('*').where(
-            OAuthProviders.table.issuer == idp_slug
-        )
-        row = await conn.fetchrow(str(q))
-        return dict(row) if row else None
+        return await OAuthProviders(conn).get_by_slug(idp_slug)
 
 
 async def _get_provider_by_id(provider_id: str):
     async with get_conn() as conn:
-        return await OAuthProviders(conn).get(provider_id)
+        return await OAuthProviders(conn).get_decrypted(provider_id)
 
 
 def _get_jwks_client(jwks_uri):
@@ -173,7 +163,8 @@ async def _find_or_create_user(oauth_sub, email, name, provider):
         )
 
         user = {'id': new_id, 'username': username, 'admin': False,
-                'role_id': role_id, 'oauth_sub': oauth_sub, 'email': email}
+                'role_id': role_id, 'oauth_sub': oauth_sub, 'email': email,
+                'token_version': 0}
         return user, []
 
 
@@ -280,12 +271,13 @@ async def oauth_callback(request):
     oauth_sub = claims.get('sub')
     email = claims.get('email') or claims.get('preferred_username', '')
     name = claims.get('name', '')
-    user, groups, _ = await _find_or_create_user(oauth_sub, email, name, provider)
+    user, groups = await _find_or_create_user(oauth_sub, email, name, provider)
 
     token = create_token(
         {'id': user['id'], 'admin': user.get('admin', False)},
         role=provider.get('default_role') or config.get('oauth_default_role'),
         permissions=None,
+        token_version=user.get('token_version', 0),
     )
 
     resp = ok({

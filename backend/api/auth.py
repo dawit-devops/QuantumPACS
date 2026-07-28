@@ -188,13 +188,16 @@ class TokenAuth(AuthenticationBackend):
                 if cached is None:
                     try:
                         async with get_conn() as conn:
-                            active = await Users(conn).is_active(data['id'])
+                            active, token_version = await Users(conn).get_auth_state(data['id'])
                     except Exception as e:
                         log.error('is_active check failed: %s', e)
                         raise AuthenticationError('Auth backend error')
                     await _set_cached_active(data['id'], active)
                     if not active:
                         raise AuthenticationError('Deactivated user')
+                    jwt_version = data.get('token_version', 0)
+                    if jwt_version != token_version:
+                        raise AuthenticationError('Token invalidated')
         else:
             token = request.query_params.get('token')
             if not token:

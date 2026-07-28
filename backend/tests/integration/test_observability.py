@@ -112,7 +112,7 @@ class TestMetricsEndpoint:
             patch('api.auth.is_blocked', new=AsyncMock(return_value=False)),
             patch('api.auth.Users') as mock_users,
         ):
-            mock_users.return_value.is_active = AsyncMock(return_value=True)
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
             token = create_token({'id': 2, 'admin': False}, expire={'minutes': 60})
             resp = client.get('/api/v2/metrics', headers={'X-Auth-Pacs': token})
         assert resp.status_code == 403
@@ -139,7 +139,7 @@ class TestMetricsEndpoint:
             patch('api.auth.is_blocked', new=AsyncMock(return_value=False)),
             patch('api.auth.Users') as mock_users,
         ):
-            mock_users.return_value.is_active = AsyncMock(return_value=True)
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
             token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
             resp = client.get('/api/v2/metrics', headers={'X-Auth-Pacs': token})
         assert resp.status_code == 200

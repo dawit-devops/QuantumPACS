@@ -13,6 +13,8 @@ class CreateOAuthProviderRequest(BaseModel):
     auto_provision: bool = True
     enabled: bool = True
     tenant_id: str | None = None
+    slug: str | None = None
+    default_role: str = 'cashier'
 
 
 class UpdateOAuthProviderRequest(BaseModel):
@@ -27,3 +29,4 @@ class UpdateOAuthProviderRequest(BaseModel):
     auto_provision: bool | None = None
     enabled: bool | None = None
     tenant_id: str | None = None
+    default_role: str | None = None

@@ -13,6 +13,18 @@ from dcm.dicom_json import row_to_study_json
 from dcm.store import store_instance
 from storage.storage import Storage
 
+VALID_MODALITIES = frozenset({
+    'CR', 'CT', 'MR', 'US', 'OT', 'BI', 'CD', 'DD', 'DG', 'ES', 'LS',
+    'PT', 'RG', 'ST', 'TG', 'XA', 'XC', 'AS', 'DS', 'CF', 'DF', 'DM',
+    'EC', 'FA', 'CS', 'LP', 'MA', 'MS', 'NM', 'DX', 'GM', 'HD',
+    'IO', 'IX', 'PX', 'RF', 'SM', 'SR', 'VA', 'MG', 'EPS', 'OP',
+    'OAM', 'OCT', 'OPT', 'OPV', 'OSS', 'POS', 'IVOCT', 'LEN',
+})
+
+
+def validate_modality(modality: str) -> bool:
+    return modality in VALID_MODALITIES
+
 
 class DicomJsonResponse(Response):
     media_type = 'application/dicom+json'
@@ -148,6 +160,14 @@ class DicomWebStudies(HTTPEndpoint):
                     status_code=400,
                     media_type='application/dicom+json',
                 )
+            modality = getattr(ds, 'Modality', '')
+            if modality and not validate_modality(modality):
+                return Response(
+                    json.dumps({'error': f'Invalid modality: {modality}'}),
+                    status_code=400,
+                    media_type='application/dicom+json',
+                )
+
             ok = await store_instance(ds, buf)
             if ok:
                 stored.append(str(ds.SOPInstanceUID))
@@ -201,10 +221,13 @@ class DicomWebWadoUri(HTTPEndpoint):
             if not master:
                 return Response(json.dumps({'error': 'No storage available'}), status_code=503)
 
+            if object_uid:
+                return await _wado_retrieve_instance(conn, master, object_uid)
+
             if series_uid:
                 return await _wado_retrieve_series(conn, master, study_uid, series_uid)
 
-            return await _wado_retrieve_instance(conn, master, object_uid)
+            return await _wado_retrieve_study(conn, master, study_uid)
 
 
 async def _wado_retrieve_instance(conn, master, instance_uid):
