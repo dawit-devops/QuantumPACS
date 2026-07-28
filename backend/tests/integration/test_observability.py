@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -297,3 +298,15 @@ class TestHealthEndpoint:
         assert 'status' in components['ingestion_service']
         assert 'stream_lag' in components['ingestion_service']
         assert isinstance(components['ingestion_service']['stream_lag'], int)
+
+
+class TestCStoreMetrics:
+    def test_dicom_cstore_throughput_defined_in_metrics(self):
+        from api.telemetry import dicom_cstore_throughput_bytes
+
+        dicom_cstore_throughput_bytes.inc(1024)
+
+        client = TestClient(_make_metrics_app())
+        resp = client.get('/v2/metrics')
+        assert 'dicom_cstore_throughput_bytes' in resp.text
+        assert '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[0] or '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[1] or '1024.0' in resp.text

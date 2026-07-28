@@ -69,6 +69,9 @@ redis_stream_lag_seconds = Gauge(
     'redis_stream_lag_seconds', 'Redis stream consumer lag',
     ['stream', 'consumer_group'],
 )
+dicom_cstore_throughput_bytes = Counter(
+    'dicom_cstore_throughput_bytes', 'Total bytes received via DICOM C-STORE',
+)
 
 
 _legacy_metrics = {

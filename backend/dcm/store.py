@@ -10,6 +10,7 @@ from db.replica_files import ReplicaFiles
 from db.worklist import Worklist
 from dcm.file import get_meta
 from log import get_logger
+from api.telemetry import dicom_cstore_throughput_bytes
 from services.ingestion.routing import evaluate_routing_rules
 from storage.storage import Storage
 from utils import hash_file
@@ -65,4 +66,9 @@ async def store_instance(ds, data):
     routes = await evaluate_routing_rules(ds)
     if routes:
         log.info('Study %s matched %d routing rule(s)', ds.get('study_instance_uid', '?'), len(routes))
+    try:
+        data.seek(0, 2)
+        dicom_cstore_throughput_bytes.inc(data.tell())
+    except Exception:
+        pass
     return True
