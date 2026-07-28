@@ -11,7 +11,7 @@ function mockDicomJsonResponse(data: any) {
 describe('dicomweb', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem('token', 'test-token');
+    localStorage.setItem('access_token', 'test-token');
   });
 
   describe('searchStudies', () => {

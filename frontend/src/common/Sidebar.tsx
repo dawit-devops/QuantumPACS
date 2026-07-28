@@ -5,7 +5,7 @@ import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamO
 import { useAuth } from '../auth/AuthContext';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
-import { request } from '../helpers';
+import { request, clearTokens } from '../helpers';
 import './Sidebar.css';
 
 const { Sider } = Layout;
@@ -52,6 +52,7 @@ function Sidebar() {
     }
     localStorage.removeItem('userId');
     localStorage.removeItem('admin');
+    clearTokens();
     navigate('/login');
   };
 

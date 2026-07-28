@@ -1,7 +1,8 @@
 import { API_URL } from '../config';
+import { getAccessToken } from '../helpers';
 
 async function request(path: string): Promise<any> {
-  const token = localStorage.getItem('token');
+  const token = getAccessToken();
   const headers: Record<string, string> = {};
   if (token) headers['X-Auth-Pacs'] = token;
   const resp = await fetch(`${API_URL}${path}`, { headers });

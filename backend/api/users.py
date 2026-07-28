@@ -49,18 +49,19 @@ class Login(HTTPEndpoint):
 
             await login_bucket.record_db(ip, conn, success=True)
             role_slug, permissions = await Users(conn).get_user_role(data['id'])
-            token_version = await Users(conn).get_token_version(data['id'])
-            token = gen_token(data, role=role_slug, permissions=permissions, token_version=token_version)
+            access, refresh = create_token_pair(data, role=role_slug, permissions=permissions)
             resp = ok({
                 'id': data['id'],
                 'admin': data['admin'],
                 'role': role_slug or '',
                 'permissions': permissions or [],
-                'token': token,
+                'token': access,
+                'access_token': access,
+                'refresh_token': refresh,
             })
             resp.set_cookie(
                 key='token',
-                value=token,
+                value=access,
                 httponly=True,
                 samesite='strict',
                 secure=True,

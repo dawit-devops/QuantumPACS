@@ -1,0 +1,43 @@
+.thumbnail-strip {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.85);
+  scrollbar-width: thin;
+}
+
+.thumbnail-item {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition: border-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbnail-item:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.thumbnail-item.active {
+  border-color: #1677ff;
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbnail-placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+}

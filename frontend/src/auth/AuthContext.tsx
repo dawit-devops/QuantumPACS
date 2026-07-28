@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { setTokens, clearTokens } from '../helpers';
 
 export interface AuthUser {
   id: string;
@@ -18,7 +19,7 @@ export interface Tenant {
 export interface AuthContextType {
   isAuthenticated: boolean;
   user: AuthUser | null;
-  signIn: (token: string, user: AuthUser) => void;
+  signIn: (token: string, user: AuthUser, refreshToken?: string) => void;
   signOut: () => void;
   hasPermission: (permission: string) => boolean;
   activeTenant: Tenant | null;
@@ -58,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [isAuthenticated, user],
   );
 
-  const signIn = useCallback((_token: string, userData: AuthUser) => {
+  const signIn = useCallback((token: string, userData: AuthUser, refreshToken?: string) => {
     localStorage.setItem('userId', userData.id);
     localStorage.setItem('username', userData.username);
     localStorage.setItem('admin', String(userData.admin));
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userData.tenant_id) {
       localStorage.setItem('tenant_id', userData.tenant_id);
     }
+    setTokens(token, refreshToken || token);
     setUser(userData);
   }, []);
 
@@ -77,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('role');
     localStorage.removeItem('permissions');
     localStorage.removeItem('tenant_id');
+    clearTokens();
     setUser(null);
   }, []);
 

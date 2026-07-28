@@ -31,6 +31,7 @@ import { init as initDicomImageLoader } from '@cornerstonejs/dicom-image-loader'
 import * as ws from '../ws';
 import { request } from '../helpers';
 import { API_URL } from '../config';
+import ThumbnailStrip from './ThumbnailStrip';
 import './CornerstoneElement.css';
 
 const ENGINE_ID = 'OPENPACS_ENGINE';
@@ -143,6 +144,7 @@ interface CEState {
   stateVer: number;
   stateVerSent: number;
   interval: any;
+  loading: boolean;
 }
 
 class CornerstoneElement extends Component<CEProps, CEState> {
@@ -162,6 +164,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       stateVer: 0,
       stateVerSent: 0,
       interval: null,
+      loading: true,
     };
     this.onImageRendered = this.onImageRendered.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
@@ -294,6 +297,9 @@ class CornerstoneElement extends Component<CEProps, CEState> {
 
   onImageRendered() {
     this.updateViewportInfo();
+    if (this.state.loading) {
+      this.setState({ loading: false });
+    }
   }
 
   onAnnotationAdded() {
@@ -550,16 +556,36 @@ class CornerstoneElement extends Component<CEProps, CEState> {
           <Button type="default" shape="round" size="small" icon={<ScissorOutlined />}
             style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateEraser} />
         </div>
-        <div
-          className="viewportElement"
-          ref={(el: HTMLDivElement | null) => {
-            this.element = el;
-          }}
-        >
-          <div style={bottomLeftStyle}>Zoom: {this.state.zoom}</div>
-          <div style={bottomRightStyle}>
-            WW/WC: {this.state.ww} / {this.state.wc}
+        <ThumbnailStrip
+          files={files}
+          currentFileId={file.id}
+          onSelect={this.props.changeFile}
+        />
+        <div style={{ position: 'relative' }}>
+          <div
+            className="viewportElement"
+            ref={(el: HTMLDivElement | null) => {
+              this.element = el;
+            }}
+          >
+            <div style={bottomLeftStyle}>Zoom: {this.state.zoom}</div>
+            <div style={bottomRightStyle}>
+              WW/WC: {this.state.ww} / {this.state.wc}
+            </div>
           </div>
+          {this.state.loading && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.7)', color: '#fff', zIndex: 5,
+              fontSize: 14,
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ marginBottom: 8 }}>Loading image...</div>
+                <div style={{ width: 24, height: 24, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+              </div>
+            </div>
+          )}
         </div>
         <div className="metadata-collapse">
           <Collapse

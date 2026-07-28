@@ -98,17 +98,25 @@ echo ""
 
 # --- 3. Port conflicts ---
 echo "--- 3. Port Conflicts ---"
-check_port() {
+cleanup_ports() {
     local port=$1
-    if fuser "$port/tcp" 2>/dev/null > /dev/null; then
-        warn "port $port is in use (may interfere)"
+    local pids
+    pids=$(fuser "$port/tcp" 2>/dev/null | tr ' ' '\n' | tail -n +2)
+    if [ -n "$pids" ]; then
+        warn "port $port in use by PIDs: $(echo $pids | tr '\n' ' ')"
+        for pid in $pids; do
+            if ps -p "$pid" -o comm= 2>/dev/null | grep -qE 'uvicorn|gunicorn|python'; then
+                echo "    killing PID $pid"
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        done
     else
         pass "port $port free"
     fi
 }
 
-check_port 8080
-check_port 11112
+cleanup_ports 8080
+cleanup_ports 11112
 echo ""
 
 # --- 4. Python 3.14 Compatibility ---

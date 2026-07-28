@@ -65,14 +65,14 @@ function LoginForm(props: any) {
   useEffect(() => {
     if (!data) return;
     clearAttempts();
-    signIn(data.token, {
+    signIn(data.access_token || data.token, {
       id: data.id,
       username: data.username || '',
       admin: data.admin === true || data.admin === 'true',
       role: data.role || (data.admin ? 'admin' : 'user'),
       permissions: data.permissions || [],
       tenant_id: data.tenant_id,
-    });
+    }, data.refresh_token);
     props.history.push('/');
   }, [data]);
 
