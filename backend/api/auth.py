@@ -106,7 +106,7 @@ class TokenAuth(AuthenticationBackend):
         path = request.url.path
         if not path.startswith('/api'):
             return
-        if path in ('/api/login', '/api/v2/health', '/api/auth/refresh', '/api/auth/logout',
+        if path in ('/api/login', '/api/health', '/api/v2/health', '/api/auth/refresh', '/api/auth/logout',
                      '/api/oauth/login', '/api/oauth/callback',
                      '/api/.well-known/openid-configuration', '/api/oauth/token'):
             return

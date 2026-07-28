@@ -1,10 +1,13 @@
 import csv
+import io
 import os.path
 from zipfile import ZipFile
 from uuid import uuid4
 
+from pydicom import dcmread
+from PIL import Image
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
 from starlette.background import BackgroundTask
 
@@ -242,6 +245,42 @@ class ShareFilesHandler(HTTPEndpoint):
         async with get_conn() as conn:
             key = await SharedFiles(conn).share(file_id, body.duration)
         return ok({'key': key})
+
+
+class ServeThumbnail(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
+    async def get(self, request):
+        file_id = get_id(request)
+        if not file_id:
+            raise HTTPException(status_code=404)
+
+        async with get_conn() as conn:
+            master = await Replica(conn).master()
+            file = await ReplicaFiles(conn).get_file_from_replica(master['id'], file_id)
+            storage = await Storage.get(master)
+
+        if not file:
+            raise HTTPException(status_code=404)
+
+        tmp = await storage.fetch(file)
+        try:
+            ds = dcmread(tmp)
+            pixel_array = ds.pixel_array
+            if pixel_array.ndim > 2:
+                pixel_array = pixel_array[0]
+            img = Image.fromarray(pixel_array)
+            img = img.convert('L')
+            img.thumbnail((256, 256), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=85)
+            payload = buf.getvalue()
+        except Exception:
+            pixel_array = None
+
+        if pixel_array is None:
+            return Response(status_code=404, content='Cannot generate thumbnail')
+
+        return Response(content=payload, media_type='image/jpeg')
 
 
 class DownloadToken(HTTPEndpoint):

@@ -27,14 +27,22 @@ def get_tracer(name: str = 'quantumpacs'):
 
 def traced_connection(pool):
     tracer = get_tracer('quantumpacs.db')
-    original_acquire = pool.acquire
+    return _TracedPool(pool, tracer)
 
-    def traced_acquire(*args, **kwargs):
-        ctx = original_acquire(*args, **kwargs)
-        return _TracedAcquireContext(ctx, tracer)
 
-    pool.acquire = traced_acquire
-    return pool
+class _TracedPool:
+    def __init__(self, pool, tracer):
+        object.__setattr__(self, '_pool', pool)
+        object.__setattr__(self, '_tracer', tracer)
+
+    def __getattr__(self, name):
+        if name == 'acquire':
+            return self._traced_acquire
+        return getattr(self._pool, name)
+
+    def _traced_acquire(self, *args, **kwargs):
+        ctx = self._pool.acquire(*args, **kwargs)
+        return _TracedAcquireContext(ctx, self._tracer)
 
 
 class _TracedAcquireContext:

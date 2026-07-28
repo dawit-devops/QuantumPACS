@@ -7,7 +7,7 @@ from starlette.responses import FileResponse, JSONResponse
 from api.patient import PatientHandler
 from api.files import (
     Upload, DownloadFiles, DownloadData, DownloadToken, FilesHandler, FileHandler,
-    FileChangesHandler, ShareFilesHandler, ServeFile
+    FileChangesHandler, ShareFilesHandler, ServeFile, ServeThumbnail
 )
 from api.logs import LogsHandler
 from api.replicas import ReplicasHandlers, ReplicaHandlers
@@ -48,6 +48,7 @@ async def openapi_spec(request):
 
 routes = [
     Route('/v2/health', endpoint=health_endpoint),
+    Route('/health', endpoint=health_endpoint),
     Route('/v2/metrics', endpoint=metrics_endpoint),
     Route('/docs', endpoint=docs_page),
     Route('/docs/openapi.json', endpoint=openapi_spec),
@@ -76,6 +77,7 @@ routes = [
     Route('/files/{id}/changes', endpoint=FileChangesHandler),
     Route('/files/{id}/share', endpoint=ShareFilesHandler),
     Route('/files/{id}/data', endpoint=ServeFile),
+    Route('/files/{id}/thumbnail', endpoint=ServeThumbnail),
     Route('/logs', endpoint=LogsHandler),
     Route('/roles', endpoint=RolesHandler),
     Route('/roles/{id}', endpoint=RoleHandler),
