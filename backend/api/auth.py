@@ -102,13 +102,30 @@ class User(BaseUser):
 
 
 class TokenAuth(AuthenticationBackend):
+    _PUBLIC_PATHS = frozenset({
+        '/api/login',
+        '/api/v2/health',
+        '/api/health',
+        '/api/auth/refresh',
+        '/api/auth/logout',
+        '/api/oauth/login',
+        '/api/oauth/callback',
+        '/api/.well-known/openid-configuration',
+        '/api/oauth/token',
+        '/api/v2/oauth/login',
+        '/api/v2/oauth/callback',
+        '/api/v2/.well-known/openid-configuration',
+        '/api/v2/oauth/token',
+        '/api/v2/auth/refresh',
+        '/api/v2/auth/logout',
+        '/api/v2/login',
+    })
+
     async def authenticate(self, request):
         path = request.url.path
         if not path.startswith('/api'):
             return
-        if path in ('/api/login', '/api/health', '/api/v2/health', '/api/auth/refresh', '/api/auth/logout',
-                     '/api/oauth/login', '/api/oauth/callback',
-                     '/api/.well-known/openid-configuration', '/api/oauth/token'):
+        if path in self._PUBLIC_PATHS:
             return
         if request.scope.get('method') == 'OPTIONS':
             return

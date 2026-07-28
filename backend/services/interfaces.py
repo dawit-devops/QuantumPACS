@@ -24,16 +24,16 @@ class MetadataService(Protocol):
 
 
 class StorageService(Protocol):
-    async def store(self, path: str, data: bytes) -> bool:
+    async def store(self, file_data: dict[str, Any], data: bytes) -> bool:
         ...
 
-    async def fetch(self, path: str) -> Optional[bytes]:
+    async def fetch(self, file_data: dict[str, Any]) -> Optional[bytes]:
         ...
 
-    async def delete(self, path: str) -> bool:
+    async def delete(self, file_data: dict[str, Any]) -> bool:
         ...
 
-    async def exists(self, path: str) -> bool:
+    async def exists(self, file_data: dict[str, Any]) -> bool:
         ...
 
 
