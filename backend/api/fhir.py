@@ -49,6 +49,9 @@ def _build_bundle(entries, total=None, params=None):
 
 def _patient_resource(row) -> dict:
     meta = row.get('meta') or {}
+    name_parts = (row['name'] or '').split('^')
+    family = name_parts[0] if name_parts else ''
+    given = name_parts[1:2] if len(name_parts) > 1 else []
     resource = {
         'resourceType': 'Patient',
         'id': str(row['patient_id']),
@@ -57,7 +60,7 @@ def _patient_resource(row) -> dict:
             'type': {'coding': [{'system': 'http://hl7.org/fhir/v2/0203', 'code': 'MR'}]},
             'value': row['patient_id'],
         }],
-        'name': [{'family': row['name'], 'given': [row['name']]}],
+        'name': [{'family': family, 'given': given}],
         'gender': row.get('sex', '').lower() if row.get('sex') else 'unknown',
     }
     if row.get('birth_date'):

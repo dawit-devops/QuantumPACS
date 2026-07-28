@@ -291,6 +291,30 @@ class TestFhirDocumentReference:
 _WRITE_USER = User({'id': 1, 'permissions': ['PATIENT_READ', 'PATIENT_WRITE', 'DICOMWEB_READ', 'FILE_READ']})
 
 
+class TestFhirPatientNameParsing:
+    def test_patient_resource_splits_name_on_caret(self):
+        from api.fhir import _patient_resource
+        row = {
+            'patient_id': 'PID001', 'name': 'Smith^John^Q^Jr',
+            'birth_date': '19800101', 'sex': 'M', 'meta': None,
+        }
+        resource = _patient_resource(row)
+        name = resource['name'][0]
+        assert name['family'] == 'Smith'
+        assert name['given'] == ['John']
+
+    def test_patient_resource_no_caret_uses_full_as_family(self):
+        from api.fhir import _patient_resource
+        row = {
+            'patient_id': 'PID002', 'name': 'SingleName',
+            'birth_date': '19900215', 'sex': 'F', 'meta': None,
+        }
+        resource = _patient_resource(row)
+        name = resource['name'][0]
+        assert name['family'] == 'SingleName'
+        assert name['given'] == []
+
+
 class TestFhirPatientWrite:
     def test_create_patient_success(self):
         mock_conn = MagicMock()
