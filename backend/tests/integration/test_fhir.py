@@ -161,6 +161,21 @@ def _study_row():
     }
 
 
+class TestFhirImagingStudyEndpoint:
+    def test_imaging_study_includes_endpoint(self):
+        from api.fhir import _imagingstudy_resource
+        study = {
+            'study_id': 'STU001', 'study_instance_uid': '1.2.3.4.5',
+            'patient_id': 1, 'description': 'Chest CT',
+            'accession_number': 'ACC001', '_patient_logical_id': 'PID001',
+            '_series': [],
+        }
+        resource = _imagingstudy_resource(study)
+        assert 'endpoint' in resource
+        assert len(resource['endpoint']) > 0
+        assert 'dicomweb' in resource['endpoint'][0]['reference']
+
+
 class TestFhirImagingStudy:
     def test_read_study_found(self):
         mock_conn = MagicMock()

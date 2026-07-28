@@ -78,12 +78,14 @@ async def _patient_logical_id(conn, patient_db_id):
 
 
 def _imagingstudy_resource(study) -> dict:
+    dicomweb_base = BASE_URL.replace('/fhir', '/dicomweb')
     resource = {
         'resourceType': 'ImagingStudy',
         'id': study.get('study_instance_uid') or study['study_id'],
         'identifier': [{'value': study['study_id']}],
         'status': 'available',
         'subject': {'reference': f'Patient/{study["_patient_logical_id"]}'},
+        'endpoint': [{'reference': dicomweb_base}],
     }
     if study.get('description'):
         resource['description'] = study['description']
