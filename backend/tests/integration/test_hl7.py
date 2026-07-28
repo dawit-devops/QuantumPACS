@@ -636,6 +636,64 @@ class TestHl7OrmHandler:
         assert mock_conn.fetchval.called
         assert mock_conn.fetchval.call_count == 1
 
+class TestHl7HttpEndpoint:
+    def test_post_hl7_message_returns_ack(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-abc")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_patient = MagicMock()
+            mock_patient.fetchval = AsyncMock(return_value=42)
+            mock_patient.insert_or_select = AsyncMock(return_value={'id': 42})
+
+            with patch('services.ingestion.hl7_server.Patient') as mock_pat_cls:
+                mock_pat_cls.return_value = mock_patient
+
+                from api.hl7 import Hl7Receiver
+                from starlette.applications import Starlette
+                from starlette.routing import Route
+                from starlette.testclient import TestClient
+
+                app = Starlette(
+                    routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+                )
+                client = TestClient(app)
+                resp = client.post('/api/hl7', data=SAMPLE_ADT_A01)
+
+        assert resp.status_code == 200
+        assert resp.text == 'ACK'
+
+    def test_post_hl7_invalid_message_returns_err(self):
+        from api.hl7 import Hl7Receiver
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        app = Starlette(
+            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+        )
+        client = TestClient(app)
+        resp = client.post('/api/hl7', data='NOT VALID HL7')
+        assert resp.status_code == 200
+        assert 'ERR' in resp.text or 'NACK' in resp.text
+
+    def test_get_returns_method_not_allowed(self):
+        from api.hl7 import Hl7Receiver
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        app = Starlette(
+            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+        )
+        client = TestClient(app)
+        resp = client.get('/api/hl7')
+        assert resp.status_code == 405
+
+
 class TestHl7Audit:
     @pytest.mark.asyncio
     async def test_store_hl7_message_creates_record(self):

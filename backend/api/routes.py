@@ -29,6 +29,7 @@ from api.fhir import (
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
+from api.hl7 import Hl7Receiver
 from api.worklist import WorklistHandler, WorklistEntryHandler
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
@@ -101,6 +102,7 @@ routes = [
     Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
     Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
     Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
+    Route('/hl7', endpoint=Hl7Receiver, methods=['POST']),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/routing', endpoint=RoutingHandler),
