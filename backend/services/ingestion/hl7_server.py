@@ -237,6 +237,7 @@ async def handle_adt_message(parsed: dict) -> bool:
             'patient_name': parsed.get('patient_name', ''),
             'patient_birth_date': parsed.get('birth_date', ''),
             'patient_sex': parsed.get('sex', ''),
+            'sending_facility': parsed.get('sending_facility', ''),
         }
         return await _upsert_patient(data)
 
@@ -264,8 +265,12 @@ async def _upsert_patient(data: dict) -> bool:
             await p.insert_or_select(data)
             pid = data.get('patient_id', '')
             if pid:
+                facility = data.get('sending_facility', '')
+                meta_updates = '"sync_source": "hl7"'
+                if facility:
+                    meta_updates += f', "tenant_id": "{facility}"'
                 await conn.execute(
-                    "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{sync_source}', '\"hl7\"') WHERE patient_id = $1",
+                    f"UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{{}}'), '{{}}', '{{{meta_updates}}}') WHERE patient_id = $1",
                     pid,
                 )
         return True

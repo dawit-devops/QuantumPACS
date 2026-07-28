@@ -750,6 +750,23 @@ class TestHl7Audit:
         assert mock_conn.fetchval.called
 
     @pytest.mark.asyncio
+    async def test_adt_a01_with_sending_facility_tags_tenant(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import default_handler
+            result = await default_handler(SAMPLE_ADT_A01.encode('utf-8'))
+
+        assert result == b'ACK'
+        execute_calls = [c for c in mock_conn.execute.call_args_list]
+        tenant_calls = [c for c in execute_calls if 'tenant_id' in str(c) or 'SENDING_FACILITY' in str(c)]
+        assert len(tenant_calls) > 0
+
+    @pytest.mark.asyncio
     async def test_upsert_patient_tags_sync_source(self):
         mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=42)
