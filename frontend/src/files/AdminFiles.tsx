@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Button, Modal, Row, Col } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { API_URL } from '../config';
+import { getAccessToken } from '../helpers';
 import './AdminFiles.css';
 
 export function AdminFiles(props: any) {
@@ -40,7 +41,7 @@ export function AdminFiles(props: any) {
             multiple={true}
             action={API_URL + '/files/upload'}
             headers={{
-              'X-Auth-Pacs': localStorage.getItem('token') || '',
+              'X-Auth-Pacs': getAccessToken() || '',
             }}
             onChange={onChange as any}
             fileList={fileList}
@@ -54,7 +55,7 @@ export function AdminFiles(props: any) {
           <Upload
             action={API_URL + '/files/upload'}
             headers={{
-              'X-Auth-Pacs': localStorage.getItem('token') || '',
+              'X-Auth-Pacs': getAccessToken() || '',
             }}
             onChange={onChange as any}
             fileList={fileList}

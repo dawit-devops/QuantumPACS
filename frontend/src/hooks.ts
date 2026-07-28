@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { LOADING_DELAY, API_URL } from './config';
-import { handleResponse } from './helpers';
+import { handleResponse, getAccessToken, getRefreshToken, setTokens, tryRefreshToken } from './helpers';
 import { navigate } from './navigator';
 
 async function fetchWithRetry(url: string, options: any, retries = 3): Promise<Response> {
@@ -14,6 +14,13 @@ async function fetchWithRetry(url: string, options: any, retries = 3): Promise<R
     }
   }
   return fetch(url, options);
+}
+
+function addAuthHeader(headers: Headers): void {
+  const token = getAccessToken();
+  if (token) {
+    headers.set('X-Auth-Pacs', token);
+  }
 }
 
 export function useFetch(url: string, options: any = {}) {
@@ -49,20 +56,36 @@ export function useFetch(url: string, options: any = {}) {
     options.headers = new Headers({
       'Content-Type': 'application/json',
     });
+    addAuthHeader(options.headers);
     controller.current = new AbortController();
     options.signal = controller.current.signal;
-    try {
+
+    const doFetch = async (): Promise<any> => {
       const resp = await fetchWithRetry(url, Object.assign({}, options, execOptions));
-      const data = await handleResponse(resp);
-      setData(data);
+      return await handleResponse(resp);
+    };
+
+    try {
+      const result = await doFetch();
+      setData(result);
       finish();
     }
     catch (error: any) {
       if (error.error === 401) {
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          addAuthHeader(options.headers);
+          try {
+            const result = await doFetch();
+            setData(result);
+            finish();
+            return;
+          } catch {
+          }
+        }
         if (options.unauthorized) {
           options.unauthorized();
-        }
-        else {
+        } else {
           navigate('/login');
         }
       }

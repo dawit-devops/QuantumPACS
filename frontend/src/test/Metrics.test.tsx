@@ -41,10 +41,11 @@ describe('Metrics', () => {
     vi.clearAllMocks();
   });
 
-  it('renders loading spinner initially', () => {
+  it('renders skeleton while loading', () => {
     mockRequest.mockReturnValue(new Promise(() => {}));
     renderWithAuth(<Metrics />);
-    expect(screen.getByTestId('metrics-loading')).toBeInTheDocument();
+
+    expect(screen.getByTestId('metrics-skeleton')).toBeInTheDocument();
   });
 
   it('renders stat cards after data loads', async () => {
@@ -110,5 +111,26 @@ describe('Metrics', () => {
     expect(screen.getByText('Database')).toBeInTheDocument();
     expect(screen.getByText('DICOM Listener')).toBeInTheDocument();
     expect(screen.getByText('DEGRADED')).toBeInTheDocument();
+  });
+
+  it('renders component latency chart', async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === 'v2/health') return Promise.resolve({
+        status: 'ok',
+        components: {
+          database: { status: 'ok', latency_ms: 2 },
+          elasticsearch: { status: 'degraded', latency_ms: 500 },
+        },
+      });
+      return Promise.resolve(mockData);
+    });
+    renderWithAuth(<Metrics />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Component Latency')).toBeInTheDocument();
+    });
+
+    const canvases = document.querySelectorAll('canvas');
+    expect(canvases.length).toBeGreaterThanOrEqual(2);
   });
 });

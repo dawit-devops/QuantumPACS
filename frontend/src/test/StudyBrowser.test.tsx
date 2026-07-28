@@ -13,7 +13,7 @@ function mockDicomJsonResponse(data: any) {
 describe('StudyBrowser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem('token', 'test');
+    localStorage.setItem('access_token', 'test');
   });
 
   it('renders search input and buttons', () => {

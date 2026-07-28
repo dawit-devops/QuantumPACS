@@ -8,6 +8,8 @@ import { init } from './ws';
 import { setNavigator } from './navigator';
 import { theme } from './common/theme';
 import { AuthProvider } from './auth/AuthContext';
+import { ErrorBoundary } from './common/ErrorBoundary';
+import { renderEmpty } from './common/EmptyState';
 import ProtectedRoute from './auth/ProtectedRoute';
 
 const Login = React.lazy(() => import('./login/Login'));
@@ -41,10 +43,11 @@ function App() {
   }, []);
 
   return (
-    <ConfigProvider theme={theme}>
+    <ConfigProvider theme={theme} renderEmpty={renderEmpty}>
       <BrowserRouter>
         <AuthProvider>
           <NavigatorSetter />
+          <ErrorBoundary>
           <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>}>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -61,6 +64,7 @@ function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </ConfigProvider>

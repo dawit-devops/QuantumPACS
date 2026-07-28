@@ -41,6 +41,42 @@ async function fetchWithRetry(url: string, options: RequestOptions, retries = 3)
   return fetch(url, options);
 }
 
+export function getAccessToken(): string | null {
+  return localStorage.getItem('access_token');
+}
+
+export function getRefreshToken(): string | null {
+  return localStorage.getItem('refresh_token');
+}
+
+export function setTokens(access: string, refresh: string): void {
+  localStorage.setItem('access_token', access);
+  localStorage.setItem('refresh_token', refresh);
+}
+
+export function clearTokens(): void {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+}
+
+export async function tryRefreshToken(): Promise<boolean> {
+  const token = getRefreshToken();
+  if (!token) return false;
+  try {
+    const resp = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: token }),
+    });
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    setTokens(data.access_token, data.refresh_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const request = async (url: string, options: RequestOptions = {}): Promise<any> => {
   if (!url.startsWith('http')) {
     url = `${API_URL}/${url}`;
@@ -48,6 +84,10 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
   options.headers = new Headers({
     'Content-Type': 'application/json',
   });
+  const token = getAccessToken();
+  if (token) {
+    options.headers.set('X-Auth-Pacs', token);
+  }
   if (options.data) {
     options.method = 'POST';
     options.body = JSON.stringify(options.data);
@@ -57,15 +97,28 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
     url = `${url}?${encodeQuery(options.query)}`;
     delete options.query;
   }
-  try {
+  const exec = async (): Promise<any> => {
     const resp = await fetchWithRetry(url, options);
     return await handleResponse(resp);
+  };
+  try {
+    return await exec();
   } catch (error: any) {
     if (error.error === 401) {
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        const newToken = getAccessToken();
+        if (newToken) {
+          options.headers.set('X-Auth-Pacs', newToken);
+        }
+        try {
+          return await exec();
+        } catch {
+        }
+      }
       if (options.unauthorized) {
         options.unauthorized();
-      }
-      else {
+      } else {
         navigate('/login');
       }
     }

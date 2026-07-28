@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Card, Col, Row, Statistic, Table, Spin, message, Tag } from 'antd';
+import { Layout, Card, Col, Row, Statistic, Table, message, Tag } from 'antd';
 import { DatabaseOutlined, TeamOutlined, FileOutlined, HddOutlined, FolderOutlined, ExperimentOutlined, CheckCircleOutlined, WarningOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { Bar, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
 import './Metrics.css';
+import { MetricsSkeleton } from './MetricsSkeleton';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -50,11 +51,7 @@ function Metrics() {
   }, []);
 
   if (loading) {
-    return (
-      <Content style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Spin size="large" data-testid="metrics-loading" />
-      </Content>
-    );
+    return <MetricsSkeleton />;
   }
 
   const totals = data?.totals || {};
@@ -122,6 +119,33 @@ function Metrics() {
         <Col xs={24} md={16}>
           <Card title="Modality Distribution">
             <Bar data={modalityChartData} options={CHART_OPTIONS} />
+          </Card>
+          <Card title="Component Latency" style={{ marginTop: 16 }}>
+            {Object.entries(components).length > 0 ? (
+              <Bar
+                data={{
+                  labels: Object.keys(components).map(labelName),
+                  datasets: [{
+                    label: 'Latency (ms)',
+                    data: Object.values(components).map((c: any) => c.latency_ms || 0),
+                    backgroundColor: Object.values(components).map((c: any) => {
+                      if (c.status === 'ok') return '#52c41a';
+                      if (c.status === 'degraded') return '#faad14';
+                      return '#ff4d4f';
+                    }),
+                  }],
+                }}
+                options={{
+                  ...CHART_OPTIONS,
+                  indexAxis: 'y',
+                  scales: {
+                    x: { title: { display: true, text: 'ms' } },
+                  },
+                }}
+              />
+            ) : (
+              <Tag color="green">OK</Tag>
+            )}
           </Card>
         </Col>
       </Row>
