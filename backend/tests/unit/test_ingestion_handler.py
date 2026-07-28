@@ -30,14 +30,14 @@ class FakeStorageService:
         self.stored = []
         self.deleted = []
 
-    async def store(self, path, data):
-        self.stored.append((path, data))
+    async def store(self, file_data, data):
+        self.stored.append((file_data, data))
         return True
-    async def fetch(self, path): return None
-    async def delete(self, path):
-        self.deleted.append(path)
+    async def fetch(self, file_data): return None
+    async def delete(self, file_data):
+        self.deleted.append(file_data)
         return True
-    async def exists(self, path): return True
+    async def exists(self, file_data): return True
 
 
 class FakeSearchService:
@@ -73,7 +73,7 @@ class TestIngestionHandler:
         assert len(meta.added) == 1
         assert meta.added[0] == data
         assert len(storage.stored) == 1
-        assert storage.stored[0] == ('/tmp/test.dcm', b'pixel')
+        assert storage.stored[0] == (data, b'pixel')
         assert len(search.indexed) == 1
         assert search.indexed[0] == data
 
@@ -99,7 +99,7 @@ class TestIngestionHandler:
         success = await handler.handle(EVENT_DICOM_DELETE, data)
         assert success is True
         assert search.deleted_ids == ['f999']
-        assert storage.deleted == ['f999']
+        assert storage.deleted == [{'file_id': 'f999'}]
 
     async def test_handler_logs_and_returns_false_on_error(self, caplog):
         class BrokenMeta:

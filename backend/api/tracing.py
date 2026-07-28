@@ -1,24 +1,65 @@
 from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+)
 
 from config import config
 
 
-def setup_tracing():
-    endpoint = config.get('otel_exporter_otlp_endpoint', '')
+def _build_resource() -> Resource:
     service_name = config.get('otel_service_name', 'quantumpacs-backend')
-    provider = TracerProvider()
+    deployment_env = config.get('otel_deployment_environment', 'development')
+    return Resource.create({
+        'service.name': service_name,
+        'deployment.environment': deployment_env,
+    })
+
+
+def _build_exporter():
+    endpoint = config.get('otel_exporter_otlp_endpoint', '')
     if endpoint:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-            processor = SimpleSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+            return OTLPSpanExporter(endpoint=endpoint)
         except Exception:
-            processor = SimpleSpanProcessor(ConsoleSpanExporter())
-    else:
-        processor = SimpleSpanProcessor(ConsoleSpanExporter())
+            return ConsoleSpanExporter()
+    return ConsoleSpanExporter()
+
+
+def _build_processor(exporter):
+    use_batch = config.get('otel_use_batch_processor', 'true').lower() != 'false'
+    if not use_batch:
+        return SimpleSpanProcessor(exporter)
+    return BatchSpanProcessor(
+        exporter,
+        schedule_delay_millis=int(config.get('otel_bsp_schedule_delay', '5000')),
+        max_queue_size=int(config.get('otel_bsp_max_queue_size', '2048')),
+        max_export_batch_size=int(config.get('otel_bsp_max_export_batch_size', '512')),
+    )
+
+
+def setup_tracing():
+    resource = _build_resource()
+    provider = TracerProvider(resource=resource)
+    exporter = _build_exporter()
+    processor = _build_processor(exporter)
     provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
+
+
+def shutdown_tracing():
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, 'shutdown'):
+        try:
+            provider.shutdown()
+        except Exception:
+            pass
 
 
 def get_tracer(name: str = 'quantumpacs'):
@@ -68,7 +109,12 @@ class _TracedConnection:
         with self._tracer.start_as_current_span('db.query') as span:
             span.set_attribute('db.statement', query)
             span.set_attribute('db.system', 'postgresql')
-            result = await getattr(self._conn, method)(query, *args, **kwargs)
+            try:
+                result = await getattr(self._conn, method)(query, *args, **kwargs)
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                raise
         elapsed = time.monotonic() - start
         db_query_duration_seconds.labels(operation=method.upper()).observe(elapsed)
         return result

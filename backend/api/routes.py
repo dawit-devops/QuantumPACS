@@ -46,7 +46,8 @@ async def openapi_spec(request):
     return FileResponse(os.path.join(DIR, '..', 'static', 'openapi.json'), media_type='application/json')
 
 
-routes = [
+_V1_ROUTES = [
+    Route('/health', endpoint=health_endpoint),
     Route('/v2/health', endpoint=health_endpoint),
     Route('/v2/metrics', endpoint=metrics_endpoint),
     Route('/docs', endpoint=docs_page),
@@ -60,7 +61,7 @@ routes = [
     Route('/oauth/login', endpoint=oauth_login),
     Route('/oauth/callback', endpoint=oauth_callback),
     Route('/.well-known/openid-configuration', endpoint=oidc_discovery),
-    Route('/oauth/token', endpoint=oidc_discovery),  # placeholder — returns discovery info
+    Route('/oauth/token', endpoint=oidc_discovery),
     Route('/change_password', endpoint=ChangePassword),
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),
@@ -107,8 +108,33 @@ routes = [
     Route('/routing/{id}', endpoint=RoutingRuleHandler),
     Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
     Route('/ws_token', endpoint=WSToken),
-    WebSocketRoute('/ws', endpoint=WebsocketHandler)
+    WebSocketRoute('/ws', endpoint=WebsocketHandler),
 ]
+
+
+def _v2_alias_path(path: str) -> str:
+    if path.startswith('/v2/'):
+        return path
+    return '/v2' + path
+
+
+def _build_v2_aliases(v1_routes):
+    aliases = []
+    for r in v1_routes:
+        if isinstance(r, (Route, WebSocketRoute)):
+            if (
+                r.path.startswith('/v2/')
+                or r.path.startswith('/docs')
+                or r.path.startswith('/api/v2/')
+            ):
+                continue
+            aliases.append(type(r)(_v2_alias_path(r.path), endpoint=r.endpoint))
+    return aliases
+
+
+_V2_ALIASES = _build_v2_aliases(_V1_ROUTES)
+
+routes = _V1_ROUTES + _V2_ALIASES
 routes = [
     Mount('/api', app=Router(routes)),
 ]

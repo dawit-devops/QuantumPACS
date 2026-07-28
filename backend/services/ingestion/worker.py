@@ -3,18 +3,19 @@ import json
 import signal
 from typing import Any, Optional
 
+from config import config
 from log import get_logger
 from services.redis_streams import StreamConsumer, StreamProducer
 from .handler import IngestionHandler
 
 log = get_logger(__name__)
 
-INGESTION_STREAM = 'events:ingestion'
-INGESTION_GROUP = 'ingestion-service'
-INGESTION_CONSUMER = 'worker-1'
-POLL_COUNT = 10
-POLL_BLOCK_MS = 5000
-MAX_RETRIES = 3
+INGESTION_STREAM = config.get('ingestion_stream', 'events:ingestion')
+INGESTION_GROUP = config.get('ingestion_group', 'ingestion-service')
+INGESTION_CONSUMER = config.get('ingestion_consumer', 'worker-1')
+POLL_COUNT = int(config.get('ingestion_poll_count', '10'))
+POLL_BLOCK_MS = int(config.get('ingestion_poll_block_ms', '5000'))
+MAX_RETRIES = int(config.get('ingestion_max_retries', '3'))
 
 
 class IngestionWorker:

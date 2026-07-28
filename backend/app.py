@@ -18,10 +18,18 @@ from api.service_middleware import ServiceMiddleware
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, record_request
+from api.tracing_middleware import TracingMiddleware
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
 from log import setup_logging, get_logger, tenant_var, user_id_var
-from services.interfaces import ServiceRegistry
+from services.interfaces import (
+    AuthService,
+    MetadataService,
+    NotificationService,
+    SearchService,
+    ServiceRegistry,
+    StorageService,
+)
 
 setup_logging()
 log = get_logger(__name__)
@@ -95,14 +103,44 @@ async def lifespan(app):
     assert_production_secret()
     registry = ServiceRegistry()
     app.state.services = registry
-    await lifecycle.setup()
+    await lifecycle.setup(services=registry)
+    await _register_services(registry)
     yield
     await lifecycle.teardown()
+
+
+async def _register_services(registry):
+    from db.conn import get_conn
+    from db.replica import Replica
+    from es import es as es_mod
+    from services.auth.db_auth_service import DatabaseAuthService
+    from services.metadata.pg_metadata import PgMetadataService
+    from services.notification.redis_notification_service import RedisNotificationService
+    from services.search.es_search_adapter import EsSearchServiceAdapter
+    from services.storage.local_storage_adapter import StorageServiceAdapter
+    from storage.storage import Storage
+
+    registry.register(MetadataService, PgMetadataService(conn_provider=get_conn))
+    registry.register(SearchService, EsSearchServiceAdapter(es_module=es_mod))
+    registry.register(AuthService, DatabaseAuthService(conn_provider=get_conn))
+    registry.register(NotificationService, RedisNotificationService())
+
+    try:
+        async with get_conn() as conn:
+            replica = await Replica(conn).master()
+        if replica:
+            storage = await Storage.get(replica)
+            registry.register(StorageService, StorageServiceAdapter(storage))
+        else:
+            log.warning('No master replica configured; StorageService not registered')
+    except Exception:
+        log.warning('Failed to register StorageService', exc_info=True)
 
 
 app = Starlette(
     routes=routes,
     middleware=[
+        Middleware(TracingMiddleware),
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TenantMiddleware),
         Middleware(FhirAuditMiddleware),

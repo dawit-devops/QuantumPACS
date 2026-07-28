@@ -12,6 +12,11 @@ from log import get_logger
 from api.redis_client import get_client as get_redis
 from api.redis_client import is_available as redis_available
 from api.telemetry import set_stream_monitor
+from services.interfaces import (
+    MetadataService as _MetadataServiceProtocol,
+    SearchService as _SearchServiceProtocol,
+    StorageService as _StorageServiceProtocol,
+)
 from services.pg_notify_bridge import PgNotifyBridge
 from services.stream_monitor import StreamMonitor
 
@@ -20,6 +25,8 @@ log = get_logger(__name__)
 _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
 _bridge: PgNotifyBridge | None = None
 _monitor: StreamMonitor | None = None
+_ingestion_worker = None
+_ingestion_task: asyncio.Task | None = None
 _dicom_scp = None
 _mllp_task: asyncio.Task | None = None
 
@@ -90,7 +97,7 @@ def _stop_mllp():
         log.info('MLLP server stopped')
 
 
-async def setup(db_pool_size=None, sync_db=False):
+async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
 
@@ -123,7 +130,7 @@ async def setup(db_pool_size=None, sync_db=False):
     log.info('Connected to database')
     await get_redis()
 
-    global _bridge, _monitor
+    global _bridge, _monitor, _ingestion_worker, _ingestion_task
     if redis_available():
         try:
             redis = await get_redis()
@@ -140,10 +147,24 @@ async def setup(db_pool_size=None, sync_db=False):
             set_stream_monitor(_monitor)
             await _monitor.start()
             log.info('Stream monitor started')
+
+            if services is not None:
+                from services.ingestion import IngestionHandler, IngestionWorker
+                handler = IngestionHandler(
+                    metadata=services.get_or_none(_MetadataServiceProtocol),
+                    storage=services.get_or_none(_StorageServiceProtocol),
+                    search=services.get_or_none(_SearchServiceProtocol),
+                )
+                _ingestion_worker = IngestionWorker(redis=redis, handler=handler)
+                await _ingestion_worker.start()
+                _ingestion_task = asyncio.create_task(_ingestion_worker.run())
+                log.info('Ingestion worker started')
         except Exception:
-            log.warning('Failed to start bridge/monitor', exc_info=True)
+            log.warning('Failed to start bridge/monitor/worker', exc_info=True)
             _bridge = None
             _monitor = None
+            _ingestion_worker = None
+            _ingestion_task = None
 
     _start_dicom()
     await _start_mllp()
@@ -163,9 +184,22 @@ async def setup(db_pool_size=None, sync_db=False):
 
 
 async def teardown():
-    global _bridge, _monitor
+    global _bridge, _monitor, _ingestion_worker, _ingestion_task
     _stop_dicom()
     _stop_mllp()
+    if _ingestion_worker is not None:
+        try:
+            _ingestion_worker._shutdown.set()
+        except Exception:
+            pass
+    if _ingestion_task is not None:
+        try:
+            _ingestion_task.cancel()
+            await _ingestion_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        _ingestion_task = None
+    _ingestion_worker = None
     if _monitor is not None:
         try:
             await _monitor.stop()
@@ -183,4 +217,11 @@ async def teardown():
     await es.teardown()
     from api.redis_client import close_client as close_redis
     await close_redis()
+
+    try:
+        from api.tracing import shutdown_tracing
+        shutdown_tracing()
+    except Exception:
+        log.warning('Tracing shutdown error', exc_info=True)
+
     log.info('Shutdown complete')

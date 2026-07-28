@@ -37,7 +37,18 @@ default_config = {
     'hl7_mllp_allowed_ips': '',
     'otel_exporter_otlp_endpoint': '',
     'otel_service_name': 'quantumpacs-backend',
+    'otel_deployment_environment': 'development',
+    'otel_sampler': 'always_on',
+    'otel_bsp_schedule_delay': '5000',
+    'otel_bsp_max_queue_size': '2048',
+    'otel_bsp_max_export_batch_size': '512',
     'prometheus_enabled': 'true',
+    'ingestion_stream': 'events:ingestion',
+    'ingestion_group': 'ingestion-service',
+    'ingestion_consumer': 'worker-1',
+    'ingestion_poll_count': '10',
+    'ingestion_poll_block_ms': '5000',
+    'ingestion_max_retries': '3',
 }
 
 
