@@ -169,6 +169,23 @@ class TestErrorLogging:
         assert data['components']['database']['status'] == 'error'
         assert 'DB down' in data['components']['database'].get('message', '')
 
+    def test_500_logs_structured_json_with_error_stack(self, capsys):
+        from app import CustomMiddleware
+        async def _crash(request):
+            raise RuntimeError('test explosion')
+
+        app = Starlette(
+            routes=[Route('/crash', endpoint=_crash)],
+            middleware=[Middleware(CustomMiddleware)],
+        )
+        client = TestClient(app)
+        resp = client.get('/crash')
+        assert resp.status_code == 500
+        out, _ = capsys.readouterr()
+        assert 'test explosion' in out
+        assert 'error' in out
+        assert '"stack"' in out
+
     def test_health_down_redis_reflects_state(self):
         from api.telemetry import health_endpoint
         app = Starlette(routes=[Route('/v2/health', endpoint=health_endpoint)])
@@ -310,3 +327,23 @@ class TestCStoreMetrics:
         resp = client.get('/v2/metrics')
         assert 'dicom_cstore_throughput_bytes' in resp.text
         assert '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[0] or '1024.0' in resp.text.split('dicom_cstore_throughput_bytes')[1] or '1024.0' in resp.text
+
+
+
+class TestDicomWebMetrics:
+    def test_dicomweb_requests_total_defined_in_metrics(self):
+        from api.telemetry import dicomweb_requests_total
+
+        dicomweb_requests_total.labels(method='GET', resource='studies').inc()
+
+        client = TestClient(_make_metrics_app())
+        resp = client.get('/v2/metrics')
+        assert 'dicomweb_requests_total' in resp.text
+        assert 'studies' in resp.text
+
+
+class TestInProgressGauge:
+    def test_http_requests_in_progress_defined_in_metrics(self):
+        client = TestClient(_make_metrics_app())
+        resp = client.get('/v2/metrics')
+        assert 'http_requests_in_progress' in resp.text

@@ -72,6 +72,10 @@ redis_stream_lag_seconds = Gauge(
 dicom_cstore_throughput_bytes = Counter(
     'dicom_cstore_throughput_bytes', 'Total bytes received via DICOM C-STORE',
 )
+dicomweb_requests_total = Counter(
+    'dicomweb_requests_total', 'Total DICOMweb requests',
+    ['method', 'resource'],
+)
 
 
 _legacy_metrics = {
@@ -85,6 +89,9 @@ _legacy_metrics = {
 def record_request(method, path, status_code, elapsed):
     http_requests_total.labels(method=method, path=path, status_code=str(status_code)).inc()
     http_request_duration_seconds.labels(method=method, path=path).observe(elapsed)
+    if '/dicomweb/' in path:
+        resource = path.split('/dicomweb/')[1].split('/')[0]
+        dicomweb_requests_total.labels(method=method, resource=resource).inc()
     _legacy_metrics['requests_total'][(method, str(status_code))] += 1
     _legacy_metrics['latency_sum'] += elapsed
     _legacy_metrics['latency_count'] += 1
