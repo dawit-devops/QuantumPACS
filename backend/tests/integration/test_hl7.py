@@ -38,6 +38,34 @@ SAMPLE_ADT_A05 = (
     'PID|1||PID003||Brown^Bob||19750320|M\r'
 )
 
+SAMPLE_ADT_A02 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A02|MSG006|P|2.5\r'
+    'EVN|A02|202607251030\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'PV1|1|I|WARD-A^ROOM-101^^^FACILITY|||||||||||||||||IN|||SUR|||||||||||||||||||||||||202607251030\r'
+)
+
+SAMPLE_ADT_A06 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A06|MSG007|P|2.5\r'
+    'EVN|A06|202607251030\r'
+    'PID|1||PID002||Doe^Jane||19900215|F\r'
+    'MRG|PID001^^^SENDING_FACILITY^MR\r'
+)
+
+SAMPLE_ADT_A07 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A07|MSG008|P|2.5\r'
+    'EVN|A07|202607251030\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'MRG|PID002^^^SENDING_FACILITY^MR\r'
+)
+
+SAMPLE_ADT_A40 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ADT^A40|MSG009|P|2.5\r'
+    'EVN|A40|202607251030\r'
+    'PID|1||PID003||Brown^Bob||19750320|M\r'
+    'MRG|PID001^^^SENDING_FACILITY^MR\r'
+)
+
 SAMPLE_ORM_O01 = (
     'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ORM^O01|MSG004|P|2.5\r'
     'PID|1||PID001||Smith^John||19800101|M\r'
@@ -267,6 +295,41 @@ class TestHl7MessageParsing:
         assert result['modality'] == 'CT'
         assert result['station_ae_title'] == 'CT_SCANNER'
 
+    def test_parse_adt_a02_extracts_patient_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A02)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A02'
+        assert result['patient_id'] == 'PID001'
+        assert result['patient_name'] == 'Smith^John'
+
+    def test_parse_adt_a06_extracts_merge_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A06)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A06'
+        assert result['patient_id'] == 'PID002'
+        assert result['surviving_patient_id'] == 'PID002'
+        assert result['merged_patient_id'] == 'PID001'
+
+    def test_parse_adt_a07_extracts_undo_merge_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A07)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A07'
+        assert result['patient_id'] == 'PID001'
+        assert result['surviving_patient_id'] == 'PID001'
+        assert result['merged_patient_id'] == 'PID002'
+
+    def test_parse_adt_a40_extracts_merge_list_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ADT_A40)
+        assert result['message_type'] == 'ADT'
+        assert result['event_type'] == 'A40'
+        assert result['patient_id'] == 'PID003'
+        assert result['surviving_patient_id'] == 'PID003'
+        assert result['merged_patient_id'] == 'PID001'
+
     def test_parse_invalid_hl7_raises(self):
         from services.ingestion.hl7_server import parse_hl7_message
         result = parse_hl7_message(b'not even close')
@@ -402,6 +465,105 @@ class TestHl7PatientHandler:
         })
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_adt_a02_transfer_updates_patient(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A02',
+                'patient_id': 'PID001',
+                'patient_name': 'Smith^John',
+                'birth_date': '19800101',
+                'sex': 'M',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a06_merge_patients(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetch = AsyncMock(return_value=[
+            {'id': 10, 'patient_id': 'PID002', 'study_instance_uid': '1.2.3'},
+        ])
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A06',
+                'patient_id': 'PID002',
+                'patient_name': 'Doe^Jane',
+                'merged_patient_id': 'PID001',
+                'surviving_patient_id': 'PID002',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a07_undo_merge(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A07',
+                'patient_id': 'PID001',
+                'patient_name': 'Smith^John',
+                'merged_patient_id': 'PID002',
+                'surviving_patient_id': 'PID001',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a40_merge_patient_list(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetch = AsyncMock(return_value=[])
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import handle_adt_message
+            result = await handle_adt_message({
+                'message_type': 'ADT',
+                'event_type': 'A40',
+                'patient_id': 'PID003',
+                'patient_name': 'Brown^Bob',
+                'merged_patient_id': 'PID001',
+                'surviving_patient_id': 'PID003',
+            })
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_adt_a06_missing_merge_id_returns_false(self):
+        from services.ingestion.hl7_server import handle_adt_message
+        result = await handle_adt_message({
+            'message_type': 'ADT',
+            'event_type': 'A06',
+            'patient_id': 'PID002',
+            'merged_patient_id': '',
+        })
+        assert result is False
+
 
 class TestHl7OrmHandler:
     @pytest.mark.asyncio
@@ -474,6 +636,64 @@ class TestHl7OrmHandler:
         assert mock_conn.fetchval.called
         assert mock_conn.fetchval.call_count == 1
 
+class TestHl7HttpEndpoint:
+    def test_post_hl7_message_returns_ack(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-abc")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_patient = MagicMock()
+            mock_patient.fetchval = AsyncMock(return_value=42)
+            mock_patient.insert_or_select = AsyncMock(return_value={'id': 42})
+
+            with patch('services.ingestion.hl7_server.Patient') as mock_pat_cls:
+                mock_pat_cls.return_value = mock_patient
+
+                from api.hl7 import Hl7Receiver
+                from starlette.applications import Starlette
+                from starlette.routing import Route
+                from starlette.testclient import TestClient
+
+                app = Starlette(
+                    routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+                )
+                client = TestClient(app)
+                resp = client.post('/api/hl7', data=SAMPLE_ADT_A01)
+
+        assert resp.status_code == 200
+        assert resp.text == 'ACK'
+
+    def test_post_hl7_invalid_message_returns_err(self):
+        from api.hl7 import Hl7Receiver
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        app = Starlette(
+            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+        )
+        client = TestClient(app)
+        resp = client.post('/api/hl7', data='NOT VALID HL7')
+        assert resp.status_code == 200
+        assert 'ERR' in resp.text or 'NACK' in resp.text
+
+    def test_get_returns_method_not_allowed(self):
+        from api.hl7 import Hl7Receiver
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        app = Starlette(
+            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+        )
+        client = TestClient(app)
+        resp = client.get('/api/hl7')
+        assert resp.status_code == 405
+
+
 class TestHl7Audit:
     @pytest.mark.asyncio
     async def test_store_hl7_message_creates_record(self):
@@ -530,6 +750,23 @@ class TestHl7Audit:
         assert mock_conn.fetchval.called
 
     @pytest.mark.asyncio
+    async def test_adt_a01_with_sending_facility_tags_tenant(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=42)
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from services.ingestion.hl7_server import default_handler
+            result = await default_handler(SAMPLE_ADT_A01.encode('utf-8'))
+
+        assert result == b'ACK'
+        execute_calls = [c for c in mock_conn.execute.call_args_list]
+        tenant_calls = [c for c in execute_calls if 'tenant_id' in str(c) or 'SENDING_FACILITY' in str(c)]
+        assert len(tenant_calls) > 0
+
+    @pytest.mark.asyncio
     async def test_upsert_patient_tags_sync_source(self):
         mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=42)
@@ -557,3 +794,34 @@ class TestHl7Audit:
         assert result is True
         execute_calls = [c for c in mock_conn.execute.call_args_list]
         assert any('sync_source' in str(c) for c in execute_calls)
+
+
+@pytest.mark.asyncio
+class TestHl7StructuredLogging:
+    async def test_unknown_adt_event_logs_warning(self, caplog):
+        from services.ingestion.hl7_server import handle_adt_message
+        import logging
+        caplog.set_level(logging.WARNING)
+        result = await handle_adt_message({
+            'message_type': 'ADT',
+            'event_type': 'A99',
+            'patient_id': 'PID001',
+        })
+        assert result is False
+        assert any('Unknown ADT event' in msg for msg in caplog.messages)
+        assert any('A99' in msg for msg in caplog.messages)
+
+    async def test_unknown_message_type_logs_structured(self, caplog):
+        with patch('services.ingestion.hl7_server._store_hl7_message', new=AsyncMock()):
+            from services.ingestion.hl7_server import default_handler
+            import logging
+            caplog.set_level(logging.WARNING)
+            msg = (
+                b'MSH|^~\\&|SENDING|FACILITY|RECV|APP|20250101000000||SIU^S12|MSG001|P|2.5\r'
+                b'SCH|12345||BOOKED|Surgery^\r'
+            )
+            result = await default_handler(msg)
+            assert b'ACK' in result
+            assert any('SIU' in msg for msg in caplog.messages)
+            assert any('S12' in msg for msg in caplog.messages)
+            assert any('MSG001' in msg for msg in caplog.messages)

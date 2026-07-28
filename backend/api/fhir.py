@@ -49,6 +49,9 @@ def _build_bundle(entries, total=None, params=None):
 
 def _patient_resource(row) -> dict:
     meta = row.get('meta') or {}
+    name_parts = (row['name'] or '').split('^')
+    family = name_parts[0] if name_parts else ''
+    given = name_parts[1:2] if len(name_parts) > 1 else []
     resource = {
         'resourceType': 'Patient',
         'id': str(row['patient_id']),
@@ -57,7 +60,7 @@ def _patient_resource(row) -> dict:
             'type': {'coding': [{'system': 'http://hl7.org/fhir/v2/0203', 'code': 'MR'}]},
             'value': row['patient_id'],
         }],
-        'name': [{'family': row['name'], 'given': [row['name']]}],
+        'name': [{'family': family, 'given': given}],
         'gender': row.get('sex', '').lower() if row.get('sex') else 'unknown',
     }
     if row.get('birth_date'):
@@ -75,12 +78,14 @@ async def _patient_logical_id(conn, patient_db_id):
 
 
 def _imagingstudy_resource(study) -> dict:
+    dicomweb_base = BASE_URL.replace('/fhir', '/dicomweb')
     resource = {
         'resourceType': 'ImagingStudy',
         'id': study.get('study_instance_uid') or study['study_id'],
         'identifier': [{'value': study['study_id']}],
         'status': 'available',
         'subject': {'reference': f'Patient/{study["_patient_logical_id"]}'},
+        'endpoint': [{'reference': dicomweb_base}],
     }
     if study.get('description'):
         resource['description'] = study['description']
@@ -175,21 +180,7 @@ class FhirMetadata(HTTPEndpoint):
         return FhirJsonResponse(capability)
 
 
-class FhirPatientRead(HTTPEndpoint):
-    @requires_permission(Permission.PATIENT_READ)
-    async def get(self, request):
-        patient_id = request.path_params.get('id')
-        if not patient_id:
-            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Missing patient ID'}]}, status_code=400)
-        async with get_conn() as conn:
-            p = Patient(conn)
-            row = await p.get_extra(patient_id)
-        if not row:
-            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'not-found', 'diagnostics': f'Patient {patient_id} not found'}]}, status_code=404)
-        return FhirJsonResponse(_patient_resource(row))
-
-
-class FhirPatientSearch(HTTPEndpoint):
+class FhirPatientRoot(HTTPEndpoint):
     @requires_permission(Permission.PATIENT_READ)
     async def get(self, request):
         params = {}
@@ -236,6 +227,130 @@ class FhirPatientSearch(HTTPEndpoint):
         resources = [_patient_resource(r) for r in rows]
         bundle = _build_bundle(resources, len(rows), params)
         return FhirJsonResponse(bundle)
+
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def post(self, request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Invalid JSON body'}]}, status_code=400)
+        patient_id = _extract_identifier(body.get('identifier'))
+        if not patient_id:
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'required', 'diagnostics': 'Patient identifier is required'}]}, status_code=422)
+        patient_name = _parse_fhir_name(body.get('name'))
+        birth_date = (body.get('birthDate') or '')[:10]
+        gender = body.get('gender', '')
+        sex_map = {'male': 'M', 'female': 'F', 'other': 'O', 'unknown': ''}
+        sex = sex_map.get(gender, gender[:1].upper() if gender else '')
+
+        async with get_conn() as conn:
+            from db.patient import Patient as PatientModel
+            p = PatientModel(conn)
+            await p.insert_or_select({
+                'patient_id': patient_id,
+                'patient_name': patient_name,
+                'patient_birth_date': birth_date,
+                'patient_sex': sex,
+            })
+            row = await PatientModel(conn).get_extra(str(
+                await conn.fetchval("SELECT id FROM patients WHERE patient_id = $1", patient_id)
+            ))
+
+        return FhirJsonResponse(_patient_resource(row), status_code=201)
+
+
+class FhirPatientResource(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        patient_id = request.path_params.get('id')
+        if not patient_id:
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Missing patient ID'}]}, status_code=400)
+        async with get_conn() as conn:
+            p = Patient(conn)
+            row = await p.get_extra(patient_id)
+        if not row:
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'not-found', 'diagnostics': f'Patient {patient_id} not found'}]}, status_code=404)
+        return FhirJsonResponse(_patient_resource(row))
+
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def put(self, request):
+        patient_id = request.path_params.get('id')
+        if not patient_id:
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Missing patient ID'}]}, status_code=400)
+        body = await request.json()
+        if not isinstance(body, dict):
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Invalid JSON body'}]}, status_code=400)
+
+        async with get_conn() as conn:
+            existing = await conn.fetchval("SELECT id FROM patients WHERE patient_id = $1", patient_id)
+            if not existing:
+                return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'not-found', 'diagnostics': f'Patient {patient_id} not found'}]}, status_code=404)
+
+            patient_name = _parse_fhir_name(body.get('name'))
+            birth_date = (body.get('birthDate') or '')[:10]
+            gender = body.get('gender', '')
+            sex_map = {'male': 'M', 'female': 'F', 'other': 'O', 'unknown': ''}
+            sex = sex_map.get(gender, gender[:1].upper() if gender else '')
+
+            sets = []
+            vals = []
+            idx = 1
+            if patient_name:
+                sets.append(f"name = ${idx}")
+                vals.append(patient_name)
+                idx += 1
+            if birth_date:
+                sets.append(f"birth_date = ${idx}")
+                vals.append(birth_date)
+                idx += 1
+            if sex:
+                sets.append(f"sex = ${idx}")
+                vals.append(sex)
+                idx += 1
+            if sets:
+                vals.append(patient_id)
+                await conn.execute(f"UPDATE patients SET {', '.join(sets)} WHERE patient_id = ${idx}", *vals)
+
+            row = await Patient(conn).get_extra(patient_id)
+
+        return FhirJsonResponse(_patient_resource(row))
+
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def delete(self, request):
+        patient_id = request.path_params.get('id')
+        if not patient_id:
+            return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'invalid', 'diagnostics': 'Missing patient ID'}]}, status_code=400)
+        async with get_conn() as conn:
+            existing = await conn.fetchval("SELECT id FROM patients WHERE patient_id = $1", patient_id)
+            if not existing:
+                return FhirJsonResponse({'resourceType': 'OperationOutcome', 'issue': [{'severity': 'error', 'code': 'not-found', 'diagnostics': f'Patient {patient_id} not found'}]}, status_code=404)
+            await conn.execute("DELETE FROM patients WHERE patient_id = $1", patient_id)
+        return FhirJsonResponse(None, status_code=204)
+
+
+def _parse_fhir_name(name_list):
+    if not name_list:
+        return ''
+    name = name_list[0]
+    parts = []
+    if name.get('family'):
+        parts.append(name['family'])
+    if name.get('given'):
+        given = name['given']
+        if isinstance(given, list):
+            parts.extend(given)
+        else:
+            parts.append(given)
+    return '^'.join(parts) if parts else ''
+
+
+def _extract_identifier(identifiers):
+    if not identifiers:
+        return ''
+    for id_ in identifiers:
+        val = id_.get('value', '')
+        if val:
+            return val
+    return ''
 
 
 def _apply_last_updated(params, query, table_ref, idx):

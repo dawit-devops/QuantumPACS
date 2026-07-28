@@ -24,11 +24,12 @@ from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.fhir import (
     FhirMetadata,
-    FhirPatientRead, FhirPatientSearch,
+    FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
+from api.hl7 import Hl7Receiver
 from api.worklist import WorklistHandler, WorklistEntryHandler
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
@@ -98,12 +99,13 @@ _V1_ROUTES = [
     Route('/wado', endpoint=DicomWebWadoUri),
     Route('/api/v2/wado', endpoint=DicomWebWadoUri),
     Route('/fhir/metadata', endpoint=FhirMetadata),
-    Route('/fhir/Patient', endpoint=FhirPatientSearch),
-    Route('/fhir/Patient/{id}', endpoint=FhirPatientRead),
+    Route('/fhir/Patient', endpoint=FhirPatientRoot),
+    Route('/fhir/Patient/{id}', endpoint=FhirPatientResource),
     Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch),
     Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
     Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
     Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
+    Route('/hl7', endpoint=Hl7Receiver, methods=['POST']),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/routing', endpoint=RoutingHandler),

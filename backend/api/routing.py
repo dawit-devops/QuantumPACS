@@ -16,9 +16,23 @@ from log import request_id_var
 class RoutingHandler(HTTPEndpoint):
     @requires_permission(Permission.ROUTING_READ)
     async def get(self, request):
+        page = int(request.query_params.get('page', 1))
+        per_page = int(request.query_params.get('per_page', 50))
+        page = max(page, 1)
+        per_page = max(min(per_page, 200), 1)
         async with get_conn() as conn:
-            rules = await RoutingRule(conn).list_all()
-        return ok({'data': rules})
+            rr = RoutingRule(conn)
+            rules = await rr.list_paginated(page, per_page)
+            total = await rr.count()
+        return ok({
+            'data': rules,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page,
+            },
+        })
 
     @requires_permission(Permission.ROUTING_WRITE)
     async def post(self, request):

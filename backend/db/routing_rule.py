@@ -64,6 +64,30 @@ class RoutingRule(Table):
         rows = await self.fetch(q)
         return [dict(r) for r in rows]
 
+    async def count(self, enabled_only=False, tenant_id=None):
+        q = "SELECT COUNT(*) FROM routing_rules"
+        where = []
+        vals = []
+        if enabled_only:
+            where.append("enabled = true")
+        if tenant_id:
+            where.append(f"tenant_id = ${len(vals) + 1}")
+            vals.append(tenant_id)
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        return await self.fetchval(q, *vals)
+
+    async def list_paginated(self, page=1, per_page=50, enabled_only=False, tenant_id=None):
+        q = self.select(self.table.star)
+        if enabled_only:
+            q = q.where(self.table.enabled == True)
+        if tenant_id:
+            q = q.where(self.table.tenant_id == tenant_id)
+        q = q.orderby(self.table.priority)
+        q = q.limit(per_page).offset((page - 1) * per_page)
+        rows = await self.fetch(q)
+        return [dict(r) for r in rows]
+
     async def get_by_id(self, rule_id):
         q = self.select(self.table.star).where(self.table.id == rule_id)
         row = await self.fetchone(q)
