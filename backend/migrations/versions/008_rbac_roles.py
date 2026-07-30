@@ -4,11 +4,24 @@ Revision ID: 008
 Revises: 007
 Create Date: 2026-07-25
 
-Adds:
-- roles table with permissions JSONB
-- users.role_id FK to roles
-- users.oauth_sub, users.groups columns
-- Seeds 5 built-in roles (admin, technologist, radiologist, physician, cashier)
+Why
+---
+Implements Role-Based Access Control (RBAC): creates the roles table with
+JSONB permissions, adds role_id FK and oauth_sub/groups columns to users.
+Seeds 7 built-in roles (super_admin, admin, technologist, radiologist,
+physician, cashier, tenant_admin) with granular permission sets.
+
+Data Migration
+--------------
+Seeds 7 built-in roles on CONFLICT (slug) DO NOTHING. No user data migration.
+
+Rollback
+--------
+Drops columns (groups, oauth_sub, role_id) from users, drops roles table.
+
+References
+----------
+- ADR-008: Role-Based Access Control design
 """
 
 from alembic import op

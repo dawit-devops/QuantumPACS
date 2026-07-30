@@ -4,9 +4,23 @@ Revision ID: 013
 Revises: 012
 Create Date: 2026-07-25
 
-Adds:
-- slug column (unique, used in ?idp=<slug> URL param)
-- default_role column (role slug for JIT-provisioned users)
+Why
+---
+Adds slug (for ?idp=<slug> URL parameter) and default_role (for JIT-provisioned
+user role assignment) columns to oauth_providers for multi-provider routing.
+
+Data Migration
+--------------
+Existing rows without a slug get a generated UUID-based slug; column is then
+set NOT NULL.
+
+Rollback
+--------
+Drops the slug unique index and both columns.
+
+References
+----------
+- ADR-013: OAuth provider multi-IDP routing
 """
 
 from alembic import op

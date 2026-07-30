@@ -4,8 +4,23 @@ Revision ID: 014
 Revises: 013
 Create Date: 2026-07-25
 
-Adds indexed columns on the logs table for multi-tenant audit trail
-and distributed-tracing correlation.
+Why
+---
+Adds tenant, request_id, and trace_id columns to the logs table for multi-tenant
+audit trail isolation and distributed-tracing correlation across services.
+
+Data Migration
+--------------
+None — new columns only.
+
+Rollback
+--------
+Drops indexes and columns.
+
+References
+----------
+- ADR-010: Multi-tenant architecture
+- ADR-014: Distributed tracing design
 """
 
 from alembic import op

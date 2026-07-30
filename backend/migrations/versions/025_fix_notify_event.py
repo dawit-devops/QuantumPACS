@@ -4,9 +4,23 @@ Revision ID: 025
 Revises: 024
 Create Date: 2026-07-28
 
+Why
+---
 Fixes the notify_event() trigger function to use COALESCE on row_to_json(OLD)
-and row_to_json(NEW), preventing NULL values in the payload for INSERT
-and DELETE operations respectively.
+and row_to_json(NEW), preventing NULL values in the payload JSON for INSERT
+and DELETE operations respectively — which caused downstream parsing failures.
+
+Data Migration
+--------------
+None — function-only change. Replaces the existing function in-place.
+
+Rollback
+--------
+Restores the original notify_event() function without COALESCE.
+
+References
+----------
+- GitHub issue: notify_event payload NULL for INSERT/DELETE
 """
 
 from alembic import op

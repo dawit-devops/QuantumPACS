@@ -4,9 +4,24 @@ Revision ID: 030
 Revises: 029
 Create Date: 2026-07-29
 
-Adds:
-- fhir_config table for FHIR module settings (key-value)
-- fhir_clients table for SMART-on-FHIR client registrations
+Why
+---
+Creates FHIR admin infrastructure: fhir_config for module settings (key-value
+for enabled, base_url, publisher, max_search_results, log_retention_days) and
+fhir_clients for SMART-on-FHIR client registrations with OAuth credentials.
+
+Data Migration
+--------------
+Seeds 5 default FHIR config keys on CONFLICT (key) DO NOTHING.
+
+Rollback
+--------
+Drops both tables.
+
+References
+----------
+- SMART-on-FHIR: Client registration specification
+- ADR-030: FHIR admin feature
 """
 
 from alembic import op

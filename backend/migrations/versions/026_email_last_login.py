@@ -4,9 +4,23 @@ Revision ID: 026
 Revises: 025
 Create Date: 2026-07-29
 
-Adds:
-- users.email VARCHAR(255) DEFAULT ''
-- users.last_login TIMESTAMP
+Why
+---
+Adds email VARCHAR(255) and last_login TIMESTAMP to the users table for the
+account profile feature, allowing users to update their email and tracking
+their last successful authentication timestamp.
+
+Data Migration
+--------------
+None — new columns only.
+
+Rollback
+--------
+Drops both columns.
+
+References
+----------
+- ADR-026: User account profile feature
 """
 
 from alembic import op

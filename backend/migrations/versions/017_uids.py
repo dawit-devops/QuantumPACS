@@ -4,10 +4,25 @@ Revision ID: 017
 Revises: 016
 Create Date: 2026-07-25
 
-Adds:
-- studies.study_instance_uid, studies.accession_number
-- series.series_instance_uid
-- files.sop_instance_uid
+Why
+---
+Adds DICOM UID columns (study_instance_uid, series_instance_uid, sop_instance_uid)
+and accession_number to support DICOMweb and FHIR API queries by these standard
+identifiers, with partial unique indexes.
+
+Data Migration
+--------------
+None — new columns only. Indexes are partial (WHERE NOT NULL) to support
+gradual population.
+
+Rollback
+--------
+Drops indexes and columns.
+
+References
+----------
+- DICOM PS3.4: DICOMweb specification
+- ADR-017: DICOM UID model
 """
 
 from alembic import op

@@ -4,8 +4,23 @@ Revision ID: 010
 Revises: 009
 Create Date: 2026-07-25
 
-Adds:
-- tenants table (registry database reference)
+Why
+---
+Creates the tenants table for the multi-tenant architecture, storing per-tenant
+database connection details (host, port, db/user/password), storage quotas,
+and domain mapping for automatic tenant routing.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the tenants table.
+
+References
+----------
+- ADR-010: Multi-tenant architecture design
 """
 
 from alembic import op

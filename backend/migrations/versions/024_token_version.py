@@ -4,9 +4,22 @@ Revision ID: 024
 Revises: 023
 Create Date: 2026-07-28
 
-Adds:
-- users.token_version INTEGER DEFAULT 0
-- Incremented on role change, permission change, deactivation
+Why
+---
+Adds token_version to users — incremented on role change, permission change,
+or deactivation to force existing JWT tokens to be rejected and require re-auth.
+
+Data Migration
+--------------
+None — new column with DEFAULT 0.
+
+Rollback
+--------
+Drops the token_version column.
+
+References
+----------
+- ADR-024: Token invalidation on permission changes
 """
 
 from alembic import op

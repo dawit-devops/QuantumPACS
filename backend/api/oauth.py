@@ -1,3 +1,6 @@
+"""OAuth 2.0 / OpenID Connect authentication endpoints supporting multi-provider login,
+PKCE authorization code flow, ID token verification via JWKS, and JIT user provisioning
+with configurable default roles and tenant scoping."""
 import hashlib
 import json
 import secrets

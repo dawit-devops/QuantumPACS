@@ -1,3 +1,6 @@
+"""Modality Worklist (MWL) endpoints for DICOM scheduled procedure management —
+CRUD operations on worklist entries with HL7-compatible field mappings
+and audit logging for each state transition."""
 from datetime import datetime, timezone
 
 from starlette.endpoints import HTTPEndpoint

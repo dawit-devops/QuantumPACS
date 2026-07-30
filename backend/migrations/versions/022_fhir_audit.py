@@ -4,8 +4,23 @@ Revision ID: 022
 Revises: 021
 Create Date: 2026-07-26
 
-Adds:
-- fhir_audit table for FHIR API request audit trail
+Why
+---
+Creates the fhir_audit table for FHIR API request audit trail, capturing
+HTTP method, path, query params, resource type/ID, status code, duration,
+and client IP for compliance and debugging.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the fhir_audit table.
+
+References
+----------
+- ADR-022: FHIR audit logging design
 """
 
 from alembic import op
