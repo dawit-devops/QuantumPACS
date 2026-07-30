@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Typography, Space } from 'antd';
 import { SearchOutlined, EyeOutlined, ShareAltOutlined, CloseOutlined, RightOutlined, LeftOutlined } from '@ant-design/icons';
+import { useAuth } from '../auth/AuthContext';
 
 const { Text, Title } = Typography;
 
@@ -32,14 +33,15 @@ interface OnboardingTourProps {
 }
 
 export function OnboardingTour({ onComplete }: OnboardingTourProps) {
+  const { isAuthenticated } = useAuth();
   const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!localStorage.getItem(TOUR_DONE_KEY)) {
+    if (isAuthenticated && !localStorage.getItem(TOUR_DONE_KEY)) {
       setVisible(true);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   const dismiss = () => {
     setVisible(false);

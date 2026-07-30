@@ -169,9 +169,7 @@ function LoginForm(props: any) {
                 placeholder="Username"
                 size="large"
                 autoComplete="username"
-                aria-describedby="username-help"
               />
-              <span id="username-help" style={{ display: 'none' }}>Enter your QuantumPACS username</span>
             </Form.Item>
             <Form.Item name="password" rules={[{ required: true, message: 'Please input your password!' }]}>
               <Input.Password
@@ -179,9 +177,7 @@ function LoginForm(props: any) {
                 placeholder="Password"
                 size="large"
                 autoComplete="current-password"
-                aria-describedby="password-help"
               />
-              <span id="password-help" style={{ display: 'none' }}>Enter your QuantumPACS password</span>
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" className="login-form-button animate-fade-in-up"
