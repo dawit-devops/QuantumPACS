@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections import defaultdict
 from typing import Any
@@ -243,12 +244,10 @@ async def _check_ingestion_service():
 
 
 async def health_endpoint(request):
-    db_result = await _check_db()
-    es_result = await _check_es()
-    redis_result = await _check_redis()
-    storage_result = await _check_storage()
-    dicom_result = await _check_dicom_listener()
-    ingestion_result = await _check_ingestion_service()
+    db_result, es_result, redis_result, storage_result, dicom_result, ingestion_result = await asyncio.gather(
+        _check_db(), _check_es(), _check_redis(), _check_storage(),
+        _check_dicom_listener(), _check_ingestion_service(),
+    )
     components = {
         'database': db_result,
         'elasticsearch': es_result,

@@ -31,6 +31,7 @@ class PgNotifyBridge:
         self._task: Optional[asyncio.Task] = None
         self._shutdown = asyncio.Event()
         self._extra_handlers: list[OnNotification] = []
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def add_handler(self, handler: OnNotification) -> None:
         self._extra_handlers.append(handler)
@@ -51,6 +52,9 @@ class PgNotifyBridge:
             except (asyncio.CancelledError, Exception):
                 pass
             self._task = None
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            self._pending_tasks.clear()
         if self._conn:
             try:
                 await self._conn.close()
@@ -77,10 +81,14 @@ class PgNotifyBridge:
         old_row = data.get('old', {})
 
         if table == 'files':
-            asyncio.create_task(self._publish_file_event(action, new_row, old_row))
+            task = asyncio.create_task(self._publish_file_event(action, new_row, old_row))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
 
         for handler in self._extra_handlers:
-            asyncio.create_task(handler(data))
+            task = asyncio.create_task(handler(data))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
 
     async def _publish_file_event(
         self, action: str, new_row: dict[str, Any], old_row: dict[str, Any],

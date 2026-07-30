@@ -3,6 +3,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+
+
+class _AsyncFileMock:
+    def __init__(self, data):
+        self._data = data
+
+    async def read(self):
+        return self._data
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -102,7 +116,7 @@ class TestWadoInstance:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
                     resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8')
 
         assert resp.status_code == 200
@@ -144,7 +158,7 @@ class TestWadoUri:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8'
                     )
@@ -201,7 +215,7 @@ class TestWadoUri:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/wado?requestType=WADO&studyUID=1.2.3.4.5.6'
                         '&seriesUID=1.2.3.4.5.6.7&objectUID=1.2.3.4.5.6.7.8'

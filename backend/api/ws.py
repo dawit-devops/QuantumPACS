@@ -36,16 +36,8 @@ async def _get_pubsub(state):
     if state.pubsub is not None:
         return state.pubsub
     try:
-        import redis.asyncio as aioredis
-        from config import config
-        host = config.get('redis_host', 'localhost')
-        port = int(config.get('redis_port', '6379'))
-        password = config.get('redis_password') or None
-        r = aioredis.Redis(
-            host=host, port=port, password=password, db=4,
-            socket_connect_timeout=1,
-            socket_timeout=2,
-        )
+        from api.redis_client import get_client
+        r = await get_client(db=4)
         await r.ping()
         state.pubsub = r.pubsub()
         return state.pubsub
@@ -159,18 +151,9 @@ class WebsocketHandler(WebSocketEndpoint):
                 import json
                 r = None
                 try:
-                    import redis.asyncio as aioredis
-                    from config import config
-                    host = config.get('redis_host', 'localhost')
-                    port = int(config.get('redis_port', '6379'))
-                    password = config.get('redis_password') or None
-                    r = aioredis.Redis(
-                        host=host, port=port, password=password, db=4,
-                        socket_connect_timeout=1,
-                        socket_timeout=1,
-                    )
+                    from api.redis_client import get_client
+                    r = await get_client(db=4)
                     await r.publish(_channel(f), json.dumps(payload))
-                    await r.aclose()
                 except Exception:
                     async with state.sub_lock:
                         conns = list(state.local_clients.get(f, {}).values())

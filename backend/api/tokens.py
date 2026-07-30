@@ -12,19 +12,12 @@ log = get_logger(__name__)
 _blocklist_redis = None
 
 
-def _get_blocklist_redis():
+async def _get_blocklist_redis():
     global _blocklist_redis
     if _blocklist_redis is None:
         try:
-            import redis.asyncio as _aioredis
-            host = config.get('redis_host', 'localhost')
-            port = int(config.get('redis_port', '6379'))
-            password = config.get('redis_password') or None
-            _blocklist_redis = _aioredis.Redis(
-                host=host, port=port, password=password, db=1,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
+            from api.redis_client import get_client
+            _blocklist_redis = await get_client(db=1)
         except Exception:
             pass
     return _blocklist_redis
@@ -63,7 +56,7 @@ async def block_token(token):
         jti = data.get('jti')
         if not jti:
             return
-        r = _get_blocklist_redis()
+        r = await _get_blocklist_redis()
         if r is None:
             return
         exp = data.get('exp')
@@ -75,7 +68,7 @@ async def block_token(token):
 
 async def is_blocked(jti):
     try:
-        r = _get_blocklist_redis()
+        r = await _get_blocklist_redis()
         if r is None:
             return False
         return await r.exists(f'blocklist:{jti}') == 1
