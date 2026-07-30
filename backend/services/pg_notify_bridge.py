@@ -77,10 +77,10 @@ class PgNotifyBridge:
         old_row = data.get('old', {})
 
         if table == 'files':
-            asyncio.ensure_future(self._publish_file_event(action, new_row, old_row))
+            asyncio.create_task(self._publish_file_event(action, new_row, old_row))
 
         for handler in self._extra_handlers:
-            asyncio.ensure_future(handler(data))
+            asyncio.create_task(handler(data))
 
     async def _publish_file_event(
         self, action: str, new_row: dict[str, Any], old_row: dict[str, Any],

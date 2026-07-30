@@ -110,65 +110,66 @@ class WebsocketHandler(WebSocketEndpoint):
     async def on_receive(self, websocket, data):
         type_ = data.get('type')
 
-        if type_ == 'open':
-            f = data['file']
-            async with _sub_lock:
-                local_clients[f][str(id(websocket))] = websocket
-            ps = await _get_pubsub()
-            if ps is not None:
-                try:
-                    await ps.subscribe(_channel(f))
-                    _ensure_listener()
-                except Exception:
-                    pass
-            await websocket.send_json(
-                {
-                    'type': 'send_state',
-                    'file': f,
-                    'state': data.get('state', {}),
-                },
-            )
-            websocket.file = f
-
-        elif type_ == 'send_state':
-            f = data['file']
-            payload = {
-                'type': 'send_state',
-                'file': f,
-                'state': data['state'],
-            }
-            import json
-            r = None
-            try:
-                import redis.asyncio as aioredis
-                from config import config
-                host = config.get('redis_host', 'localhost')
-                port = int(config.get('redis_port', '6379'))
-                password = config.get('redis_password') or None
-                r = aioredis.Redis(
-                    host=host, port=port, password=password, db=4,
-                    socket_connect_timeout=1,
-                    socket_timeout=1,
-                )
-                await r.publish(_channel(f), json.dumps(payload))
-                await r.aclose()
-            except Exception:
+        match type_:
+            case 'open':
+                f = data['file']
                 async with _sub_lock:
-                    conns = list(local_clients.get(f, {}).values())
-                for c in conns:
-                    if c == websocket:
-                        continue
-                    if isinstance(c, WebSocket):
-                        try:
-                            await c.send_json(payload)
-                        except WebSocketDisconnect:
-                            pass
-            finally:
-                if r is not None:
+                    local_clients[f][str(id(websocket))] = websocket
+                ps = await _get_pubsub()
+                if ps is not None:
                     try:
-                        await r.aclose()
+                        await ps.subscribe(_channel(f))
+                        _ensure_listener()
                     except Exception:
                         pass
+                await websocket.send_json(
+                    {
+                        'type': 'send_state',
+                        'file': f,
+                        'state': data.get('state', {}),
+                    },
+                )
+                websocket.file = f
+
+            case 'send_state':
+                f = data['file']
+                payload = {
+                    'type': 'send_state',
+                    'file': f,
+                    'state': data['state'],
+                }
+                import json
+                r = None
+                try:
+                    import redis.asyncio as aioredis
+                    from config import config
+                    host = config.get('redis_host', 'localhost')
+                    port = int(config.get('redis_port', '6379'))
+                    password = config.get('redis_password') or None
+                    r = aioredis.Redis(
+                        host=host, port=port, password=password, db=4,
+                        socket_connect_timeout=1,
+                        socket_timeout=1,
+                    )
+                    await r.publish(_channel(f), json.dumps(payload))
+                    await r.aclose()
+                except Exception:
+                    async with _sub_lock:
+                        conns = list(local_clients.get(f, {}).values())
+                    for c in conns:
+                        if c == websocket:
+                            continue
+                        if isinstance(c, WebSocket):
+                            try:
+                                await c.send_json(payload)
+                            except WebSocketDisconnect:
+                                pass
+                finally:
+                    if r is not None:
+                        try:
+                            await r.aclose()
+                        except Exception:
+                            pass
 
     async def on_disconnect(self, websocket, close_code):
         f = getattr(websocket, 'file', None)

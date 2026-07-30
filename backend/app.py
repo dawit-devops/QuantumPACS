@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import time
 
 import sentry_sdk
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -14,7 +15,6 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
-from api.service_middleware import ServiceMiddleware
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
@@ -43,7 +43,6 @@ if config.get('sentry_dsn'):
 
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        import time
         start = time.monotonic()
         path = request.url.path
         if request.method == 'OPTIONS' and path.startswith('/api'):
@@ -156,7 +155,6 @@ app = Starlette(
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TenantMiddleware),
         Middleware(FhirAuditMiddleware),
-        Middleware(ServiceMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
         Middleware(CustomMiddleware),

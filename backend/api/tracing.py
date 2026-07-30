@@ -1,3 +1,5 @@
+import time
+
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -111,7 +113,6 @@ class _TracedConnection:
         setattr(self._conn, name, value)
 
     async def _trace_query(self, query, method, *args, **kwargs):
-        import time
         from api.telemetry import db_query_duration_seconds
         start = time.monotonic()
         with self._tracer.start_as_current_span('db.query') as span:

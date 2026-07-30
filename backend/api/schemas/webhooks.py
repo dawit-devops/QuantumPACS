@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class WebhookCreate(BaseModel):
@@ -13,10 +12,10 @@ class WebhookCreate(BaseModel):
 
 
 class WebhookUpdate(BaseModel):
-    name: Optional[str] = None
-    url: Optional[str] = None
-    events: Optional[list[str]] = None
-    secret: Optional[str] = None
-    active: Optional[bool] = None
-    retry_count: Optional[int] = None
-    timeout_ms: Optional[int] = None
+    name: str | None = None
+    url: str | None = None
+    events: list[str] | None = None
+    secret: str | None = None
+    active: bool | None = None
+    retry_count: int | None = None
+    timeout_ms: int | None = None

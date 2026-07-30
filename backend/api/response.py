@@ -3,7 +3,7 @@ All endpoints should use these helpers instead of raw JSONResponse."""
 import json
 import uuid
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 from starlette.responses import JSONResponse as _StarletteJSONResponse
 
 
