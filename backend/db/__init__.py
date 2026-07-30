@@ -1,32 +1,60 @@
-from db.table import Table
-from db.files import Files
-from db.file_changes import FileChange
-from db.log import Log
-from db.patient import Patient
-from db.study import Study
-from db.series import Series
-from db.replica import Replica
-from db.replica_files import ReplicaFiles
-from db.share_files import SharedFiles
-from db.users import Users
-from db.tenants import Tenants
-from db.oauth_providers import OAuthProviders
-from db.hl7_message import Hl7Message, Hl7ParseError
-from db.routing_rule import RoutingRule
+import importlib
+import typing
 
 
-Table.register(Log)
-Table.register(Patient)
-Table.register(Replica)
-Table.register(Study)
-Table.register(Series)
-Table.register(Files)
-Table.register(Users)
-Table.register(FileChange)
-Table.register(ReplicaFiles)
-Table.register(SharedFiles)
-Table.register(Tenants)
-Table.register(OAuthProviders)
-Table.register(Hl7Message)
-Table.register(Hl7ParseError)
-Table.register(RoutingRule)
+_module_registry = [
+    'db.files',
+    'db.file_changes',
+    'db.log',
+    'db.patient',
+    'db.study',
+    'db.series',
+    'db.replica',
+    'db.replica_files',
+    'db.share_files',
+    'db.users',
+    'db.tenants',
+    'db.oauth_providers',
+    'db.hl7_message',
+    'db.routing_rule',
+]
+
+_registered = False
+
+
+def register_tables():
+    global _registered
+    if _registered:
+        return
+    from db.table import Table
+    _classes = [
+        ('db.log', 'Log'),
+        ('db.patient', 'Patient'),
+        ('db.replica', 'Replica'),
+        ('db.study', 'Study'),
+        ('db.series', 'Series'),
+        ('db.files', 'Files'),
+        ('db.users', 'Users'),
+        ('db.file_changes', 'FileChange'),
+        ('db.replica_files', 'ReplicaFiles'),
+        ('db.share_files', 'SharedFiles'),
+        ('db.tenants', 'Tenants'),
+        ('db.oauth_providers', 'OAuthProviders'),
+        ('db.hl7_message', 'Hl7Message'),
+        ('db.hl7_message', 'Hl7ParseError'),
+        ('db.routing_rule', 'RoutingRule'),
+    ]
+    for mod_path, cls_name in _classes:
+        mod = importlib.import_module(mod_path)
+        cls = getattr(mod, cls_name)
+        Table.register(cls)
+    _registered = True
+
+
+def __getattr__(name: str) -> typing.Any:
+    for mod_path in _module_registry:
+        mod = importlib.import_module(mod_path)
+        if hasattr(mod, name):
+            attr = getattr(mod, name)
+            return attr
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

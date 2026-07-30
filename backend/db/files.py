@@ -1,11 +1,11 @@
 import asyncpg
 from datetime import datetime, timezone
 import json
+from typing import Any, Callable, Optional
 
 from pypika.functions import Count
 from pypika import Order
 
-from es import es
 from db.patient import Patient
 from db.study import Study
 from db.series import Series
@@ -13,9 +13,21 @@ from db.replica_files import ReplicaFiles
 from db.table import Table
 from db.file_changes import FileChange
 from log import get_logger
-from storage.storage import Storage
 
 log = get_logger(__name__)
+
+_es_indexer: Optional[Callable] = None
+_storage_provider: Optional[Callable] = None
+
+
+def set_es_indexer(indexer: Callable):
+    global _es_indexer
+    _es_indexer = indexer
+
+
+def set_storage_provider(provider: Callable):
+    global _storage_provider
+    _storage_provider = provider
 
 
 class Files(Table):
@@ -74,11 +86,12 @@ class Files(Table):
 
         filedata['id'] = file_id
         filedata['meta'] = filedata['cleaned']
-        try:
-            await es.index_file(filedata)
-        except Exception as e:
-            log.warning('ES indexing failed for file %s: %s, will retry via sync loop', file_id, e)
-            return filedata
+        if _es_indexer is not None:
+            try:
+                await _es_indexer(filedata)
+            except Exception as e:
+                log.warning('ES indexing failed for file %s: %s, will retry via sync loop', file_id, e)
+                return filedata
         async with self.conn.transaction():
             q = self.update().where(self.table.id == file_id).set(self.table.indexed, True)
             await self.exec(q)
@@ -273,12 +286,16 @@ class Files(Table):
         return await self.fetchone(q)
 
     async def delete(self, file_id, master_id):
-        await es.delete(file_id)
+        if _es_indexer is not None:
+            try:
+                await _es_indexer(file_id, delete=True)
+            except Exception:
+                log.warning('ES delete failed for file %s', file_id)
 
         from db.replica import Replica as ReplicaModel
         replica = await ReplicaModel(self.conn).get(master_id)
-        if replica:
-            storage = await Storage.get(replica)
+        if replica and _storage_provider is not None:
+            storage = await _storage_provider(replica)
             file_data = {'id': file_id}
             await storage.delete(file_data)
 
@@ -292,9 +309,10 @@ class Files(Table):
 
     async def delete_all(self):
         async with self.conn.transaction():
-            try:
-                await es.reset_index()
-            except Exception:
-                pass
+            if _es_indexer is not None:
+                try:
+                    await _es_indexer(None, reset=True)
+                except Exception:
+                    pass
             q = self.query().delete()
             await self.exec(q)

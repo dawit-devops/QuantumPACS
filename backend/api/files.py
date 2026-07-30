@@ -215,10 +215,10 @@ async def get_file_by_id(request):
     async with get_conn() as conn:
         file = await Files(conn).get_extra(file_id)
         if not file or file['deleted']:
-            raise HTTPException(status_code=404)
+            return None
         user = getattr(request, 'user', None)
         if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
-            raise HTTPException(status_code=403)
+            return None
         return file
 
 
@@ -262,6 +262,8 @@ class FileHandler(HTTPEndpoint):
                     return api_error('NO_MASTER', 'No master replica set')
 
                 file = await get_file_by_id(request)
+                if not file:
+                    return not_found('File not found')
                 storage = await Storage.get(master)
                 await storage.delete(file)
 

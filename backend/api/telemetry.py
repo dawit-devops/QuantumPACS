@@ -11,16 +11,49 @@ from log import request_id_var, tenant_var, user_id_var, trace_id_var, span_id_v
 
 log = get_logger(__name__)
 
-_monitor: Any = None
+_app = None
+
+
+def set_app(app):
+    global _app
+    _app = app
+
+
+def get_app():
+    return _app
+
+
+def _get_state():
+    if _app is None:
+        return None
+    if not hasattr(_app.state, 'telemetry_state'):
+        _app.state.telemetry_state = TelemetryState()
+    return _app.state.telemetry_state
+
+
+class TelemetryState:
+    def __init__(self):
+        self.monitor: Any = None
+        self.start_time: float = time.time()
+        self.legacy_metrics: dict = {
+            'requests_total': defaultdict(int),
+            'requests_active': 0,
+            'latency_sum': 0.0,
+            'latency_count': 0,
+        }
 
 
 def set_stream_monitor(monitor: Any) -> None:
-    global _monitor
-    _monitor = monitor
+    state = _get_state()
+    if state is not None:
+        state.monitor = monitor
 
 
 def get_stream_monitor():
-    return _monitor
+    state = _get_state()
+    if state is None:
+        return None
+    return state.monitor
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -78,23 +111,17 @@ dicomweb_requests_total = Counter(
 )
 
 
-_legacy_metrics = {
-    'requests_total': defaultdict(int),
-    'requests_active': 0,
-    'latency_sum': 0.0,
-    'latency_count': 0,
-}
-
-
 def record_request(method, path, status_code, elapsed):
+    state = _get_state()
     http_requests_total.labels(method=method, path=path, status_code=str(status_code)).inc()
     http_request_duration_seconds.labels(method=method, path=path).observe(elapsed)
     if '/dicomweb/' in path:
         resource = path.split('/dicomweb/')[1].split('/')[0]
         dicomweb_requests_total.labels(method=method, resource=resource).inc()
-    _legacy_metrics['requests_total'][(method, str(status_code))] += 1
-    _legacy_metrics['latency_sum'] += elapsed
-    _legacy_metrics['latency_count'] += 1
+    if state is not None:
+        state.legacy_metrics['requests_total'][(method, str(status_code))] += 1
+        state.legacy_metrics['latency_sum'] += elapsed
+        state.legacy_metrics['latency_count'] += 1
 
 
 def _sample_db_pool():
@@ -125,7 +152,7 @@ async def metrics_endpoint(request):
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-_start_time: float = time.time()
+
 
 
 def _probe_db():
@@ -196,7 +223,9 @@ async def _check_dicom_listener():
         import socket
         with socket.create_connection(('127.0.0.1', port), timeout=2):
             pass
-        return {'status': 'ok', 'port': port, 'uptime_seconds': int(time.time() - _start_time), 'latency_ms': 0}
+        state = _get_state()
+        start = state.start_time if state is not None else time.time()
+        return {'status': 'ok', 'port': port, 'uptime_seconds': int(time.time() - start), 'latency_ms': 0}
     except Exception:
         return {'status': 'degraded', 'port': port, 'uptime_seconds': 0, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
 
@@ -231,8 +260,10 @@ async def health_endpoint(request):
     all_ok = all(c.get('status') == 'ok' for c in components.values())
     overall_status = 'ok' if all_ok else 'degraded'
     http_status = 503 if db_result.get('status') != 'ok' else 200
+    state = _get_state()
+    uptime = int(time.time() - (state.start_time if state is not None else time.time()))
     return JSONResponse({
         'status': overall_status,
-        'uptime_seconds': int(time.time() - _start_time),
+        'uptime_seconds': uptime,
         'components': components,
     }, status_code=http_status)
