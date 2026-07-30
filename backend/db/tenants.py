@@ -147,7 +147,7 @@ class Tenants(Table):
         data = await self.fetchone(q)
         return dict(data) if data else None
 
-    async def get_stats(self, tenant_slug: str, tenant_info: dict):
+    async def get_stats(self, tenant_slug: str, tenant_info: dict, storage_quota_bytes: int = 0):
         pool = await TenantConnectionPool.get(tenant_slug, tenant_info)
         async with pool.acquire() as conn:
             user_count = await conn.fetchval('SELECT COUNT(*) FROM users')
@@ -164,5 +164,7 @@ class Tenants(Table):
             'study_count': study_count or 0,
             'file_count': file_count or 0,
             'storage_used_bytes': storage_used,
+            'storage_quota_bytes': storage_quota_bytes or 0,
+            'storage_pct': round((storage_used / storage_quota_bytes) * 100, 1) if storage_quota_bytes else 0,
             'last_activity': str(last_activity) if last_activity else None,
         }

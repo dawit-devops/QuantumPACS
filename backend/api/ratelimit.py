@@ -173,3 +173,4 @@ class RedisTokenBucket:
 
 
 login_bucket = RedisTokenBucket()
+password_bucket = RedisTokenBucket(max_attempts=3, window_seconds=300)

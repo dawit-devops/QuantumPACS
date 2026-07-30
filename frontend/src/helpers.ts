@@ -59,6 +59,36 @@ export function clearTokens(): void {
   localStorage.removeItem('refresh_token');
 }
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startRefreshTimer(onRefreshFailed: () => void): void {
+  stopRefreshTimer();
+  refreshTimer = setInterval(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    const ok = await tryRefreshToken();
+    if (!ok) {
+      const refreshToken = getRefreshToken();
+      if (refreshToken) {
+        const payload = refreshToken.split('.')[1];
+        try {
+          const decoded = JSON.parse(atob(payload));
+          if (decoded.exp * 1000 < Date.now()) {
+            onRefreshFailed();
+          }
+        } catch {}
+      }
+    }
+  }, 25 * 60 * 1000);
+}
+
+export function stopRefreshTimer(): void {
+  if (refreshTimer !== null) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
 export async function tryRefreshToken(): Promise<boolean> {
   const token = getRefreshToken();
   if (!token) return false;
@@ -105,6 +135,10 @@ export const request = async (url: string, options: RequestOptions = {}): Promis
     return await exec();
   } catch (error: any) {
     if (error.error === 401) {
+      const tempKey = localStorage.getItem('tempKey');
+      if (tempKey) {
+        sessionStorage.setItem('shareKeyError', 'expired');
+      }
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         const newToken = getAccessToken();

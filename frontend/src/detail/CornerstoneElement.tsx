@@ -32,6 +32,7 @@ import * as ws from '../ws';
 import { request } from '../helpers';
 import { API_URL } from '../config';
 import ThumbnailStrip from './ThumbnailStrip';
+import { MobileToolbar } from './MobileToolbar';
 import './CornerstoneElement.css';
 
 const ENGINE_ID = 'OPENPACS_ENGINE';
@@ -121,6 +122,7 @@ function ActionBtn(props: any) {
   return (
     <Button type="primary" shape="circle" size="small" style={{ margin: '5px' }}
       icon={props.icon} onClick={props.onClick}
+      aria-label={props['aria-label'] || props.tooltip || ''}
     />
   );
 }
@@ -133,6 +135,10 @@ interface CEProps {
    wadoRsImage?: string | null;
    progressive?: boolean;
    visible: boolean;
+   onRequestHelp?: () => void;
+   onAnnotationsChange?: (annotations: any[]) => void;
+   focusAnnotationUID?: string | null;
+   isMobile?: boolean;
    [key: string]: any;
 }
 
@@ -148,6 +154,10 @@ interface CEState {
    loading: boolean;
    progressiveLoading: boolean;
    thumbnailUrl: string | null;
+   isFullscreen: boolean;
+   viewportError: string | null;
+   showMobileToolbar: boolean;
+   activeTool: string;
  }
 
 class CornerstoneElement extends Component<CEProps, CEState> {
@@ -170,6 +180,10 @@ class CornerstoneElement extends Component<CEProps, CEState> {
        loading: true,
        progressiveLoading: props.progressive || false,
        thumbnailUrl: null,
+       isFullscreen: false,
+       viewportError: null,
+       showMobileToolbar: false,
+       activeTool: 'Pan',
      };
     this.onImageRendered = this.onImageRendered.bind(this);
     this.onWindowResize = this.onWindowResize.bind(this);
@@ -191,8 +205,16 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     this.sendState = this.sendState.bind(this);
     this.onStateUpdate = this.onStateUpdate.bind(this);
     this.persistToolsState = this.persistToolsState.bind(this);
+    this.emitAnnotations = this.emitAnnotations.bind(this);
+    this.focusAnnotation = this.focusAnnotation.bind(this);
     this.tipFormatter = this.tipFormatter.bind(this);
     this.download = this.download.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.toggleFullscreen = this.toggleFullscreen.bind(this);
+    this.zoomIn = this.zoomIn.bind(this);
+    this.zoomOut = this.zoomOut.bind(this);
+    this.goToNextFile = this.goToNextFile.bind(this);
+    this.goToPrevFile = this.goToPrevFile.bind(this);
   }
 
   getToolGroup() {
@@ -252,33 +274,33 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     (tg as any).setToolActive(toolName, { mouseButtonMask: 1 });
   }
 
-  activateArrow(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateArrow(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(ArrowAnnotateTool.toolName);
   }
 
-  activateAngle(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateAngle(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(AngleTool.toolName);
   }
 
-  activateLine(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateLine(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(LengthTool.toolName);
   }
 
-  activateRect(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateRect(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(RectangleROITool.toolName);
   }
 
-  activateElipse(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateElipse(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(EllipticalROITool.toolName);
   }
 
-  activateDrag(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateDrag(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     const tg = this.getToolGroup();
     if (!tg) return;
     tg.setToolPassive(ArrowAnnotateTool.toolName);
@@ -290,9 +312,146 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     (tg as any).setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
   }
 
-  activateEraser(_e: React.MouseEvent) {
-    _e.stopPropagation();
+  activateEraser(_e?: React.MouseEvent) {
+    if (_e) _e.stopPropagation();
     this.setPrimaryTool(EraserTool.toolName);
+  }
+
+  handleKeyDown(e: KeyboardEvent) {
+    if (!this.props.visible) return;
+
+    const key = e.key;
+    const target = e.target as HTMLElement;
+    const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+    if (isInput) return;
+
+    if (key === '?') {
+      e.preventDefault();
+      this.props.onRequestHelp?.();
+      return;
+    }
+
+    switch (key) {
+      case '1': e.preventDefault(); this.activateDrag(); break;
+      case '2': e.preventDefault(); this.activateLine(); break;
+      case '3': e.preventDefault(); this.activateRect(); break;
+      case '4': e.preventDefault(); this.activateElipse(); break;
+      case '5': e.preventDefault(); this.activateAngle(); break;
+      case '6': e.preventDefault(); this.activateArrow(); break;
+      case '7':
+      case 'e':
+      case 'E':
+        e.preventDefault();
+        this.activateEraser();
+        break;
+      case 'r':
+      case 'R':
+        e.preventDefault();
+        this.rotate();
+        break;
+      case 'h':
+      case 'H':
+        e.preventDefault();
+        this.hflip();
+        break;
+      case 'v':
+      case 'V':
+        e.preventDefault();
+        this.vflip();
+        break;
+      case 'i':
+      case 'I':
+        e.preventDefault();
+        this.invert();
+        break;
+      case 's':
+      case 'S':
+        e.preventDefault();
+        this.persistToolsState();
+        break;
+      case 'c':
+      case 'C':
+        e.preventDefault();
+        this.clearToolState();
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        this.toggleFullscreen();
+        break;
+      case 'Escape':
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+          this.setState({ isFullscreen: false });
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        this.goToPrevFile();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        this.goToNextFile();
+        break;
+      case '+':
+      case '=':
+        e.preventDefault();
+        this.zoomIn();
+        break;
+      case '-':
+        e.preventDefault();
+        this.zoomOut();
+        break;
+    }
+  }
+
+  toggleFullscreen() {
+    const el = document.querySelector('.detail-viewport-root') || document.documentElement;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen().then(() => {
+        this.setState({ isFullscreen: true });
+        setTimeout(() => this.onWindowResize(), 300);
+      }).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => {
+        this.setState({ isFullscreen: false });
+        setTimeout(() => this.onWindowResize(), 300);
+      }).catch(() => {});
+    }
+  }
+
+  zoomIn() {
+    const vp = this.getViewport();
+    if (!vp) return;
+    const zoom = vp.getZoom();
+    vp.setZoom(zoom * 1.2);
+    this.updateViewportInfo();
+  }
+
+  zoomOut() {
+    const vp = this.getViewport();
+    if (!vp) return;
+    const zoom = vp.getZoom();
+    vp.setZoom(zoom / 1.2);
+    this.updateViewportInfo();
+  }
+
+  goToPrevFile() {
+    const { files, changeFile } = this.props;
+    if (!files || files.length <= 1) return;
+    let idx = files.findIndex((f: any) => f.id === this.props.file?.id);
+    if (idx < 0) idx = 0;
+    const prev = (idx - 1 + files.length) % files.length;
+    changeFile(prev);
+  }
+
+  goToNextFile() {
+    const { files, changeFile } = this.props;
+    if (!files || files.length <= 1) return;
+    let idx = files.findIndex((f: any) => f.id === this.props.file?.id);
+    if (idx < 0) idx = 0;
+    const next = (idx + 1) % files.length;
+    changeFile(next);
   }
 
   onWindowResize() {
@@ -339,10 +498,17 @@ class CornerstoneElement extends Component<CEProps, CEState> {
     this.saveToolState();
   }
 
+  emitAnnotations() {
+    const mgr = csAnnotation.state.getAnnotationManager();
+    const annotations = mgr.getAllAnnotations();
+    this.props.onAnnotationsChange?.(annotations);
+  }
+
   saveToolState() {
     const mgr = csAnnotation.state.getAnnotationManager();
     const annotations = mgr.getAllAnnotations();
     this.setState({ state: annotations, stateVer: this.state.stateVer + 1 });
+    this.props.onAnnotationsChange?.(annotations);
   }
 
   clearToolState() {
@@ -352,6 +518,39 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       csAnnotation.state.removeAnnotation(a.annotationUID);
     }
     this.setState({ state: null as any });
+    this.props.onAnnotationsChange?.([]);
+  }
+
+  focusAnnotation(annotationUID: string) {
+    const mgr = csAnnotation.state.getAnnotationManager();
+    const all = mgr.getAllAnnotations();
+    const annotation = all.find((a: any) => a.annotationUID === annotationUID);
+    if (!annotation) return;
+
+    const points = annotation.data?.handles?.points;
+    if (!points || points.length === 0) return;
+
+    const center = points.reduce(
+      (acc: number[], p: number[]) => [acc[0] + p[0], acc[1] + p[1], acc[2] + p[2]],
+      [0, 0, 0],
+    ).map((v: number) => v / points.length) as [number, number, number];
+
+    const viewport = this.getViewport();
+    if (!viewport) return;
+
+    try {
+      const camera = viewport.getCamera();
+      const focal = camera.focalPoint || [0, 0, 0];
+      const pos = camera.position || [0, 0, 0];
+      const dx = center[0] - focal[0];
+      const dy = center[1] - focal[1];
+      const dz = center[2] - focal[2];
+      viewport.setCamera({
+        focalPoint: [focal[0] + dx, focal[1] + dy, focal[2] + dz],
+        position: [pos[0] + dx, pos[1] + dy, pos[2] + dz],
+      });
+      viewport.render();
+    } catch {}
   }
 
   restoreToolState(state: any) {
@@ -398,6 +597,8 @@ class CornerstoneElement extends Component<CEProps, CEState> {
   async componentDidMount() {
     this.mounted = true;
 
+    document.addEventListener('keydown', this.handleKeyDown);
+
     try {
       await ensureGlobalInit();
 
@@ -441,6 +642,7 @@ class CornerstoneElement extends Component<CEProps, CEState> {
         const vp = that.getViewport();
         if (vp && (vp as any).voiRange) {
           that.restoreToolState(that.props.file.tools_state);
+          that.emitAnnotations();
         } else {
           setTimeout(checkReady, 100);
         }
@@ -454,27 +656,38 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       ws.onOpen(() => ws.send({ type: 'open', file: this.state.image }));
     } catch (e) {
       console.error('CornerstoneElement init error:', e);
-      message.error('Failed to initialize viewer');
+      this.setState({ viewportError: 'Failed to initialize image viewer', loading: false });
     }
   }
 
-  componentDidUpdate(_prevProps: CEProps) {
-    const prevUrl = _prevProps.wadoRsImage || _prevProps.image;
+  componentDidUpdate(prevProps: CEProps) {
+    const prevUrl = prevProps.wadoRsImage || prevProps.image;
     const nextUrl = this.props.wadoRsImage || this.props.image;
     if (prevUrl !== nextUrl) {
       this.setState({ image: nextUrl });
       const vp = this.getViewport();
       if (vp) {
         vp.setStack([nextUrl]).then(() => {
+          this.setState({ viewportError: null, loading: false });
           this.restoreToolState(this.props.file.tools_state);
+          this.emitAnnotations();
+        }).catch(() => {
+          this.setState({ viewportError: 'Failed to load DICOM image', loading: false });
         });
       }
       ws.send({ type: 'open', file: nextUrl });
+    }
+
+    if (this.props.focusAnnotationUID && this.props.focusAnnotationUID !== prevProps.focusAnnotationUID) {
+      this.focusAnnotation(this.props.focusAnnotationUID);
     }
   }
 
   componentWillUnmount() {
     this.mounted = false;
+
+    document.removeEventListener('keydown', this.handleKeyDown);
+
     const { interval } = this.state;
     if (interval) clearInterval(interval);
 
@@ -516,8 +729,10 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       }
     }
     return (
-      <div style={style}>
-        <div style={{ padding: '10px' }}>
+      <div className="detail-viewport-root" style={style}
+        role="region" aria-label="DICOM image viewer"
+      >
+        <div style={{ padding: '10px' }} role="toolbar" aria-label="Viewer tools">
           {
             files && files.length > 1 &&
             <Slider
@@ -526,40 +741,46 @@ class CornerstoneElement extends Component<CEProps, CEState> {
               defaultValue={fileIndex}
               tooltip={{ formatter: this.tipFormatter }}
               onChange={this.props.changeFile}
+              aria-label={`File ${fileIndex + 1} of ${files.length}`}
             />
           }
-          <ActionBtn icon={<ReloadOutlined />} onClick={this.rotate} />
-          <ActionBtn icon={<ColumnWidthOutlined />} onClick={this.hflip} />
-          <ActionBtn icon={<ColumnHeightOutlined />} onClick={this.vflip} />
+          <ActionBtn aria-label="Rotate 90 degrees clockwise" icon={<ReloadOutlined />} onClick={this.rotate} />
+          <ActionBtn aria-label="Horizontal flip" icon={<ColumnWidthOutlined />} onClick={this.hflip} />
+          <ActionBtn aria-label="Vertical flip" icon={<ColumnHeightOutlined />} onClick={this.vflip} />
           <Button type="primary" shape="circle" size="small"
-            style={{ margin: '5px' }} onClick={this.invert} >
+            style={{ margin: '5px' }} onClick={this.invert}
+            aria-label="Invert colors" >
             <InvertIcon />
           </Button>
-          <ActionBtn icon={<DragOutlined />} onClick={this.activateDrag} />
-          <ActionBtn icon={<RightOutlined />} onClick={this.activateAngle} />
-          <ActionBtn icon={<ArrowRightOutlined />} onClick={this.activateArrow} />
-          <ActionBtn icon={<LineOutlined />} onClick={this.activateLine} />
-          <ActionBtn icon={<BorderOutlined />} onClick={this.activateRect} />
-          <ActionBtn icon={<PlusCircleOutlined />} onClick={this.activateElipse} />
-          <ActionBtn icon={<ScissorOutlined />} onClick={this.activateEraser} />
-          <ActionBtn icon={<SaveOutlined />} onClick={this.persistToolsState} />
-          <ActionBtn icon={<CloseCircleOutlined />} onClick={this.clearToolState} />
-          <ActionBtn icon={<DownloadOutlined />} onClick={this.download} />
+          <ActionBtn aria-label="Pan tool" icon={<DragOutlined />} onClick={this.activateDrag} />
+          <ActionBtn aria-label="Angle measurement" icon={<RightOutlined />} onClick={this.activateAngle} />
+          <ActionBtn aria-label="Arrow annotation" icon={<ArrowRightOutlined />} onClick={this.activateArrow} />
+          <ActionBtn aria-label="Length measurement" icon={<LineOutlined />} onClick={this.activateLine} />
+          <ActionBtn aria-label="Rectangle ROI" icon={<BorderOutlined />} onClick={this.activateRect} />
+          <ActionBtn aria-label="Ellipse ROI" icon={<PlusCircleOutlined />} onClick={this.activateElipse} />
+          <ActionBtn aria-label="Eraser tool" icon={<ScissorOutlined />} onClick={this.activateEraser} />
+          <ActionBtn aria-label="Save annotations" icon={<SaveOutlined />} onClick={this.persistToolsState} />
+          <ActionBtn aria-label="Clear all annotations" icon={<CloseCircleOutlined />} onClick={this.clearToolState} />
+          <ActionBtn aria-label="Download DICOM file" icon={<DownloadOutlined />} onClick={this.download} />
         </div>
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,
           display: 'flex', justifyContent: 'center', gap: 8, padding: '4px 8px',
           background: 'rgba(0,0,0,0.6)', zIndex: 10,
           minHeight: 44,
-        }}>
+        }} role="toolbar" aria-label="Quick tools">
           <Button type="default" shape="round" size="small" icon={<DragOutlined />}
-            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateDrag} />
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateDrag}
+            aria-label="Pan tool" />
           <Button type="default" shape="round" size="small" icon={<LineOutlined />}
-            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateLine} />
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateLine}
+            aria-label="Length measurement" />
           <Button type="default" shape="round" size="small" icon={<BorderOutlined />}
-            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateRect} />
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateRect}
+            aria-label="Rectangle ROI" />
           <Button type="default" shape="round" size="small" icon={<ScissorOutlined />}
-            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateEraser} />
+            style={{ minWidth: 44, minHeight: 44 }} onClick={this.activateEraser}
+            aria-label="Eraser tool" />
         </div>
         <ThumbnailStrip
           files={files}
@@ -572,19 +793,35 @@ class CornerstoneElement extends Component<CEProps, CEState> {
             ref={(el: HTMLDivElement | null) => {
               this.element = el;
             }}
+            role="application"
+            aria-label="DICOM image viewport"
+            tabIndex={0}
           >
             <div style={bottomLeftStyle}>Zoom: {this.state.zoom}</div>
             <div style={bottomRightStyle}>
               WW/WC: {this.state.ww} / {this.state.wc}
             </div>
           </div>
-          {this.state.loading && (
+          <div aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+            {this.state.loading ? 'Loading image' : `Zoom ${this.state.zoom.toFixed(1)}, Window ${this.state.ww} Level ${this.state.wc}`}
+          </div>
+          {this.state.viewportError ? (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.8)', color: '#ef4444', zIndex: 5,
+              fontSize: 14, flexDirection: 'column', gap: 12,
+            }} role="alert" aria-label={this.state.viewportError}>
+              <CloseCircleOutlined style={{ fontSize: 32 }} />
+              <div>{this.state.viewportError}</div>
+            </div>
+          ) : this.state.loading && (
             <div style={{
               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'rgba(0,0,0,0.7)', color: '#fff', zIndex: 5,
               fontSize: 14,
-            }}>
+            }} role="status" aria-label="Loading image">
               <div style={{ textAlign: 'center' }}>
                 <div style={{ marginBottom: 8 }}>Loading image...</div>
                 <div style={{ width: 24, height: 24, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
@@ -592,6 +829,21 @@ class CornerstoneElement extends Component<CEProps, CEState> {
             </div>
           )}
         </div>
+        {this.props.isMobile && (
+          <MobileToolbar
+            activeTool={this.state.activeTool}
+            onToolChange={(tool) => {
+              const map: Record<string, (() => void) | undefined> = {
+                Pan: this.activateDrag,
+                Length: this.activateLine,
+              };
+              this.setState({ activeTool: tool, showMobileToolbar: true });
+              map[tool]?.();
+            }}
+            visible={this.state.showMobileToolbar}
+            onClose={() => this.setState({ showMobileToolbar: false })}
+          />
+        )}
         <div className="metadata-collapse">
           <Collapse
             ghost

@@ -7,30 +7,44 @@ from starlette.responses import FileResponse, JSONResponse
 from api.patient import PatientHandler
 from api.files import (
     Upload, DownloadFiles, DownloadData, DownloadToken, FilesHandler, FileHandler,
-    FileChangesHandler, ShareFilesHandler, ServeFile, ServeThumbnail
+    FileChangesHandler, ShareFilesHandler, ShareFilesListHandler, ServeFile, ServeThumbnail
 )
-from api.logs import LogsHandler
+from api.logs import LogsHandler, LogEventTypesHandler, LogActorsHandler
+from api.notifications import NotificationsHandler, NotificationHandler, NotificationsReadAllHandler, NotificationsUnreadCountHandler
 from api.replicas import ReplicasHandlers, ReplicaHandlers
-from api.roles import RolesHandler, RoleHandler
+from api.roles import RolesHandler, RoleHandler, PermissionsHandler, RoleUsersHandler
 from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
     UsersHandler, UsersDeactivate, UsersNewPassword, UserRoleUpdate,
 )
+from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
+from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
+from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
     FhirMetadata,
     FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
 )
+from api.fhir_admin import (
+    FhirAdminConfigHandler,
+    FhirAdminClientsHandler, FhirAdminClientHandler,
+    FhirAdminMetricsHandler, FhirAdminRecentRequestsHandler,
+    FhirAdminTestHandler,
+)
+from api.hl7_admin import (
+    Hl7MessagesHandler, Hl7MessageHandler,
+    Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
+)
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
-from api.worklist import WorklistHandler, WorklistEntryHandler
+from api.worklist import WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -65,6 +79,7 @@ _V1_ROUTES = [
     Route('/.well-known/openid-configuration', endpoint=oidc_discovery),
     Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST']),
     Route('/change_password', endpoint=ChangePassword),
+    Route('/account/profile', endpoint=ProfileHandler),
     Route('/users', endpoint=UsersHandler),
     Route('/users/deactivate', endpoint=UsersDeactivate),
     Route('/users/new_password', endpoint=UsersNewPassword),
@@ -78,11 +93,21 @@ _V1_ROUTES = [
     Route('/files/{id}', endpoint=FileHandler),
     Route('/files/{id}/changes', endpoint=FileChangesHandler),
     Route('/files/{id}/share', endpoint=ShareFilesHandler),
+    Route('/files/{id}/shares', endpoint=ShareFilesListHandler),
+    Route('/files/{id}/shares/{share_id}', endpoint=ShareFilesListHandler),
     Route('/files/{id}/data', endpoint=ServeFile),
     Route('/files/{id}/thumbnail', endpoint=ServeThumbnail),
     Route('/logs', endpoint=LogsHandler),
+    Route('/logs/event-types', endpoint=LogEventTypesHandler),
+    Route('/logs/actors', endpoint=LogActorsHandler),
     Route('/roles', endpoint=RolesHandler),
     Route('/roles/{id}', endpoint=RoleHandler),
+    Route('/roles/{id}/users', endpoint=RoleUsersHandler),
+    Route('/permissions', endpoint=PermissionsHandler),
+    Route('/notifications', endpoint=NotificationsHandler),
+    Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler),
+    Route('/notifications/read-all', endpoint=NotificationsReadAllHandler),
+    Route('/notifications/{id}', endpoint=NotificationHandler),
     Route('/tenants', endpoint=TenantsHandler),
     Route('/tenants/{id}', endpoint=TenantHandler),
     Route('/tenants/{id}/stats', endpoint=TenantStatsHandler),
@@ -98,6 +123,11 @@ _V1_ROUTES = [
     Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado),
     Route('/wado', endpoint=DicomWebWadoUri),
     Route('/api/v2/wado', endpoint=DicomWebWadoUri),
+    Route('/dicomweb/admin', endpoint=DicomWebAdminHandler),
+    Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler),
+    Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST']),
+    Route('/webhooks', endpoint=WebhooksHandler),
+    Route('/webhooks/{id}', endpoint=WebhookHandler),
     Route('/fhir/metadata', endpoint=FhirMetadata),
     Route('/fhir/Patient', endpoint=FhirPatientRoot),
     Route('/fhir/Patient/{id}', endpoint=FhirPatientResource),
@@ -106,10 +136,22 @@ _V1_ROUTES = [
     Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
     Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
     Route('/hl7', endpoint=Hl7Receiver, methods=['POST']),
+    Route('/hl7/admin/messages', endpoint=Hl7MessagesHandler),
+    Route('/hl7/admin/messages/{id}', endpoint=Hl7MessageHandler),
+    Route('/hl7/admin/metrics', endpoint=Hl7MetricsHandler),
+    Route('/hl7/admin/config', endpoint=Hl7ConfigHandler),
+    Route('/hl7/admin/status', endpoint=Hl7StatusHandler),
+    Route('/worklist/station-aes', endpoint=WorklistStationAeHandler),
     Route('/worklist', endpoint=WorklistHandler),
     Route('/worklist/{id}', endpoint=WorklistEntryHandler),
     Route('/routing', endpoint=RoutingHandler),
     Route('/routing/{id}', endpoint=RoutingRuleHandler),
+    Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler),
+    Route('/fhir/admin/clients', endpoint=FhirAdminClientsHandler),
+    Route('/fhir/admin/clients/{id}', endpoint=FhirAdminClientHandler),
+    Route('/fhir/admin/metrics', endpoint=FhirAdminMetricsHandler),
+    Route('/fhir/admin/requests', endpoint=FhirAdminRecentRequestsHandler),
+    Route('/fhir/admin/test', endpoint=FhirAdminTestHandler),
     Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
     Route('/ws_token', endpoint=WSToken),
     WebSocketRoute('/ws', endpoint=WebsocketHandler),

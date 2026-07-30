@@ -21,6 +21,7 @@ class ApiKeys(Table):
     @staticmethod
     def to_json(data):
         d = dict(data)
+        import json
         d.pop('key_hash', None)
         d['created_at'] = str(d.get('created_at', ''))
         if d.get('expires_at'):
@@ -28,9 +29,16 @@ class ApiKeys(Table):
         if d.get('last_used_at'):
             d['last_used_at'] = str(d['last_used_at'])
         if d.get('permissions') and isinstance(d['permissions'], (list, str)):
-            import json
             if isinstance(d['permissions'], str):
                 d['permissions'] = json.loads(d['permissions'])
+        expires_at = d.get('expires_at')
+        if expires_at and isinstance(expires_at, str):
+            expires_at = __import__('datetime').datetime.fromisoformat(expires_at)
+        d['is_active'] = bool(
+            d.get('enabled')
+            and (not expires_at or expires_at > __import__('datetime').datetime.now(
+                tz=__import__('datetime').timezone.utc))
+        )
         return d
 
     @staticmethod

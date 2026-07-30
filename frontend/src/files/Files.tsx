@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import withRouter from '../withRouter';
 import Highlighter from 'react-highlight-words';
-import { Layout, Table, Input, message, Button, Row, Col } from 'antd';
+import { Layout, Table, Input, message, Button, Row, Col, Grid, Card, Tag } from 'antd';
 import type { InputRef } from 'antd';
 import type { ColumnType } from 'antd/es/table';
 import { SearchOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
 import { request, open } from '../helpers';
+import { PageState } from '../common/PageState';
 import { AdminFiles } from './AdminFiles';
 import AdvancedSearch from './AdvancedSearch';
 import { PAGINATION } from '../config';
@@ -57,6 +58,9 @@ function dicomJsonToFlat(studies: any[]): any[] {
     'Study Description': extractDicomValue(s['00081030']),
     'Modality': extractDicomValue(s['00080060']),
     'Accession Number': extractDicomValue(s['00080050']),
+    'Study Date': extractDicomValue(s['00080020']),
+    'Series Number': extractDicomValue(s['00200011']),
+    'Series Description': extractDicomValue(s['0008103E']),
   }));
 }
 
@@ -78,10 +82,13 @@ function searchToQidoParams(searchObj: any): Record<string, string> {
 }
 
 function Files(props: any) {
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({ pageSize: PAGINATION.limit });
   let [loading, setLoading] = useState(false);
+  let [error, setError] = useState<string | null>(null);
   let [showUpload, setShowUpload] = useState(false);
   let [showAdvanced, setShowAdvanced] = useState(false);
   let searchInput = useRef<InputRef>(null);
@@ -90,6 +97,7 @@ function Files(props: any) {
   let [searchText, setSearchText] = useState('');
   let [advancedFields, setAdvancedFields] = useState(initialAdvancedFields.map(e => [...e]));
   let [selected, setSelected] = useState<any[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
     const pager = { ...pagination };
@@ -135,7 +143,8 @@ function Files(props: any) {
    };
 
    const fetch = () => {
-     setLoading(true);
+      setLoading(true);
+      setError(null);
      const searchObj = decodeUrl(window.location.search);
      if (searchObj.query) {
        setGlobSearch(searchObj.query);
@@ -174,15 +183,16 @@ function Files(props: any) {
    };
 
    const fallbackToV2 = (searchObj: any) => {
-     request('files', { data: searchObj }).then((data: any) => {
-       setLoading(false);
-       setData(data.data);
-       setPagination(Object.assign({}, pagination, { total: data.total }));
-     }).catch((e: any) => {
-       setLoading(false);
-       message.error(e.message);
-     });
-   };
+      request('files', { data: searchObj }).then((data: any) => {
+        setLoading(false);
+        setData(data.data);
+        setPagination(Object.assign({}, pagination, { total: data.total }));
+      }).catch((e: any) => {
+        setLoading(false);
+        setError(e.message);
+        message.error(e.message);
+      });
+    };
 
   const downloadFiles = () => {
     if (!selected || !selected.length) return;
@@ -205,6 +215,10 @@ function Files(props: any) {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPagination(Object.assign({}, pagination, { current: 1 }));
     setGlobSearchCurrent(e.target.value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      handleSearch(e.target.value);
+    }, 300);
   };
 
   const handleSearch = (value: string) => {
@@ -355,6 +369,23 @@ function Files(props: any) {
       dataIndex: 'Series Description',
       ...getColumnSearchProps('Series Description'),
     },
+    {
+      title: 'Modality',
+      dataIndex: 'Modality',
+      render: (text: string) => text ? <Tag>{text}</Tag> : '-',
+    },
+    {
+      title: 'Accession',
+      dataIndex: 'Accession Number',
+      width: '12%',
+    },
+    {
+      title: 'Date',
+      dataIndex: 'Study Date',
+      width: '12%',
+      render: (text: string) => text || '-',
+      sorter: true,
+    },
   ];
 
   const rowSelection = {
@@ -417,22 +448,57 @@ function Files(props: any) {
       />
       <AdminFiles
         visible={showUpload}
-        onClose={() => {
-          fetch();
-          setShowUpload(false);
-        }}>
-      </AdminFiles>
-      <Table
-        className='filesTable'
-        scroll={{ x: 500 }}
-        columns={columns}
-        rowKey={(record: any) => record.id}
-        dataSource={data}
-        rowSelection={rowSelection}
-        pagination={pagination}
-        loading={loading}
-        onChange={handleTableChange}
+        reload={fetch}
+        onClose={() => setShowUpload(false)}
       />
+      <PageState error={error} onRetry={() => fetch()}
+        empty={!loading && !error && data.length === 0}
+        emptyMessage={globSearch || searchText ? 'No files match your search' : 'No files uploaded'}
+      >
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {data.map((item: any, idx: number) => (
+              <Card
+                key={item.id}
+                className="stagger-enter"
+                size="small"
+                hoverable
+                onClick={() => props.history.push(`/files/${item.id}`)}
+                style={{ cursor: 'pointer', '--stagger-index': idx } as React.CSSProperties}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{item['Patient ID'] || item.id}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {item['Patient\'s Name'] || item.patient_name || '-'}
+                    </div>
+                  </div>
+                  {item.Modality && <Tag>{item.Modality}</Tag>}
+                </div>
+                {(item['Study Description'] || item.study_description) && (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                    {item['Study Description'] || item.study_description}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Table
+            className='filesTable'
+            scroll={{ x: 500 }}
+            columns={columns}
+            rowKey={(record: any) => record.id}
+            dataSource={data}
+            rowSelection={rowSelection}
+            pagination={pagination}
+            loading={loading}
+            onChange={handleTableChange}
+            rowClassName={() => 'stagger-enter'}
+            onRow={(_: any, index?: number) => ({ style: { '--stagger-index': index ?? 0 } as React.CSSProperties })}
+          />
+        )}
+      </PageState>
     </Content>
   );
 }

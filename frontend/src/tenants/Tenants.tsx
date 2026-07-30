@@ -1,49 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Table, message, Tag, Button, Modal, Form, Input, Popconfirm } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
+import { Layout, Card, Row, Col, Tag, Progress, Button, Modal, Form, Input, Popconfirm, Space, Typography, Spin, Alert, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, DatabaseOutlined, HddOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
+import { PageState } from '../common/PageState';
 
+const { Text, Title } = Typography;
 const Content = Layout.Content;
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'green',
-  decommissioned: 'red',
-  pending: 'orange',
+const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
+  provisioning: { color: 'processing', label: 'Provisioning' },
+  active: { color: 'green', label: 'Active' },
+  quarantined: { color: 'orange', label: 'Quarantined' },
+  decommissioned: { color: 'default', label: 'Decommissioned' },
 };
 
-function TenantHealth({ tenantId }: { tenantId: string }) {
-  const [health, setHealth] = useState<any>(null);
-
-  useEffect(() => {
-    request(`tenants/${tenantId}/stats`).then((res: any) => {
-      setHealth(res.data);
-    }).catch(() => {
-      setHealth(null);
-    });
-  }, [tenantId]);
-
-  if (!health) return <span style={{ color: '#999' }}>—</span>;
-
-  const totalStorage = health.storage_used_bytes || 0;
-  const storageColor = totalStorage > 107374182400 ? 'red' : totalStorage > 53687091200 ? 'orange' : 'green';
-  const activeColor = health.last_activity ? 'green' : 'default';
-
-  return (
-    <span>
-      <span className="tenant-health-dot" style={{
-        display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-        backgroundColor: storageColor, marginRight: 4,
-      }} />
-      <Tag color={activeColor}>{health.user_count || 0} users</Tag>
-      <Tag color="blue">{health.study_count || 0} studies</Tag>
-      <Tag color={storageColor}>
-        {totalStorage > 1073741824
-          ? `${(totalStorage / 1073741824).toFixed(1)} GB`
-          : `${(totalStorage / 1048576).toFixed(0)} MB`}
-      </Tag>
-    </span>
-  );
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${val.toFixed(1)} ${units[i]}`;
 }
 
 function Tenants() {
@@ -51,44 +32,12 @@ function Tenants() {
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);
-  let [visible, setVisible] = useState(false);
-  const [form] = Form.useForm();
-
-  const columns: any[] = [
-    {
-      title: 'Tenant Name', dataIndex: 'name', width: '20%',
-    },
-    {
-      title: 'Slug', dataIndex: 'slug', width: '12%',
-    },
-    {
-      title: 'Domain', dataIndex: 'domain', width: '20%',
-    },
-    {
-      title: 'Users', width: '10%',
-      render: (_: any, record: any) => <TenantHealth tenantId={record.id} />,
-    },
-    {
-      title: 'Status', dataIndex: 'status', width: '12%',
-      render: (s: string) => (
-        <Tag color={STATUS_COLORS[s] || 'default'}>
-          {s?.toUpperCase() || 'UNKNOWN'}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Action', key: 'action', width: '12%',
-      render: (_: any, record: any) =>
-        record.status !== 'decommissioned' ? (
-          <Popconfirm title="Decommission this tenant?" onConfirm={() => handleDecommission(record.id)}>
-            <DeleteOutlined
-              title="Decommission"
-              style={{ cursor: 'pointer', color: '#ff4d4f', fontSize: 16 }}
-            />
-          </Popconfirm>
-        ) : null,
-    },
-  ];
+  let [error, setError] = useState<string | null>(null);
+  let [createVisible, setCreateVisible] = useState(false);
+  let [editVisible, setEditVisible] = useState(false);
+  let [editingTenant, setEditingTenant] = useState<any | null>(null);
+  const [createForm] = Form.useForm();
+  const [editForm] = Form.useForm();
 
   useEffect(() => {
     fetch();
@@ -96,20 +45,25 @@ function Tenants() {
 
   const fetch = () => {
     setLoading(true);
-    request('tenants').then((data: any) => {
+    setError(null);
+    request('tenants').then((res: any) => {
       setLoading(false);
-      setData(data.data || []);
+      setData(res.data || []);
     }).catch((e: any) => {
       setLoading(false);
+      setError(e.message);
       message.error(e.message);
     });
   };
 
   const handleProvision = () => {
-    form.validateFields().then((values: any) => {
-      request('tenants', { data: values }).then(() => {
-        form.resetFields();
-        setVisible(false);
+    createForm.validateFields().then((values: any) => {
+      const data: any = { name: values.name, slug: values.slug };
+      if (values.domain) data.domain = values.domain;
+      if (values.storage_quota_gb) data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
+      request('tenants', { data }).then(() => {
+        createForm.resetFields();
+        setCreateVisible(false);
         fetch();
       }).catch((e: any) => {
         message.error(e.message);
@@ -117,43 +71,210 @@ function Tenants() {
     }).catch(() => {});
   };
 
-  const handleDecommission = (id: string) => {
-    request(`tenants/${id}`, { data: undefined, method: 'DELETE' }).then(() => {
+  const handleEdit = (tenant: any) => {
+    setEditingTenant(tenant);
+    editForm.setFieldsValue({
+      name: tenant.name,
+      domain: tenant.domain,
+      storage_quota_gb: tenant.storage_quota_bytes ? Math.round(tenant.storage_quota_bytes / 1073741824) : undefined,
+    });
+    setEditVisible(true);
+  };
+
+  const handleUpdate = () => {
+    if (!editingTenant) return;
+    editForm.validateFields().then((values: any) => {
+      const data: any = {};
+      if (values.name !== editingTenant.name) data.name = values.name;
+      if (values.domain !== editingTenant.domain) data.domain = values.domain || null;
+      const newQuota = values.storage_quota_gb ? values.storage_quota_gb * 1073741824 : null;
+      if (newQuota !== editingTenant.storage_quota_bytes) data.storage_quota_bytes = newQuota;
+      if (Object.keys(data).length === 0) { setEditVisible(false); return; }
+      request(`tenants/${editingTenant.id}`, { data, method: 'PUT' }).then(() => {
+        setEditingTenant(null);
+        setEditVisible(false);
+        fetch();
+      }).catch((e: any) => {
+        message.error(e.message);
+      });
+    }).catch(() => {});
+  };
+
+  const handleDecommission = (tenant: any) => {
+    request(`tenants/${tenant.id}`, { data: undefined, method: 'DELETE' }).then(() => {
       fetch();
     }).catch((e: any) => {
       message.error(e.message);
     });
   };
 
+  const storageBarColor = (pct: number) => {
+    if (pct > 75) return '#ef4444';
+    if (pct > 50) return '#f59e0b';
+    return '#22c55e';
+  };
+
   return (
     <Content style={{ padding: 50 }}>
-      <Button type="primary" onClick={() => setVisible(true)} style={{ marginBottom: 16 }}>
-        Provision Tenant
-      </Button>
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={data}
-        loading={loading}
-      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
+        <Title level={4} style={{ margin: 0 }}>Tenants</Title>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateVisible(true); }}>
+          Provision Tenant
+        </Button>
+      </div>
+      <PageState
+        error={error}
+        onRetry={() => fetch()}
+        empty={!loading && !error && data.length === 0}
+        emptyMessage="No tenants provisioned"
+        emptyAction={
+          <Button type="primary" onClick={() => { createForm.resetFields(); setCreateVisible(true); }}>
+            Provision Tenant
+          </Button>
+        }
+      >
+        <Row gutter={[16, 16]}>
+          {data.map((tenant) => {
+            const statusCfg = STATUS_CONFIG[tenant.status] || { color: 'default', label: tenant.status || 'Unknown' };
+            const isDecommissioned = tenant.status === 'decommissioned';
+            const isProvisioning = tenant.status === 'provisioning';
+            const isQuarantined = tenant.status === 'quarantined';
+            const usedBytes = tenant.storage_used_bytes || 0;
+            const quotaBytes = tenant.storage_quota_bytes || 0;
+            const pct = quotaBytes ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100)) : 0;
+
+            return (
+              <Col xs={24} sm={12} lg={8} xl={6} key={tenant.id}>
+                <Card
+                  style={{
+                    opacity: isDecommissioned ? 0.5 : 1,
+                    borderLeft: isQuarantined ? '3px solid #faad14' : undefined,
+                  }}
+                  actions={
+                    isDecommissioned ? undefined : [
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => handleEdit(tenant)}
+                        disabled={isProvisioning || isQuarantined}
+                      >
+                        Edit
+                      </Button>,
+                      <Popconfirm
+                        title="Decommission this tenant?"
+                        description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
+                        onConfirm={() => handleDecommission(tenant)}
+                        disabled={isProvisioning}
+                      >
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          disabled={isProvisioning}
+                        >
+                          Decommission
+                        </Button>
+                      </Popconfirm>,
+                    ]
+                  }
+                >
+                  {isQuarantined && (
+                    <Alert
+                      type="warning"
+                      message="Suspicious activity detected — tenant is read-only"
+                      style={{ marginBottom: 12, fontSize: 12, padding: '4px 8px' }}
+                      showIcon
+                    />
+                  )}
+                  {isProvisioning ? (
+                    <Spin tip="Provisioning database..." style={{ display: 'block', textAlign: 'center', padding: '24px 0' }}>
+                      <div style={{ padding: 24 }} />
+                    </Spin>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 8 }}>
+                        <Text strong style={{ fontSize: 16 }}>{tenant.name}</Text>
+                        <Tag style={{ marginLeft: 6, fontSize: 10 }}>{tenant.slug}</Tag>
+                      </div>
+                      {tenant.domain && (
+                        <div style={{ marginBottom: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{tenant.domain}</Text>
+                        </div>
+                      )}
+                      <div style={{ marginBottom: 8 }}>
+                        <Tag color={statusCfg.color}>{statusCfg.label}</Tag>
+                      </div>
+                      {quotaBytes > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              <HddOutlined style={{ marginRight: 4 }} />
+                              {formatBytes(usedBytes)} / {formatBytes(quotaBytes)}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: storageBarColor(pct) }}>{pct}%</Text>
+                          </div>
+                          <Progress
+                            percent={pct}
+                            size="small"
+                            strokeColor={storageBarColor(pct)}
+                            showInfo={false}
+                          />
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#888' }}>
+                        <span><UserOutlined style={{ marginRight: 4 }} />{tenant.user_count ?? '?'} users</span>
+                        <span><DatabaseOutlined style={{ marginRight: 4 }} />{tenant.study_count ?? '?'} studies</span>
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      </PageState>
+
       <Modal
         title="Provision Tenant"
-        open={visible}
-        onCancel={() => setVisible(false)}
+        open={createVisible}
+        onCancel={() => setCreateVisible(false)}
         onOk={handleProvision}
+        okText="Provision"
       >
-        <Form form={form} layout="vertical">
+        <Form form={createForm} layout="vertical">
+          <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
+            <Input placeholder="e.g., Memorial Hospital West" />
+          </Form.Item>
+          <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
+            <Input placeholder="e.g., memorial-west" />
+          </Form.Item>
+          <Form.Item name="domain" label="Custom Domain">
+            <Input placeholder="e.g., pacs.memorialwest.com" />
+          </Form.Item>
+          <Form.Item name="storage_quota_gb" label="Storage Quota (GB)">
+            <Input type="number" placeholder="Leave empty for system default" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Edit Tenant"
+        open={editVisible}
+        onCancel={() => { setEditingTenant(null); setEditVisible(false); }}
+        onOk={handleUpdate}
+        okText="Save"
+      >
+        <Form form={editForm} layout="vertical">
           <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item name="domain" label="Custom Domain">
+            <Input placeholder="Leave empty to clear" />
           </Form.Item>
-          <Form.Item name="domain" label="Domain">
-            <Input />
-          </Form.Item>
-          <Form.Item name="admin_email" label="Admin Email">
-            <Input type="email" />
+          <Form.Item name="storage_quota_gb" label="Storage Quota (GB)">
+            <Input type="number" placeholder="Current: unchanged" />
           </Form.Item>
         </Form>
       </Modal>

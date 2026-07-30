@@ -1,17 +1,12 @@
 import json
 import uuid
 
-from pypika import Order
-from pypika.functions import Count
-
-from db.log import Log
 from log import request_id_var
 
 
 class AuditLog:
     def __init__(self, conn=None):
         self.conn = conn
-        self.log_model = Log(conn)
 
     async def log_event(self, event_type, actor_id, resource_type, resource_id,
                         details=None, tenant=None, request_id=None):
@@ -28,35 +23,156 @@ class AuditLog:
             'request_id': request_id,
         })
 
-        q = self.log_model.insert().columns(
-            'log', 'tenant', 'request_id', 'trace_id'
-        ).insert(payload, tenant, request_id, trace_id)
-        await self.conn.execute(str(q))
+        await self.conn.execute(
+            'INSERT INTO logs (log, tenant, request_id, trace_id) VALUES ($1, $2, $3, $4)',
+            payload, tenant, request_id, trace_id,
+        )
 
-    async def query(self, tenant=None, event_type=None, actor_id=None, limit=50, offset=0):
-        t = self.log_model.table
-        q = self.log_model.select('*')
+    @staticmethod
+    def _extract(row):
+        d = dict(row)
+        try:
+            payload = json.loads(d['log']) if isinstance(d.get('log'), str) else {}
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+        resource = payload.get('resource', {})
+        if isinstance(resource, str):
+            try:
+                resource = json.loads(resource)
+            except (json.JSONDecodeError, TypeError):
+                resource = {}
+        detail = payload.get('detail', {})
+        if isinstance(detail, str):
+            try:
+                detail = json.loads(detail)
+            except (json.JSONDecodeError, TypeError):
+                detail = {}
+        return {
+            'id': d['id'],
+            'created_at': str(d.get('created', '')) if d.get('created') else None,
+            'event_type': d.get('event_type') or payload.get('event'),
+            'actor': d.get('actor_name') or payload.get('actor', 'system'),
+            'resource_type': resource.get('type') if isinstance(resource, dict) else None,
+            'resource_id': resource.get('id') if isinstance(resource, dict) else None,
+            'description': detail.get('description') if isinstance(detail, dict) else (detail if isinstance(detail, str) else None),
+            'tenant': d.get('tenant') or payload.get('tenant'),
+            'payload': payload,
+        }
 
-        if tenant is not None:
-            q = q.where(t.tenant == tenant)
-        if event_type is not None:
-            q = q.where(t.log.like(f'%"event": "{event_type}"%'))
-        if actor_id is not None:
-            q = q.where(t.log.like(f'%"actor": {actor_id}%'))
+    async def query(self, event_type=None, actor=None, date_from=None, date_to=None,
+                    tenant=None, cursor=None, limit=50):
+        where = ["l.log LIKE '{%'"]
+        params = []
+        idx = 1
 
-        q = q.orderby(t.id, order=Order.desc).limit(limit).offset(offset)
-        rows = await self.conn.fetch(str(q))
-        return [dict(r) for r in rows]
+        if event_type:
+            if isinstance(event_type, str):
+                event_type = [event_type]
+            clauses = []
+            for et in event_type:
+                clauses.append(f"(l.log::json->>'event') = ${idx}")
+                params.append(et)
+                idx += 1
+            where.append(f"({' OR '.join(clauses)})")
+        if actor:
+            where.append(f"u.username ILIKE ${idx} || '%'")
+            params.append(actor)
+            idx += 1
+        if date_from:
+            where.append(f"l.created >= ${idx}")
+            params.append(date_from)
+            idx += 1
+        if date_to:
+            where.append(f"l.created <= ${idx}::date + interval '1 day' - interval '1 second'")
+            params.append(date_to)
+            idx += 1
+        if tenant:
+            where.append(f"l.tenant = ${idx}")
+            params.append(tenant)
+            idx += 1
+        if cursor:
+            where.append(f"l.id < ${idx}")
+            params.append(int(cursor))
+            idx += 1
 
-    async def count(self, tenant=None, event_type=None, actor_id=None):
-        t = self.log_model.table
-        q = self.log_model.select(Count(1))
+        q = f"""
+            SELECT l.id, l.created, l.log, l.tenant,
+                   u.username AS actor_name,
+                   (l.log::json->>'event') AS event_type
+            FROM logs l
+            LEFT JOIN users u ON u.id::text = (l.log::json->>'actor')
+            WHERE {' AND '.join(where)}
+            ORDER BY l.id DESC
+            LIMIT ${idx}
+        """
+        params.append(limit)
+        rows = await self.conn.fetch(q, *params)
+        return [self._extract(r) for r in rows]
 
-        if tenant is not None:
-            q = q.where(t.tenant == tenant)
-        if event_type is not None:
-            q = q.where(t.log.like(f'%"event": "{event_type}"%'))
-        if actor_id is not None:
-            q = q.where(t.log.like(f'%"actor": {actor_id}%'))
+    async def count(self, event_type=None, actor=None, date_from=None, date_to=None, tenant=None):
+        where = ["l.log LIKE '{%'"]
+        params = []
+        idx = 1
 
-        return await self.conn.fetchval(str(q))
+        if event_type:
+            if isinstance(event_type, str):
+                event_type = [event_type]
+            clauses = []
+            for et in event_type:
+                clauses.append(f"(l.log::json->>'event') = ${idx}")
+                params.append(et)
+                idx += 1
+            where.append(f"({' OR '.join(clauses)})")
+        if actor:
+            where.append(f"u.username ILIKE ${idx} || '%'")
+            params.append(actor)
+            idx += 1
+        if date_from:
+            where.append(f"l.created >= ${idx}")
+            params.append(date_from)
+            idx += 1
+        if date_to:
+            where.append(f"l.created <= ${idx}::date + interval '1 day' - interval '1 second'")
+            params.append(date_to)
+            idx += 1
+        if tenant:
+            where.append(f"l.tenant = ${idx}")
+            params.append(tenant)
+            idx += 1
+
+        q = f"""
+            SELECT COUNT(1)
+            FROM logs l
+            LEFT JOIN users u ON u.id::text = (l.log::json->>'actor')
+            WHERE {' AND '.join(where)}
+        """
+        return await self.conn.fetchval(q, *params)
+
+    async def get_event_types(self):
+        rows = await self.conn.fetch("""
+            SELECT DISTINCT (l.log::json->>'event') AS event_type
+            FROM logs l
+            WHERE l.log LIKE '{%'
+              AND (l.log::json->>'event') IS NOT NULL
+            ORDER BY event_type
+        """)
+        return [r['event_type'] for r in rows]
+
+    async def get_actors(self, search=None, limit=20):
+        params = [limit]
+        idx = 2
+        where = ["l.log LIKE '{%'", "u.username IS NOT NULL"]
+        if search:
+            where.append(f"u.username ILIKE ${idx} || '%'")
+            params.append(search)
+            idx += 1
+
+        q = f"""
+            SELECT DISTINCT u.username
+            FROM logs l
+            JOIN users u ON u.id::text = (l.log::json->>'actor')
+            WHERE {' AND '.join(where)}
+            LIMIT $1
+        """
+        rows = await self.conn.fetch(q, *params)
+        return [r['username'] for r in rows if r['username']]

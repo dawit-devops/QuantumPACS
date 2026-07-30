@@ -1,5 +1,11 @@
 .ant-table-thead > tr > th, .ant-table-tbody > tr > td {
-    padding: 8px !important;
+    padding: var(--space-2) !important;
+}
+
+.ant-menu-horizontal {
+    background: var(--bg-surface) !important;
+    border-bottom-color: var(--border-color) !important;
+    transition: background-color var(--duration-normal) var(--easing-standard);
 }
 
 @media (max-width: 768px) {
@@ -14,11 +20,42 @@
 
     .detail-actions {
         flex-wrap: wrap;
-        gap: 4px;
+        gap: var(--space-element-xs);
     }
 
     .detail-actions .ant-btn {
-        font-size: 11px;
-        padding: 2px 8px;
+        font-size: var(--font-size-xs);
+        padding: var(--space-element-xs) var(--space-2);
+    }
+}
+
+@media (max-width: 600px) {
+    .detail-viewport-root {
+        height: 100dvh !important;
+    }
+
+    .detail-viewport-root .ant-menu-horizontal {
+        padding-left: var(--space-2) !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .detail-viewport-root .ant-menu-horizontal .ant-menu-item {
+        padding: 0 var(--space-2);
+    }
+
+    .detail-viewport-root .ant-breadcrumb {
+        font-size: var(--font-size-xs);
+        padding: var(--space-element-xs) var(--space-2) !important;
+    }
+}
+
+@media (max-width: 375px) {
+    .detail-viewport-root .ant-menu-item {
+        font-size: var(--font-size-xs);
+    }
+
+    .detail-viewport-root .ant-breadcrumb {
+        font-size: var(--font-size-xs);
     }
 }

@@ -1,127 +1,155 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, message, Tree, Table } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Card, Descriptions, Tag, Tree, Typography, Space, Badge, Empty, Spin } from 'antd';
+import { FolderOutlined, FileOutlined, ExperimentOutlined, CalendarOutlined, UserOutlined, MedicineBoxOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
+import { PageState } from '../common/PageState';
 import withRouter from '../withRouter';
 
+const { Text, Title } = Typography;
 const Content = Layout.Content;
-const { TreeNode, DirectoryTree } = Tree as any;
-
-const columns = [
-  {
-    dataIndex: 'key',
-    width: '20%',
-  },
-  {
-    dataIndex: 'value',
-  },
-];
-
-const mappings = [
-  {
-    key: 'patient_id',
-    title: 'Patient ID',
-  },
-  {
-    key: 'name',
-    title: 'Patient Name'
-  },
-  {
-    key: 'sex',
-    title: 'Patient Sex'
-  },
-  {
-    key: 'birth_date',
-    title: 'Patient Birth Date'
-  },
-];
-
-function wrap(txt: string) {
-  if (!txt) return '';
-  return `(${txt})`;
-}
 
 function Patient(props: any) {
   document.title = 'QuantumPACS - Patient';
 
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);
+  let [error, setError] = useState<string | null>(null);
+  let [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
 
-  useEffect(() => {
+  const patientId = props.match?.params?.id;
+
+  const fetchPatient = () => {
     setLoading(true);
-    let params = props.match.params;
-    request(`patients/${params.id}`).then((data: any) => {
+    setError(null);
+    request(`patients/${patientId}`).then((res: any) => {
       setLoading(false);
-      setData(data);
-
+      setData(res);
+      if (res.studies) {
+        setExpandedKeys(res.studies.map((s: any) => `study-${s.id}`));
+      }
     }).catch((e: any) => {
       setLoading(false);
-      message.error(e.message);
+      setError(e.message);
     });
-    // eslint-disable-next-line
-  }, []);
-
-  const onSelect = (s: any) => {
-    props.history.push(`/files/${s}`);
   };
 
-  const data2 = [];
-  for (let m of mappings) {
-    data2.push({ key: m.title, value: data[m.key] });
-  }
+  useEffect(() => {
+    if (patientId) fetchPatient();
+  }, [patientId]);
+
+  const stats = useMemo(() => {
+    const studies = data.studies || [];
+    const seriesCount = studies.reduce((acc: number, s: any) => acc + (s.series?.length || 0), 0);
+    const fileCount = studies.reduce((acc: number, s: any) =>
+      acc + (s.series?.reduce((a: number, sr: any) => a + (sr.files?.length || 0), 0) || 0), 0);
+    return { studyCount: studies.length, seriesCount, fileCount };
+  }, [data]);
+
+  const treeData = useMemo(() => {
+    const studies = data.studies || [];
+    return studies.map((s: any) => ({
+      key: `study-${s.id}`,
+      icon: <ExperimentOutlined />,
+      title: (
+        <Space size={12}>
+          <Text strong>{s.study_id || s.study_instance_uid?.slice(0, 20) || 'Study'}</Text>
+          {s.description && <Text type="secondary">{s.description}</Text>}
+          {s.accession_number && <Tag style={{ fontSize: 10 }}>{s.accession_number}</Tag>}
+          <Text type="secondary" style={{ fontSize: 11 }}>{s.series?.length || 0} series</Text>
+        </Space>
+      ),
+      children: (s.series || []).map((sr: any) => ({
+        key: `series-${sr.id}`,
+        icon: <MedicineBoxOutlined />,
+        title: (
+          <Space size={8}>
+            <Tag color="blue" style={{ fontSize: 10 }}>{sr.modality || '?'}</Tag>
+            <Text>{sr.number ? `#${sr.number}` : ''}</Text>
+            {sr.description && <Text type="secondary">{sr.description}</Text>}
+            <Text type="secondary" style={{ fontSize: 11 }}>{sr.files?.length || 0} files</Text>
+          </Space>
+        ),
+        children: (sr.files || []).map((f: any) => ({
+          key: `file-${f.id}`,
+          icon: <FileOutlined />,
+          isLeaf: true,
+          title: (
+            <a onClick={(e) => { e.stopPropagation(); props.history.push(`/files/${f.id}`); }}>
+              <Space size={4}>
+                <Text>{f.name || f.sop_instance_uid?.slice(0, 20) || 'File'}</Text>
+                {f.indexed ? <Tag color="green" style={{ fontSize: 9 }}>indexed</Tag> : <Tag style={{ fontSize: 9 }}>pending</Tag>}
+              </Space>
+            </a>
+          ),
+        })),
+      })),
+    }));
+  }, [data]);
+
   return (
-    <Content style={{
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '50px 10px 10px 10px'
-    }}>
-      <Table
-        style={{ marginBottom: '10px' }}
-        scroll={{ x: 500 }}
-        columns={columns}
-        rowKey={(record: any) => record.key}
-        dataSource={data2}
+    <Content style={{ padding: 32 }}>
+      <PageState
         loading={loading}
-        pagination={false}
-        showHeader={false}
-      />
-      <p style={{ marginBottom: '0px' }}>Studies</p>
-      <DirectoryTree defaultExpandAll onSelect={onSelect}>
-        {
-          data && data.studies && data.studies.map((s: any) => {
-            return (
-              <TreeNode
-                title={`Study ${s.study_id} ${wrap(s.description)}`}
-                key={s.id}
-                selectable={false}
-              >
-                {
-                  s.series && s.series.map((sr: any) => {
-                    return (
-                      <TreeNode
-                        title={`Series ${sr.number} ${wrap(sr.description)}`}
-                        key={sr.id}
-                        selectable={false}
-                      >
-                        {
-                          sr.files && sr.files.map((f: any) => {
-                            return (
-                              <TreeNode
-                                title={`File ${f.name}`}
-                                key={f.id}
-                                isLeaf
-                              />
-                            );
-                          })
-                        }
-                      </TreeNode>
-                    );
-                  })
-                }
-              </TreeNode>
-            );
-          })}
-      </DirectoryTree>
+        error={error}
+        onRetry={fetchPatient}
+        empty={!loading && !error && !data.patient_id}
+        emptyMessage="Patient not found"
+      >
+        <Spin spinning={loading}>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div>
+                <Title level={4} style={{ margin: 0 }}>
+                  <UserOutlined style={{ marginRight: 8 }} />
+                  {data.name || 'Unknown'}
+                </Title>
+                {data.patient_id && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Patient ID: {data.patient_id}
+                  </Text>
+                )}
+              </div>
+              <Space size={16}>
+                <Badge count={stats.studyCount} showZero>
+                  <Tag icon={<ExperimentOutlined />} style={{ padding: '2px 8px' }}>Studies</Tag>
+                </Badge>
+                <Badge count={stats.seriesCount} showZero>
+                  <Tag icon={<MedicineBoxOutlined />} style={{ padding: '2px 8px' }}>Series</Tag>
+                </Badge>
+                <Badge count={stats.fileCount} showZero>
+                  <Tag icon={<FileOutlined />} style={{ padding: '2px 8px' }}>Files</Tag>
+                </Badge>
+              </Space>
+            </div>
+            <Descriptions size="small" column={3}>
+              <Descriptions.Item label="Patient ID">{data.patient_id || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Name">{data.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Sex">
+                {data.sex ? <Tag>{data.sex === 'M' ? 'Male' : data.sex === 'F' ? 'Female' : data.sex}</Tag> : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Date of Birth">{data.birth_date || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Internal ID">
+                <Text copyable style={{ fontSize: 12 }}>{data.id}</Text>
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
+
+          <Card title={<span><FolderOutlined style={{ marginRight: 8 }} />Studies</span>}>
+            {treeData.length === 0 ? (
+              <Empty description="No studies found for this patient" />
+            ) : (
+              <Tree
+                showIcon
+                defaultExpandAll
+                treeData={treeData}
+                expandedKeys={expandedKeys}
+                onExpand={setExpandedKeys}
+              />
+            )}
+          </Card>
+        </Spin>
+      </PageState>
     </Content>
   );
 }

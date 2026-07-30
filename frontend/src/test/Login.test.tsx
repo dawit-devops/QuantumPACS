@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import LoginForm from '../login/Login';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -10,6 +11,10 @@ const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: mockRequest,
   isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
@@ -23,11 +28,13 @@ const mockProviders = [
 
 function renderWithAuth(ui: React.ReactElement) {
   return render(
-    <AuthProvider>
-      <MemoryRouter>
-        {ui}
-      </MemoryRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MemoryRouter>
+          {ui}
+        </MemoryRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

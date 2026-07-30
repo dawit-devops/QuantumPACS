@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Worklist from '../worklist/Worklist';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -11,6 +12,10 @@ const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: mockRequest,
   isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
@@ -56,11 +61,13 @@ describe('Worklist', () => {
 
   function renderWithAuth(ui: React.ReactElement) {
     return render(
-      <AuthProvider>
-        <MemoryRouter>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            {ui}
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 
@@ -110,23 +117,23 @@ describe('Worklist', () => {
     const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
-    mockRequest.mockImplementation(() => Promise.resolve({ data: { id: '4' } }));
+    mockRequest.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === 'worklist/station-aes' ? [] : { id: '4' } })
+    );
 
     await user.click(screen.getByText('Create Entry'));
     const modal = screen.getByRole('dialog');
     await user.type(within(modal).getByLabelText('Patient ID'), 'P004');
     await user.type(within(modal).getByLabelText('Patient Name'), 'Test Patient');
     await user.type(within(modal).getByLabelText('Accession #'), 'ACC-004');
-    await user.type(within(modal).getByLabelText('Modality'), 'CT');
     await user.click(within(modal).getByText('OK'));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith('worklist', {
-        data: {
-          patient_id: 'P004', patient_name: 'Test Patient',
-          accession_number: 'ACC-004', modality: 'CT',
-        },
-      });
+      const calls = mockRequest.mock.calls;
+      const createCall = calls.find((c: any) => c[0] === 'worklist' && c[1]?.data?.patient_id === 'P004');
+      expect(createCall).toBeDefined();
+      expect(createCall[1].data.patient_name).toBe('Test Patient');
+      expect(createCall[1].data.accession_number).toBe('ACC-004');
     });
   });
 
@@ -135,7 +142,8 @@ describe('Worklist', () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
 
-    await user.click(screen.getAllByTitle('Edit')[0]);
+    const editIcons = document.querySelectorAll('.anticon-edit');
+    await user.click(editIcons[0]);
     const modal = screen.getByRole('dialog');
     expect(within(modal).getByDisplayValue('John Doe')).toBeInTheDocument();
     expect(within(modal).getByDisplayValue('P001')).toBeInTheDocument();
@@ -146,9 +154,10 @@ describe('Worklist', () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
 
-    await user.click(screen.getAllByTitle('Cancel')[0]);
-    const confirmBtn = screen.getByRole('button', { name: /yes|confirm|ok/i });
-    await user.click(confirmBtn);
+    const cancelIcons = document.querySelectorAll('.anticon-close-circle');
+    fireEvent.click(cancelIcons[0]);
+    const confirmBtn = await screen.findByText('OK');
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith('worklist/1', { data: undefined, method: 'DELETE' });

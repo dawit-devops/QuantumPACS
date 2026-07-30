@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Table, message, Tag, Popconfirm, Divider, Form, Modal, InputNumber } from 'antd';
+import { Layout, Table, message, Tag, Popconfirm, Divider, Form, Modal, InputNumber, Progress, Badge, Tooltip } from 'antd';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
+import { PageState } from '../common/PageState';
 import { AddReplica } from './EditReplica';
 
 const Content = Layout.Content;
@@ -9,7 +10,6 @@ const Content = Layout.Content;
 export function EditDelay(props: any) {
   const { form, replica, onCancel, onCreate } = props;
   const delay = replica ? replica.delay : 0;
-
   return (
     <Modal
       open={true}
@@ -33,19 +33,42 @@ function Replicas() {
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});
   let [loading, setLoading] = useState(false);
+  let [error, setError] = useState<string | null>(null);
   let [currReplica, setCurrReplica] = useState<any>(null);
   let [editDelayForm] = Form.useForm();
 
   useEffect(() => {
-    fetch();
-    // eslint-disable-next-line
+    const id = setInterval(() => {
+      fetch(false);
+      setLoading(false);
+    }, 2000);
+    return () => clearInterval(id);
   }, []);
 
-  const handleDelete = (replica: number) => {
-    request(`replicas/${replica}`, { method: 'DELETE' })
-      .then(fetch).catch(() => {
-        message.error('Deletion failed');
-      });
+  const handleTableChange = (pagination: any, filters: any, sorter: any) => {
+    const pager = { ...pagination };
+    pager.current = pagination.current;
+    setPagination(Object.assign({}, pagination, { current: pagination.current }));
+    fetch({ results: pagination.pageSize, page: pagination.current, sortField: sorter.field, sortOrder: sorter.order, ...filters });
+  };
+
+  const fetch = (showLoading?: any) => {
+    if (showLoading !== false) setLoading(true);
+    setError(null);
+    request('replicas').then((res: any) => {
+      const pager = Object.assign({}, pagination, { total: res.data.length });
+      if (showLoading !== false) setLoading(false);
+      setData(res.data);
+      setPagination(pager);
+    }).catch((e: any) => {
+      setLoading(false);
+      setError(e.message);
+      message.error(e.message);
+    });
+  };
+
+  const editDelayCancel = () => {
+    setCurrReplica(null);
   };
 
   const updateDelay = () => {
@@ -66,115 +89,78 @@ function Replicas() {
       .then(fetch).catch(() => message.error('Failed to change master'));
   };
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      fetch(false);
-      setLoading(false);
-    }, 2000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line
-  }, []);
-
-  const handleTableChange = (pagination: any, filters: any, sorter: any) => {
-    const pager = { ...pagination };
-    pager.current = pagination.current;
-    setPagination(Object.assign({}, pagination, { current: pagination.current }));
-    fetch({
-      results: pagination.pageSize,
-      page: pagination.current,
-      sortField: sorter.field,
-      sortOrder: sorter.order,
-      ...filters,
-    });
+  const handleDelete = (replica: number) => {
+    request(`replicas/${replica}`, { method: 'DELETE' })
+      .then(fetch).catch(() => { message.error('Deletion failed'); });
   };
 
-  const fetch = (showLoading?: any) => {
-    if (showLoading !== false) setLoading(true);
-    request('replicas').then((data: any) => {
-      const pager = Object.assign({}, pagination, { total: data.data.length });
-      if (showLoading !== false) setLoading(false);
-      setData(data.data);
-      setPagination(pager);
-    }).catch((e: any) => {
-      setLoading(false);
-      message.error(e.message);
-    });
-  };
-
-  const editDelayCancel = () => {
-    setCurrReplica(null);
+  const healthColor = (status: string) => {
+    if (status === 'ok') return 'green';
+    if (status === 'degraded') return 'orange';
+    return 'red';
   };
 
   const columns: any[] = [
     {
-      title: 'ID',
-      dataIndex: 'id',
+      title: 'ID', dataIndex: 'id',
+      render: (id: string) => <code style={{ fontSize: 12 }}>{id.slice(0, 8)}</code>,
     },
+    { title: 'Type', dataIndex: 'type' },
     {
-      title: 'Type',
-      dataIndex: 'type',
-    },
-    {
-      title: 'Replication',
-      dataIndex: 'master',
+      title: 'Role', dataIndex: 'master', width: '8%',
       render: (master: boolean) => {
-        const mstr = master ? 'master' : 'replica';
-        const color = master ? 'green' : 'geekblue';
-        return (
-          <Tag color={color} key={mstr}>
-            {mstr.toUpperCase()}
-          </Tag>
-        );
-      }
+        const label = master ? 'Master' : 'Replica';
+        return <Tag color={master ? 'green' : 'geekblue'}>{label}</Tag>;
+      },
     },
     {
-      title: 'Location',
-      dataIndex: 'location',
-    },
-    {
-      title: 'Delay',
-      dataIndex: 'delay',
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      sorter: true,
+      title: 'Health', dataIndex: 'status', width: '10%',
       render: (status: string) => {
-        let color;
-        if (status === 'ok') {
-          color = 'green';
-        } else {
-          color = 'orange';
-        }
+        if (!status) return <Tag color="default">Unknown</Tag>;
         return (
-          <Tag color={color} key={status}>
-            {status.toUpperCase()}
-          </Tag>
+          <Tooltip title={`Status: ${status}`}>
+            <Badge status={status === 'ok' ? 'success' : status === 'degraded' ? 'warning' : 'error'} />
+            <Tag color={healthColor(status)} style={{ marginLeft: 4 }}>{status.toUpperCase()}</Tag>
+          </Tooltip>
         );
-      }
+      },
+    },
+    { title: 'Location', dataIndex: 'location' },
+    {
+      title: 'Delay', dataIndex: 'delay',
+      render: (d: number) => d != null ? `${d} min` : '-',
     },
     {
-      title: 'Files',
-      dataIndex: 'files',
+      title: 'Files', dataIndex: 'files', width: '8%',
     },
     {
-      title: 'Action',
-      key: 'action',
-      render: (text: any, record: any) =>
+      title: 'Sync Progress', key: 'progress', width: '14%',
+      render: (_: any, record: any) => {
+        if (record.master) return <Tag color="green">Source</Tag>;
+        return (
+          <Progress
+            percent={record.sync_progress || 0}
+            size="small"
+            status={record.sync_progress === 100 ? 'success' : 'active'}
+            strokeColor={record.sync_progress === 100 ? '#22c55e' : '#0891B2'}
+          />
+        );
+      },
+    },
+    {
+      title: 'Action', key: 'action',
+      render: (_: any, record: any) =>
         (!record.master || (record.master && data.length === 1)) ? (
           <span>
-            {!record.master &&
+            {!record.master && (
               <span>
-                {/* eslint-disable-next-line */}
                 <a onClick={() => setCurrReplica(record)}>Update delay</a>
                 <Divider type="vertical" />
-                {/* eslint-disable-next-line */}
                 <a onClick={() => setMaster(record)}>Set master</a>
                 <Divider type="vertical" />
               </span>
-            }
+            )}
             <Popconfirm title="Sure to delete?" onConfirm={() => handleDelete(record.id)}>
-              {/* eslint-disable-next-line */}
               <a>Delete</a>
             </Popconfirm>
           </span>
@@ -183,30 +169,30 @@ function Replicas() {
   ];
 
   return (
-    <Content style={{
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 50
-    }}>
+    <Content style={{ padding: 50 }}>
       <AddReplica style={{ marginBottom: 10 }} reload={fetch} />
-      <Table
-        scroll={{ x: 500 }}
-        columns={columns}
-        rowKey={(record: any) => record.id}
-        dataSource={data}
-        pagination={pagination}
-        loading={loading}
-        onChange={handleTableChange}
-      />
-      {
-        currReplica !== null &&
+      <PageState error={error} onRetry={() => fetch()}
+        empty={!loading && !error && data.length === 0}
+        emptyMessage="No replicas configured"
+      >
+        <Table
+          scroll={{ x: 500 }}
+          columns={columns}
+          rowKey={(record: any) => record.id}
+          dataSource={data}
+          pagination={pagination}
+          loading={loading}
+          onChange={handleTableChange}
+        />
+      </PageState>
+      {currReplica !== null && (
         <EditDelay
           form={editDelayForm}
           replica={currReplica}
           onCancel={editDelayCancel}
           onCreate={updateDelay}
-        ></EditDelay>
-      }
+        />
+      )}
     </Content>
   );
 }

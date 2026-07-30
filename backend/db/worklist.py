@@ -71,30 +71,46 @@ class Worklist(Table):
 
     async def search(self, status=None, modality=None, date_from=None, date_to=None,
                      search=None, page=1, per_page=20):
-        from pypika import Order, Query as PypikaQuery
-        q = PypikaQuery.from_(self.table).select(
-            self.table.star,
-        ).orderby(self.table.scheduled_date, order=Order.desc)
+        from pypika import Order, Query as PypikaQuery, functions as fn
 
+        conditions = []
         if status:
-            q = q.where(self.table.status == status)
+            conditions.append(self.table.status == status)
         if modality:
-            q = q.where(self.table.modality == modality)
+            conditions.append(self.table.modality == modality)
         if date_from:
-            q = q.where(self.table.scheduled_date >= date_from)
+            conditions.append(self.table.scheduled_date >= date_from)
         if date_to:
-            q = q.where(self.table.scheduled_date <= date_to)
+            conditions.append(self.table.scheduled_date <= date_to)
         if search:
             like = f'%{search}%'
-            q = q.where(
+            conditions.append(
                 (self.table.patient_name.ilike(like)) |
                 (self.table.patient_id.ilike(like)) |
                 (self.table.accession_number.ilike(like))
             )
 
+        q = PypikaQuery.from_(self.table).select(
+            self.table.star,
+        ).orderby(self.table.scheduled_date, order=Order.desc)
+        for c in conditions:
+            q = q.where(c)
         q = q.limit(per_page).offset((page - 1) * per_page)
         rows = await self.fetch(q)
-        return [dict(r) for r in rows]
+
+        count_q = PypikaQuery.from_(self.table).select(fn.Count(1))
+        for c in conditions:
+            count_q = count_q.where(c)
+        total = await self.fetchval(count_q) or 0
+
+        return [dict(r) for r in rows], total
+
+    async def get_station_aes(self):
+        q = self.select('station_ae_title').where(
+            self.table.station_ae_title != ''
+        ).distinct().orderby(self.table.station_ae_title)
+        rows = await self.fetch(q)
+        return [r['station_ae_title'] for r in rows]
 
     async def mark_performed(self, accession_number, study_uid):
         now = datetime.now(timezone.utc)

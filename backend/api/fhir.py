@@ -22,7 +22,30 @@ def _quote(val):
 log = get_logger(__name__)
 
 FHIR_MIME = 'application/fhir+json'
-BASE_URL = 'http://localhost:8080/api/fhir'
+
+
+async def _get_fhir_base_url():
+    try:
+        from db.conn import get_conn
+        from db.fhir_config import FhirConfig
+        async with get_conn() as conn:
+            cfg = FhirConfig(conn)
+            raw = await cfg.get_all()
+            return raw.get('base_url', 'http://localhost:8080/api/fhir')
+    except Exception:
+        return 'http://localhost:8080/api/fhir'
+
+
+async def _is_fhir_enabled():
+    try:
+        from db.conn import get_conn
+        from db.fhir_config import FhirConfig
+        async with get_conn() as conn:
+            cfg = FhirConfig(conn)
+            raw = await cfg.get_all()
+            return raw.get('enabled', 'false') == 'true'
+    except Exception:
+        return True
 
 
 class FhirJsonResponse(Response):
@@ -32,7 +55,8 @@ class FhirJsonResponse(Response):
         return json.dumps(content, ensure_ascii=False, allow_nan=False, default=str).encode('utf-8')
 
 
-def _build_bundle(entries, total=None, params=None):
+async def _build_bundle(entries, total=None, params=None):
+    base_url = await _get_fhir_base_url()
     bundle = {
         'resourceType': 'Bundle',
         'type': 'searchset',
@@ -42,7 +66,7 @@ def _build_bundle(entries, total=None, params=None):
     if params:
         qs = '&'.join(f'{k}={v}' for k, v in params.items())
         bundle['link'] = [
-            {'relation': 'self', 'url': f'{BASE_URL}?{qs}'},
+            {'relation': 'self', 'url': f'{base_url}?{qs}'},
         ]
     return bundle
 
@@ -77,8 +101,9 @@ async def _patient_logical_id(conn, patient_db_id):
     return row['patient_id'] if row else None
 
 
-def _imagingstudy_resource(study) -> dict:
-    dicomweb_base = BASE_URL.replace('/fhir', '/dicomweb')
+async def _imagingstudy_resource(study) -> dict:
+    fhir_base = await _get_fhir_base_url()
+    dicomweb_base = fhir_base.replace('/fhir', '/dicomweb')
     resource = {
         'resourceType': 'ImagingStudy',
         'id': study.get('study_instance_uid') or study['study_id'],
@@ -135,11 +160,29 @@ def _documentreference_resource(share) -> dict:
 class FhirMetadata(HTTPEndpoint):
     @requires_permission(Permission.PATIENT_READ)
     async def get(self, request):
+        enabled = await _is_fhir_enabled()
+        if not enabled:
+            return FhirJsonResponse({
+                'resourceType': 'OperationOutcome',
+                'issue': [{'severity': 'error', 'code': 'forbidden', 'diagnostics': 'FHIR server is disabled'}],
+            }, status_code=503)
+
+        base_url = await _get_fhir_base_url()
+        try:
+            from db.conn import get_conn
+            from db.fhir_config import FhirConfig
+            async with get_conn() as conn:
+                cfg = FhirConfig(conn)
+                raw = await cfg.get_all()
+                publisher = raw.get('publisher', 'QuantumPACS')
+        except Exception:
+            publisher = 'QuantumPACS'
+
         capability = {
             'resourceType': 'CapabilityStatement',
             'status': 'active',
-            'date': '2026-07-26',
-            'publisher': 'QuantumPACS',
+            'date': '2026-07-29',
+            'publisher': publisher,
             'kind': 'instance',
             'software': {'name': 'QuantumPACS', 'version': '3.0.0'},
             'fhirVersion': '4.0.1',
@@ -225,7 +268,7 @@ class FhirPatientRoot(HTTPEndpoint):
             rows = [dict(r) for r in rows]
 
         resources = [_patient_resource(r) for r in rows]
-        bundle = _build_bundle(resources, len(rows), params)
+        bundle = await _build_bundle(resources, len(rows), params)
         return FhirJsonResponse(bundle)
 
     @requires_permission(Permission.PATIENT_WRITE)
@@ -388,7 +431,7 @@ class FhirImagingStudyRead(HTTPEndpoint):
             study['_patient_logical_id'] = await _patient_logical_id(conn, study.get('patient_id', 0))
             series_rows = await _fetch_series_for_study(conn, study['id'])
             study['_series'] = series_rows
-        return FhirJsonResponse(_imagingstudy_resource(study))
+        return FhirJsonResponse(await _imagingstudy_resource(study))
 
 
 class FhirImagingStudySearch(HTTPEndpoint):
@@ -443,8 +486,8 @@ class FhirImagingStudySearch(HTTPEndpoint):
                 study['_series'] = series_rows
                 studies.append(study)
 
-        resources = [_imagingstudy_resource(s) for s in studies]
-        bundle = _build_bundle(resources, len(studies), params)
+        resources = [await _imagingstudy_resource(s) for s in studies]
+        bundle = await _build_bundle(resources, len(studies), params)
         return FhirJsonResponse(bundle)
 
 
@@ -541,5 +584,5 @@ class FhirDocumentReferenceSearch(HTTPEndpoint):
             shares = [dict(r) for r in rows]
 
         resources = [_documentreference_resource(s) for s in shares]
-        bundle = _build_bundle(resources, len(shares), params)
+        bundle = await _build_bundle(resources, len(shares), params)
         return FhirJsonResponse(bundle)

@@ -1,8 +1,13 @@
-import React, { Suspense, useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import withRouter from '../withRouter';
-import { Layout, message, Menu, Breadcrumb, Grid, Spin } from 'antd';
-import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined } from '@ant-design/icons';
+import { Layout, message, Menu, Breadcrumb, Grid, Spin, Badge, Tooltip } from 'antd';
+import { EyeOutlined, TableOutlined, ShareAltOutlined, HistoryOutlined, LockOutlined, DashboardOutlined } from '@ant-design/icons';
+import { useTheme } from '../common/ThemeProvider';
+import { KeyboardShortcuts } from './KeyboardShortcuts';
+import { parseAnnotations } from './MeasurementPanel';
+import MeasurementPanel from './MeasurementPanel';
+import { PageState } from '../common/PageState';
 import withSidebar from '../common/base';
 
 const { useBreakpoint } = Grid;
@@ -34,14 +39,35 @@ function Detail(props: any) {
   let [tab, setTab] = useState('image');
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);
+  let [error, setError] = useState<string | null>(null);
   let [key, setKey] = useState(1);
   let [study, setStudy] = useState<any>(null);
   let [series, setSeries] = useState<any>(null);
   let [image, setImage] = useState(imagePath);
   let [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
+  const tempKey = localStorage.getItem('tempKey');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  const [rawAnnotations, setRawAnnotations] = useState<any[]>([]);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(null);
+
+  const imageUrl = wadoRsImage || image;
+
+  const measurements = parseAnnotations(rawAnnotations, imageUrl);
+
+  const handleAnnotationsChange = useCallback((annotations: any[]) => {
+    setRawAnnotations(annotations || []);
+  }, []);
+
+  const handleFocusAnnotation = useCallback((annotationUID: string) => {
+    setFocusAnnotationUID(annotationUID);
+    setTimeout(() => setFocusAnnotationUID(null), 100);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     let params = props.match.params;
 
     setImage(`wadouri:${API_URL}/files/${params.id}/data`);
@@ -78,6 +104,7 @@ function Detail(props: any) {
       if (e.message === '404') {
         msg = 'File not found';
       }
+      setError(msg);
       message.error(msg);
       if (e.message === '404') {
         props.history.push('/');
@@ -86,7 +113,7 @@ function Detail(props: any) {
     // eslint-disable-next-line
   }, [props.match.params.id]);
 
-  const background = tab === 'image' ? '#000' : '';
+  const background = tab === 'image' ? 'var(--viewer-bg)' : '';
 
   const changeStudy = (e: any, s: any) => {
     e.preventDefault();
@@ -123,15 +150,14 @@ function Detail(props: any) {
     }));
   };
 
-  const tempKey = localStorage.getItem('tempKey');
-
   return (
     <Content style={{
       alignItems: 'center',
       justifyContent: 'center',
       background: background,
     }}>
-      <Menu style={{ paddingLeft: '40px' }} defaultSelectedKeys={[tab]} mode="horizontal">
+      <PageState loading={loading && !data.id} error={error}>
+        <Menu style={{ paddingLeft: '40px' }} defaultSelectedKeys={[tab]} mode="horizontal">
         <Menu.Item key="image" onClick={() => setTab('image')} >
           <EyeOutlined />
           Image
@@ -161,10 +187,22 @@ function Detail(props: any) {
             Admin
           </Menu.Item>
         }
+        <Menu.Item
+          key="measurements-toggle"
+          onClick={() => setPanelOpen(!panelOpen)}
+          style={{ marginLeft: 'auto', borderLeft: '1px solid var(--border-color)' }}
+        >
+          <Tooltip title="Toggle measurements panel">
+            <Badge count={measurements.length} size="small" offset={[2, -4]}>
+              <DashboardOutlined />
+            </Badge>
+          </Tooltip>
+          Measures
+        </Menu.Item>
       </Menu>
       {
         data && data.patient && ['image'].includes(tab) &&
-        <Breadcrumb style={{ background: '#fff', padding: '5px' }}>
+        <Breadcrumb style={{ background: 'var(--bg-surface)', padding: '5px', borderRadius: 'var(--radius-sm)' }}>
           <Breadcrumb.Item>
             <Link to={`/patients/${data.patient_id}`}>
               {isMobile ? data.patient.name : `${data.patient.name} (${data.patient.patient_id})`}
@@ -181,17 +219,32 @@ function Detail(props: any) {
           </Breadcrumb.Item>
         </Breadcrumb>
       }
-      <Suspense fallback={<Spin size="large" style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />}>
-        <CornerstoneElement key={key}
-          file={data}
-          files={series?.files || null}
-          changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
-          image={image}
-          wadoRsImage={wadoRsImage}
-          progressive={true}
+      <div style={{ display: 'flex', position: 'relative' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Suspense fallback={<Spin size="large" style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />}>
+            <CornerstoneElement key={key}
+              file={data}
+              files={series?.files || null}
+              changeFile={(v: number) => props.history.push(`/files/${series?.files[v].id}`)}
+              image={image}
+              wadoRsImage={wadoRsImage}
+              progressive={true}
+              visible={tab === 'image'}
+              onRequestHelp={() => setShowShortcuts(true)}
+              onAnnotationsChange={handleAnnotationsChange}
+              focusAnnotationUID={focusAnnotationUID}
+              isMobile={isMobile}
+            />
+          </Suspense>
+        </div>
+        <MeasurementPanel
+          measurements={measurements}
+          onFocusAnnotation={handleFocusAnnotation}
+          collapsed={!panelOpen}
+          onToggle={() => setPanelOpen(false)}
           visible={tab === 'image'}
         />
-      </Suspense>
+      </div>
       <EditableTable
         style={tab !== 'data' ? { display: 'none' } : {}}
         rowKey={(record: any) => record.key}
@@ -202,6 +255,8 @@ function Detail(props: any) {
       {tab === 'changes' && <Changes file={data}></Changes>}
       {tab === 'share' && <Share file={data}></Share>}
 {tab === 'admin' && hasPermission('USER_ADMIN') && <Management file={data}></Management>}
+      <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      </PageState>
     </Content>
   );
 }

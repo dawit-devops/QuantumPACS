@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import ServiceKeys from '../servicekeys/ServiceKeys';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -11,6 +12,10 @@ const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: mockRequest,
   isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
@@ -21,22 +26,22 @@ const mockKeys = [
   {
     id: '1', name: 'RIS Integration', prefix: 'qpk_abcde', service_name: 'RIS-App',
     permissions: ['FILE_READ'], expires_at: '2027-07-28T00:00:00Z',
-    last_used_at: '2026-07-27T12:00:00Z', enabled: true, created_at: '2026-07-01T00:00:00Z',
+    last_used_at: '2026-07-27T12:00:00Z', enabled: true, is_active: true, created_at: '2026-07-01T00:00:00Z',
   },
   {
     id: '2', name: 'HL7 Connector', prefix: 'qpk_fghij', service_name: 'HL7-Bridge',
     permissions: ['PATIENT_READ', 'WORKLIST_WRITE'], expires_at: null,
-    last_used_at: null, enabled: true, created_at: '2026-07-15T00:00:00Z',
+    last_used_at: null, enabled: true, is_active: true, created_at: '2026-07-15T00:00:00Z',
   },
   {
     id: '3', name: 'Old Backup Script', prefix: 'qpk_klmno', service_name: 'Backup',
     permissions: ['FILE_READ'], expires_at: '2026-06-01T00:00:00Z',
-    last_used_at: '2026-05-30T00:00:00Z', enabled: false, created_at: '2026-01-01T00:00:00Z',
+    last_used_at: '2026-05-30T00:00:00Z', enabled: false, is_active: true, created_at: '2026-01-01T00:00:00Z',
   },
 ];
 
 async function waitForTable() {
-  await screen.findByText('RIS Integration');
+  await screen.findByText('RIS Integration', { exact: false });
 }
 
 describe('ServiceKeys', () => {
@@ -50,11 +55,13 @@ describe('ServiceKeys', () => {
 
   function renderWithAuth(ui: React.ReactElement) {
     return render(
-      <AuthProvider>
-        <MemoryRouter>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            {ui}
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 
@@ -68,12 +75,12 @@ describe('ServiceKeys', () => {
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
     expect(screen.getByText('Name')).toBeInTheDocument();
-    expect(screen.getByText('Service')).toBeInTheDocument();
-    expect(screen.getByText('Prefix')).toBeInTheDocument();
+    expect(screen.getByText('Permissions')).toBeInTheDocument();
+    expect(screen.getByText('Last Used')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
   });
 
-  it('renders Generate New Key button', async () => {
+  it('renders Generate Key button', async () => {
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
     expect(screen.getByText('Generate Key')).toBeInTheDocument();
@@ -111,9 +118,10 @@ describe('ServiceKeys', () => {
     await user.click(within(modal).getByText('Generate'));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith('api-keys', {
-        data: { name: 'New Key', service_name: 'MyService' },
-      });
+      const calls = mockRequest.mock.calls;
+      const genCall = calls.find((c: any) => c[0] === 'api-keys' && c[1]?.data?.name === 'New Key');
+      expect(genCall).toBeDefined();
+      expect(genCall[1].data.service_name).toBe('MyService');
     });
 
     expect(await screen.findByText('qpk_newly_generated_key_token')).toBeInTheDocument();
@@ -124,8 +132,8 @@ describe('ServiceKeys', () => {
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
 
-    await user.click(screen.getAllByTitle('Revoke')[0]);
-    const confirmBtn = screen.getByRole('button', { name: /yes|confirm|ok/i });
+    await user.click(screen.getAllByText('Revoke')[0]);
+    const confirmBtn = screen.getByText('OK');
     await user.click(confirmBtn);
 
     await waitFor(() => {

@@ -30,8 +30,14 @@ class Roles(Table):
         return data
 
     async def get_all(self):
-        q = self.select('*').orderby(self.table.name)
-        data = await self.fetch(q)
+        q = f"""
+            SELECT r.*, COUNT(u.id)::int AS user_count
+            FROM {self.name} r
+            LEFT JOIN users u ON u.role_id = r.id
+            GROUP BY r.id
+            ORDER BY r.name
+        """
+        data = await self.conn.fetch(q)
         return [self.to_json(d) for d in data]
 
     async def get(self, role_id):

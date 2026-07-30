@@ -28,3 +28,4 @@ class UpdateWorklistRequest(BaseModel):
     scheduled_time: time | None = None
     modality: str | None = None
     station_ae_title: str | None = None
+    status: str | None = None

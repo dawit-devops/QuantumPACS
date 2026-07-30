@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import { setTokens, clearTokens } from '../helpers';
+import { setTokens, clearTokens, startRefreshTimer, stopRefreshTimer } from '../helpers';
+import { navigate } from '../navigator';
 
 export interface AuthUser {
   id: string;
@@ -54,6 +55,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isAuthenticated = user !== null;
 
+  const signOut = useCallback(() => {
+    stopRefreshTimer();
+    localStorage.removeItem('userId');
+    localStorage.removeItem('username');
+    localStorage.removeItem('admin');
+    localStorage.removeItem('role');
+    localStorage.removeItem('permissions');
+    localStorage.removeItem('tenant_id');
+    clearTokens();
+    setUser(null);
+  }, []);
+
   const hasPermission = useCallback(
     (permission: string) => isAuthenticated && (user?.admin || user?.permissions?.includes(permission)),
     [isAuthenticated, user],
@@ -70,18 +83,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setTokens(token, refreshToken || token);
     setUser(userData);
-  }, []);
-
-  const signOut = useCallback(() => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('username');
-    localStorage.removeItem('admin');
-    localStorage.removeItem('role');
-    localStorage.removeItem('permissions');
-    localStorage.removeItem('tenant_id');
-    clearTokens();
-    setUser(null);
-  }, []);
+    startRefreshTimer(() => {
+      signOut();
+      navigate('/login');
+    });
+  }, [signOut]);
 
   const value = useMemo(
     () => ({ isAuthenticated, user, signIn, signOut, hasPermission, activeTenant, setActiveTenant }),

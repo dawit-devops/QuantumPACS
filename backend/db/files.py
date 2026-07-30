@@ -115,6 +115,10 @@ class Files(Table):
         )
         return await self.fetchone(q)
 
+    async def find_by_hash(self, hsh):
+        q = self.select('id', 'name', 'hash').where(self.table.hash == hsh).limit(1)
+        return await self.fetchone(q)
+
     async def insert_or_select(self, filedata):
         f = await self.get(filedata)
         if f:

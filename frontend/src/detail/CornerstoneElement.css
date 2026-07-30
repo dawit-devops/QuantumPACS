@@ -1,8 +1,8 @@
 .viewportElement {
     max-height: 80%;
-    margin: 20px;
+    margin: var(--space-5);
     position: relative;
-    color: white;
+    color: var(--text-inverse);
     touch-action: none;
 }
 
@@ -36,11 +36,11 @@
 
 .metadata-collapse {
     max-width: 600px;
-    margin: 8px auto;
+    margin: var(--space-2) auto;
 }
 
 @media only screen and (max-width: 767px) {
     .metadata-collapse {
-        margin: 8px;
+        margin: var(--space-2);
     }
 }

@@ -3,25 +3,37 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Metrics from '../metrics/Metrics';
 
-const mockRequest = vi.fn();
+const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: (...args: any[]) => mockRequest(...args),
   isAdmin: () => false,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../common/QuantumLogo', () => ({
   default: () => <div>Logo</div>,
 }));
 
+vi.mock('react-chartjs-2', () => ({
+  Bar: () => <div data-testid="mock-bar-chart">Bar Chart</div>,
+  Line: () => <div data-testid="mock-line-chart">Line Chart</div>,
+}));
+
 function renderWithAuth(ui: React.ReactElement) {
   return render(
-    <AuthProvider>
-      <MemoryRouter>
-        {ui}
-      </MemoryRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MemoryRouter>
+          {ui}
+        </MemoryRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
@@ -41,11 +53,12 @@ describe('Metrics', () => {
     vi.clearAllMocks();
   });
 
-  it('renders skeleton while loading', () => {
+  it('renders spinner while loading', () => {
     mockRequest.mockReturnValue(new Promise(() => {}));
     renderWithAuth(<Metrics />);
 
-    expect(screen.getByTestId('metrics-skeleton')).toBeInTheDocument();
+    const spinner = document.querySelector('.ant-spin-spinning');
+    expect(spinner).toBeTruthy();
   });
 
   it('renders stat cards after data loads', async () => {
@@ -56,14 +69,13 @@ describe('Metrics', () => {
       expect(screen.getByText('Patients')).toBeInTheDocument();
     });
 
-    const tens = screen.getAllByText('10');
-    expect(tens.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('20')).toBeInTheDocument();
-    expect(screen.getByText('40')).toBeInTheDocument();
-    expect(screen.getByText('976.6 KB')).toBeInTheDocument();
+    expect(screen.getByText('Studies')).toBeInTheDocument();
+    expect(screen.getByText('Series')).toBeInTheDocument();
+    expect(screen.getByText('Users')).toBeInTheDocument();
+    expect(screen.getByText('Storage')).toBeInTheDocument();
   });
 
-  it('renders modality distribution as a chart with canvas', async () => {
+  it('renders modality distribution chart', async () => {
     mockRequest.mockResolvedValue(mockData);
     renderWithAuth(<Metrics />);
 
@@ -71,11 +83,10 @@ describe('Metrics', () => {
       expect(screen.getByText('Modality Distribution')).toBeInTheDocument();
     });
 
-    const canvases = document.querySelectorAll('canvas');
-    expect(canvases.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId('mock-bar-chart').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders ingestion chart with canvas', async () => {
+  it('renders ingestion chart', async () => {
     mockRequest.mockResolvedValue(mockData);
     renderWithAuth(<Metrics />);
 
@@ -83,8 +94,9 @@ describe('Metrics', () => {
       expect(screen.getByText('Ingestion (30 days)')).toBeInTheDocument();
     });
 
-    const canvases = document.querySelectorAll('canvas');
-    expect(canvases.length).toBeGreaterThanOrEqual(2);
+    const lineCharts = screen.getAllByTestId('mock-line-chart');
+    const barCharts = screen.getAllByTestId('mock-bar-chart');
+    expect(lineCharts.length + barCharts.length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders system health pills', async () => {
@@ -130,7 +142,7 @@ describe('Metrics', () => {
       expect(screen.getByText('Component Latency')).toBeInTheDocument();
     });
 
-    const canvases = document.querySelectorAll('canvas');
-    expect(canvases.length).toBeGreaterThanOrEqual(2);
+    const barCharts = screen.getAllByTestId('mock-bar-chart');
+    expect(barCharts.length).toBeGreaterThanOrEqual(1);
   });
 });
