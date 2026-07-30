@@ -41,17 +41,28 @@ if config.get('sentry_dsn'):
     )
 
 
+from starlette.middleware.cors import CORSMiddleware
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Content-Security-Policy'] = "default-src 'self'"
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
+        return response
+
+
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         import time
         start = time.monotonic()
         path = request.url.path
         if request.method == 'OPTIONS' and path.startswith('/api'):
-            cors_origin = config.get('cors_origins', '*')
             resp = Response(status_code=200)
-            resp.headers['Access-Control-Allow-Origin'] = cors_origin
-            resp.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
-            resp.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
             record_request(request.method, path, 200, time.monotonic() - start)
             return resp
         http_requests_in_progress.labels(method=request.method, path=path).inc()
@@ -62,9 +73,7 @@ class CustomMiddleware(BaseHTTPMiddleware):
             elapsed = time.monotonic() - start
             http_requests_in_progress.labels(method=request.method, path=request.url.path).dec()
             record_request(request.method, request.url.path, 500, elapsed)
-            cors_origin = config.get('cors_origins', '*')
             resp = server_error('Internal server error', status_code=500)
-            resp.headers['Access-Control-Allow-Origin'] = cors_origin
             return resp
         elapsed = time.monotonic() - start
         http_requests_in_progress.labels(method=request.method, path=request.url.path).dec()
@@ -88,25 +97,40 @@ class CustomMiddleware(BaseHTTPMiddleware):
         if is_docker and not path.startswith('/api') and response.status_code == 404:
             response = FileResponse('./static/index.html')
 
-        cors_origin = config.get('cors_origins', '*')
-        response.headers['Access-Control-Allow-Origin'] = cors_origin
-        response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
-        response.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+        return response
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    _PUBLIC_PATHS = frozenset({
+        '/api/login', '/api/v2/login',
+        '/api/auth/refresh', '/api/v2/auth/refresh',
+        '/api/health', '/api/v2/health',
+        '/api/auth/logout', '/api/v2/auth/logout',
+        '/api/oauth/login', '/api/v2/oauth/login',
+        '/api/oauth/callback', '/api/v2/oauth/callback',
+    })
+
+    async def dispatch(self, request, call_next):
+        if request.method in ('POST', 'PUT', 'DELETE') and request.url.path.startswith('/api'):
+            if request.url.path not in self._PUBLIC_PATHS:
+                if request.headers.get('X-CSRF-Token') != '1':
+                    from api.response import forbidden
+                    return forbidden('CSRF token missing or invalid')
+        response = await call_next(request)
+        set_cookie = response.headers.get('set-cookie')
+        if set_cookie and 'SameSite' not in set_cookie:
+            response.headers['set-cookie'] = set_cookie.replace('; path=', '; SameSite=Strict; path=')
         return response
 
 
 async def http_exception(request, exc):
     resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
-    cors_origin = config.get('cors_origins', '*')
-    resp.headers['Access-Control-Allow-Origin'] = cors_origin
     return resp
 
 
 async def server_error_handler(request, exc):
     log.exception('Unhandled server error: %s %s', request.method, request.url.path)
     resp = server_error('Internal server error', status_code=500)
-    cors_origin = config.get('cors_origins', '*')
-    resp.headers['Access-Control-Allow-Origin'] = cors_origin
     return resp
 
 
@@ -159,6 +183,9 @@ app = Starlette(
         Middleware(ServiceMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
+        Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),
+        Middleware(SecurityHeadersMiddleware),
+        Middleware(CSRFMiddleware),
         Middleware(CustomMiddleware),
     ],
     exception_handlers={

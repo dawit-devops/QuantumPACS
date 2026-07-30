@@ -8,7 +8,7 @@ from db.roles import Roles
 from db.table import Table
 from db.tenants import TenantConnectionPool
 from db.users import Users
-from config import config
+from config import config, is_docker
 from log import get_logger
 from api.redis_client import get_client as get_redis
 from api.redis_client import is_available as redis_available
@@ -132,6 +132,10 @@ def _stop_mllp():
 async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
+
+    if not is_docker() and not config.get('redis_password'):
+        log.critical('SECURITY: redis_password must be set in production (non-Docker mode). Set REDIS_PASSWORD env var or config.local.yaml.')
+        sys.exit(1)
 
     success = False
     last_exc = None

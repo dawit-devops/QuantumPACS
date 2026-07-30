@@ -7,6 +7,7 @@ import jwt as _jwt
 
 from api.response import unauthorized
 from api.tokens import verify_token, is_blocked
+from api.ratelimit import RedisTokenBucket
 from config import config
 from db.conn import get_conn
 from db.share_files import SharedFiles
@@ -21,6 +22,7 @@ log = get_logger(__name__)
 
 _active_cache = {}
 _cache_redis = None
+_api_key_limiter = RedisTokenBucket(max_attempts=100, window_seconds=60)
 
 
 def _get_cache_redis():
@@ -132,6 +134,10 @@ class TokenAuth(AuthenticationBackend):
 
         api_key = request.headers.get('X-API-Key')
         if api_key:
+            ok, msg = await _api_key_limiter.check(api_key)
+            if not ok:
+                raise AuthenticationError('Rate limited')
+            await _api_key_limiter.record(api_key)
             from db.api_keys import ApiKeys
             try:
                 async with get_conn() as conn:
@@ -218,9 +224,4 @@ class TokenAuth(AuthenticationBackend):
 
     @staticmethod
     def on_auth_error(request, exc):
-        resp = unauthorized(str(exc))
-        cors_origin = config.get('cors_origins', '*')
-        resp.headers['Access-Control-Allow-Origin'] = cors_origin
-        resp.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
-        resp.headers['Access-Control-Allow-Headers'] = 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
-        return resp
+        return unauthorized(str(exc))

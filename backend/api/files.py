@@ -214,6 +214,9 @@ async def get_file_by_id(request):
         file = await Files(conn).get_extra(file_id)
         if not file or file['deleted']:
             raise HTTPException(status_code=404)
+        user = getattr(request, 'user', None)
+        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+            raise HTTPException(status_code=403)
         return file
 
 
@@ -287,6 +290,10 @@ class ServeFile(HTTPEndpoint):
         if not file:
             raise HTTPException(status_code=404)
 
+        user = getattr(request, 'user', None)
+        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+            raise HTTPException(status_code=403)
+
         async with get_conn() as conn:
             await FileChange(conn).add_change(
                 file_id, 'download', by_user=request.user.id,
@@ -347,6 +354,10 @@ class ServeThumbnail(HTTPEndpoint):
 
         if not file:
             raise HTTPException(status_code=404)
+
+        user = getattr(request, 'user', None)
+        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+            raise HTTPException(status_code=403)
 
         tmp = await storage.fetch(file)
         try:
