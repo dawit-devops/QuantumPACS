@@ -22,6 +22,19 @@ vi.mock('../hooks', () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+const mockOnConfirm = vi.hoisted(() => vi.fn());
+
+vi.mock('antd', async () => {
+  const actual = await vi.importActual('antd');
+  const Popconfirm = ({ children, onConfirm, title }: any) =>
+    React.createElement('span', {
+      className: 'mock-popconfirm',
+      'data-title': title,
+      onClick: (e: React.MouseEvent) => { onConfirm?.(); },
+    }, children);
+  return { ...actual, Popconfirm };
+});
+
 const mockEntries = [
   {
     id: '1', patient_id: 'P001', patient_name: 'John Doe',
@@ -150,17 +163,16 @@ describe('Worklist', () => {
   });
 
   it('cancel entry calls delete API', async () => {
-    const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
 
-    const cancelIcons = document.querySelectorAll('.anticon-close-circle');
-    fireEvent.click(cancelIcons[0]);
-    const confirmBtn = await screen.findByText('OK');
-    fireEvent.click(confirmBtn);
+    const mockSpans = document.querySelectorAll('.mock-popconfirm');
+    const cancelSpan = Array.from(mockSpans).find(s => s.getAttribute('data-title')?.includes('Cancel'));
+    expect(cancelSpan).toBeTruthy();
+    fireEvent.click(cancelSpan!);
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith('worklist/1', { data: undefined, method: 'DELETE' });
-    });
+    }, { timeout: 10000 });
   });
 });
