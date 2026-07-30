@@ -102,7 +102,7 @@ class TestChangePasswordBlocklist:
             with patch('api.users.get_conn', return_value=mock_conn):
                 resp = client.post(
                     '/api/change_password',
-                    json={'password': 'newpassword123'},
+                    json={'new_password': 'newpassword123', 'current_password': 'oldpass'},
                     headers={'X-Auth-Pacs': token},
                 )
 
@@ -130,7 +130,7 @@ class TestChangePasswordBlocklist:
             with patch('api.users.get_conn', return_value=mock_conn):
                 resp = client.post(
                     '/api/change_password',
-                    json={'password': 'validpassword'},
+                    json={'new_password': 'validpassword', 'current_password': 'oldpass'},
                     headers={'X-Auth-Pacs': token},
                 )
 

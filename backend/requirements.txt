@@ -9,7 +9,7 @@ email-validator>=1.0.4,<3.0
 pydantic>=2.0,<3.0
 pydicom>=1.3.0,<4.0
 pynetdicom>=1.4.1,<4.0
-PyJWT>=2.0,<3.0
+PyJWT>=2.8.0,<3.0
 PyPika>=0.35.2,<0.52
 opentelemetry-api>=1.28.0,<2.0
 opentelemetry-sdk>=1.28.0,<2.0
@@ -21,13 +21,13 @@ redis>=5.0,<9.0
 python-dateutil>=2.8.0,<3.0
 python-multipart>=0.0.5,<1.0
 sentry-sdk>=2.0,<3.0
-starlette>=1.0.1,<2.0
+starlette>=1.1.0,<2.0
 ujson>=1.35,<6.0
 uvicorn>=0.8.6,<0.52
 websockets>=10.0
 httpx<1.0
 prometheus_client>=0.20,<1.0
 hl7>=0.4,<1.0
-cryptography>=41.0,<50.0
+cryptography>=42.0.0,<50.0
 
 Pillow>=10.0.0,<13.0.0

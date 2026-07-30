@@ -142,7 +142,7 @@ async def _find_or_create_user(oauth_sub, email, name, provider):
         role_id = None
         if role_slug:
             role_id = await conn.fetchval(
-                f"SELECT id FROM roles WHERE slug = '{role_slug}'"
+                "SELECT id FROM roles WHERE slug = $1", role_slug
             )
         import binascii, hashlib as _hashlib, os
         placeholder = binascii.hexlify(_hashlib.sha256(os.urandom(32)).digest()).decode()

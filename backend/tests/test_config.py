@@ -34,7 +34,7 @@ class TestDefaultConfig:
 
     def test_secret_falls_back_to_dev_default(self):
         cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})
-        assert cfg['secret'] == 'quantumpacs-dev-secret-replace-in-production-32b'
+        assert cfg['secret'] == 'quantumpacs-default-secret-32-bytes-long!!'
 
     def test_env_overrides_default(self, monkeypatch):
         monkeypatch.setenv('DB_HOST', '10.0.0.1')

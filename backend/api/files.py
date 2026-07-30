@@ -188,6 +188,7 @@ class DownloadData(HTTPEndpoint):
 
 
 class FilesHandler(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         page = int(request.query_params.get('page', 1))
         per_page = int(request.query_params.get('per_page', 20))
@@ -200,6 +201,7 @@ class FilesHandler(HTTPEndpoint):
 
         return paginated(data, total=total, page=page, per_page=per_page, request=request)
 
+    @requires_permission(Permission.FILE_READ)
     async def post(self, request):
         data = await request.json()
 
@@ -218,6 +220,7 @@ async def get_file_by_id(request):
 
 
 class FileHandler(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         data = await get_file_by_id(request)
         if not data:
