@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quantumpacs-postgres-prod
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: quantumpacs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
+      POSTGRES_DB: quantumpacs
+    volumes:
+      - quantumpacs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantumpacs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: quantumpacs-backend:latest
+    container_name: quantumpacs-backend-prod
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      QUANTUMPACS_DOCKER: "true"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: quantumpacs
+      DB_USER: quantumpacs
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
+      SECRET: ${SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: quantumpacs-frontend:latest
+    container_name: quantumpacs-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+volumes:
+  quantumpacs_pgdata:

@@ -1,5 +1,10 @@
-.idea
-.vscode
 __pycache__
-venv
-SCRATCH
+*.pyc
+.git
+.gitignore
+tests/
+docs/
+*.md
+*.yaml
+.cache
+*.egg-info

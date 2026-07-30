@@ -24,6 +24,7 @@ default_config = {
     'redis_password': '',
     'db_pool_size': '8',
     'sentry_dsn': '',
+    'sentry_traces_sample_rate': '1.0',
     'oauth_issuer': '',
     'oauth_client_id': '',
     'oauth_client_secret': '',

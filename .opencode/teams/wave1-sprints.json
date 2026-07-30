@@ -1,0 +1,40 @@
+{
+  "name": "wave1-sprints",
+  "description": "Wave 1: Sprint 2 (performance), Phase 7 (CI/CD), Sprint 7 (docs), Sprint 8 (devops)",
+  "created": "2026-07-30T20:34:50.445Z",
+  "status": "active",
+  "members": [
+    {
+      "name": "sprint-2-performance",
+      "role": "implementer",
+      "task_id": "ses_04b430d16ffetmqBqfgUiRXvKP",
+      "dimension": null,
+      "status": "completed",
+      "created": "2026-07-30T20:46:09.323Z"
+    },
+    {
+      "name": "phase-7-verification",
+      "role": "implementer",
+      "task_id": "ses_04b38cf21ffepy0jpxDi9nbdst",
+      "dimension": null,
+      "status": "completed",
+      "created": "2026-07-30T20:51:43.937Z"
+    },
+    {
+      "name": "sprint-7-docs",
+      "role": "implementer",
+      "task_id": "ses_04b38ab83ffeH8VvwJulMks02V",
+      "dimension": null,
+      "status": "completed",
+      "created": "2026-07-30T20:51:44.593Z"
+    },
+    {
+      "name": "sprint-8-devops",
+      "role": "implementer",
+      "task_id": "ses_04b388d70ffewmB7rLDm9DWGlp",
+      "dimension": null,
+      "status": "completed",
+      "created": "2026-07-30T20:51:45.280Z"
+    }
+  ]
+}
