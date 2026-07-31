@@ -72,9 +72,7 @@ def v2(route_obj):
 
 _V1_ROUTES = [
     v2(Route('/health', endpoint=health_endpoint)),
-    Route('/v2/health', endpoint=health_endpoint),
-    v2(Route('/health', endpoint=health_endpoint)),
-    Route('/v2/metrics', endpoint=metrics_endpoint),
+    v2(Route('/metrics', endpoint=metrics_endpoint)),
     Route('/docs', endpoint=docs_page),
     Route('/docs/openapi.json', endpoint=openapi_spec),
     v2(Route('/replicas', endpoint=ReplicasHandlers)),
