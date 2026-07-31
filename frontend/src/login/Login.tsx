@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import withRouter from "../withRouter";
-import { useFetch } from "../hooks";
+import { useFetch, useDocumentTitle } from "../hooks";
 import { request } from "../helpers";
 import {
   Form,
@@ -60,7 +60,7 @@ function clearAttempts() {
 }
 
 function LoginForm(props: any) {
-  document.title = "QuantumPACS - Login";
+  useDocumentTitle("QuantumPACS - Login");
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch("login");

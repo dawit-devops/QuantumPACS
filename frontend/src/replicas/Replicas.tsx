@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
   Layout,
@@ -46,7 +47,7 @@ export function EditDelay(props: any) {
 }
 
 function Replicas() {
-  document.title = "QuantumPACS - Replicas";
+  useDocumentTitle("QuantumPACS - Replicas");
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});

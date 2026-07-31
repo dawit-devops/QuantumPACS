@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, {
   useState,
   useEffect,
@@ -125,7 +126,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 const ALL_EVENT_TYPES = Object.values(EVENT_GROUPS).flat();
 
 function Logs() {
-  document.title = "QuantumPACS - Audit Logs";
+  useDocumentTitle("QuantumPACS - Audit Logs");
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);

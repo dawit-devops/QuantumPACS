@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Layout,
@@ -28,7 +29,7 @@ const { Text, Title } = Typography;
 const Content = Layout.Content;
 
 function Patient(props: any) {
-  document.title = "QuantumPACS - Patient";
+  useDocumentTitle("QuantumPACS - Patient");
 
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);

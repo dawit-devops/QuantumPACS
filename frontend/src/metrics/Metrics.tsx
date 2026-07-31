@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, {
   useState,
   useEffect,
@@ -127,7 +128,7 @@ function getCSSVar(name: string): string {
 }
 
 function Metrics() {
-  document.title = "QuantumPACS - Metrics";
+  useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
 
   let [data, setData] = useState<any>(null);

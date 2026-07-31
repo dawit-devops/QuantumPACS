@@ -8,6 +8,7 @@ import { ThemeProvider } from "../common/ThemeProvider";
 import Sidebar from "../common/Sidebar";
 
 vi.mock("../hooks", () => ({
+  useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
 }));
 

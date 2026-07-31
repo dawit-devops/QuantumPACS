@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState } from "react";
 import withRouter from "../withRouter";
 import { Button, message, Layout, Modal } from "antd";
@@ -9,7 +10,7 @@ function sleep(ms: number) {
 }
 
 function Management(props: any) {
-  document.title = "QuantumPACS - Management";
+  useDocumentTitle("QuantumPACS - Management");
   let [loading, setLoading] = useState(false);
 
   const confirmDelete = () => {
