@@ -60,3 +60,36 @@ class TestW3CTracePropagation:
                 await consumer.poll('test-stream', 'g', 'c', count=10, block=100)
                 mock_extract.assert_called_once()
                 mock_attach.assert_any_call(extracted)
+
+    async def test_consume_treats_block_timeout_as_empty_poll(self):
+        from redis.exceptions import TimeoutError as RedisTimeoutError
+
+        from services.redis_streams import StreamConsumer
+
+        mock_redis = AsyncMock()
+        mock_redis.xreadgroup = AsyncMock(side_effect=RedisTimeoutError(
+            'Timeout reading from localhost:6380',
+        ))
+
+        consumer = StreamConsumer(mock_redis)
+        result = await consumer.poll('test-stream', 'g', 'c', count=10, block=5000)
+
+        assert result == []
+        mock_redis.xreadgroup.assert_awaited_once_with(
+            'g', 'c', {'test-stream': '>'}, count=10, block=5000,
+        )
+
+    async def test_consume_still_raises_other_errors(self):
+        from services.redis_streams import StreamConsumer
+
+        mock_redis = AsyncMock()
+        mock_redis.xreadgroup = AsyncMock(
+            side_effect=ConnectionError('refused'),
+        )
+
+        consumer = StreamConsumer(mock_redis)
+        try:
+            await consumer.poll('test-stream', 'g', 'c', count=10, block=5000)
+            assert False, 'expected ConnectionError to propagate'
+        except ConnectionError:
+            pass
