@@ -1,10 +1,52 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware import Middleware
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import User
 from api.tokens import create_token
+
+
+def _http_exception(request, exc):
+    from starlette.responses import JSONResponse
+    return JSONResponse({'error': exc.detail}, status_code=exc.status_code)
+
+
+class _FakeAuth(BaseHTTPMiddleware):
+    def __init__(self, app, user=None):
+        super().__init__(app)
+        self._user = user or User({'id': 1, 'permissions': []})
+
+    async def dispatch(self, request, call_next):
+        request.scope['user'] = self._user
+        request.scope['auth'] = None
+        return await call_next(request)
+
+
+def _fake_auth_middleware(user=None):
+    return Middleware(_FakeAuth, user=user or User({'id': 1, 'permissions': []}))
+
+
+def _make_app(routes, user=None):
+    from starlette.applications import Starlette
+    from starlette.exceptions import HTTPException
+    from api.validate import validation_exception_handler, _ValidationException
+    return Starlette(
+        routes=routes,
+        middleware=[_fake_auth_middleware(user)],
+        exception_handlers={
+            HTTPException: _http_exception,
+            _ValidationException: validation_exception_handler,
+        },
+    )
+
+
+@pytest.fixture
+def mock_conn():
+    return AsyncMock()
 
 
 @pytest.fixture(autouse=True)
