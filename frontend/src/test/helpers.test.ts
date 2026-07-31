@@ -129,6 +129,28 @@ describe("token helpers", () => {
     vi.unstubAllGlobals();
   });
 
+  it("tryRefreshToken deduplicates concurrent calls (single-flight)", async () => {
+    let resolveFetch!: (v: any) => void;
+    const gate = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    const mockFetch = vi.fn().mockImplementation(() => gate);
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { tryRefreshToken } = await import("../helpers");
+    const first = tryRefreshToken();
+    const second = tryRefreshToken();
+    resolveFetch({
+      ok: true,
+      json: () => Promise.resolve({ access_token: "t" }),
+    });
+    const results = await Promise.all([first, second]);
+
+    expect(results).toEqual([true, true]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
   it("tryRefreshToken returns false when refresh API fails", async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
     vi.stubGlobal("fetch", mockFetch);
@@ -196,6 +218,49 @@ describe("token helpers", () => {
     expect(localStorage.getItem("refresh_token")).toBeNull();
     expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(mockFetch.mock.calls[2][1].headers.get("X-CSRF-Token")).toBe("1");
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("fetchWithRetry", () => {
+  it("retries GET requests on 5xx", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { fetchWithRetry } = await import("../helpers");
+    const resp = await fetchWithRetry("http://x/api/files", {});
+
+    expect(resp.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    vi.unstubAllGlobals();
+  });
+
+  it("never retries POST/PUT/DELETE mutations", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { fetchWithRetry } = await import("../helpers");
+    const resp = await fetchWithRetry("http://x/api/files", {
+      method: "POST",
+    });
+
+    expect(resp.status).toBe(503);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("does not retry 4xx client errors", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 422 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { fetchWithRetry } = await import("../helpers");
+    await fetchWithRetry("http://x/api/files", {});
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });
 });

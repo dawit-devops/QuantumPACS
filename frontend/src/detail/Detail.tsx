@@ -56,7 +56,6 @@ function Detail(props: any) {
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
-  let [key, setKey] = useState(1);
   let [study, setStudy] = useState<any>(null);
   let [series, setSeries] = useState<any>(null);
   let [image, setImage] = useState(imagePath);
@@ -106,7 +105,10 @@ function Detail(props: any) {
             ),
           );
         }
-        setLoading(false);
+        // Mount the viewer only once all metadata is in place: the remount
+        // hack below used to force a second mount because the viewer could
+        // initialize with empty props. CornerstoneElement now mounts
+        // after-metadata and its checkReady loop covers engine readiness.
         for (let s of data.patient.studies) {
           if (s.id === data.study_db_id) {
             setStudy(s);
@@ -118,14 +120,7 @@ function Detail(props: any) {
           }
         }
         setData(data);
-
-        // hack to trigger re-render, to help cornerstone initialization
-        if (!(window as any).ctinit) {
-          (window as any).ctinit = true;
-          setTimeout(() => {
-            setKey(2);
-          }, 500);
-        }
+        setLoading(false);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -292,7 +287,6 @@ function Detail(props: any) {
               }
             >
               <CornerstoneElement
-                key={key}
                 file={data}
                 files={series?.files || null}
                 changeFile={(v: number) =>

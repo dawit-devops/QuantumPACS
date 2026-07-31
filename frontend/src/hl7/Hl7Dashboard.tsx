@@ -17,6 +17,7 @@ import {
   Spin,
   message,
   Tooltip,
+  Alert,
 } from "antd";
 import {
   ReloadOutlined,
@@ -57,6 +58,7 @@ function Hl7Dashboard(props: any) {
   // Config tab
   let [config, setConfig] = useState<any>(null);
   let [configLoading, setConfigLoading] = useState(false);
+  let [configError, setConfigError] = useState<string | null>(null);
   let [status, setStatus] = useState<any>(null);
   let [statusLoading, setStatusLoading] = useState(false);
   let [configSaving, setConfigSaving] = useState(false);
@@ -98,9 +100,15 @@ function Hl7Dashboard(props: any) {
     try {
       const res = await request("hl7/admin/config");
       setConfig(res);
+      setConfigError(null);
       setAllowedIpsText((res.allowed_ips || []).join("\n"));
       setMllpPort(res.mllp_port || 12579);
-    } catch {
+    } catch (e: any) {
+      // Surface load failures: with config left null the Save button stays
+      // disabled so a failed load can never overwrite the server's real
+      // configuration with local defaults.
+      setConfig(null);
+      setConfigError(e.message);
     } finally {
       setConfigLoading(false);
     }
@@ -140,6 +148,10 @@ function Hl7Dashboard(props: any) {
   };
 
   const handleSaveConfig = async () => {
+    if (!config) {
+      message.error("Configuration failed to load — reload before saving");
+      return;
+    }
     setConfigSaving(true);
     try {
       const ips = allowedIpsText
@@ -471,6 +483,20 @@ function Hl7Dashboard(props: any) {
                 <Row gutter={16}>
                   <Col span={12}>
                     <Card title="MLLP Server" size="small">
+                      {configError ? (
+                        <Alert
+                          type="error"
+                          showIcon
+                          message="Failed to load configuration"
+                          description={configError}
+                          action={
+                            <Button size="small" onClick={fetchConfig}>
+                              Retry
+                            </Button>
+                          }
+                          style={{ marginBottom: 12 }}
+                        />
+                      ) : null}
                       {configLoading ? (
                         <Spin />
                       ) : config ? (
@@ -520,6 +546,7 @@ function Hl7Dashboard(props: any) {
                           type="primary"
                           onClick={handleSaveConfig}
                           loading={configSaving}
+                          disabled={!config}
                         >
                           Save
                         </Button>

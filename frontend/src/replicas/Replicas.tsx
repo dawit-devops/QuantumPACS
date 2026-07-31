@@ -56,11 +56,40 @@ function Replicas() {
   let [editDelayForm] = Form.useForm();
 
   useEffect(() => {
-    const id = setInterval(() => {
-      fetch(false);
-      setLoading(false);
-    }, 2000);
-    return () => clearInterval(id);
+    // Replica status has no server push channel, so poll — but only while the
+    // tab is visible and never overlapping an in-flight request. The old
+    // blind 2s poll ran 1,800 req/h even in the background and stacked
+    // overlapping fetches under slow responses.
+    let inFlight = false;
+    const refresh = () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      request("replicas")
+        .then((res: any) => {
+          setData(res.data);
+          setPagination((p: any) =>
+            Object.assign({}, p, { total: res.data.length }),
+          );
+        })
+        .catch((e: any) => {
+          setError(e.message);
+          message.error(e.message);
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    const id = setInterval(refresh, 10000);
+    const onWake = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
   }, []);
 
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {

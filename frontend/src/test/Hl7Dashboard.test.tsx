@@ -131,6 +131,26 @@ describe("Hl7Dashboard", () => {
     expect(screen.getByDisplayValue("12579")).toBeInTheDocument();
   });
 
+  it("disables Save and shows an alert when config fails to load", async () => {
+    const user = userEvent.setup();
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "hl7/admin/config")
+        return Promise.reject(new Error("connection refused"));
+      if (url.startsWith("hl7/admin/messages"))
+        return Promise.resolve({ messages: mockMessages, total: 2 });
+      if (url === "hl7/admin/status") return Promise.resolve(mockStatus);
+      return Promise.resolve({});
+    });
+    renderWithAuth(<Hl7Dashboard />);
+    await waitForMessagesTab();
+    await user.click(screen.getByText("Configuration"));
+
+    expect(
+      await screen.findByText("Failed to load configuration"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
   it("renders refresh button", async () => {
     renderWithAuth(<Hl7Dashboard />);
     await waitForMessagesTab();

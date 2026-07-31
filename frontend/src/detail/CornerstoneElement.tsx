@@ -713,7 +713,14 @@ class CornerstoneElement extends Component<CEProps, CEState> {
       window.addEventListener("resize", this.onWindowResize);
 
       const that = this;
+      // Wait for the rendering engine to expose a ready viewport, but bound
+      // the attempts and stop on unmount — the old loop polled forever even
+      // after the element was torn down.
+      let readyAttempts = 0;
+      const MAX_READY_ATTEMPTS = 50; // 100ms x 50 = 5s of grace
       const checkReady = () => {
+        if (!that.mounted || readyAttempts >= MAX_READY_ATTEMPTS) return;
+        readyAttempts += 1;
         const vp = that.getViewport();
         if (vp && (vp as any).voiRange) {
           that.restoreToolState(that.props.file.tools_state);
