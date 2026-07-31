@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useEffect, useState } from "react";
 import withRouter from "../withRouter";
 import { request } from "../helpers";
@@ -29,7 +30,7 @@ const { Content } = Layout;
 const { Text, Title } = Typography;
 
 function Account(props: any) {
-  document.title = "QuantumPACS - Account";
+  useDocumentTitle("QuantumPACS - Account");
 
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);

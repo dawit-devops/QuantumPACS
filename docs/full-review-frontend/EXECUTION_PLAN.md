@@ -46,17 +46,19 @@ Legend: ✅ done (merged PR) · 🔲 planned
 
 ---
 
-## Sprint 3: Viewer Refactor (P1, large) — PLANNED
+## Sprint 3: Viewer Refactor (P1, large) — DONE
 
-~3-4 days. Hardest sprint: the 1,122-line class component is the untested core of the app.
+**PR:** #77 `fix/sprint3-frontend-hardening`. Hardest sprint: the 1,122-line class component was the untested core of the app.
 
 | # | Issue | File(s) | Fix | Status |
 |---|-------|---------|-----|--------|
-| Q-C1 | Dead inline-edit feature (400+ LOC) | `src/common/EditableTable.tsx:17` | Delete never-enabled editing code paths (only remaining P0) | 🔲 |
-| Q-1 | CornerstoneElement god component (1,122 LOC, 30 binds) | `src/detail/CornerstoneElement.tsx` | Decompose into viewport/tools/annotation-sync/camera; convert to hooks with disposed-flag effect cleanup | 🔲 |
-| T-H3 | CornerstoneElement tested as inert shell | `src/test/CornerstoneElement.test.tsx` | Lifecycle tests (mount order, dispose, metadata race) enabled by Q-1 refactor | 🔲 |
-| P-M10 | Cornerstone image cache never purged (GB-scale RAM) | `src/detail/CornerstoneElement.tsx` | Purge image cache on study change | 🔲 |
-| Q-4 / P-M9 | `document.title` in render ×15 (React 19 violation) | `src/**/*.tsx` (15 sites) | `useDocumentTitle` hook with effect | 🔲 |
+| Q-C1 | Dead inline-edit feature (400+ LOC) | `src/common/EditableTable.tsx:17` | Deleted the never-enabled editing machinery; replaced with read-only `src/detail/KeyValueTable.tsx` (last remaining P0) | ✅ #77 |
+| Q-1 | CornerstoneElement god component (1,122 LOC, 30 binds) | `src/detail/CornerstoneElement.tsx` | Decomposed into `src/detail/viewer/` — `setup.ts` (one-time init), `tools.ts` (tool activation), `camera.ts` (viewport ops), `useAnnotationSync.ts` (annotations + WS send_state); component converted to hooks with disposed-flag effect cleanup; all listeners (keydown/resize/ws/eventTarget/annotation) now removed on unmount; added `ws.removeEventListener`/`removeOpenListener` | ✅ #77 |
+| T-H3 | CornerstoneElement tested as inert shell | `src/test/CornerstoneElement.test.tsx` | Lifecycle tests added: stack enable on mount, initial stack load, persisted-annotation restore when viewport ready, stack swap + cache purge on image change, no purge on mount, full teardown on unmount (viewport, keydown, ws handlers) | ✅ #77 |
+| P-M10 | Cornerstone image cache never purged (GB-scale RAM) | `src/detail/CornerstoneElement.tsx` | `cache.purgeCache()` on image change (skipped on initial mount) | ✅ #77 |
+| Q-4 / P-M9 | `document.title` in render ×15 (React 19 violation) | `src/**/*.tsx` (15 sites) | `useDocumentTitle` hook in `src/hooks.ts`; all 15 pages migrated | ✅ #77 |
+
+**Also in #77:** registered the `react-hooks` plugin in `.eslintrc.json` (B-H1 gap — disable comments referenced an unregistered rule); 16 test files' `../hooks` mocks extended with `useDocumentTitle`.
 
 ---
 

@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
   Layout,
@@ -21,7 +22,7 @@ import { RuleConditionBuilder } from "./RuleConditionBuilder";
 const Content = Layout.Content;
 
 function RoutingRules() {
-  document.title = "QuantumPACS - Routing Rules";
+  useDocumentTitle("QuantumPACS - Routing Rules");
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);

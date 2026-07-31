@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useCallback, useEffect } from "react";
 import withRouter from "../withRouter";
 import {
@@ -30,7 +31,7 @@ const { Content } = Layout;
 const { Text } = Typography;
 
 function Share(props: any) {
-  document.title = "QuantumPACS - Share";
+  useDocumentTitle("QuantumPACS - Share");
   let [loading, setLoading] = useState(false);
   let [key, setKey] = useState<string | null>(null);
   let [copied, setCopied] = useState(false);

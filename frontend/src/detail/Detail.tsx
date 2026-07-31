@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import withRouter from "../withRouter";
@@ -32,7 +33,7 @@ import { wadoRsUrl } from "../dicomweb/dicomweb";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
-import EditableTable from "./EditableTable";
+import KeyValueTable from "./KeyValueTable";
 import Changes from "./Changes";
 import Share from "./Share";
 import Management from "./Management";
@@ -46,7 +47,7 @@ function wrap(txt: string) {
 }
 
 function Detail(props: any) {
-  document.title = "QuantumPACS - Detail";
+  useDocumentTitle("QuantumPACS - Detail");
   const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
   const screens = useBreakpoint();
   const isMobile = !screens.md;
@@ -311,7 +312,7 @@ function Detail(props: any) {
             visible={tab === "image"}
           />
         </div>
-        <EditableTable
+        <KeyValueTable
           style={tab !== "data" ? { display: "none" } : {}}
           rowKey={(record: any) => record.key}
           pagination={{ pageSize: 20 }}

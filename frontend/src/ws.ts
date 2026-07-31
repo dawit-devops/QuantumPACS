@@ -80,8 +80,16 @@ export function onOpen(func: () => void): void {
   }
 }
 
+export function removeOpenListener(func: () => void): void {
+  openListeners.delete(func);
+}
+
 export function addEventListener(func: (data: any) => void): void {
   listeners.add(func);
+}
+
+export function removeEventListener(func: (data: any) => void): void {
+  listeners.delete(func);
 }
 
 export function send(msg: any): void {

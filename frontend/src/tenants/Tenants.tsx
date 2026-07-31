@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
   Layout,
@@ -52,7 +53,7 @@ function formatBytes(bytes: number): string {
 }
 
 function Tenants() {
-  document.title = "QuantumPACS - Tenants";
+  useDocumentTitle("QuantumPACS - Tenants");
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);

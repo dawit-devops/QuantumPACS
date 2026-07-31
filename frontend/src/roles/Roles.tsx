@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Layout,
@@ -32,7 +33,7 @@ const Content = Layout.Content;
 const SUPER_ADMIN_SLUG = "super_admin";
 
 function Roles() {
-  document.title = "QuantumPACS - Roles";
+  useDocumentTitle("QuantumPACS - Roles");
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);

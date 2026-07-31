@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
   Layout,
@@ -25,7 +26,7 @@ import { BulkImport } from "./BulkImport";
 const Content = Layout.Content;
 
 function Users() {
-  document.title = "QuantumPACS - Users";
+  useDocumentTitle("QuantumPACS - Users");
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});
