@@ -28,14 +28,18 @@ interface RequestOptions {
   [key: string]: any;
 }
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   options: RequestOptions,
   retries = 3,
 ): Promise<Response> {
+  // Only idempotent GETs may be retried — repeating a POST/PUT/DELETE on a
+  // 5xx can duplicate mutations (e.g. double-created resources in a batch).
+  const method = (options.method || "GET").toUpperCase();
+  const retryable = method === "GET";
   for (let i = 0; i < retries; i++) {
     const resp = await fetch(url, options);
-    if (resp.ok || resp.status < 500) {
+    if (resp.ok || !retryable || resp.status < 500) {
       return resp;
     }
     if (i < retries - 1) {
@@ -100,24 +104,32 @@ export function stopRefreshTimer(): void {
   }
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
 export async function tryRefreshToken(): Promise<boolean> {
-  // Cookie-authenticated refresh: the HttpOnly refresh_token cookie is sent
-  // automatically for the /api/auth/refresh path; no client-side token needed.
-  try {
-    const resp = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: new Headers({
-        "Content-Type": "application/json",
-        "X-CSRF-Token": "1",
-      }),
-    });
-    if (!resp.ok) return false;
-    const data = await resp.json();
-    setTokens(data.access_token, data.refresh_token);
-    return true;
-  } catch {
-    return false;
-  }
+  // Single-flight: N concurrent 401s must not fire N parallel /auth/refresh
+  // requests. All callers share one in-flight refresh, then a fresh one.
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const resp = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: new Headers({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "1",
+        }),
+      });
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      setTokens(data.access_token, data.refresh_token);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 export const request = async (
@@ -164,7 +176,12 @@ export const request = async (
         }
         try {
           return await exec();
-        } catch {}
+        } catch (retryError: any) {
+          // Only a second 401 means the session is really dead; any other
+          // failure of the retried request must surface to the caller instead
+          // of bouncing the user to the login screen.
+          if (retryError.error !== 401) throw retryError;
+        }
       }
       if (options.unauthorized) {
         options.unauthorized();
