@@ -90,6 +90,9 @@ class TestIngestionPipelineWiring:
         monkey = pytest.MonkeyPatch()
         try:
             monkey.setattr(
+                'lifecycle.is_docker', lambda: True,
+            )
+            monkey.setattr(
                 'lifecycle.db.conn.setup', AsyncMock(),
             )
             monkey.setattr(

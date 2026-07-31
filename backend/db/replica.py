@@ -1,12 +1,25 @@
 import json
+from typing import Callable, Optional
 
 from db.replica_files import ReplicaFiles
-from storage.storage import Storage
 from db.table import Table
 from db.files import Files
 
 from pypika.functions import Count
 from pypika import Table as PyPikaTable, Query
+
+_storage_provider: Optional[Callable] = None
+_storage_default_config: Optional[Callable] = None
+
+
+def set_storage_provider(provider: Callable):
+    global _storage_provider
+    _storage_provider = provider
+
+
+def set_storage_default_config(func: Callable):
+    global _storage_default_config
+    _storage_default_config = func
 
 
 class Replica(Table):
@@ -69,10 +82,10 @@ class Replica(Table):
         return data
 
     async def add(self, type_, data):
-        default_config = Storage.default_config_by_type(type_)
+        default_config = _storage_default_config(type_) if _storage_default_config else {}
         location = data.get('location')
         if not location:
-            location = default_config.get('location')
+            location = default_config.get('location') if isinstance(default_config, dict) else None
 
         q = self.insert().columns(
             self.table.type, self.table.delay, self.table.location,

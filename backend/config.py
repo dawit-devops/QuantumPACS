@@ -2,6 +2,8 @@ import os
 
 import yaml
 
+from exceptions import ConfigurationError
+
 _DEFAULT_SECRET = 'quantumpacs-default-secret-32-bytes-long!!'
 _DEFAULT_DB_PASSWORD = 'pa55w0rd'
 _DEFAULT_SUPERADMIN_PASS = 'pa55w0rd'
@@ -85,10 +87,6 @@ def load_config(overrides=None):
 
 
 config = load_config()
-
-
-class ConfigurationError(RuntimeError):
-    pass
 
 
 def assert_production_secret():

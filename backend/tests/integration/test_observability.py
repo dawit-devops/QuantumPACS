@@ -170,6 +170,8 @@ class TestErrorLogging:
         assert 'DB down' in data['components']['database'].get('message', '')
 
     def test_500_logs_structured_json_with_error_stack(self, capsys):
+        from log import setup_logging
+        setup_logging()
         from app import CustomMiddleware
         async def _crash(request):
             raise RuntimeError('test explosion')

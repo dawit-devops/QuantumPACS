@@ -12,6 +12,9 @@ from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
 
 import lifecycle
+import api.ws as ws_module
+import api.auth as auth_module
+import api.telemetry as telemetry_module
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
@@ -21,6 +24,7 @@ from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record
 from api.tracing_middleware import TracingMiddleware
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
+from exceptions import ConfigurationError
 from log import setup_logging, get_logger, tenant_var, user_id_var
 from services.interfaces import (
     AuthService,
@@ -135,9 +139,34 @@ async def server_error_handler(request, exc):
 
 @asynccontextmanager
 async def lifespan(app):
-    assert_production_secret()
+    try:
+        assert_production_secret()
+    except ConfigurationError:
+        log.critical('SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.')
+        raise
+    lifecycle.set_app(app)
+    ws_module.set_app(app)
+    telemetry_module.set_app(app)
+    import db
+    db.register_tables()
+    from es import es as _es_mod
+    from storage.storage import Storage as _Storage
+    from db.files import set_es_indexer as _set_files_es, set_storage_provider as _set_files_storage
+    from db.replica import set_storage_provider as _set_replica_storage, set_storage_default_config
+    _set_files_es(lambda data, delete=False, reset=False: (
+        _es_mod.delete(data) if delete else
+        _es_mod.reset_index() if reset else
+        _es_mod.index_file(data)
+    ))
+    _set_files_storage(lambda replica: _Storage.get(replica))
+    _set_replica_storage(lambda replica: _Storage.get(replica))
+    set_storage_default_config(lambda type_: _Storage.default_config_by_type(type_))
     registry = ServiceRegistry()
     app.state.services = registry
+    app.state.lifecycle = lifecycle.LifecycleState()
+    app.state.ws_state = ws_module.WSState()
+    app.state.auth_state = auth_module.AuthState()
+    app.state.telemetry_state = telemetry_module.TelemetryState()
     await lifecycle.setup(services=registry)
     await _register_services(registry)
     yield

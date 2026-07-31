@@ -2,7 +2,7 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found
+from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.tenants import CreateTenantRequest, UpdateTenantRequest
 from config import config
@@ -26,7 +26,7 @@ class TenantsHandler(HTTPEndpoint):
         async with get_conn() as conn:
             existing = await Tenants(conn).get_by_slug(body.slug)
             if existing:
-                return ok({'error': 'Tenant slug already exists'})
+                return api_error('CONFLICT', 'Tenant slug already exists', status=409)
 
         result = await TenantProvisioner.provision(
             slug=body.slug, name=body.name,

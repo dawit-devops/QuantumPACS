@@ -17,6 +17,7 @@ from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRo
 from db.conn import get_conn
 from db.users import Users
 from exceptions import ApiException
+from services.interfaces import AuthService
 
 
 def _extract_token(request):
@@ -41,13 +42,25 @@ class Login(HTTPEndpoint):
 
         body = await parse_body(LoginRequest, request)
 
-        async with get_conn() as conn:
+        services = getattr(request.state, 'services', None)
+        if services is not None:
             try:
-                data = await Users(conn).login(body.username, body.password)
-            except ApiException as e:
-                await login_bucket.record_db(ip, conn, success=False)
-                return api_error('AUTH_FAILED', str(e), status=401)
+                auth_service = services.get(AuthService)
+                data = await auth_service.authenticate(body.username, body.password)
+            except Exception:
+                data = None
+        else:
+            data = None
 
+        if data is None:
+            async with get_conn() as conn:
+                try:
+                    data = await Users(conn).login(body.username, body.password)
+                except ApiException as e:
+                    await login_bucket.record_db(ip, conn, success=False)
+                    return api_error('AUTH_FAILED', str(e), status=401)
+
+        async with get_conn() as conn:
             await login_bucket.record_db(ip, conn, success=True)
             await Users(conn).update_last_login(data['id'])
             role_slug, permissions = await Users(conn).get_user_role(data['id'])

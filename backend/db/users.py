@@ -11,8 +11,6 @@ from exceptions import ApiException
 from db.table import Table
 from pypika import Table as Table_
 from pypika.functions import Count
-from api.rbac import get_role_permissions
-from api.permissions import BUILT_IN_ROLES
 
 
 def rand_pswd(length=12):

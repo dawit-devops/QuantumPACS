@@ -20,30 +20,51 @@ from starlette.authentication import (
 
 log = get_logger(__name__)
 
-_active_cache = {}
-_cache_redis = None
-_api_key_limiter = RedisTokenBucket(max_attempts=100, window_seconds=60)
+_app = None
+
+
+def set_app(app):
+    global _app
+    _app = app
+
+
+def _get_state():
+    if _app is None:
+        return None
+    if not hasattr(_app.state, 'auth_state'):
+        _app.state.auth_state = AuthState()
+    return _app.state.auth_state
+
+
+class AuthState:
+    def __init__(self):
+        self.active_cache: dict = {}
+        self.cache_redis = None
+        self.api_key_limiter = RedisTokenBucket(max_attempts=100, window_seconds=60)
 
 
 def _get_cache_redis():
-    global _cache_redis
-    if _cache_redis is None:
+    state = _get_state()
+    if state is None:
+        return None
+    if state.cache_redis is None:
         try:
             import redis.asyncio as _aioredis
             host = config.get('redis_host', 'localhost')
             port = int(config.get('redis_port', '6379'))
             password = config.get('redis_password') or None
-            _cache_redis = _aioredis.Redis(
+            state.cache_redis = _aioredis.Redis(
                 host=host, port=port, password=password, db=2,
                 socket_connect_timeout=1,
                 socket_timeout=1,
             )
         except Exception:
             pass
-    return _cache_redis
+    return state.cache_redis
 
 
 async def _get_cached_active(user_id):
+    state = _get_state()
     r = _get_cache_redis()
     if r is not None:
         try:
@@ -52,20 +73,23 @@ async def _get_cached_active(user_id):
                 return val == b'1'
         except Exception:
             pass
-    entry = _active_cache.get(user_id)
-    if entry and time.monotonic() < entry[1]:
-        return entry[0]
+    if state is not None:
+        entry = state.active_cache.get(user_id)
+        if entry and time.monotonic() < entry[1]:
+            return entry[0]
     return None
 
 
 async def _set_cached_active(user_id, active, ttl=60):
+    state = _get_state()
     r = _get_cache_redis()
     if r is not None:
         try:
             await r.set(f'auth:active:{user_id}', b'1' if active else b'0', ex=ttl)
         except Exception:
             pass
-    _active_cache[user_id] = (active, time.monotonic() + ttl)
+    if state is not None:
+        state.active_cache[user_id] = (active, time.monotonic() + ttl)
 
 
 class User(BaseUser):
@@ -134,10 +158,13 @@ class TokenAuth(AuthenticationBackend):
 
         api_key = request.headers.get('X-API-Key')
         if api_key:
-            ok, msg = await _api_key_limiter.check(api_key)
-            if not ok:
-                raise AuthenticationError('Rate limited')
-            await _api_key_limiter.record(api_key)
+            state = _get_state()
+            limiter = state.api_key_limiter if state else None
+            if limiter is not None:
+                ok, msg = await limiter.check(api_key)
+                if not ok:
+                    raise AuthenticationError('Rate limited')
+                await limiter.record(api_key)
             from db.api_keys import ApiKeys
             try:
                 async with get_conn() as conn:

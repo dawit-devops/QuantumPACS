@@ -54,10 +54,10 @@ class TestW3CTracePropagation:
 
         consumer = StreamConsumer(mock_redis)
 
-        with patch('opentelemetry.propagate.extract') as mock_extract:
-            mock_extract.return_value = MagicMock()
+        extracted = MagicMock()
+        with patch('opentelemetry.propagate.extract', return_value=extracted) as mock_extract:
             with patch('opentelemetry.context.attach') as mock_attach:
                 mock_attach.return_value = 'token'
                 await consumer.poll('test-stream', 'g', 'c', count=10, block=100)
                 mock_extract.assert_called_once()
-                mock_attach.assert_called_once()
+                mock_attach.assert_any_call(extracted)

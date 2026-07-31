@@ -11,7 +11,8 @@ from starlette.routing import WebSocketRoute
 from starlette.testclient import TestClient
 
 from api.auth import User
-from api.ws import WebsocketHandler, local_clients
+import api.ws
+from api.ws import WebsocketHandler
 
 
 class _FakeAuth(BaseHTTPMiddleware):
@@ -26,10 +27,13 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _make_app(user=None):
-    return Starlette(
+    app = Starlette(
         routes=[WebSocketRoute('/ws', endpoint=WebsocketHandler)],
         middleware=[Middleware(_FakeAuth, user=user)],
     )
+    api.ws.set_app(app)
+    app.state.ws_state = api.ws.WSState()
+    return app
 
 
 _EXPECTED_CHANNEL = 'channel:file:pubsub-file-1'
@@ -42,21 +46,17 @@ def _setup_redis_mocks():
     sys.modules['redis.asyncio'] = rasyncio
 
 
-def _reset_ws_globals():
-    local_clients.clear()
-    import api.ws
-    api.ws._listener_task = None
-    api.ws._cleanup_task = None
-    api.ws._pubsub = None
+def _reset_ws_state(app):
+    app.state.ws_state = api.ws.WSState()
 
 
 class TestWebsocketPubSub:
     def setup_method(self):
         _setup_redis_mocks()
-        _reset_ws_globals()
+        self._app = _make_app()
 
     def test_publish_to_channel(self):
-        client = TestClient(_make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': 'pubsub-file-1'})
             resp = ws.receive_json()
@@ -84,7 +84,7 @@ class TestWebsocketPubSub:
         rasyncio = sys.modules['redis.asyncio']
         rasyncio.Redis = MagicMock(side_effect=ConnectionError('no redis'))
 
-        client = TestClient(_make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': 'pubsub-file-2'})
             resp = ws.receive_json()
@@ -97,7 +97,7 @@ class TestWebsocketPubSub:
             })
 
     def test_multiple_publishes_to_same_channel(self):
-        client = TestClient(_make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': 'pubsub-file-3'})
             ws.receive_json()

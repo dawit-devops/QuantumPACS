@@ -7,15 +7,34 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from api.response import ok
 from api.tokens import create_token as gen_token
 
-local_clients = defaultdict(dict)
-_sub_lock = asyncio.Lock()
-_pubsub = None
+_app = None
 
 
-async def _get_pubsub():
-    global _pubsub
-    if _pubsub is not None:
-        return _pubsub
+def set_app(app):
+    global _app
+    _app = app
+
+
+def _get_state():
+    if _app is None:
+        return None
+    if not hasattr(_app.state, 'ws_state'):
+        raise RuntimeError('WS state not initialized on app')
+    return _app.state.ws_state
+
+
+class WSState:
+    def __init__(self):
+        self.local_clients = defaultdict(dict)
+        self.sub_lock = asyncio.Lock()
+        self.pubsub = None
+        self.listener_task = None
+        self.cleanup_task = None
+
+
+async def _get_pubsub(state):
+    if state.pubsub is not None:
+        return state.pubsub
     try:
         import redis.asyncio as aioredis
         from config import config
@@ -28,8 +47,8 @@ async def _get_pubsub():
             socket_timeout=2,
         )
         await r.ping()
-        _pubsub = r.pubsub()
-        return _pubsub
+        state.pubsub = r.pubsub()
+        return state.pubsub
     except Exception:
         return None
 
@@ -38,8 +57,8 @@ def _channel(file_id):
     return f'channel:file:{file_id}'
 
 
-async def _pubsub_listener():
-    ps = await _get_pubsub()
+async def _pubsub_listener(state):
+    ps = await _get_pubsub(state)
     if ps is None:
         return
     try:
@@ -58,8 +77,8 @@ async def _pubsub_listener():
                 payload = json.loads(data)
             except Exception:
                 continue
-            async with _sub_lock:
-                conns = list(local_clients.get(file_id, {}).values())
+            async with state.sub_lock:
+                conns = list(state.local_clients.get(file_id, {}).values())
             for c in conns:
                 if isinstance(c, WebSocket):
                     try:
@@ -70,29 +89,24 @@ async def _pubsub_listener():
         pass
 
 
-_listener_task = None
-_cleanup_task = None
+def _ensure_listener(state):
+    if state.listener_task is None or state.listener_task.done():
+        state.listener_task = asyncio.create_task(_pubsub_listener(state))
+    if state.cleanup_task is None or state.cleanup_task.done():
+        state.cleanup_task = asyncio.create_task(_stale_cleanup(state))
 
 
-def _ensure_listener():
-    global _listener_task, _cleanup_task
-    if _listener_task is None or _listener_task.done():
-        _listener_task = asyncio.create_task(_pubsub_listener())
-    if _cleanup_task is None or _cleanup_task.done():
-        _cleanup_task = asyncio.create_task(_stale_cleanup())
-
-
-async def _stale_cleanup():
+async def _stale_cleanup(state):
     while True:
         await asyncio.sleep(30)
-        async with _sub_lock:
-            for file_id in list(local_clients):
-                file_clients = local_clients[file_id]
+        async with state.sub_lock:
+            for file_id in list(state.local_clients):
+                file_clients = state.local_clients[file_id]
                 stale = [k for k, v in file_clients.items() if isinstance(v, WebSocket) and v.client_state == 3]
                 for k in stale:
                     del file_clients[k]
                 if not file_clients:
-                    del local_clients[file_id]
+                    del state.local_clients[file_id]
 
 
 class WSToken(HTTPEndpoint):
@@ -108,18 +122,22 @@ class WebsocketHandler(WebSocketEndpoint):
         await websocket.accept()
 
     async def on_receive(self, websocket, data):
+        state = _get_state()
+        if state is None:
+            return
+
         type_ = data.get('type')
 
         match type_:
             case 'open':
                 f = data['file']
-                async with _sub_lock:
-                    local_clients[f][str(id(websocket))] = websocket
-                ps = await _get_pubsub()
+                async with state.sub_lock:
+                    state.local_clients[f][str(id(websocket))] = websocket
+                ps = await _get_pubsub(state)
                 if ps is not None:
                     try:
                         await ps.subscribe(_channel(f))
-                        _ensure_listener()
+                        _ensure_listener(state)
                     except Exception:
                         pass
                 await websocket.send_json(
@@ -154,8 +172,8 @@ class WebsocketHandler(WebSocketEndpoint):
                     await r.publish(_channel(f), json.dumps(payload))
                     await r.aclose()
                 except Exception:
-                    async with _sub_lock:
-                        conns = list(local_clients.get(f, {}).values())
+                    async with state.sub_lock:
+                        conns = list(state.local_clients.get(f, {}).values())
                     for c in conns:
                         if c == websocket:
                             continue
@@ -172,13 +190,16 @@ class WebsocketHandler(WebSocketEndpoint):
                             pass
 
     async def on_disconnect(self, websocket, close_code):
+        state = _get_state()
+        if state is None:
+            return
         f = getattr(websocket, 'file', None)
         if f:
-            async with _sub_lock:
-                local_clients[f].pop(str(id(websocket)), None)
-                if not local_clients[f]:
-                    del local_clients[f]
-                    ps = await _get_pubsub()
+            async with state.sub_lock:
+                state.local_clients[f].pop(str(id(websocket)), None)
+                if not state.local_clients[f]:
+                    del state.local_clients[f]
+                    ps = await _get_pubsub(state)
                     if ps is not None:
                         try:
                             await ps.unsubscribe(_channel(f))

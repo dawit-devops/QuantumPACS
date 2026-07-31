@@ -1,9 +1,9 @@
 import functools
 
 from starlette.exceptions import HTTPException
-from starlette.responses import JSONResponse
 
 from .permissions import Permission, BUILT_IN_ROLES
+from .response import forbidden
 
 
 def requires_permission(permission: Permission):
@@ -15,10 +15,7 @@ def requires_permission(permission: Permission):
                 raise HTTPException(status_code=401, detail='Not authenticated')
             perms = getattr(user, 'permissions', [])
             if permission.value not in perms:
-                return JSONResponse(
-                    {'error': 'Forbidden', 'message': f'Missing permission: {permission.value}'},
-                    status_code=403,
-                )
+                return forbidden(f'Missing permission: {permission.value}')
             return await func(self, request, *args, **kwargs)
         return wrapper
     return decorator

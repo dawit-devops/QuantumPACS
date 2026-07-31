@@ -7,6 +7,7 @@ from starlette.responses import Response
 
 from api.rbac import requires_permission
 from api.permissions import Permission
+from api.response import api_error
 from db.conn import get_conn
 from db.replica import Replica
 from dcm.dicom_json import row_to_study_json
@@ -155,18 +156,12 @@ class DicomWebStudies(HTTPEndpoint):
                 ds = dcmread(buf)
                 buf.seek(0)
             except Exception:
-                return Response(
-                    json.dumps({'error': 'Malformed DICOM instance'}),
-                    status_code=400,
-                    media_type='application/dicom+json',
-                )
+                err_body = {'error': {'code': 'PARSE_ERROR', 'message': 'Malformed DICOM instance'}}
+                return DicomJsonResponse(json.dumps(err_body), status_code=400)
             modality = getattr(ds, 'Modality', '')
             if modality and not validate_modality(modality):
-                return Response(
-                    json.dumps({'error': f'Invalid modality: {modality}'}),
-                    status_code=400,
-                    media_type='application/dicom+json',
-                )
+                err_body = {'error': {'code': 'INVALID_MODALITY', 'message': f'Invalid modality: {modality}'}}
+                return DicomJsonResponse(json.dumps(err_body), status_code=400)
 
             ok = await store_instance(ds, buf)
             if ok:
@@ -185,7 +180,10 @@ class DicomWebWado(HTTPEndpoint):
         async with get_conn() as conn:
             master = await Replica(conn).master()
             if not master:
-                return Response(json.dumps({'error': 'No storage available'}), status_code=503)
+                return DicomJsonResponse(
+                    json.dumps({'error': {'code': 'NO_STORAGE', 'message': 'No storage available'}}),
+                    status_code=503,
+                )
 
             if instance_uid:
                 return await _wado_retrieve_instance(conn, master, instance_uid)
@@ -201,25 +199,24 @@ class DicomWebWadoUri(HTTPEndpoint):
     async def get(self, request):
         params = dict(request.query_params)
         if params.get('requestType') != 'WADO':
-            return Response(
-                json.dumps({'error': 'requestType must be WADO'}),
-                status_code=400,
-            )
+            err_body = {'error': {'code': 'INVALID_REQUEST', 'message': 'requestType must be WADO'}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=400)
 
         study_uid = params.get('studyUID')
         series_uid = params.get('seriesUID')
         object_uid = params.get('objectUID')
 
         if not study_uid or not object_uid:
-            return Response(
-                json.dumps({'error': 'studyUID and objectUID are required'}),
-                status_code=400,
-            )
+            err_body = {'error': {'code': 'MISSING_PARAMS', 'message': 'studyUID and objectUID are required'}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=400)
 
         async with get_conn() as conn:
             master = await Replica(conn).master()
             if not master:
-                return Response(json.dumps({'error': 'No storage available'}), status_code=503)
+                return DicomJsonResponse(
+                    json.dumps({'error': {'code': 'NO_STORAGE', 'message': 'No storage available'}}),
+                    status_code=503,
+                )
 
             if object_uid:
                 return await _wado_retrieve_instance(conn, master, object_uid)
@@ -240,7 +237,8 @@ async def _wado_retrieve_instance(conn, master, instance_uid):
         LIMIT 1
     """, instance_uid, master['id'])
     if not row:
-        return Response(json.dumps({'error': 'Instance not found'}), status_code=404)
+        err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Instance not found'}}
+        return DicomJsonResponse(json.dumps(err_body), status_code=404)
 
     storage = await Storage.get(master)
     file_data = dict(row)
@@ -265,7 +263,8 @@ async def _wado_retrieve_series(conn, master, study_uid, series_uid):
           AND rf.replica_id = $3
     """, study_uid, series_uid, master['id'])
     if not rows:
-        return Response(json.dumps({'error': 'Series not found'}), status_code=404)
+        err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Series not found'}}
+        return DicomJsonResponse(json.dumps(err_body), status_code=404)
     return await _wado_build_multipart(rows, master)
 
 
@@ -279,7 +278,8 @@ async def _wado_retrieve_study(conn, master, study_uid):
         WHERE st.study_instance_uid = $1 AND rf.replica_id = $2
     """, study_uid, master['id'])
     if not rows:
-        return Response(json.dumps({'error': 'Study not found'}), status_code=404)
+        err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Study not found'}}
+        return DicomJsonResponse(json.dumps(err_body), status_code=404)
     return await _wado_build_multipart(rows, master)
 
 

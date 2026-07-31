@@ -14,7 +14,8 @@ from api.auth import User
 # api.ws imports starlette things at top level; redis imports happen inside functions.
 # We set up redis mocks in setup_method via _setup_redis_mocks().
 
-from api.ws import WSToken, WebsocketHandler, local_clients
+import api.ws
+from api.ws import WSToken, WebsocketHandler
 
 
 class _FakeAuth(BaseHTTPMiddleware):
@@ -29,10 +30,13 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _make_app(routes, user=None):
-    return Starlette(
+    app = Starlette(
         routes=routes,
         middleware=[Middleware(_FakeAuth, user=user)],
     )
+    api.ws.set_app(app)
+    app.state.ws_state = api.ws.WSState()
+    return app
 
 
 def _setup_redis_mocks():
@@ -42,12 +46,8 @@ def _setup_redis_mocks():
     sys.modules['redis.asyncio'] = rasyncio
 
 
-def _reset_ws_globals():
-    local_clients.clear()
-    import api.ws
-    api.ws._listener_task = None
-    api.ws._cleanup_task = None
-    api.ws._pubsub = None
+def _reset_ws_state(app):
+    app.state.ws_state = api.ws.WSState()
 
 
 class TestWSToken:
@@ -55,7 +55,6 @@ class TestWSToken:
         return _make_app([Route('/ws_token', endpoint=WSToken)], user)
 
     def test_generates_token(self):
-        _reset_ws_globals()
         with patch('api.ws.gen_token') as mock_gen:
             mock_gen.return_value = 'ws-token-abc'
             client = TestClient(self._make_app())
@@ -67,13 +66,10 @@ class TestWSToken:
 class TestWebsocketHandler:
     def setup_method(self):
         _setup_redis_mocks()
-        _reset_ws_globals()
-
-    def _make_app(self, user=None):
-        return _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)], user)
+        self._app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)])
 
     def test_connect_and_disconnect(self):
-        client = TestClient(self._make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': '1'})
             resp = ws.receive_json()
@@ -81,15 +77,15 @@ class TestWebsocketHandler:
             assert resp['file'] == '1'
 
     def test_send_state_without_redis(self):
-        client = TestClient(self._make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': '1'})
             ws.receive_json()
             ws.send_json({'type': 'send_state', 'file': '1', 'state': {'window': 80}})
 
     def test_disconnect_cleans_up_clients(self):
-        client = TestClient(self._make_app())
+        client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
             ws.send_json({'type': 'open', 'file': '1'})
             ws.receive_json()
-        assert '1' not in local_clients
+        assert '1' not in self._app.state.ws_state.local_clients

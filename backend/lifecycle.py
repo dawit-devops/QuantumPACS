@@ -1,6 +1,8 @@
 import asyncio
 import sys
 import threading
+from dataclasses import dataclass
+from typing import Any, Optional
 
 from es import es
 import db.conn
@@ -24,17 +26,36 @@ from services.stream_monitor import StreamMonitor
 log = get_logger(__name__)
 
 _RETRYABLE = (ConnectionError, OSError, asyncio.TimeoutError)
-_bridge: PgNotifyBridge | None = None
-_monitor: StreamMonitor | None = None
-_dicom_thread: threading.Thread | None = None
-_ingestion_worker = None
-_ingestion_task: asyncio.Task | None = None
-_dicom_scp = None
-_mllp_task: asyncio.Task | None = None
+
+_app: Any = None
+
+
+def set_app(app):
+    global _app
+    _app = app
+
+
+def get_app_state() -> Optional['LifecycleState']:
+    if _app is None:
+        return None
+    if not hasattr(_app.state, 'lifecycle'):
+        _app.state.lifecycle = LifecycleState()
+    return _app.state.lifecycle
+
+
+@dataclass
+class LifecycleState:
+    bridge: Optional[PgNotifyBridge] = None
+    monitor: Optional[StreamMonitor] = None
+    dicom_thread: Optional[threading.Thread] = None
+    ingestion_worker: Any = None
+    ingestion_task: Optional[asyncio.Task] = None
+    dicom_scp: Any = None
+    mllp_task: Optional[asyncio.Task] = None
 
 
 def _run_dicom():
-    global _dicom_thread, _dicom_scp
+    state = get_app_state()
     try:
         from pynetdicom import AE, StoragePresentationContexts
         from pynetdicom.presentation import build_context
@@ -65,7 +86,8 @@ def _run_dicom():
         )
         port = int(config.get('dicom_cstore_port', '11112'))
         server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers)
-        _dicom_scp = server
+        if state:
+            state.dicom_scp = server
         log.info('DICOM C-STORE server started on port %s', port)
         server.serve_forever()
     except Exception:
@@ -73,25 +95,28 @@ def _run_dicom():
 
 
 def _start_dicom():
-    global _dicom_thread
-    _dicom_thread = threading.Thread(target=_run_dicom, daemon=True)
-    _dicom_thread.start()
+    state = get_app_state()
+    thread = threading.Thread(target=_run_dicom, daemon=True)
+    if state:
+        state.dicom_thread = thread
+    thread.start()
 
 
 def _stop_dicom():
-    global _dicom_scp, _dicom_thread
-    if _dicom_scp is not None:
+    state = get_app_state()
+    if state and state.dicom_scp is not None:
         try:
-            _dicom_scp.shutdown()
+            state.dicom_scp.shutdown()
             log.info('DICOM server stopped')
         except Exception:
             log.warning('DICOM server shutdown error', exc_info=True)
-        _dicom_scp = None
-    _dicom_thread = None
+        state.dicom_scp = None
+    if state:
+        state.dicom_thread = None
 
 
 async def _start_mllp():
-    global _mllp_task
+    state = get_app_state()
     try:
         import ssl
         from services.ingestion.hl7_server import MllpServer
@@ -114,18 +139,21 @@ async def _start_mllp():
                 pass
             await server.stop()
 
-        _mllp_task = asyncio.create_task(_run())
+        task = asyncio.create_task(_run())
+        if state:
+            state.mllp_task = task
         log.info('MLLP server started on port %s', port)
     except Exception:
         log.warning('Failed to start MLLP server', exc_info=True)
-        _mllp_task = None
+        if state:
+            state.mllp_task = None
 
 
 def _stop_mllp():
-    global _mllp_task
-    if _mllp_task is not None:
-        _mllp_task.cancel()
-        _mllp_task = None
+    state = get_app_state()
+    if state and state.mllp_task is not None:
+        state.mllp_task.cancel()
+        state.mllp_task = None
         log.info('MLLP server stopped')
 
 
@@ -155,33 +183,37 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
         except Exception as e:
             log.critical('Non-retryable startup error: %s', e)
             await teardown()
-            sys.exit(1)
-        await asyncio.sleep(1)
+            raise
+        await asyncio.sleep(0.5 * 2 ** i)
 
     if not success:
         log.critical("Can't connect to database or elasticsearch: %s", last_exc)
         await teardown()
-        sys.exit(1)
+        raise RuntimeError(f'Startup failed after 30 retries: {last_exc}')
 
     log.info('Connected to database')
     await get_redis()
 
-    global _bridge, _monitor, _ingestion_worker, _ingestion_task
+    state = get_app_state()
     if redis_available():
         try:
             redis = await get_redis()
-            _bridge = PgNotifyBridge(
+            bridge = PgNotifyBridge(
                 redis=redis,
                 create_conn=db.conn.create_conn,
             )
-            await _bridge.start()
+            await bridge.start()
+            if state:
+                state.bridge = bridge
             log.info('PG notify bridge started')
 
             from services.redis_streams import StreamConsumer
-            _monitor = StreamMonitor(StreamConsumer(redis), poll_interval=15.0)
-            _monitor.register('events:ingestion', 'ingestion-service')
-            set_stream_monitor(_monitor)
-            await _monitor.start()
+            monitor = StreamMonitor(StreamConsumer(redis), poll_interval=15.0)
+            monitor.register('events:ingestion', 'ingestion-service')
+            set_stream_monitor(monitor)
+            await monitor.start()
+            if state:
+                state.monitor = monitor
             log.info('Stream monitor started')
 
             if services is not None:
@@ -191,16 +223,20 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
                     storage=services.get_or_none(_StorageServiceProtocol),
                     search=services.get_or_none(_SearchServiceProtocol),
                 )
-                _ingestion_worker = IngestionWorker(redis=redis, handler=handler)
-                await _ingestion_worker.start()
-                _ingestion_task = asyncio.create_task(_ingestion_worker.run())
+                worker = IngestionWorker(redis=redis, handler=handler)
+                await worker.start()
+                task = asyncio.create_task(worker.run())
+                if state:
+                    state.ingestion_worker = worker
+                    state.ingestion_task = task
                 log.info('Ingestion worker started')
         except Exception:
             log.warning('Failed to start bridge/monitor/worker', exc_info=True)
-            _bridge = None
-            _monitor = None
-            _ingestion_worker = None
-            _ingestion_task = None
+            if state:
+                state.bridge = None
+                state.monitor = None
+                state.ingestion_worker = None
+                state.ingestion_task = None
 
     _start_dicom()
     await _start_mllp()
@@ -220,34 +256,35 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
 
 
 async def teardown():
-    global _bridge, _monitor, _ingestion_worker, _ingestion_task
+    state = get_app_state()
     _stop_dicom()
     _stop_mllp()
-    if _ingestion_worker is not None:
-        try:
-            _ingestion_worker._shutdown.set()
-        except Exception:
-            pass
-    if _ingestion_task is not None:
-        try:
-            _ingestion_task.cancel()
-            await _ingestion_task
-        except (asyncio.CancelledError, Exception):
-            pass
-        _ingestion_task = None
-    _ingestion_worker = None
-    if _monitor is not None:
-        try:
-            await _monitor.stop()
-        except Exception:
-            log.warning('Monitor stop error', exc_info=True)
-        _monitor = None
-    if _bridge is not None:
-        try:
-            await _bridge.stop()
-        except Exception:
-            log.warning('Bridge stop error', exc_info=True)
-        _bridge = None
+    if state:
+        if state.ingestion_worker is not None:
+            try:
+                state.ingestion_worker._shutdown.set()
+            except Exception:
+                pass
+        if state.ingestion_task is not None:
+            try:
+                state.ingestion_task.cancel()
+                await state.ingestion_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            state.ingestion_task = None
+        state.ingestion_worker = None
+        if state.monitor is not None:
+            try:
+                await state.monitor.stop()
+            except Exception:
+                log.warning('Monitor stop error', exc_info=True)
+            state.monitor = None
+        if state.bridge is not None:
+            try:
+                await state.bridge.stop()
+            except Exception:
+                log.warning('Bridge stop error', exc_info=True)
+            state.bridge = None
     await TenantConnectionPool.close_all()
     await db.conn.teardown()
     await es.teardown()

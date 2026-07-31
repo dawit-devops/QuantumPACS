@@ -2,7 +2,7 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission, PERMISSION_GROUPS
-from api.response import ok, created, not_found
+from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
 from db.audit_log import AuditLog
@@ -83,7 +83,7 @@ class RoleHandler(HTTPEndpoint):
             if not role:
                 return not_found('Role not found')
             if role.get('built_in'):
-                return ok({'error': 'Cannot delete built-in role'})
+                return api_error('FORBIDDEN', 'Cannot delete built-in role', status=403)
             await Roles(conn).delete(role_id)
             await AuditLog(conn).log_event(
                 event_type='role.deleted',
