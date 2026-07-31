@@ -56,7 +56,13 @@ else
     if docker ps --filter name=quantumpacs-redis --format '{{.Names}}' 2>/dev/null | grep -q redis; then
         pass "Redis running in Docker"
     else
-        warn "Redis not found — start manually: docker run -d --name quantumpacs-redis -p 6379:6379 redis:7"
+        warn "Redis not running — starting container"
+        if docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:7 >/dev/null 2>&1; then
+            pass "Redis container started"
+        else
+            fail "Could not start Redis container (image pull likely blocked)"
+            warn "Start manually once network allows: docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:7"
+        fi
     fi
 fi
 echo ""
