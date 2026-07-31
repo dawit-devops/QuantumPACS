@@ -32,6 +32,15 @@ repos:
         files: ^frontend/src/
         pass_filenames: false
 
+      - id: eslint
+        name: ESLint
+        entry: sh -c 'cd frontend && npx eslint .'
+        language: system
+        env:
+          ESLINT_USE_FLAT_CONFIG: "false"
+        files: ^frontend/src/
+        pass_filenames: false
+
       - id: pytest
         name: Python tests
         entry: sh -c 'cd backend && venv/bin/python -m pytest tests/ -q'
