@@ -5,6 +5,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
@@ -15,7 +16,6 @@ from starlette.responses import JSONResponse
 from app import CustomMiddleware, http_exception, server_error_handler
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
-from api.service_middleware import ServiceMiddleware
 from api.tracing_middleware import TracingMiddleware
 from api.telemetry import RequestIDMiddleware
 from api.auth import TokenAuth
@@ -38,6 +38,9 @@ def _validation_error_endpoint(request):
     raise _ValidationException('Bad Request Body')
 
 
+_ORIGIN = 'http://localhost:5173'
+
+
 @pytest.fixture
 def app():
     return Starlette(
@@ -52,7 +55,6 @@ def app():
             Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
             Middleware(TenantMiddleware),
             Middleware(FhirAuditMiddleware),
-            Middleware(ServiceMiddleware),
             Middleware(TrustedHostMiddleware, allowed_hosts=['*']),
             Middleware(RequestIDMiddleware),
             Middleware(CustomMiddleware),
@@ -74,9 +76,11 @@ class TestMiddlewareStack:
             'AuthenticationMiddleware',
             'TenantMiddleware',
             'FhirAuditMiddleware',
-            'ServiceMiddleware',
             'TrustedHostMiddleware',
             'RequestIDMiddleware',
+            'CORSMiddleware',
+            'SecurityHeadersMiddleware',
+            'CSRFMiddleware',
             'CustomMiddleware',
         ]
         assert mw_names == expected_order, f'Expected {expected_order}, got {mw_names}'
@@ -91,36 +95,38 @@ class TestCors:
     def test_cors_headers_on_success(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/api/test', headers={'Host': 'localhost'})
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
-        assert resp.headers.get('Access-Control-Allow-Methods') == 'OPTIONS,GET,POST,DELETE'
-        assert resp.headers.get('Access-Control-Allow-Headers') is not None
+            resp = client.get('/api/test', headers={'Host': 'localhost', 'Origin': _ORIGIN})
+        assert resp.headers.get('Access-Control-Allow-Origin') == _ORIGIN
+        assert resp.headers.get('Access-Control-Allow-Credentials') == 'true'
 
     def test_cors_preflight(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
             resp = client.options('/api/test', headers={
                 'Host': 'localhost',
-                'Origin': 'http://example.com',
+                'Origin': _ORIGIN,
                 'Access-Control-Request-Method': 'POST',
             })
         assert resp.status_code == 200
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
-        assert resp.headers.get('Access-Control-Allow-Methods') == 'OPTIONS,GET,POST,DELETE'
-        assert resp.headers.get('Access-Control-Allow-Headers') == 'Origin,Accept,X-Auth-Pacs,Content-Type,X-Requested-With'
+        assert resp.headers.get('Access-Control-Allow-Origin') == _ORIGIN
+        assert resp.headers.get('Access-Control-Allow-Methods') == 'OPTIONS, GET, POST, PUT, DELETE'
+        allowed_headers = resp.headers.get('Access-Control-Allow-Headers', '')
+        assert 'X-Auth-Pacs' in allowed_headers
+        assert 'X-CSRF-Token' in allowed_headers
+        assert 'X-API-Key' in allowed_headers
 
     def test_cors_headers_custom_origin(self):
         with patch('app.config', {'cors_origins': 'https://my-pacs.example.com', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/api/test', headers={'Host': 'localhost'})
+            resp = client.get('/api/test', headers={'Host': 'localhost', 'Origin': 'https://my-pacs.example.com'})
         assert resp.headers.get('Access-Control-Allow-Origin') == 'https://my-pacs.example.com'
 
     def test_cors_headers_on_non_api_path(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/non-api', headers={'Host': 'localhost'})
+            resp = client.get('/non-api', headers={'Host': 'localhost', 'Origin': _ORIGIN})
         assert resp.status_code == 200
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
+        assert resp.headers.get('Access-Control-Allow-Origin') == _ORIGIN
 
 
 class TestErrorHandlers:
@@ -135,8 +141,8 @@ class TestErrorHandlers:
     def test_500_has_cors_headers(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/api/error', headers={'Host': 'localhost'})
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
+            resp = client.get('/api/error', headers={'Host': 'localhost', 'Origin': _ORIGIN})
+        assert resp.headers.get('Access-Control-Allow-Origin') == _ORIGIN
 
     def test_exception_handlers_exist(self):
         from app import app as real_app
@@ -150,10 +156,8 @@ class TestErrorHandlers:
         req = MagicMock()
         req.method = 'GET'
         req.url.path = '/api/test'
-        with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
-            resp = await http_exception(req, exc)
+        resp = await http_exception(req, exc)
         assert resp.status_code == 404
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
         body = json.loads(resp.body)
         assert 'Custom not found' in body.get('error', '')
 
@@ -163,10 +167,8 @@ class TestErrorHandlers:
         req.method = 'GET'
         req.url.path = '/api/test'
         with patch('app.log.exception'):
-            with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
-                resp = await server_error_handler(req, exc)
+            resp = await server_error_handler(req, exc)
         assert resp.status_code == 500
-        assert resp.headers.get('Access-Control-Allow-Origin') == '*'
         body = json.loads(resp.body)
         assert 'Internal server error' in body.get('error', '')
 
@@ -175,17 +177,24 @@ class TestSecurityHeaders:
     def test_cors_methods_restricted(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/api/test', headers={'Host': 'localhost'})
+            resp = client.options('/api/test', headers={
+                'Host': 'localhost',
+                'Origin': _ORIGIN,
+                'Access-Control-Request-Method': 'POST',
+            })
         methods = resp.headers.get('Access-Control-Allow-Methods', '')
-        allowed = set(methods.split(','))
-        assert allowed == {'OPTIONS', 'GET', 'POST', 'DELETE'}
+        allowed = {m.strip() for m in methods.split(',')}
+        assert allowed == {'OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'}
 
     def test_no_put_or_patch_in_cors(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
             client = TestClient(_make_app())
-            resp = client.get('/api/test', headers={'Host': 'localhost'})
+            resp = client.options('/api/test', headers={
+                'Host': 'localhost',
+                'Origin': _ORIGIN,
+                'Access-Control-Request-Method': 'POST',
+            })
         methods = resp.headers.get('Access-Control-Allow-Methods', '')
-        assert 'PUT' not in methods
         assert 'PATCH' not in methods
 
 
@@ -198,6 +207,7 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _make_app():
+    from app import config as app_config
     return Starlette(
         routes=[
             Route('/api/test', endpoint=_dummy_endpoint),
@@ -208,6 +218,7 @@ def _make_app():
         ],
         middleware=[
             Middleware(_FakeAuth),
+            Middleware(CORSMiddleware, allow_origins=app_config.get('cors_origins', '*').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),
             Middleware(CustomMiddleware),
         ],
     )

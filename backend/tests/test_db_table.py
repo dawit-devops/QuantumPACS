@@ -209,11 +209,13 @@ class TestTableAsync:
         mock_storage = MagicMock()
         mock_storage.delete = AsyncMock()
 
-        with patch('storage.storage.Storage.get', new=AsyncMock(return_value=mock_storage)), \
-             patch('db.files.es.delete', new=AsyncMock()):
-            from db.files import Files
-            f = Files(conn)
-            await f.delete(file_id=42, master_id=1)
+        from db.files import Files, set_es_indexer, set_storage_provider
+        mock_indexer = AsyncMock()
+        set_es_indexer(mock_indexer)
+        set_storage_provider(AsyncMock(return_value=mock_storage))
+
+        f = Files(conn)
+        await f.delete(file_id=42, master_id=1)
 
         assert mock_storage.delete.called
 

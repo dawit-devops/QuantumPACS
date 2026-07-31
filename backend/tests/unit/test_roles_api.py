@@ -122,8 +122,7 @@ class TestRoleHandler:
         handler = make_handler(RoleHandler, request)
         with patch('api.roles.get_conn', return_value=conn):
             resp = await handler.delete(request)
-        assert resp.status_code == 200
-        assert b'error' in resp.body
+        assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_delete_custom_role_succeeds(self):
