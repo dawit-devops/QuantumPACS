@@ -1,7 +1,6 @@
 import pytest
 from services.interfaces import (
-    MetadataService, StorageService, SearchService,
-    AuthService, NotificationService, ServiceRegistry,
+    MetadataService, StorageService, ServiceRegistry,
 )
 
 

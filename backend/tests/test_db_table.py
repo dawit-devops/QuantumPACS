@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -128,7 +128,7 @@ class TestTableAsync:
         class MyTable(Table):
             name = 'test'
         t = MyTable(conn=MagicMock())
-        with pytest.raises(TypeError, match='NotImplemented'):
+        with pytest.raises(NotImplementedError):
             await t.sync_db()
 
     @pytest.mark.asyncio

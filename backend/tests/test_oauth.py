@@ -3,13 +3,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.oauth import (
-    _code_verifier, _code_challenge, _verify_id_token,
-    oauth_login, oauth_callback, oidc_discovery,
+    _code_verifier, _code_challenge, oauth_login, oauth_callback, oidc_discovery,
     oauth_token_exchange,
 )
 

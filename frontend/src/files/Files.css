@@ -1,22 +1,22 @@
 .files {
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-12) var(--space-3) var(--space-3) var(--space-3);
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-3) var(--space-3) var(--space-3);
 }
 
 @media only screen and (min-width: 600px) {
-    .files {
-        padding: var(--space-12);
-    }
+  .files {
+    padding: var(--space-12);
+  }
 }
 
 @media only screen and (max-width: 600px) {
-    .filesTable li {
-        margin-right: var(--space-element-xs);
-    }
+  .filesTable li {
+    margin-right: var(--space-element-xs);
+  }
 
-    .filesTable ul {
-        margin-left: 2%;
-        float: left !important;
-    }
+  .filesTable ul {
+    margin-left: 2%;
+    float: left !important;
+  }
 }

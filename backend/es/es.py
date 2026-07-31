@@ -111,7 +111,8 @@ async def search(data):
         es_q = []
 
         for k, v in data.items():
-            if not v: continue
+            if not v:
+                continue
 
             if k in columns:
                 k += ".lang_analyzed"

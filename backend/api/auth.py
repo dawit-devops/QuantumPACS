@@ -9,7 +9,7 @@ import jwt as _jwt
 from api.response import unauthorized
 from api.tokens import verify_token, is_blocked
 from api.ratelimit import RedisTokenBucket
-from config import config
+from config import config  # noqa: F401  (module attribute patched by tests)
 from db.conn import get_conn
 from db.share_files import SharedFiles
 from db.users import Users
@@ -216,7 +216,7 @@ class TokenAuth(AuthenticationBackend):
                     log.error('Share-file check failed: %s', e)
                     raise AuthenticationError('Invalid auth')
 
-                if file_id and (path.startswith(f'/api/files/{file_id}') or path.startswith(f'/api/ws_token')):
+                if file_id and (path.startswith(f'/api/files/{file_id}') or path.startswith('/api/ws_token')):
                     data = {'id': credentials, 'admin': False}
                 else:
                     raise AuthenticationError('Invalid auth')

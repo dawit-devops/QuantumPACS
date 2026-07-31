@@ -1,6 +1,4 @@
-from unittest.mock import patch
 
-import pytest
 
 from config import default_config, load_config
 

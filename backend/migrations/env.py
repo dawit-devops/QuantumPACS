@@ -5,7 +5,6 @@ Usage:
     TENANT_SLUG=my-clinic alembic upgrade head
     ./manage tenant migrate
 """
-import os
 from logging.config import fileConfig
 
 from alembic import context

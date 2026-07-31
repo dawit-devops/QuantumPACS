@@ -1,25 +1,48 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Layout, Table, message, Button, Tag, Modal, Form, Input, Popconfirm, Alert, Checkbox, Switch, Space, Typography } from 'antd';
-import { DeleteOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons';
-import withSidebar from '../common/base';
-import { request } from '../helpers';
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Layout,
+  Table,
+  message,
+  Button,
+  Tag,
+  Modal,
+  Form,
+  Input,
+  Popconfirm,
+  Alert,
+  Checkbox,
+  Switch,
+  Space,
+  Typography,
+} from "antd";
+import {
+  DeleteOutlined,
+  CopyOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
+import withSidebar from "../common/base";
+import { request } from "../helpers";
 
 const Content = Layout.Content;
 
 const PERMISSION_GROUPS: Record<string, string[]> = {
-  'Files': ['FILE_READ', 'FILE_WRITE', 'FILE_DELETE'],
-  'Patients': ['PATIENT_READ', 'PATIENT_WRITE'],
-  'Studies': ['STUDY_READ', 'STUDY_WRITE'],
-  'Users': ['USER_READ', 'USER_WRITE', 'USER_DELETE', 'USER_ADMIN'],
-  'Replicas': ['REPLICA_READ', 'REPLICA_WRITE', 'REPLICA_DELETE'],
-  'Tenants': ['TENANT_READ', 'TENANT_WRITE', 'TENANT_ADMIN'],
-  'Roles': ['ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'],
-  'Service Keys': ['SERVICE_KEY_READ', 'SERVICE_KEY_WRITE', 'SERVICE_KEY_DELETE'],
-  'Worklist': ['WORKLIST_READ', 'WORKLIST_WRITE'],
-  'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
-  'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
-  'Logs': ['LOG_READ'],
-  'Metrics': ['METRICS_READ'],
+  Files: ["FILE_READ", "FILE_WRITE", "FILE_DELETE"],
+  Patients: ["PATIENT_READ", "PATIENT_WRITE"],
+  Studies: ["STUDY_READ", "STUDY_WRITE"],
+  Users: ["USER_READ", "USER_WRITE", "USER_DELETE", "USER_ADMIN"],
+  Replicas: ["REPLICA_READ", "REPLICA_WRITE", "REPLICA_DELETE"],
+  Tenants: ["TENANT_READ", "TENANT_WRITE", "TENANT_ADMIN"],
+  Roles: ["ROLE_READ", "ROLE_WRITE", "ROLE_DELETE"],
+  "Service Keys": [
+    "SERVICE_KEY_READ",
+    "SERVICE_KEY_WRITE",
+    "SERVICE_KEY_DELETE",
+  ],
+  Worklist: ["WORKLIST_READ", "WORKLIST_WRITE"],
+  DICOMweb: ["DICOMWEB_READ", "DICOMWEB_WRITE"],
+  Routing: ["ROUTING_READ", "ROUTING_WRITE"],
+  Logs: ["LOG_READ"],
+  Metrics: ["METRICS_READ"],
 };
 
 const ALL_PERMISSIONS = Object.values(PERMISSION_GROUPS).flat();
@@ -38,7 +61,7 @@ function LastUsed({ at }: { at: string | null }) {
   if (!at) return <Typography.Text type="secondary">Never</Typography.Text>;
   const ms = Date.now() - new Date(at).getTime();
   const mins = Math.floor(ms / 60000);
-  if (mins < 1) return '<1m ago';
+  if (mins < 1) return "<1m ago";
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -48,7 +71,7 @@ function LastUsed({ at }: { at: string | null }) {
 }
 
 function ServiceKeys() {
-  document.title = 'QuantumPACS - Service Keys';
+  document.title = "QuantumPACS - Service Keys";
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);
@@ -58,52 +81,76 @@ function ServiceKeys() {
   const [form] = Form.useForm();
 
   const filteredData = useMemo(
-    () => showRevoked ? data : data.filter(r => r.is_active),
-    [data, showRevoked]
+    () => (showRevoked ? data : data.filter((r) => r.is_active)),
+    [data, showRevoked],
   );
 
   const columns: any[] = [
     {
-      title: 'Name', key: 'name', width: '18%',
+      title: "Name",
+      key: "name",
+      width: "18%",
       render: (_: any, r: any) => (
         <Space direction="vertical" size={0}>
           <span>{r.name}</span>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.prefix}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {r.prefix}
+          </Typography.Text>
         </Space>
       ),
     },
     {
-      title: 'Permissions', dataIndex: 'permissions', width: '24%',
+      title: "Permissions",
+      dataIndex: "permissions",
+      width: "24%",
       render: (perms: string[]) =>
         perms?.length ? (
           <Space wrap size={[2, 2]}>
-            {perms.map(p => <Tag key={p} style={{ fontSize: 11 }}>{p}</Tag>)}
+            {perms.map((p) => (
+              <Tag key={p} style={{ fontSize: 11 }}>
+                {p}
+              </Tag>
+            ))}
           </Space>
         ) : (
           <Typography.Text type="secondary">None</Typography.Text>
         ),
     },
     {
-      title: 'Created', dataIndex: 'created_at', width: '12%',
+      title: "Created",
+      dataIndex: "created_at",
+      width: "12%",
       render: (d: string) => new Date(d).toLocaleDateString(),
     },
     {
-      title: 'Last Used', dataIndex: 'last_used_at', width: '12%',
+      title: "Last Used",
+      dataIndex: "last_used_at",
+      width: "12%",
       render: (d: string | null) => <LastUsed at={d} />,
     },
     {
-      title: 'Expiry', dataIndex: 'expires_at', width: '12%',
+      title: "Expiry",
+      dataIndex: "expires_at",
+      width: "12%",
       render: (d: string | null) => <ExpiryStatus expiresAt={d} />,
     },
     {
-      title: 'Status', dataIndex: 'is_active', width: '10%',
+      title: "Status",
+      dataIndex: "is_active",
+      width: "10%",
       render: (active: boolean, r: any) =>
-        !r.enabled ? <Tag color="red">Revoked</Tag>
-          : active ? <Tag color="green">Active</Tag>
-            : <Tag color="default">Expired</Tag>,
+        !r.enabled ? (
+          <Tag color="red">Revoked</Tag>
+        ) : active ? (
+          <Tag color="green">Active</Tag>
+        ) : (
+          <Tag color="default">Expired</Tag>
+        ),
     },
     {
-      title: 'Action', key: 'action', width: '12%',
+      title: "Action",
+      key: "action",
+      width: "12%",
       render: (_: any, record: any) =>
         record.enabled ? (
           <Popconfirm
@@ -111,7 +158,9 @@ function ServiceKeys() {
             description="Active integrations using this key may be affected."
             onConfirm={() => handleRevoke(record.id)}
           >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small">Revoke</Button>
+            <Button type="link" danger icon={<DeleteOutlined />} size="small">
+              Revoke
+            </Button>
           </Popconfirm>
         ) : null,
     },
@@ -123,51 +172,75 @@ function ServiceKeys() {
 
   const fetch = () => {
     setLoading(true);
-    request('api-keys').then((res: any) => {
-      setLoading(false);
-      setData(Array.isArray(res.data) ? res.data : []);
-    }).catch((e: any) => {
-      setLoading(false);
-      message.error(e.message);
-    });
+    request("api-keys")
+      .then((res: any) => {
+        setLoading(false);
+        setData(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((e: any) => {
+        setLoading(false);
+        message.error(e.message);
+      });
   };
 
   const handleGenerate = () => {
-    form.validateFields().then((values: any) => {
-      request('api-keys', { data: values }).then((res: any) => {
-        form.resetFields();
-        setRawKey(res.data.raw_key);
-        setVisible(false);
-        fetch();
-      }).catch((e: any) => {
-        message.error(e.message);
-      });
-    }).catch(() => {});
+    form
+      .validateFields()
+      .then((values: any) => {
+        request("api-keys", { data: values })
+          .then((res: any) => {
+            form.resetFields();
+            setRawKey(res.data.raw_key);
+            setVisible(false);
+            fetch();
+          })
+          .catch((e: any) => {
+            message.error(e.message);
+          });
+      })
+      .catch(() => {});
   };
 
   const handleRevoke = (id: string) => {
-    request(`api-keys/${id}`, { data: undefined, method: 'DELETE' }).then(() => {
-      fetch();
-    }).catch((e: any) => {
-      message.error(e.message);
-    });
+    request(`api-keys/${id}`, { data: undefined, method: "DELETE" })
+      .then(() => {
+        fetch();
+      })
+      .catch((e: any) => {
+        message.error(e.message);
+      });
   };
 
   const copyKey = () => {
     if (rawKey) {
       navigator.clipboard.writeText(rawKey);
-      message.success('Key copied to clipboard');
+      message.success("Key copied to clipboard");
     }
   };
 
   return (
     <Content style={{ padding: 50 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+          alignItems: "center",
+        }}
+      >
         <Space>
-          <Button type="primary" onClick={() => { setRawKey(null); setVisible(true); }}>
+          <Button
+            type="primary"
+            onClick={() => {
+              setRawKey(null);
+              setVisible(true);
+            }}
+          >
             Generate Key
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={fetch}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetch}>
+            Refresh
+          </Button>
         </Space>
         <Space>
           <span>Show revoked</span>
@@ -184,8 +257,25 @@ function ServiceKeys() {
           onClose={() => setRawKey(null)}
           message={
             <span>
-              Key generated: <code style={{ fontSize: 14, background: '#f5f5f5', padding: '2px 8px', borderRadius: 4 }}>{rawKey}</code>
-              <Button type="link" icon={<CopyOutlined />} onClick={copyKey} style={{ marginLeft: 8 }}>Copy</Button>
+              Key generated:{" "}
+              <code
+                style={{
+                  fontSize: 14,
+                  background: "#f5f5f5",
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                }}
+              >
+                {rawKey}
+              </code>
+              <Button
+                type="link"
+                icon={<CopyOutlined />}
+                onClick={copyKey}
+                style={{ marginLeft: 8 }}
+              >
+                Copy
+              </Button>
             </span>
           }
           description="This key will not be shown again. Copy it now."
@@ -202,7 +292,10 @@ function ServiceKeys() {
       <Modal
         title="Generate New API Key"
         open={visible}
-        onCancel={() => { form.resetFields(); setVisible(false); }}
+        onCancel={() => {
+          form.resetFields();
+          setVisible(false);
+        }}
         onOk={handleGenerate}
         okText="Generate"
         width={520}
@@ -211,7 +304,11 @@ function ServiceKeys() {
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input placeholder="e.g., RIS Integration" />
           </Form.Item>
-          <Form.Item name="service_name" label="Service Name" rules={[{ required: true }]}>
+          <Form.Item
+            name="service_name"
+            label="Service Name"
+            rules={[{ required: true }]}
+          >
             <Input placeholder="e.g., RIS-App" />
           </Form.Item>
           <Form.Item name="expires_in_days" label="Expires In (days)">
@@ -219,13 +316,21 @@ function ServiceKeys() {
           </Form.Item>
           <Form.Item name="permissions" label="Permissions" initialValue={[]}>
             <Checkbox.Group>
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space direction="vertical" style={{ width: "100%" }}>
                 {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
                   <div key={group}>
-                    <Typography.Text strong style={{ fontSize: 12 }}>{group}</Typography.Text>
+                    <Typography.Text strong style={{ fontSize: 12 }}>
+                      {group}
+                    </Typography.Text>
                     <div style={{ paddingLeft: 12 }}>
-                      {perms.map(p => (
-                        <Checkbox key={p} value={p} style={{ marginRight: 8, fontSize: 12 }}>{p}</Checkbox>
+                      {perms.map((p) => (
+                        <Checkbox
+                          key={p}
+                          value={p}
+                          style={{ marginRight: 8, fontSize: 12 }}
+                        >
+                          {p}
+                        </Checkbox>
                       ))}
                     </div>
                   </div>

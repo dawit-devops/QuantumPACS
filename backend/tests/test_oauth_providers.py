@@ -1,9 +1,7 @@
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from api.encryption import encrypt_secret, decrypt_secret
 from db.oauth_providers import OAuthProviders
 
 

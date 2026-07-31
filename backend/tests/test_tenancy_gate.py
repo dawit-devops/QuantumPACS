@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.applications import Starlette
@@ -173,7 +173,7 @@ class TestTenantPool:
     async def test_close_removes_pool(self):
         generic = {'db_name': 't', 'db_host': 'localhost',
                     'db_port': 5432, 'db_user': 'u', 'db_password': 'p'}
-        with patch('asyncpg.create_pool', new=AsyncMock()) as mock_create:
+        with patch('asyncpg.create_pool', new=AsyncMock()):
             await TenantConnectionPool.get('my-tenant', generic)
             assert 'my-tenant' in TenantConnectionPool._pools
             await TenantConnectionPool.close('my-tenant')

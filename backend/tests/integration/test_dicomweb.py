@@ -1,7 +1,6 @@
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from starlette.applications import Starlette

@@ -1,17 +1,36 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import withRouter from '../withRouter';
+import React, { useState, useCallback, useEffect } from "react";
+import withRouter from "../withRouter";
 import {
-  Form, Input, InputNumber, Button, message, Layout, Modal, Row, Col, Typography, Space, Tooltip, Table, Tag, Popconfirm,
-} from 'antd';
-import { CopyOutlined, ShareAltOutlined, CheckOutlined, DeleteOutlined, LinkOutlined } from '@ant-design/icons';
-import { request } from '../helpers';
+  Form,
+  Input,
+  InputNumber,
+  Button,
+  message,
+  Layout,
+  Modal,
+  Row,
+  Col,
+  Typography,
+  Space,
+  Tooltip,
+  Table,
+  Tag,
+  Popconfirm,
+} from "antd";
+import {
+  CopyOutlined,
+  ShareAltOutlined,
+  CheckOutlined,
+  DeleteOutlined,
+  LinkOutlined,
+} from "@ant-design/icons";
+import { request } from "../helpers";
 
 const { Content } = Layout;
 const { Text } = Typography;
 
-
 function Share(props: any) {
-  document.title = 'QuantumPACS - Share';
+  document.title = "QuantumPACS - Share";
   let [loading, setLoading] = useState(false);
   let [key, setKey] = useState<string | null>(null);
   let [copied, setCopied] = useState(false);
@@ -22,7 +41,7 @@ function Share(props: any) {
 
   const fetchLinks = useCallback(() => {
     setLinksLoading(true);
-    request(`files/${props.file.id}/shares`, { method: 'GET' })
+    request(`files/${props.file.id}/shares`, { method: "GET" })
       .then((res: any) => setLinks(res.data || res || []))
       .catch(() => {})
       .finally(() => setLinksLoading(false));
@@ -34,47 +53,56 @@ function Share(props: any) {
 
   const handleSubmit = () => {
     setLoading(true);
-    form.validateFields().then((values: any) => {
-      request(`files/${props.file.id}/share`, { data: values })
-        .then((data: any) => {
-          setLoading(false);
-          setKey(data.key);
-          fetchLinks();
-          form.resetFields();
-        }).catch(() => {
-          setLoading(false);
-          message.error('Share failed');
-        });
-    }).catch(() => setLoading(false));
+    form
+      .validateFields()
+      .then((values: any) => {
+        request(`files/${props.file.id}/share`, { data: values })
+          .then((data: any) => {
+            setLoading(false);
+            setKey(data.key);
+            fetchLinks();
+            form.resetFields();
+          })
+          .catch(() => {
+            setLoading(false);
+            message.error("Share failed");
+          });
+      })
+      .catch(() => setLoading(false));
   };
 
-  const shareUrl = key ? `${window.location.origin}/view/${key}` : '';
+  const shareUrl = key ? `${window.location.origin}/view/${key}` : "";
 
   const copyToClipboard = useCallback(() => {
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      message.success('Link copied!');
-    }).catch(() => {
-      const textArea = document.createElement('textarea');
-      textArea.value = shareUrl;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      message.success('Link copied!');
-    });
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        message.success("Link copied!");
+      })
+      .catch(() => {
+        const textArea = document.createElement("textarea");
+        textArea.value = shareUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        message.success("Link copied!");
+      });
   }, [shareUrl]);
 
   const nativeShare = useCallback(() => {
     if (navigator.share) {
-      navigator.share({
-        title: 'QuantumPACS Shared Study',
-        text: 'View this medical study securely',
-        url: shareUrl,
-      }).catch(() => {});
+      navigator
+        .share({
+          title: "QuantumPACS Shared Study",
+          text: "View this medical study securely",
+          url: shareUrl,
+        })
+        .catch(() => {});
     } else {
       copyToClipboard();
     }
@@ -83,11 +111,13 @@ function Share(props: any) {
   const handleRevoke = async (shareId: string) => {
     setRevoking(shareId);
     try {
-      await request(`files/${props.file.id}/shares/${shareId}`, { method: 'DELETE' });
-      message.success('Share link revoked');
+      await request(`files/${props.file.id}/shares/${shareId}`, {
+        method: "DELETE",
+      });
+      message.success("Share link revoked");
       fetchLinks();
     } catch {
-      message.error('Failed to revoke share link');
+      message.error("Failed to revoke share link");
     } finally {
       setRevoking(null);
     }
@@ -95,50 +125,57 @@ function Share(props: any) {
 
   const copyLink = (url: string) => {
     navigator.clipboard.writeText(url).then(() => {
-      message.success('Link copied!');
+      message.success("Link copied!");
     });
   };
 
   const columns = [
     {
-      title: 'Created',
-      dataIndex: 'created',
-      key: 'created',
+      title: "Created",
+      dataIndex: "created",
+      key: "created",
       render: (v: string) => new Date(v).toLocaleString(),
       width: 160,
     },
     {
-      title: 'Expires',
-      dataIndex: 'expires',
-      key: 'expires',
+      title: "Expires",
+      dataIndex: "expires",
+      key: "expires",
       render: (v: string) => new Date(v).toLocaleString(),
       width: 160,
     },
     {
-      title: 'Key',
-      dataIndex: 'hash',
-      key: 'hash',
+      title: "Key",
+      dataIndex: "hash",
+      key: "hash",
       width: 120,
     },
     {
-      title: 'Status',
-      dataIndex: 'active',
-      key: 'active',
-      render: (v: boolean) => v
-        ? <Tag color="green">Active</Tag>
-        : <Tag color="default">Expired</Tag>,
+      title: "Status",
+      dataIndex: "active",
+      key: "active",
+      render: (v: boolean) =>
+        v ? (
+          <Tag color="green">Active</Tag>
+        ) : (
+          <Tag color="default">Expired</Tag>
+        ),
       width: 100,
     },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: "Actions",
+      key: "actions",
       render: (_: any, record: any) => (
         <Space>
           <Tooltip title="Copy link">
             <Button
               size="small"
               icon={<CopyOutlined />}
-              onClick={() => copyLink(`${window.location.origin}/view/${record.hash.replace('…', '')}`)}
+              onClick={() =>
+                copyLink(
+                  `${window.location.origin}/view/${record.hash.replace("…", "")}`,
+                )
+              }
             />
           </Tooltip>
           {record.active && (
@@ -149,7 +186,12 @@ function Share(props: any) {
               okText="Revoke"
               cancelText="Cancel"
             >
-              <Button size="small" danger icon={<DeleteOutlined />} loading={revoking === record.id} />
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                loading={revoking === record.id}
+              />
             </Popconfirm>
           )}
         </Space>
@@ -159,13 +201,36 @@ function Share(props: any) {
   ];
 
   return (
-    <Content style={{ padding: 24, background: 'var(--bg-surface, #fff)', minHeight: 360, maxWidth: 600, borderRadius: 8 }}>
+    <Content
+      style={{
+        padding: 24,
+        background: "var(--bg-surface, #fff)",
+        minHeight: 360,
+        maxWidth: 600,
+        borderRadius: 8,
+      }}
+    >
       <Form form={form} onFinish={handleSubmit} layout="vertical">
-        <Form.Item name="duration" label="Share duration (hours)" rules={[{ required: true, message: 'Please enter duration!' }]}>
-          <InputNumber min={1} max={8760} style={{ width: '100%' }} placeholder="e.g., 24" />
+        <Form.Item
+          name="duration"
+          label="Share duration (hours)"
+          rules={[{ required: true, message: "Please enter duration!" }]}
+        >
+          <InputNumber
+            min={1}
+            max={8760}
+            style={{ width: "100%" }}
+            placeholder="e.g., 24"
+          />
         </Form.Item>
         <Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} icon={<ShareAltOutlined />} size="large">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            icon={<ShareAltOutlined />}
+            size="large"
+          >
             Generate Share Link
           </Button>
         </Form.Item>
@@ -177,17 +242,21 @@ function Share(props: any) {
           footer={null}
           onCancel={() => setKey(null)}
         >
-          <Space direction="vertical" style={{ width: '100%' }}>
+          <Space direction="vertical" style={{ width: "100%" }}>
             <Row gutter={8} align="middle">
               <Col flex="auto">
-                <Input value={shareUrl} readOnly style={{ fontFamily: 'monospace', fontSize: 13 }} />
+                <Input
+                  value={shareUrl}
+                  readOnly
+                  style={{ fontFamily: "monospace", fontSize: 13 }}
+                />
               </Col>
               <Col>
-                <Tooltip title={copied ? 'Copied!' : 'Copy link'}>
+                <Tooltip title={copied ? "Copied!" : "Copy link"}>
                   <Button
                     icon={copied ? <CheckOutlined /> : <CopyOutlined />}
                     onClick={copyToClipboard}
-                    type={copied ? 'primary' : 'default'}
+                    type={copied ? "primary" : "default"}
                   />
                 </Tooltip>
               </Col>
@@ -198,13 +267,17 @@ function Share(props: any) {
               </Col>
             </Row>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              This link expires after the specified duration. Anyone with the link can view the study.
+              This link expires after the specified duration. Anyone with the
+              link can view the study.
             </Text>
           </Space>
         </Modal>
       )}
       <div style={{ marginTop: 24 }}>
-        <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
+        <Text
+          strong
+          style={{ fontSize: 14, display: "block", marginBottom: 12 }}
+        >
           <LinkOutlined /> Existing Share Links
         </Text>
         <Table
@@ -214,12 +287,11 @@ function Share(props: any) {
           loading={linksLoading}
           pagination={false}
           size="small"
-          locale={{ emptyText: 'No share links created yet' }}
+          locale={{ emptyText: "No share links created yet" }}
         />
       </div>
     </Content>
   );
 }
-
 
 export default withRouter(Share);

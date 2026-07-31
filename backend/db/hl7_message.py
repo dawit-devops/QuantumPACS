@@ -101,22 +101,22 @@ class Hl7Message(Table):
 
     async def get_metrics(self, period='24 hours'):
         total = await self.conn.fetchval(
-            f'SELECT COUNT(*) FROM hl7_messages WHERE created_at > now() - $1::interval', period
+            'SELECT COUNT(*) FROM hl7_messages WHERE created_at > now() - $1::interval', period
         )
-        by_type = await self.conn.fetch(f"""
+        by_type = await self.conn.fetch("""
             SELECT message_type, event_type, COUNT(*) AS count
             FROM hl7_messages
             WHERE created_at > now() - $1::interval
             GROUP BY message_type, event_type
             ORDER BY count DESC
         """, period)
-        by_status = await self.conn.fetch(f"""
+        by_status = await self.conn.fetch("""
             SELECT parse_status, COUNT(*) AS count
             FROM hl7_messages
             WHERE created_at > now() - $1::interval
             GROUP BY parse_status
         """, period)
-        by_facility = await self.conn.fetch(f"""
+        by_facility = await self.conn.fetch("""
             SELECT sending_facility, COUNT(*) AS count
             FROM hl7_messages
             WHERE created_at > now() - $1::interval AND sending_facility != ''

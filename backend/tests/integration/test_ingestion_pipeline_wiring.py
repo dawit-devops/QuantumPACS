@@ -85,7 +85,6 @@ class TestIngestionPipelineWiring:
 
     async def test_lifecycle_runs_without_services_when_redis_unavailable(self):
         import lifecycle
-        from unittest.mock import MagicMock
 
         monkey = pytest.MonkeyPatch()
         try:

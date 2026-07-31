@@ -2,7 +2,7 @@ import os
 from starlette.routing import Router, Route, Mount, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse
 
 from api.patient import PatientHandler
 from api.files import (
@@ -190,5 +190,5 @@ routes = _V1_ROUTES + _V2_ALIASES
 routes = [
     Mount('/api', app=Router(routes)),
 ]
-if is_docker:
+if is_docker():
     routes.append(Mount('/', app=StaticFiles(directory='static'), name="static"))

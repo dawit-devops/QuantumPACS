@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from services.auth.db_auth_service import DatabaseAuthService
-from services.interfaces import AuthService
 
 
 class FakeRecord(dict):

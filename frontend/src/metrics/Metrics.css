@@ -1,9 +1,10 @@
 .ant-card {
-    border-radius: var(--card-radius, 8px);
-    transition: background-color var(--duration-normal) var(--easing-standard),
-                border-color var(--duration-normal) var(--easing-standard);
+  border-radius: var(--card-radius, 8px);
+  transition:
+    background-color var(--duration-normal) var(--easing-standard),
+    border-color var(--duration-normal) var(--easing-standard);
 }
 
 [data-theme="dark"] .ant-card {
-    border-color: var(--border-color);
+  border-color: var(--border-color);
 }

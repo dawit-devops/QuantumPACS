@@ -1,16 +1,34 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Layout, Card, Descriptions, Tag, Tree, Typography, Space, Badge, Empty, Spin } from 'antd';
-import { FolderOutlined, FileOutlined, ExperimentOutlined, CalendarOutlined, UserOutlined, MedicineBoxOutlined } from '@ant-design/icons';
-import withSidebar from '../common/base';
-import { request } from '../helpers';
-import { PageState } from '../common/PageState';
-import withRouter from '../withRouter';
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Layout,
+  Card,
+  Descriptions,
+  Tag,
+  Tree,
+  Typography,
+  Space,
+  Badge,
+  Empty,
+  Spin,
+} from "antd";
+import {
+  FolderOutlined,
+  FileOutlined,
+  ExperimentOutlined,
+  CalendarOutlined,
+  UserOutlined,
+  MedicineBoxOutlined,
+} from "@ant-design/icons";
+import withSidebar from "../common/base";
+import { request } from "../helpers";
+import { PageState } from "../common/PageState";
+import withRouter from "../withRouter";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
 
 function Patient(props: any) {
-  document.title = 'QuantumPACS - Patient';
+  document.title = "QuantumPACS - Patient";
 
   let [data, setData] = useState<any>({});
   let [loading, setLoading] = useState(false);
@@ -22,16 +40,18 @@ function Patient(props: any) {
   const fetchPatient = () => {
     setLoading(true);
     setError(null);
-    request(`patients/${patientId}`).then((res: any) => {
-      setLoading(false);
-      setData(res);
-      if (res.studies) {
-        setExpandedKeys(res.studies.map((s: any) => `study-${s.id}`));
-      }
-    }).catch((e: any) => {
-      setLoading(false);
-      setError(e.message);
-    });
+    request(`patients/${patientId}`)
+      .then((res: any) => {
+        setLoading(false);
+        setData(res);
+        if (res.studies) {
+          setExpandedKeys(res.studies.map((s: any) => `study-${s.id}`));
+        }
+      })
+      .catch((e: any) => {
+        setLoading(false);
+        setError(e.message);
+      });
   };
 
   useEffect(() => {
@@ -40,9 +60,19 @@ function Patient(props: any) {
 
   const stats = useMemo(() => {
     const studies = data.studies || [];
-    const seriesCount = studies.reduce((acc: number, s: any) => acc + (s.series?.length || 0), 0);
-    const fileCount = studies.reduce((acc: number, s: any) =>
-      acc + (s.series?.reduce((a: number, sr: any) => a + (sr.files?.length || 0), 0) || 0), 0);
+    const seriesCount = studies.reduce(
+      (acc: number, s: any) => acc + (s.series?.length || 0),
+      0,
+    );
+    const fileCount = studies.reduce(
+      (acc: number, s: any) =>
+        acc +
+        (s.series?.reduce(
+          (a: number, sr: any) => a + (sr.files?.length || 0),
+          0,
+        ) || 0),
+      0,
+    );
     return { studyCount: studies.length, seriesCount, fileCount };
   }, [data]);
 
@@ -53,10 +83,16 @@ function Patient(props: any) {
       icon: <ExperimentOutlined />,
       title: (
         <Space size={12}>
-          <Text strong>{s.study_id || s.study_instance_uid?.slice(0, 20) || 'Study'}</Text>
+          <Text strong>
+            {s.study_id || s.study_instance_uid?.slice(0, 20) || "Study"}
+          </Text>
           {s.description && <Text type="secondary">{s.description}</Text>}
-          {s.accession_number && <Tag style={{ fontSize: 10 }}>{s.accession_number}</Tag>}
-          <Text type="secondary" style={{ fontSize: 11 }}>{s.series?.length || 0} series</Text>
+          {s.accession_number && (
+            <Tag style={{ fontSize: 10 }}>{s.accession_number}</Tag>
+          )}
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {s.series?.length || 0} series
+          </Text>
         </Space>
       ),
       children: (s.series || []).map((sr: any) => ({
@@ -64,10 +100,14 @@ function Patient(props: any) {
         icon: <MedicineBoxOutlined />,
         title: (
           <Space size={8}>
-            <Tag color="blue" style={{ fontSize: 10 }}>{sr.modality || '?'}</Tag>
-            <Text>{sr.number ? `#${sr.number}` : ''}</Text>
+            <Tag color="blue" style={{ fontSize: 10 }}>
+              {sr.modality || "?"}
+            </Tag>
+            <Text>{sr.number ? `#${sr.number}` : ""}</Text>
             {sr.description && <Text type="secondary">{sr.description}</Text>}
-            <Text type="secondary" style={{ fontSize: 11 }}>{sr.files?.length || 0} files</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {sr.files?.length || 0} files
+            </Text>
           </Space>
         ),
         children: (sr.files || []).map((f: any) => ({
@@ -75,10 +115,23 @@ function Patient(props: any) {
           icon: <FileOutlined />,
           isLeaf: true,
           title: (
-            <a onClick={(e) => { e.stopPropagation(); props.history.push(`/files/${f.id}`); }}>
+            <a
+              onClick={(e) => {
+                e.stopPropagation();
+                props.history.push(`/files/${f.id}`);
+              }}
+            >
               <Space size={4}>
-                <Text>{f.name || f.sop_instance_uid?.slice(0, 20) || 'File'}</Text>
-                {f.indexed ? <Tag color="green" style={{ fontSize: 9 }}>indexed</Tag> : <Tag style={{ fontSize: 9 }}>pending</Tag>}
+                <Text>
+                  {f.name || f.sop_instance_uid?.slice(0, 20) || "File"}
+                </Text>
+                {f.indexed ? (
+                  <Tag color="green" style={{ fontSize: 9 }}>
+                    indexed
+                  </Tag>
+                ) : (
+                  <Tag style={{ fontSize: 9 }}>pending</Tag>
+                )}
               </Space>
             </a>
           ),
@@ -98,11 +151,18 @@ function Patient(props: any) {
       >
         <Spin spinning={loading}>
           <Card style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: 16,
+              }}
+            >
               <div>
                 <Title level={4} style={{ margin: 0 }}>
                   <UserOutlined style={{ marginRight: 8 }} />
-                  {data.name || 'Unknown'}
+                  {data.name || "Unknown"}
                 </Title>
                 {data.patient_id && (
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -112,30 +172,67 @@ function Patient(props: any) {
               </div>
               <Space size={16}>
                 <Badge count={stats.studyCount} showZero>
-                  <Tag icon={<ExperimentOutlined />} style={{ padding: '2px 8px' }}>Studies</Tag>
+                  <Tag
+                    icon={<ExperimentOutlined />}
+                    style={{ padding: "2px 8px" }}
+                  >
+                    Studies
+                  </Tag>
                 </Badge>
                 <Badge count={stats.seriesCount} showZero>
-                  <Tag icon={<MedicineBoxOutlined />} style={{ padding: '2px 8px' }}>Series</Tag>
+                  <Tag
+                    icon={<MedicineBoxOutlined />}
+                    style={{ padding: "2px 8px" }}
+                  >
+                    Series
+                  </Tag>
                 </Badge>
                 <Badge count={stats.fileCount} showZero>
-                  <Tag icon={<FileOutlined />} style={{ padding: '2px 8px' }}>Files</Tag>
+                  <Tag icon={<FileOutlined />} style={{ padding: "2px 8px" }}>
+                    Files
+                  </Tag>
                 </Badge>
               </Space>
             </div>
             <Descriptions size="small" column={3}>
-              <Descriptions.Item label="Patient ID">{data.patient_id || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Name">{data.name || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Sex">
-                {data.sex ? <Tag>{data.sex === 'M' ? 'Male' : data.sex === 'F' ? 'Female' : data.sex}</Tag> : '-'}
+              <Descriptions.Item label="Patient ID">
+                {data.patient_id || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="Date of Birth">{data.birth_date || '-'}</Descriptions.Item>
+              <Descriptions.Item label="Name">
+                {data.name || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Sex">
+                {data.sex ? (
+                  <Tag>
+                    {data.sex === "M"
+                      ? "Male"
+                      : data.sex === "F"
+                        ? "Female"
+                        : data.sex}
+                  </Tag>
+                ) : (
+                  "-"
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Date of Birth">
+                {data.birth_date || "-"}
+              </Descriptions.Item>
               <Descriptions.Item label="Internal ID">
-                <Text copyable style={{ fontSize: 12 }}>{data.id}</Text>
+                <Text copyable style={{ fontSize: 12 }}>
+                  {data.id}
+                </Text>
               </Descriptions.Item>
             </Descriptions>
           </Card>
 
-          <Card title={<span><FolderOutlined style={{ marginRight: 8 }} />Studies</span>}>
+          <Card
+            title={
+              <span>
+                <FolderOutlined style={{ marginRight: 8 }} />
+                Studies
+              </span>
+            }
+          >
             {treeData.length === 0 ? (
               <Empty description="No studies found for this patient" />
             ) : (

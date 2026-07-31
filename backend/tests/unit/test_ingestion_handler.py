@@ -1,4 +1,3 @@
-import pytest
 
 from services.ingestion.handler import (
     IngestionHandler,

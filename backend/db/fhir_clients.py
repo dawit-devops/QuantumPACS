@@ -70,7 +70,7 @@ class FhirClient(Table):
                 idx += 1
         if not sets:
             return
-        sets.append(f'updated_at = now()')
+        sets.append('updated_at = now()')
         vals.append(client_id)
         await self.conn.execute(
             f'UPDATE fhir_clients SET {", ".join(sets)} WHERE id = ${idx}',

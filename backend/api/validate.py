@@ -1,8 +1,7 @@
 """Request body parsing with Pydantic v2 validation.
 Usage: data = await parse_body(MySchema, request)
 Returns validated model or raises _ValidationException caught by middleware."""
-from pydantic import BaseModel, ValidationError
-from starlette.requests import Request
+from pydantic import ValidationError
 
 from api.response import api_error
 

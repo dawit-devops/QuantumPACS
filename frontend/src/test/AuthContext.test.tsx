@@ -1,17 +1,19 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { describe, it, expect, beforeEach } from 'vitest';
-import { AuthProvider, useAuth } from '../auth/AuthContext';
-import ProtectedRoute from '../auth/ProtectedRoute';
-import RequirePermission from '../auth/RequirePermission';
+import React from "react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { describe, it, expect, beforeEach } from "vitest";
+import { AuthProvider, useAuth } from "../auth/AuthContext";
+import ProtectedRoute from "../auth/ProtectedRoute";
+import RequirePermission from "../auth/RequirePermission";
 
 function TestConsumer() {
   const { isAuthenticated, user } = useAuth();
   return (
     <div>
-      <div data-testid="auth-status">{isAuthenticated ? 'authenticated' : 'unauthenticated'}</div>
+      <div data-testid="auth-status">
+        {isAuthenticated ? "authenticated" : "unauthenticated"}
+      </div>
       {user && <div data-testid="auth-user">{user.username}</div>}
     </div>
   );
@@ -26,11 +28,21 @@ function SignInTestConsumer() {
   const { isAuthenticated, user, signIn } = useAuth();
   return (
     <div>
-      <div data-testid="auth-status">{isAuthenticated ? 'authenticated' : 'unauthenticated'}</div>
+      <div data-testid="auth-status">
+        {isAuthenticated ? "authenticated" : "unauthenticated"}
+      </div>
       {user && <div data-testid="auth-user">{user.username}</div>}
       <button
         data-testid="signin-btn"
-        onClick={() => signIn('test-token', { id: 'u1', username: 'alice', admin: false, role: 'user', permissions: [] })}
+        onClick={() =>
+          signIn("test-token", {
+            id: "u1",
+            username: "alice",
+            admin: false,
+            role: "user",
+            permissions: [],
+          })
+        }
       >
         Sign In
       </button>
@@ -42,8 +54,12 @@ function PermissionTestConsumer() {
   const { hasPermission } = useAuth();
   return (
     <div>
-      <div data-testid="perm-file-read">{hasPermission('FILE_READ') ? 'yes' : 'no'}</div>
-      <div data-testid="perm-user-delete">{hasPermission('USER_DELETE') ? 'yes' : 'no'}</div>
+      <div data-testid="perm-file-read">
+        {hasPermission("FILE_READ") ? "yes" : "no"}
+      </div>
+      <div data-testid="perm-user-delete">
+        {hasPermission("USER_DELETE") ? "yes" : "no"}
+      </div>
     </div>
   );
 }
@@ -52,187 +68,228 @@ function SignOutTestConsumer() {
   const { isAuthenticated, user, signOut } = useAuth();
   return (
     <div>
-      <div data-testid="auth-status">{isAuthenticated ? 'authenticated' : 'unauthenticated'}</div>
+      <div data-testid="auth-status">
+        {isAuthenticated ? "authenticated" : "unauthenticated"}
+      </div>
       {user && <div data-testid="auth-user">{user.username}</div>}
-      <button data-testid="signout-btn" onClick={() => signOut()}>Sign Out</button>
+      <button data-testid="signout-btn" onClick={() => signOut()}>
+        Sign Out
+      </button>
     </div>
   );
 }
 
-describe('AuthProvider', () => {
+describe("AuthProvider", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('provides isAuthenticated=false when no token exists', () => {
+  it("provides isAuthenticated=false when no token exists", () => {
     render(
       <AuthProvider>
         <TestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('unauthenticated');
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "unauthenticated",
+    );
   });
 
-  it('signIn sets localStorage and updates auth state', async () => {
+  it("signIn sets localStorage and updates auth state", async () => {
     const user = userEvent.setup();
     render(
       <AuthProvider>
         <SignInTestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
 
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('unauthenticated');
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "unauthenticated",
+    );
 
-    await user.click(screen.getByTestId('signin-btn'));
+    await user.click(screen.getByTestId("signin-btn"));
 
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
-    expect(screen.getByTestId('auth-user')).toHaveTextContent('alice');
-    expect(localStorage.getItem('userId')).toBe('u1');
-    expect(localStorage.getItem('username')).toBe('alice');
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "authenticated",
+    );
+    expect(screen.getByTestId("auth-user")).toHaveTextContent("alice");
+    expect(localStorage.getItem("userId")).toBe("u1");
+    expect(localStorage.getItem("username")).toBe("alice");
   });
 
-  it('signOut clears localStorage and sets isAuthenticated to false', async () => {
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'alice');
-    localStorage.setItem('admin', 'false');
+  it("signOut clears localStorage and sets isAuthenticated to false", async () => {
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "alice");
+    localStorage.setItem("admin", "false");
 
     const user = userEvent.setup();
     render(
       <AuthProvider>
         <SignOutTestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
 
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "authenticated",
+    );
 
-    await user.click(screen.getByTestId('signout-btn'));
+    await user.click(screen.getByTestId("signout-btn"));
 
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('unauthenticated');
-    expect(localStorage.getItem('userId')).toBeNull();
-    expect(screen.queryByTestId('auth-user')).toBeNull();
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "unauthenticated",
+    );
+    expect(localStorage.getItem("userId")).toBeNull();
+    expect(screen.queryByTestId("auth-user")).toBeNull();
   });
 
-  it('RequirePermission renders children when user has the required permission', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'admin-user');
-    localStorage.setItem('admin', 'true');
-    localStorage.setItem('role', 'admin');
+  it("RequirePermission renders children when user has the required permission", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "admin-user");
+    localStorage.setItem("admin", "true");
+    localStorage.setItem("role", "admin");
 
     render(
       <AuthProvider>
         <RequirePermission permission="admin">
           <div data-testid="admin-content">Admin Panel</div>
         </RequirePermission>
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.getByTestId('admin-content')).toBeInTheDocument();
+    expect(screen.getByTestId("admin-content")).toBeInTheDocument();
   });
 
-  it('RequirePermission hides children when user lacks the required permission', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'regular-user');
-    localStorage.setItem('admin', 'false');
-    localStorage.setItem('role', 'user');
+  it("RequirePermission hides children when user lacks the required permission", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "regular-user");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "user");
 
     render(
       <AuthProvider>
         <RequirePermission permission="admin">
           <div data-testid="admin-content">Admin Panel</div>
         </RequirePermission>
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.queryByTestId('admin-content')).toBeNull();
+    expect(screen.queryByTestId("admin-content")).toBeNull();
   });
 
-  it('redirects unauthenticated users to /login', () => {
+  it("redirects unauthenticated users to /login", () => {
     render(
-      <MemoryRouter initialEntries={['/dashboard']}>
+      <MemoryRouter initialEntries={["/dashboard"]}>
         <AuthProvider>
           <Routes>
-            <Route path="/login" element={<div data-testid="login-page">Login</div>} />
-            <Route path="/dashboard" element={<ProtectedRoute><div data-testid="dashboard">Dashboard</div></ProtectedRoute>} />
+            <Route
+              path="/login"
+              element={<div data-testid="login-page">Login</div>}
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <div data-testid="dashboard">Dashboard</div>
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    expect(screen.getByTestId('login-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('dashboard')).toBeNull();
+    expect(screen.getByTestId("login-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard")).toBeNull();
   });
 
-  it('renders children when authenticated', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'alice');
-    localStorage.setItem('admin', 'false');
-    localStorage.setItem('role', 'user');
+  it("renders children when authenticated", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "alice");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "user");
 
     render(
-      <MemoryRouter initialEntries={['/dashboard']}>
+      <MemoryRouter initialEntries={["/dashboard"]}>
         <AuthProvider>
           <Routes>
-            <Route path="/login" element={<div data-testid="login-page">Login</div>} />
-            <Route path="/dashboard" element={<ProtectedRoute><div data-testid="dashboard">Dashboard</div></ProtectedRoute>} />
+            <Route
+              path="/login"
+              element={<div data-testid="login-page">Login</div>}
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <div data-testid="dashboard">Dashboard</div>
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
-    expect(screen.getByTestId('dashboard')).toBeInTheDocument();
-    expect(screen.queryByTestId('login-page')).toBeNull();
+    expect(screen.getByTestId("dashboard")).toBeInTheDocument();
+    expect(screen.queryByTestId("login-page")).toBeNull();
   });
 
-  it('throws when useAuth is used outside AuthProvider', () => {
-    expect(() => render(<BrokenComponent />)).toThrow('useAuth must be used within an AuthProvider');
+  it("throws when useAuth is used outside AuthProvider", () => {
+    expect(() => render(<BrokenComponent />)).toThrow(
+      "useAuth must be used within an AuthProvider",
+    );
   });
 
-  it('hasPermission returns true when user permissions include the required permission', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'tech-user');
-    localStorage.setItem('admin', 'false');
-    localStorage.setItem('role', 'technologist');
-    localStorage.setItem('permissions', JSON.stringify(['FILE_READ', 'STUDY_READ', 'WORKLIST_READ']));
+  it("hasPermission returns true when user permissions include the required permission", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "tech-user");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "technologist");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["FILE_READ", "STUDY_READ", "WORKLIST_READ"]),
+    );
 
     render(
       <AuthProvider>
         <PermissionTestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.getByTestId('perm-file-read')).toHaveTextContent('yes');
-    expect(screen.getByTestId('perm-user-delete')).toHaveTextContent('no');
+    expect(screen.getByTestId("perm-file-read")).toHaveTextContent("yes");
+    expect(screen.getByTestId("perm-user-delete")).toHaveTextContent("no");
   });
 
-  it('hasPermission returns true for admin users regardless of permissions list', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'u1');
-    localStorage.setItem('username', 'admin-user');
-    localStorage.setItem('admin', 'true');
-    localStorage.setItem('role', 'super_admin');
-    localStorage.setItem('permissions', JSON.stringify([]));
+  it("hasPermission returns true for admin users regardless of permissions list", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "admin-user");
+    localStorage.setItem("admin", "true");
+    localStorage.setItem("role", "super_admin");
+    localStorage.setItem("permissions", JSON.stringify([]));
 
     render(
       <AuthProvider>
         <PermissionTestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.getByTestId('perm-file-read')).toHaveTextContent('yes');
-    expect(screen.getByTestId('perm-user-delete')).toHaveTextContent('yes');
+    expect(screen.getByTestId("perm-file-read")).toHaveTextContent("yes");
+    expect(screen.getByTestId("perm-user-delete")).toHaveTextContent("yes");
   });
 
-  it('provides isAuthenticated=true when token and userId exist in localStorage', () => {
-    localStorage.setItem('token', 'test-token');
-    localStorage.setItem('userId', 'user-1');
-    localStorage.setItem('username', 'testuser');
-    localStorage.setItem('admin', 'false');
-    localStorage.setItem('role', 'user');
+  it("provides isAuthenticated=true when token and userId exist in localStorage", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "user-1");
+    localStorage.setItem("username", "testuser");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "user");
 
     render(
       <AuthProvider>
         <TestConsumer />
-      </AuthProvider>
+      </AuthProvider>,
     );
-    expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
-    expect(screen.getByTestId('auth-user')).toHaveTextContent('testuser');
+    expect(screen.getByTestId("auth-status")).toHaveTextContent(
+      "authenticated",
+    );
+    expect(screen.getByTestId("auth-user")).toHaveTextContent("testuser");
   });
 });

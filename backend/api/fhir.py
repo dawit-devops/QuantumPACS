@@ -170,7 +170,6 @@ class FhirMetadata(HTTPEndpoint):
                 'issue': [{'severity': 'error', 'code': 'forbidden', 'diagnostics': 'FHIR server is disabled'}],
             }, status_code=503)
 
-        base_url = await _get_fhir_base_url()
         try:
             from db.conn import get_conn
             from db.fhir_config import FhirConfig

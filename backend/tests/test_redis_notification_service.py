@@ -1,10 +1,8 @@
-import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from services.notification.redis_notification_service import RedisNotificationService
-from services.interfaces import NotificationService
 
 
 class TestRedisNotificationService:

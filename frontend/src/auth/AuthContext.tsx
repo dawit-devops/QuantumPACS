@@ -1,6 +1,17 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import { setTokens, clearTokens, startRefreshTimer, stopRefreshTimer } from '../helpers';
-import { navigate } from '../navigator';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+} from "react";
+import {
+  setTokens,
+  clearTokens,
+  startRefreshTimer,
+  stopRefreshTimer,
+} from "../helpers";
+import { navigate } from "../navigator";
 
 export interface AuthUser {
   id: string;
@@ -31,25 +42,31 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeTenant, setActiveTenant] = useState<Tenant | null>(() => {
-    const slug = localStorage.getItem('tenant_id');
+    const slug = localStorage.getItem("tenant_id");
     if (!slug) return null;
-    return { id: slug, name: localStorage.getItem('tenant_name') || slug, slug };
+    return {
+      id: slug,
+      name: localStorage.getItem("tenant_name") || slug,
+      slug,
+    };
   });
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const id = localStorage.getItem('userId');
+    const id = localStorage.getItem("userId");
     if (!id) return null;
     let permissions: string[] = [];
     try {
-      const raw = localStorage.getItem('permissions');
+      const raw = localStorage.getItem("permissions");
       if (raw) permissions = JSON.parse(raw);
     } catch {}
     return {
       id,
-      username: localStorage.getItem('username') || '',
-      admin: localStorage.getItem('admin') === 'true',
-      role: localStorage.getItem('role') || (localStorage.getItem('admin') === 'true' ? 'admin' : 'user'),
+      username: localStorage.getItem("username") || "",
+      admin: localStorage.getItem("admin") === "true",
+      role:
+        localStorage.getItem("role") ||
+        (localStorage.getItem("admin") === "true" ? "admin" : "user"),
       permissions,
-      tenant_id: localStorage.getItem('tenant_id') || undefined,
+      tenant_id: localStorage.getItem("tenant_id") || undefined,
     };
   });
 
@@ -57,41 +74,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(() => {
     stopRefreshTimer();
-    localStorage.removeItem('userId');
-    localStorage.removeItem('username');
-    localStorage.removeItem('admin');
-    localStorage.removeItem('role');
-    localStorage.removeItem('permissions');
-    localStorage.removeItem('tenant_id');
+    localStorage.removeItem("userId");
+    localStorage.removeItem("username");
+    localStorage.removeItem("admin");
+    localStorage.removeItem("role");
+    localStorage.removeItem("permissions");
+    localStorage.removeItem("tenant_id");
     clearTokens();
     setUser(null);
   }, []);
 
   const hasPermission = useCallback(
-    (permission: string) => isAuthenticated && (user?.admin || user?.permissions?.includes(permission)),
+    (permission: string) =>
+      isAuthenticated &&
+      (user?.admin || user?.permissions?.includes(permission)),
     [isAuthenticated, user],
   );
 
-  const signIn = useCallback((token: string, userData: AuthUser, refreshToken?: string) => {
-    localStorage.setItem('userId', userData.id);
-    localStorage.setItem('username', userData.username);
-    localStorage.setItem('admin', String(userData.admin));
-    localStorage.setItem('role', userData.role);
-    localStorage.setItem('permissions', JSON.stringify(userData.permissions));
-    if (userData.tenant_id) {
-      localStorage.setItem('tenant_id', userData.tenant_id);
-    }
-    setTokens(token, refreshToken || token);
-    setUser(userData);
-    startRefreshTimer(() => {
-      signOut();
-      navigate('/login');
-    });
-  }, [signOut]);
+  const signIn = useCallback(
+    (token: string, userData: AuthUser, refreshToken?: string) => {
+      localStorage.setItem("userId", userData.id);
+      localStorage.setItem("username", userData.username);
+      localStorage.setItem("admin", String(userData.admin));
+      localStorage.setItem("role", userData.role);
+      localStorage.setItem("permissions", JSON.stringify(userData.permissions));
+      if (userData.tenant_id) {
+        localStorage.setItem("tenant_id", userData.tenant_id);
+      }
+      setTokens(token, refreshToken || token);
+      setUser(userData);
+      startRefreshTimer(() => {
+        signOut();
+        navigate("/login");
+      });
+    },
+    [signOut],
+  );
 
   const value = useMemo(
-    () => ({ isAuthenticated, user, signIn, signOut, hasPermission, activeTenant, setActiveTenant }),
-    [isAuthenticated, user, signIn, signOut, hasPermission, activeTenant, setActiveTenant],
+    () => ({
+      isAuthenticated,
+      user,
+      signIn,
+      signOut,
+      hasPermission,
+      activeTenant,
+      setActiveTenant,
+    }),
+    [
+      isAuthenticated,
+      user,
+      signIn,
+      signOut,
+      hasPermission,
+      activeTenant,
+      setActiveTenant,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -99,6 +137,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 }

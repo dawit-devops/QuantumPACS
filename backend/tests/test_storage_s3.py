@@ -151,7 +151,7 @@ class TestS3Storage:
             tmp.flush = MagicMock()
             tmp.seek = MagicMock()
             MockTmp.return_value = tmp
-            result = await storage.fetch({'patient_id': '1', 'study_id': '2', 'series_number': '3', 'name': 'large.dcm'})
+            await storage.fetch({'patient_id': '1', 'study_id': '2', 'series_number': '3', 'name': 'large.dcm'})
 
         assert tmp.write.call_count == 2
 

@@ -1,8 +1,6 @@
-import asyncio
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,8 +50,7 @@ class TestMetricsEndpoint:
         )
         client = TestClient(app)
 
-        resp1 = client.get('/v2/metrics')
-        before_body = resp1.text
+        client.get('/v2/metrics')
 
         for _ in range(3):
             resp = client.get('/ping')
@@ -329,7 +326,7 @@ class TestCStoreMetrics:
         resp = client.get('/v2/metrics')
         assert 'dicom_cstore_throughput_bytes' in resp.text
         lines = resp.text.split('\n')
-        matching = [l for l in lines if l and not l.startswith('#') and 'dicom_cstore_throughput_bytes_total' in l]
+        matching = [line for line in lines if line and not line.startswith('#') and 'dicom_cstore_throughput_bytes_total' in line]
         assert len(matching) == 1, f'Expected 1 metric data line, got: {matching}'
         val = float(matching[0].split()[-1])
         assert val >= 1024.0, f'Expected value >= 1024.0, got {val}'

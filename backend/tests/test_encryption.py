@@ -1,6 +1,5 @@
 from unittest.mock import patch
 
-import pytest
 
 from api.encryption import encrypt_secret, decrypt_secret
 

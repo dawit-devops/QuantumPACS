@@ -1,4 +1,3 @@
-import uuid
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 

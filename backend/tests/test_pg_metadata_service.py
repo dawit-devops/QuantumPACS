@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from services.interfaces import MetadataService
 from services.metadata.pg_metadata import PgMetadataService
 
 

@@ -131,7 +131,6 @@ class TestRoutingStudyFlow:
             })
             assert resp.status_code == 201
 
-            from db.routing_rule import RoutingRule
             mock_conn.fetch = AsyncMock(return_value=[{
                 'id': 'r1', 'name': 'CT to PACS-A', 'destination': 'pacs-a.example.com',
                 'conditions': '{"modality": "CT"}', 'priority': 10, 'enabled': True,

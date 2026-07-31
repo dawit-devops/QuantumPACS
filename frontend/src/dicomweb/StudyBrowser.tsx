@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
-import { Card, Table, Input, Button, Space, message } from 'antd';
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
-import { searchStudies, getSeries, getInstances, wadoRsUrl, Study, Series, Instance } from './dicomweb';
+import React, { useState } from "react";
+import { Card, Table, Input, Button, Space, message } from "antd";
+import { SearchOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  searchStudies,
+  getSeries,
+  getInstances,
+  wadoRsUrl,
+  Study,
+  Series,
+  Instance,
+} from "./dicomweb";
 
 interface StudyBrowserProps {
   onSelectInstance?: (wadoRsUrl: string) => void;
 }
 
 export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [studies, setStudies] = useState<Study[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -65,13 +73,25 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
         <Input
           placeholder="Patient ID"
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           onPressEnter={handleSearch}
         />
-        <Button icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>
+        <Button
+          icon={<SearchOutlined />}
+          onClick={handleSearch}
+          loading={loading}
+        >
           Search
         </Button>
-        <Button icon={<ReloadOutlined />} onClick={() => { setQuery(''); setStudies([]); setSeries([]); setInstances([]); }}>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={() => {
+            setQuery("");
+            setStudies([]);
+            setSeries([]);
+            setInstances([]);
+          }}
+        >
           Clear
         </Button>
       </Space>
@@ -83,14 +103,38 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
         pagination={{ pageSize: 5 }}
         onRow={(record) => ({
           onClick: () => handleSelectStudy(record.studyInstanceUid),
-          style: { cursor: 'pointer', background: selectedStudy === record.studyInstanceUid ? '#e6f4ff' : undefined },
+          style: {
+            cursor: "pointer",
+            background:
+              selectedStudy === record.studyInstanceUid ? "#e6f4ff" : undefined,
+          },
         })}
         columns={[
-          { title: 'Study UID', dataIndex: 'studyInstanceUid', key: 'studyInstanceUid', ellipsis: true },
-          { title: 'Patient', dataIndex: 'patientName', key: 'patientName' },
-          { title: 'Description', dataIndex: 'studyDescription', key: 'studyDescription', ellipsis: true },
-          { title: 'Modality', dataIndex: 'modalities', key: 'modalities', width: 100 },
-          { title: 'Date', dataIndex: 'studyDate', key: 'studyDate', width: 100 },
+          {
+            title: "Study UID",
+            dataIndex: "studyInstanceUid",
+            key: "studyInstanceUid",
+            ellipsis: true,
+          },
+          { title: "Patient", dataIndex: "patientName", key: "patientName" },
+          {
+            title: "Description",
+            dataIndex: "studyDescription",
+            key: "studyDescription",
+            ellipsis: true,
+          },
+          {
+            title: "Modality",
+            dataIndex: "modalities",
+            key: "modalities",
+            width: 100,
+          },
+          {
+            title: "Date",
+            dataIndex: "studyDate",
+            key: "studyDate",
+            width: 100,
+          },
         ]}
       />
 
@@ -102,15 +146,47 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
           pagination={{ pageSize: 5 }}
           style={{ marginTop: 16 }}
           onRow={(record) => ({
-            onClick: () => handleSelectSeries(selectedStudy, record.seriesInstanceUid),
-            style: { cursor: 'pointer', background: selectedSeries === record.seriesInstanceUid ? '#e6f4ff' : undefined },
+            onClick: () =>
+              handleSelectSeries(selectedStudy, record.seriesInstanceUid),
+            style: {
+              cursor: "pointer",
+              background:
+                selectedSeries === record.seriesInstanceUid
+                  ? "#e6f4ff"
+                  : undefined,
+            },
           })}
           columns={[
-            { title: 'Series UID', dataIndex: 'seriesInstanceUid', key: 'seriesInstanceUid', ellipsis: true },
-            { title: 'Number', dataIndex: 'seriesNumber', key: 'seriesNumber', width: 80 },
-            { title: 'Modality', dataIndex: 'modality', key: 'modality', width: 100 },
-            { title: 'Description', dataIndex: 'seriesDescription', key: 'seriesDescription', ellipsis: true },
-            { title: 'Instances', dataIndex: 'numberOfInstances', key: 'numberOfInstances', width: 90 },
+            {
+              title: "Series UID",
+              dataIndex: "seriesInstanceUid",
+              key: "seriesInstanceUid",
+              ellipsis: true,
+            },
+            {
+              title: "Number",
+              dataIndex: "seriesNumber",
+              key: "seriesNumber",
+              width: 80,
+            },
+            {
+              title: "Modality",
+              dataIndex: "modality",
+              key: "modality",
+              width: 100,
+            },
+            {
+              title: "Description",
+              dataIndex: "seriesDescription",
+              key: "seriesDescription",
+              ellipsis: true,
+            },
+            {
+              title: "Instances",
+              dataIndex: "numberOfInstances",
+              key: "numberOfInstances",
+              width: 90,
+            },
           ]}
         />
       )}
@@ -123,8 +199,18 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
           pagination={{ pageSize: 10 }}
           style={{ marginTop: 16 }}
           columns={[
-            { title: 'SOP UID', dataIndex: 'sopInstanceUid', key: 'sopInstanceUid', ellipsis: true },
-            { title: 'Instance #', dataIndex: 'instanceNumber', key: 'instanceNumber', width: 100 },
+            {
+              title: "SOP UID",
+              dataIndex: "sopInstanceUid",
+              key: "sopInstanceUid",
+              ellipsis: true,
+            },
+            {
+              title: "Instance #",
+              dataIndex: "instanceNumber",
+              key: "instanceNumber",
+              width: 100,
+            },
           ]}
         />
       )}

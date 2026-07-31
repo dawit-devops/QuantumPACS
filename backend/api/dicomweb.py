@@ -11,7 +11,6 @@ from starlette.responses import Response, StreamingResponse
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import api_error
 from db.conn import get_conn
 from db.replica import Replica
 from dcm.dicom_json import row_to_study_json

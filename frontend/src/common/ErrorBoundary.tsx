@@ -1,5 +1,5 @@
-import React, { Component, type ReactNode } from 'react';
-import { Button, Result } from 'antd';
+import React, { Component, type ReactNode } from "react";
+import { Button, Result } from "antd";
 
 interface Props {
   children: ReactNode;
@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, info);
+    console.error("ErrorBoundary caught:", error, info);
   }
 
   handleRetry = () => {

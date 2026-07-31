@@ -1,4 +1,3 @@
-from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from api.tracing import get_tracer

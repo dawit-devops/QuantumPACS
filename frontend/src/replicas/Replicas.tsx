@@ -1,9 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Table, message, Tag, Popconfirm, Divider, Form, Modal, InputNumber, Progress, Badge, Tooltip } from 'antd';
-import withSidebar from '../common/base';
-import { request } from '../helpers';
-import { PageState } from '../common/PageState';
-import { AddReplica } from './EditReplica';
+import React, { useState, useEffect } from "react";
+import {
+  Layout,
+  Table,
+  message,
+  Tag,
+  Popconfirm,
+  Divider,
+  Form,
+  Modal,
+  InputNumber,
+  Progress,
+  Badge,
+  Tooltip,
+} from "antd";
+import withSidebar from "../common/base";
+import { request } from "../helpers";
+import { PageState } from "../common/PageState";
+import { AddReplica } from "./EditReplica";
 
 const Content = Layout.Content;
 
@@ -13,13 +26,18 @@ export function EditDelay(props: any) {
   return (
     <Modal
       open={true}
-      title='Edit delay'
-      okText='Update'
+      title="Edit delay"
+      okText="Update"
       onCancel={onCancel}
       onOk={onCreate}
     >
       <Form form={form} layout="vertical">
-        <Form.Item name="delay" label="Delay (in minutes)" initialValue={delay} rules={[{ required: true, message: "Please replica's delay!" }]}>
+        <Form.Item
+          name="delay"
+          label="Delay (in minutes)"
+          initialValue={delay}
+          rules={[{ required: true, message: "Please replica's delay!" }]}
+        >
           <InputNumber />
         </Form.Item>
       </Form>
@@ -28,7 +46,7 @@ export function EditDelay(props: any) {
 }
 
 function Replicas() {
-  document.title = 'QuantumPACS - Replicas';
+  document.title = "QuantumPACS - Replicas";
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});
@@ -48,23 +66,33 @@ function Replicas() {
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
     const pager = { ...pagination };
     pager.current = pagination.current;
-    setPagination(Object.assign({}, pagination, { current: pagination.current }));
-    fetch({ results: pagination.pageSize, page: pagination.current, sortField: sorter.field, sortOrder: sorter.order, ...filters });
+    setPagination(
+      Object.assign({}, pagination, { current: pagination.current }),
+    );
+    fetch({
+      results: pagination.pageSize,
+      page: pagination.current,
+      sortField: sorter.field,
+      sortOrder: sorter.order,
+      ...filters,
+    });
   };
 
   const fetch = (showLoading?: any) => {
     if (showLoading !== false) setLoading(true);
     setError(null);
-    request('replicas').then((res: any) => {
-      const pager = Object.assign({}, pagination, { total: res.data.length });
-      if (showLoading !== false) setLoading(false);
-      setData(res.data);
-      setPagination(pager);
-    }).catch((e: any) => {
-      setLoading(false);
-      setError(e.message);
-      message.error(e.message);
-    });
+    request("replicas")
+      .then((res: any) => {
+        const pager = Object.assign({}, pagination, { total: res.data.length });
+        if (showLoading !== false) setLoading(false);
+        setData(res.data);
+        setPagination(pager);
+      })
+      .catch((e: any) => {
+        setLoading(false);
+        setError(e.message);
+        message.error(e.message);
+      });
   };
 
   const editDelayCancel = () => {
@@ -72,85 +100,116 @@ function Replicas() {
   };
 
   const updateDelay = () => {
-    editDelayForm.validateFields().then((values: any) => {
-      request(`replicas/${currReplica.id}`, { data: values })
-        .then(() => {
-          editDelayForm.resetFields();
-          setCurrReplica(null);
-        })
-        .then(fetch).catch(() => {
-          message.error('Delay failed to update');
-        });
-    }).catch(() => {});
+    editDelayForm
+      .validateFields()
+      .then((values: any) => {
+        request(`replicas/${currReplica.id}`, { data: values })
+          .then(() => {
+            editDelayForm.resetFields();
+            setCurrReplica(null);
+          })
+          .then(fetch)
+          .catch(() => {
+            message.error("Delay failed to update");
+          });
+      })
+      .catch(() => {});
   };
 
   const setMaster = (replica: any) => {
     request(`replicas/${replica.id}`, { data: { master: true } })
-      .then(fetch).catch(() => message.error('Failed to change master'));
+      .then(fetch)
+      .catch(() => message.error("Failed to change master"));
   };
 
   const handleDelete = (replica: number) => {
-    request(`replicas/${replica}`, { method: 'DELETE' })
-      .then(fetch).catch(() => { message.error('Deletion failed'); });
+    request(`replicas/${replica}`, { method: "DELETE" })
+      .then(fetch)
+      .catch(() => {
+        message.error("Deletion failed");
+      });
   };
 
   const healthColor = (status: string) => {
-    if (status === 'ok') return 'green';
-    if (status === 'degraded') return 'orange';
-    return 'red';
+    if (status === "ok") return "green";
+    if (status === "degraded") return "orange";
+    return "red";
   };
 
   const columns: any[] = [
     {
-      title: 'ID', dataIndex: 'id',
-      render: (id: string) => <code style={{ fontSize: 12 }}>{id.slice(0, 8)}</code>,
+      title: "ID",
+      dataIndex: "id",
+      render: (id: string) => (
+        <code style={{ fontSize: 12 }}>{id.slice(0, 8)}</code>
+      ),
     },
-    { title: 'Type', dataIndex: 'type' },
+    { title: "Type", dataIndex: "type" },
     {
-      title: 'Role', dataIndex: 'master', width: '8%',
+      title: "Role",
+      dataIndex: "master",
+      width: "8%",
       render: (master: boolean) => {
-        const label = master ? 'Master' : 'Replica';
-        return <Tag color={master ? 'green' : 'geekblue'}>{label}</Tag>;
+        const label = master ? "Master" : "Replica";
+        return <Tag color={master ? "green" : "geekblue"}>{label}</Tag>;
       },
     },
     {
-      title: 'Health', dataIndex: 'status', width: '10%',
+      title: "Health",
+      dataIndex: "status",
+      width: "10%",
       render: (status: string) => {
         if (!status) return <Tag color="default">Unknown</Tag>;
         return (
           <Tooltip title={`Status: ${status}`}>
-            <Badge status={status === 'ok' ? 'success' : status === 'degraded' ? 'warning' : 'error'} />
-            <Tag color={healthColor(status)} style={{ marginLeft: 4 }}>{status.toUpperCase()}</Tag>
+            <Badge
+              status={
+                status === "ok"
+                  ? "success"
+                  : status === "degraded"
+                    ? "warning"
+                    : "error"
+              }
+            />
+            <Tag color={healthColor(status)} style={{ marginLeft: 4 }}>
+              {status.toUpperCase()}
+            </Tag>
           </Tooltip>
         );
       },
     },
-    { title: 'Location', dataIndex: 'location' },
+    { title: "Location", dataIndex: "location" },
     {
-      title: 'Delay', dataIndex: 'delay',
-      render: (d: number) => d != null ? `${d} min` : '-',
+      title: "Delay",
+      dataIndex: "delay",
+      render: (d: number) => (d != null ? `${d} min` : "-"),
     },
     {
-      title: 'Files', dataIndex: 'files', width: '8%',
+      title: "Files",
+      dataIndex: "files",
+      width: "8%",
     },
     {
-      title: 'Sync Progress', key: 'progress', width: '14%',
+      title: "Sync Progress",
+      key: "progress",
+      width: "14%",
       render: (_: any, record: any) => {
         if (record.master) return <Tag color="green">Source</Tag>;
         return (
           <Progress
             percent={record.sync_progress || 0}
             size="small"
-            status={record.sync_progress === 100 ? 'success' : 'active'}
-            strokeColor={record.sync_progress === 100 ? '#22c55e' : '#0891B2'}
+            status={record.sync_progress === 100 ? "success" : "active"}
+            strokeColor={record.sync_progress === 100 ? "#22c55e" : "#0891B2"}
           />
         );
       },
     },
     {
-      title: 'Action', key: 'action',
+      title: "Action",
+      key: "action",
       render: (_: any, record: any) =>
-        (!record.master || (record.master && data.length === 1)) ? (
+        !record.master || (record.master && data.length === 1) ? (
           <span>
             {!record.master && (
               <span>
@@ -160,7 +219,10 @@ function Replicas() {
                 <Divider type="vertical" />
               </span>
             )}
-            <Popconfirm title="Sure to delete?" onConfirm={() => handleDelete(record.id)}>
+            <Popconfirm
+              title="Sure to delete?"
+              onConfirm={() => handleDelete(record.id)}
+            >
               <a>Delete</a>
             </Popconfirm>
           </span>
@@ -171,7 +233,9 @@ function Replicas() {
   return (
     <Content style={{ padding: 50 }}>
       <AddReplica style={{ marginBottom: 10 }} reload={fetch} />
-      <PageState error={error} onRetry={() => fetch()}
+      <PageState
+        error={error}
+        onRetry={() => fetch()}
         empty={!loading && !error && data.length === 0}
         emptyMessage="No replicas configured"
       >

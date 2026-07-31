@@ -40,7 +40,7 @@ async def _migrate_one(tenant):
         print(f'  FAILED: {slug}', flush=True)
         print(stdout.decode() if stdout else '', flush=True)
         return False
-    print(f'  OK', flush=True)
+    print('  OK', flush=True)
     return True
 
 

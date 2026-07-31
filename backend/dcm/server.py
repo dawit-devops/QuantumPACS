@@ -1,13 +1,11 @@
 import asyncio
 import signal
-import sys
 import traceback
 from io import BytesIO
 
 from pynetdicom import AE, evt, StoragePresentationContexts
 from pynetdicom.sop_class import ModalityWorklistInformationFind
 
-from dcm.file import get_meta
 from dcm.store import store_instance
 from lifecycle import setup, teardown
 from log import get_logger
@@ -33,7 +31,7 @@ async def store(ds, data):
 async def _handle_store_async(ds, dst):
     try:
         return await store(ds, dst)
-    except Exception as e:
+    except Exception:
         log.error('DICOM store failed: %s', traceback.format_exc())
         return False
 
@@ -45,14 +43,14 @@ def handle_store(event):
 
     try:
         ds.save_as(dst, enforce_file_format=False)
-    except Exception as e:
+    except Exception:
         log.error('DICOM save failed: %s', traceback.format_exc())
         return 0x0001
 
     future = asyncio.run_coroutine_threadsafe(_handle_store_async(ds, dst), _loop)
     try:
         result = future.result(timeout=60)
-    except Exception as e:
+    except Exception:
         log.error('DICOM store timed out or failed: %s', traceback.format_exc())
         return 0x0001
 

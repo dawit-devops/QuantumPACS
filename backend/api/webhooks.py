@@ -119,7 +119,8 @@ class WebhookTestHandler(HTTPEndpoint):
             async with httpx.AsyncClient(timeout=10) as client:
                 headers = {'Content-Type': 'application/json'}
                 if secret:
-                    import hmac, hashlib
+                    import hmac
+                    import hashlib
                     sig = hmac.new(secret.encode(), json.dumps(payload).encode(), hashlib.sha256).hexdigest()
                     headers['X-Webhook-Signature'] = sig
                 resp = await client.post(url, json=payload, headers=headers)

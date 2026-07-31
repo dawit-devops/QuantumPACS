@@ -147,7 +147,9 @@ async def _find_or_create_user(oauth_sub, email, name, provider):
             role_id = await conn.fetchval(
                 "SELECT id FROM roles WHERE slug = $1", role_slug
             )
-        import binascii, hashlib as _hashlib, os
+        import binascii
+        import hashlib as _hashlib
+        import os
         placeholder = binascii.hexlify(_hashlib.sha256(os.urandom(32)).digest()).decode()
         username = email.split('@')[0] if email else f'oauth_{oauth_sub[:8]}'
 
