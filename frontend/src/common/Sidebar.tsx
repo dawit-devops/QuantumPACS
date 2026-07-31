@@ -31,7 +31,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "./ThemeProvider";
 import QuantumLogo from "./QuantumLogo";
 import TenantSelector from "../auth/TenantSelector";
-import { request, clearTokens } from "../helpers";
+import { request } from "../helpers";
 import "./Sidebar.css";
 
 const { Sider } = Layout;
@@ -84,7 +84,7 @@ function hasAnyAdminPermission(
 }
 
 function Sidebar() {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -92,11 +92,11 @@ function Sidebar() {
   const isMobile = !screens.lg;
   const loc = location.pathname;
 
-  let [collapsed, setCollapsed] = useState(false);
-  let [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const key = getKey(loc);
-  let [selectedKey, setSelectedKey] = useState(key);
-  let [openKey, setOpenKey] = useState(getOpenKey(key));
+  const [selectedKey, setSelectedKey] = useState(key);
+  const [openKey, setOpenKey] = useState(getOpenKey(key));
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
@@ -107,9 +107,9 @@ function Sidebar() {
     try {
       await request("auth/logout", { method: "POST" });
     } catch {}
-    localStorage.removeItem("userId");
-    localStorage.removeItem("admin");
-    clearTokens();
+    // signOut clears the token pair plus all session keys (S1-B); the logout
+    // endpoint blocks the cookies server-side before the navigation.
+    signOut();
     navigate("/login");
   };
 

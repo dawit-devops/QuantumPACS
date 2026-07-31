@@ -11,10 +11,17 @@ vi.mock("../hooks", () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+const { requestMock } = vi.hoisted(() => ({
+  requestMock: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("../helpers", () => ({
   isAdmin: () => true,
-  request: vi.fn().mockResolvedValue({}),
-  clearTokens: () => {},
+  request: requestMock,
+  clearTokens: () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+  },
   setTokens: () => {},
   startRefreshTimer: () => {},
   stopRefreshTimer: () => {},
@@ -101,5 +108,25 @@ describe("Sidebar", () => {
     renderWithAuth(<Sidebar />);
     const svg = document.querySelector("svg");
     expect(svg?.textContent).toContain("Quantum");
+  });
+
+  it("logout calls the logout endpoint and clears session via signOut", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("access_token", "a");
+    localStorage.setItem("refresh_token", "r");
+    localStorage.setItem("tempKey", "share-temp");
+    renderWithAuth(<Sidebar />);
+
+    await user.click(screen.getByText("Logout"));
+
+    expect(requestMock).toHaveBeenCalledWith("auth/logout", {
+      method: "POST",
+    });
+    expect(localStorage.getItem("userId")).toBeNull();
+    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(localStorage.getItem("refresh_token")).toBeNull();
+    expect(localStorage.getItem("tempKey")).toBeNull();
   });
 });

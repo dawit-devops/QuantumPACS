@@ -110,6 +110,98 @@ class TestTokenClaims:
         assert resp.status_code == 401
 
 
+class TestQueryTokenRestriction:
+    """Query-string credentials on HTTP are share keys only, never JWTs."""
+
+    def _make_app(self):
+        async def _file_endpoint(request):
+            return JSONResponse({'ok': True})
+
+        return Starlette(
+            routes=[
+                Route('/api/protected', endpoint=_protected),
+                Route('/api/files/7/dicom', endpoint=_file_endpoint),
+            ],
+            middleware=[
+                Middleware(AuthenticationMiddleware, backend=TokenAuth(),
+                           on_error=TokenAuth.on_auth_error),
+            ],
+        )
+
+    def _mock_share_check(self, file_id):
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_files = AsyncMock()
+        mock_files.check = AsyncMock(return_value=file_id)
+        return mock_conn, mock_files
+
+    def test_valid_jwt_in_query_param_rejected(self):
+        """A valid JWT in ?token= must never authenticate on HTTP."""
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        mock_conn, mock_files = self._mock_share_check(None)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/protected', params={'token': token})
+        assert resp.status_code == 401
+        mock_files.check.assert_awaited_once()
+
+    def test_share_key_in_query_param_allowed_on_shared_path(self):
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/files/7/dicom', params={'token': 'share-key'})
+        assert resp.status_code == 200
+        assert resp.json() == {'ok': True}
+
+    def test_share_key_in_query_param_rejected_on_other_paths(self):
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/protected', params={'token': 'share-key'})
+        assert resp.status_code == 401
+
+    def test_jwt_in_cookie_still_authenticates(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        client = TestClient(self._make_app())
+        client.cookies.set('token', token)
+        with (
+            patch('api.tokens.config', {'secret': SECRET}),
+            patch('api.auth.is_blocked', new=AsyncMock(return_value=False)),
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.Users') as mock_users,
+        ):
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
+            resp = client.get('/api/protected')
+        assert resp.status_code == 200
+        assert resp.json()['id'] == 1
+
+    def test_jwt_in_query_param_rejected_even_for_shared_file_path(self):
+        """JWT must not pass even on /api/files paths where share keys work."""
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        mock_conn, mock_files = self._mock_share_check(None)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/files/7/dicom', params={'token': token})
+        assert resp.status_code == 401
+
+
 class TestLogoutFlow:
     def _make_app(self):
         return Starlette(

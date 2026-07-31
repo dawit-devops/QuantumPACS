@@ -115,12 +115,18 @@ describe("AuthProvider", () => {
     expect(screen.getByTestId("auth-user")).toHaveTextContent("alice");
     expect(localStorage.getItem("userId")).toBe("u1");
     expect(localStorage.getItem("username")).toBe("alice");
+    expect(localStorage.getItem("access_token")).toBe("test-token");
+    expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 
   it("signOut clears localStorage and sets isAuthenticated to false", async () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("username", "alice");
     localStorage.setItem("admin", "false");
+    localStorage.setItem("access_token", "t");
+    localStorage.setItem("refresh_token", "r");
+    localStorage.setItem("tempKey", "share-temp");
+    sessionStorage.setItem("shareKeyError", "expired");
 
     const user = userEvent.setup();
     render(
@@ -139,6 +145,10 @@ describe("AuthProvider", () => {
       "unauthenticated",
     );
     expect(localStorage.getItem("userId")).toBeNull();
+    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(localStorage.getItem("refresh_token")).toBeNull();
+    expect(localStorage.getItem("tempKey")).toBeNull();
+    expect(sessionStorage.getItem("shareKeyError")).toBeNull();
     expect(screen.queryByTestId("auth-user")).toBeNull();
   });
 

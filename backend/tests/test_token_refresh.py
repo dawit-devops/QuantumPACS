@@ -81,10 +81,48 @@ class TestRefreshEndpoint:
         resp = client.post('/api/auth/refresh', json={'refresh_token': 'not.a.token'})
         assert resp.status_code == 401
 
-    def test_refresh_returns_422_without_token(self):
+    def test_refresh_returns_401_without_token(self):
         client = TestClient(self._make_app())
         resp = client.post('/api/auth/refresh', json={})
-        assert resp.status_code == 422
+        assert resp.status_code == 401
+
+    def test_refresh_via_http_only_cookie(self):
+        access, refresh = self._token_pair()
+        client = TestClient(self._make_app())
+        client.cookies.set('refresh_token', refresh, path='/api/auth/refresh')
+
+        with patch('api.tokens.config', {'secret': SECRET}):
+            with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
+                with patch('api.users.block_token', new=AsyncMock()):
+                    resp = client.post('/api/auth/refresh', json={})
+
+            assert resp.status_code == 200
+            data = resp.json()
+            assert 'access_token' in data
+            assert 'refresh_token' in data
+            set_cookie = resp.headers.get('set-cookie', '')
+            assert 'refresh_token=' in set_cookie
+            assert 'HttpOnly' in set_cookie
+            assert 'Path=/api/auth/refresh' in set_cookie
+
+            payload = verify_token(data['access_token'])
+            assert payload['id'] == 1
+
+    def test_refresh_rotates_cookie_token(self):
+        access, refresh = self._token_pair()
+        client = TestClient(self._make_app())
+        client.cookies.set('refresh_token', refresh, path='/api/auth/refresh')
+
+        with patch('api.tokens.config', {'secret': SECRET}):
+            with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
+                with patch('api.users.block_token', new=AsyncMock()) as mock_block:
+                    resp = client.post('/api/auth/refresh', json={})
+                    assert resp.status_code == 200
+
+            mock_block.assert_called_once_with(refresh)
+            with patch('api.users.is_blocked', new=AsyncMock(return_value=True)):
+                resp2 = client.post('/api/auth/refresh', json={})
+                assert resp2.status_code == 401
 
     def test_refresh_preserves_tenant_claim(self):
         user = {'id': 3, 'admin': False, 'tenant': 'hospital-x'}

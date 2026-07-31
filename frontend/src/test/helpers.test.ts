@@ -71,22 +71,17 @@ describe("token helpers", () => {
     expect(getAccessToken()).toBe("test-access");
   });
 
-  it("getRefreshToken returns null when no refresh token stored", async () => {
+  it("getRefreshToken always returns null (HttpOnly cookie holds it)", async () => {
+    localStorage.setItem("refresh_token", "test-refresh");
     const { getRefreshToken } = await import("../helpers");
     expect(getRefreshToken()).toBeNull();
   });
 
-  it("getRefreshToken returns stored refresh token", async () => {
-    localStorage.setItem("refresh_token", "test-refresh");
-    const { getRefreshToken } = await import("../helpers");
-    expect(getRefreshToken()).toBe("test-refresh");
-  });
-
-  it("setTokens stores both access and refresh tokens", async () => {
+  it("setTokens stores only the access token", async () => {
     const { setTokens } = await import("../helpers");
     setTokens("access-123", "refresh-456");
     expect(localStorage.getItem("access_token")).toBe("access-123");
-    expect(localStorage.getItem("refresh_token")).toBe("refresh-456");
+    expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 
   it("clearTokens removes both access and refresh tokens", async () => {
@@ -98,14 +93,23 @@ describe("token helpers", () => {
     expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 
-  it("tryRefreshToken returns false when no refresh token exists", async () => {
+  it("tryRefreshToken posts with CSRF header and no body (cookie auth)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    vi.stubGlobal("fetch", mockFetch);
+
     const { tryRefreshToken } = await import("../helpers");
     const result = await tryRefreshToken();
+
     expect(result).toBe(false);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/auth/refresh");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(init.headers.get("X-CSRF-Token")).toBe("1");
+    vi.unstubAllGlobals();
   });
 
-  it("tryRefreshToken returns true and updates tokens on success", async () => {
-    localStorage.setItem("refresh_token", "valid-refresh");
+  it("tryRefreshToken returns true and updates access token on success", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
@@ -121,12 +125,11 @@ describe("token helpers", () => {
 
     expect(result).toBe(true);
     expect(localStorage.getItem("access_token")).toBe("new-access");
-    expect(localStorage.getItem("refresh_token")).toBe("new-refresh");
+    expect(localStorage.getItem("refresh_token")).toBeNull();
     vi.unstubAllGlobals();
   });
 
   it("tryRefreshToken returns false when refresh API fails", async () => {
-    localStorage.setItem("refresh_token", "expired-refresh");
     const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 401 });
     vi.stubGlobal("fetch", mockFetch);
 
@@ -137,7 +140,7 @@ describe("token helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("request sets X-Auth-Pacs header from stored access_token", async () => {
+  it("request sets X-Auth-Pacs and X-CSRF-Token headers", async () => {
     localStorage.setItem("access_token", "my-access-token");
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -150,12 +153,12 @@ describe("token helpers", () => {
 
     const callHeaders = mockFetch.mock.calls[0][1].headers;
     expect(callHeaders.get("X-Auth-Pacs")).toBe("my-access-token");
+    expect(callHeaders.get("X-CSRF-Token")).toBe("1");
     vi.unstubAllGlobals();
   });
 
   it("request retries after successful token refresh on 401", async () => {
     localStorage.setItem("access_token", "expired-token");
-    localStorage.setItem("refresh_token", "valid-refresh");
 
     let callCount = 0;
     const mockFetch = vi.fn().mockImplementation(() => {
@@ -190,7 +193,9 @@ describe("token helpers", () => {
 
     expect(result).toEqual({ data: "success" });
     expect(localStorage.getItem("access_token")).toBe("new-access");
+    expect(localStorage.getItem("refresh_token")).toBeNull();
     expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch.mock.calls[2][1].headers.get("X-CSRF-Token")).toBe("1");
     vi.unstubAllGlobals();
   });
 });

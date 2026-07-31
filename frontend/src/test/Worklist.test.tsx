@@ -141,10 +141,54 @@ describe("Worklist", () => {
     expect(screen.getByText("Create Entry")).toBeInTheDocument();
   });
 
-  it("calls request with correct endpoint on mount", async () => {
+  it("calls request with correct endpoint and query object on mount", async () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
-    expect(mockRequest).toHaveBeenCalledWith("worklist", expect.any(Object));
+    expect(mockRequest).toHaveBeenCalledWith("worklist", { query: {} });
+  });
+
+  it("sends debounced search text as a query param", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Worklist />);
+    await waitForTable();
+
+    await user.type(screen.getByPlaceholderText("Search patients..."), "CT");
+
+    await waitFor(
+      () => {
+        const calls = mockRequest.mock.calls;
+        const searchCall = calls.find(
+          (c: any) =>
+            c[0] === "worklist" && c[1]?.query?.search === "CT" && !c[1]?.data,
+        );
+        expect(searchCall).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("sends status tab and pagination as query params", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Worklist />);
+    await waitForTable();
+
+    await user.click(
+      screen
+        .getAllByRole("tab")
+        .find((t) => t.textContent?.startsWith("Performed"))!,
+    );
+    await waitFor(
+      () => {
+        const calls = mockRequest.mock.calls;
+        expect(
+          calls.find(
+            (c: any) =>
+              c[0] === "worklist" && c[1]?.query?.status === "performed",
+          ),
+        ).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("create modal opens with form fields", async () => {

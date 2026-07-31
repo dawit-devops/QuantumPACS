@@ -81,6 +81,16 @@ class Login(HTTPEndpoint):
                 secure=True,
                 path='/api',
             )
+            # Refresh token travels only as an HttpOnly cookie scoped to the
+            # refresh endpoint, never in localStorage or URLs.
+            resp.set_cookie(
+                key='refresh_token',
+                value=refresh,
+                httponly=True,
+                samesite='strict',
+                secure=True,
+                path='/api/auth/refresh',
+            )
             return resp
 
 
@@ -114,8 +124,12 @@ class Logout(HTTPEndpoint):
         token = _extract_token(request)
         if token:
             await block_token(token)
+        refresh = request.cookies.get('refresh_token')
+        if refresh:
+            await block_token(refresh)
         resp = ok({'message': 'Logged out'})
         resp.delete_cookie('token', path='/api')
+        resp.delete_cookie('refresh_token', path='/api/auth/refresh')
         return resp
 
 
@@ -197,9 +211,16 @@ class UserRoleUpdate(HTTPEndpoint):
 
 class RefreshToken(HTTPEndpoint):
     async def post(self, request):
-        body = await parse_body(RefreshTokenRequest, request)
+        # HttpOnly refresh cookie is preferred; body fallback keeps
+        # API-client compatibility (OAuth, external integrations).
+        refresh_token = request.cookies.get('refresh_token')
+        if not refresh_token:
+            body = await parse_body(RefreshTokenRequest, request)
+            refresh_token = body.refresh_token
+        if not refresh_token:
+            return api_error('INVALID_TOKEN', 'Missing refresh token', status=401)
         try:
-            data = verify_refresh_token(body.refresh_token)
+            data = verify_refresh_token(refresh_token)
         except _jwt.ExpiredSignatureError:
             return api_error('TOKEN_EXPIRED', 'Refresh token expired', status=401)
         except _jwt.InvalidTokenError:
@@ -208,7 +229,7 @@ class RefreshToken(HTTPEndpoint):
         if await is_blocked(data.get('jti', '')):
             return api_error('TOKEN_REVOKED', 'Refresh token revoked', status=401)
 
-        await block_token(body.refresh_token)
+        await block_token(refresh_token)
 
         try:
             async with get_conn() as conn:
@@ -220,9 +241,18 @@ class RefreshToken(HTTPEndpoint):
         if data.get('tenant'):
             user['tenant'] = data['tenant']
         access, refresh = create_token_pair(user, token_version=token_version)
-        return ok({
+        resp = ok({
             'access_token': access,
             'refresh_token': refresh,
             'expires_in': 3600,
             'token_type': 'Bearer',
         })
+        resp.set_cookie(
+            key='refresh_token',
+            value=refresh,
+            httponly=True,
+            samesite='strict',
+            secure=True,
+            path='/api/auth/refresh',
+        )
+        return resp

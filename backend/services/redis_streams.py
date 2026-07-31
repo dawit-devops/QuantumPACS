@@ -4,6 +4,7 @@ from typing import Any, Optional
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 from opentelemetry.trace import Status, StatusCode
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from log import get_logger
 
@@ -81,6 +82,12 @@ class StreamConsumer:
                 result = await self.redis.xreadgroup(
                     group, consumer, {stream: '>'}, count=count, block=block
                 )
+            except RedisTimeoutError:
+                # A blocking read timing out means "no messages arrived within
+                # `block` ms" — the normal empty-poll outcome. redis-py maps
+                # block to the client read timeout, which can race the server's
+                # empty response; treat it as an empty batch, not an error.
+                return []
             except Exception as exc:
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR))
