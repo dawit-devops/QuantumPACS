@@ -59,8 +59,8 @@ class AuditLog:
             'payload': payload,
         }
 
-    async def query(self, event_type=None, actor=None, date_from=None, date_to=None,
-                    tenant=None, cursor=None, limit=50):
+    async def query(self, event_type=None, actor=None, actor_id=None, date_from=None, date_to=None,
+                    tenant=None, cursor=None, limit=50, offset=None):
         where = ["l.log LIKE '{%'"]
         params = []
         idx = 1
@@ -77,6 +77,10 @@ class AuditLog:
         if actor:
             where.append(f"u.username ILIKE ${idx} || '%'")
             params.append(actor)
+            idx += 1
+        if actor_id is not None:
+            where.append(f"(l.log::json->>'actor') = ${idx}")
+            params.append(str(actor_id))
             idx += 1
         if date_from:
             where.append(f"l.created >= ${idx}")
@@ -106,10 +110,13 @@ class AuditLog:
             LIMIT ${idx}
         """
         params.append(limit)
+        if offset:
+            q += f" OFFSET ${idx + 1}"
+            params.append(int(offset))
         rows = await self.conn.fetch(q, *params)
         return [self._extract(r) for r in rows]
 
-    async def count(self, event_type=None, actor=None, date_from=None, date_to=None, tenant=None):
+    async def count(self, event_type=None, actor=None, actor_id=None, date_from=None, date_to=None, tenant=None):
         where = ["l.log LIKE '{%'"]
         params = []
         idx = 1
@@ -126,6 +133,10 @@ class AuditLog:
         if actor:
             where.append(f"u.username ILIKE ${idx} || '%'")
             params.append(actor)
+            idx += 1
+        if actor_id is not None:
+            where.append(f"(l.log::json->>'actor') = ${idx}")
+            params.append(str(actor_id))
             idx += 1
         if date_from:
             where.append(f"l.created >= ${idx}")

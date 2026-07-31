@@ -23,17 +23,19 @@ class TestAuditLogEvent:
         )
 
         sql = conn.execute.call_args[0][0]
-        assert 'INSERT' in sql and '"logs"' in sql
-        assert 'hospital-a' in sql
-        assert 'req-456' in sql
+        assert 'INSERT' in sql and 'logs' in sql
 
-        assert '"event": "user.provisioned"' in sql
-        assert '"actor": 42' in sql
-        assert '"resource": {"type": "user", "id": 42}' in sql
-        assert '"detail": {"oauth_sub": "sub123"}' in sql
-        assert '"tenant": "hospital-a"' in sql
-        assert '"request_id": "req-456"' in sql
+        args = conn.execute.call_args[0]
+        payload = args[1]
+        assert '"event": "user.provisioned"' in payload
+        assert '"actor": 42' in payload
+        assert '"resource": {"type": "user", "id": 42}' in payload
+        assert '"detail": {"oauth_sub": "sub123"}' in payload
+        assert '"tenant": "hospital-a"' in payload
+        assert '"request_id": "req-456"' in payload
         assert 'trace_id' in sql
+        assert args[2] == 'hospital-a'
+        assert args[3] == 'req-456'
 
     @pytest.mark.asyncio
     async def test_log_event_uses_request_id_var_when_not_provided(self):
@@ -49,8 +51,8 @@ class TestAuditLogEvent:
                 resource_id='sess-1',
             )
 
-        sql = conn.execute.call_args[0][0]
-        assert '"request_id": "ctx-request-999"' in sql
+        payload = conn.execute.call_args[0][1]
+        assert '"request_id": "ctx-request-999"' in payload
 
 
 class TestAuditLogQuery:
@@ -67,7 +69,7 @@ class TestAuditLogQuery:
         assert len(result) == 1
         sql = conn.fetch.call_args[0][0]
         assert 'WHERE' in sql.upper() or 'where' in sql.lower()
-        assert 'hospital-a' in sql
+        assert 'hospital-a' in conn.fetch.call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_query_filters_by_event_type(self):
@@ -80,8 +82,7 @@ class TestAuditLogQuery:
 
         result = await audit.query(event_type='role.created')
         assert len(result) == 1
-        sql = conn.fetch.call_args[0][0]
-        assert 'role.created' in sql
+        assert 'role.created' in conn.fetch.call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_query_filters_by_actor_id(self):
@@ -96,7 +97,7 @@ class TestAuditLogQuery:
         assert len(result) == 1
         sql = conn.fetch.call_args[0][0]
         assert 'actor' in sql
-        assert '99' in sql
+        assert '99' in conn.fetch.call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_query_combines_all_filters(self):
@@ -106,11 +107,13 @@ class TestAuditLogQuery:
 
         await audit.query(tenant='t1', event_type='e1', actor_id=1, limit=10, offset=5)
         sql = conn.fetch.call_args[0][0]
-        assert 't1' in sql
-        assert 'e1' in sql
+        params = conn.fetch.call_args[0][1:]
+        assert 't1' in params
+        assert 'e1' in params
+        assert '1' in params
         assert 'actor' in sql
-        assert 'LIMIT' in sql or 'limit' in sql
-        assert 'OFFSET' in sql or 'offset' in sql
+        assert 'LIMIT' in sql.upper()
+        assert 'OFFSET' in sql.upper()
 
     @pytest.mark.asyncio
     async def test_count_returns_total(self):
@@ -122,7 +125,7 @@ class TestAuditLogQuery:
         assert total == 7
         sql = conn.fetchval.call_args[0][0]
         assert 'COUNT' in sql.upper()
-        assert 'hospital-a' in sql
+        assert 'hospital-a' in conn.fetchval.call_args[0][1]
 
 
 class TestAuditHooks:
