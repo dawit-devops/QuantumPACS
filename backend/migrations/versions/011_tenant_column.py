@@ -4,8 +4,22 @@ Revision ID: 011
 Revises: 010
 Create Date: 2026-07-25
 
-Adds:
-- users.tenant TEXT — which tenant this user belongs to
+Why
+---
+Adds users.tenant column for tenant-scoped JWT tokens, enabling the authentication
+backend to restrict user access to their assigned tenant's data.
+
+Data Migration
+--------------
+None — new column only.
+
+Rollback
+--------
+Drops index and column.
+
+References
+----------
+- ADR-010: Multi-tenant architecture
 """
 
 from alembic import op

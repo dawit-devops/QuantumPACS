@@ -4,10 +4,22 @@ Revision ID: 009
 Revises: 008
 Create Date: 2026-07-25
 
-Adds:
-- users.oauth_sub TEXT UNIQUE
-- users.email TEXT
-- users.avatar_url TEXT
+Why
+---
+Adds OAuth/OpenID Connect fields (oauth_sub, email, avatar_url) to the users table
+for linking external identity provider accounts.
+
+Data Migration
+--------------
+None — new column additions only. Conditional partial index on oauth_sub.
+
+Rollback
+--------
+Drops index and added columns.
+
+References
+----------
+- ADR-009: OAuth integration design
 """
 
 from alembic import op

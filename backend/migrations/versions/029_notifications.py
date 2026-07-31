@@ -4,7 +4,22 @@ Revision ID: 029
 Revises: 028
 Create Date: 2026-07-29
 
-Adds notification infrastructure for in-app alerts.
+Why
+---
+Creates the notifications table for in-app alert infrastructure, enabling
+event-driven user notifications with read tracking and deep link support.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the notifications table and its indexes.
+
+References
+----------
+- ADR-029: In-app notification system
 """
 
 from alembic import op

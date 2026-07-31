@@ -4,7 +4,22 @@ Revision ID: 028
 Revises: 027
 Create Date: 2026-07-29
 
-Adds optional description field for human-readable role explanations.
+Why
+---
+Adds optional description field to the roles table for human-readable role
+explanations, making the admin UI role management more informative.
+
+Data Migration
+--------------
+None — new column only.
+
+Rollback
+--------
+Drops the description column.
+
+References
+----------
+- RBAC feature: role description in admin UI
 """
 
 from alembic import op

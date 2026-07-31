@@ -4,8 +4,23 @@ Revision ID: 020
 Revises: 019
 Create Date: 2026-07-26
 
-Adds:
-- routing_rules table for DICOM study routing based on metadata conditions
+Why
+---
+Creates the routing_rules table for DICOM study routing based on metadata
+conditions (modality, accession number, etc.), enabling automatic distribution
+of studies to configured storage destinations.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the routing_rules table and its indexes.
+
+References
+----------
+- ADR-020: DICOM study routing design
 """
 
 from alembic import op

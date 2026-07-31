@@ -4,9 +4,24 @@ Revision ID: 019
 Revises: 018
 Create Date: 2026-07-26
 
-Adds:
-- hl7_messages table for raw HL7 message storage and audit
-- hl7_parse_errors table for per-field parsing failure tracking
+Why
+---
+Creates HL7 infrastructure tables: hl7_messages for raw message storage and audit,
+hl7_parse_errors for per-field parsing failure tracking — supporting HL7 v2.x
+ADT/ORM message ingestion and debugging.
+
+Data Migration
+--------------
+None — new tables only.
+
+Rollback
+--------
+Drops both tables and their indexes.
+
+References
+----------
+- HL7 v2.5: ADT, ORM message specifications
+- ADR-019: HL7 integration design
 """
 
 from alembic import op

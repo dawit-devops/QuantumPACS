@@ -1,3 +1,6 @@
+"""FHIR R4 API endpoints — Patient, ImagingStudy, and DocumentReference resources
+with search, read, create, update, and delete operations conforming to the HL7 FHIR
+release 4 specification for healthcare data interoperability."""
 import json
 from urllib.parse import parse_qs
 

@@ -4,10 +4,22 @@ Revision ID: 023
 Revises: 022
 Create Date: 2026-07-26
 
-Adds:
-- patients.created_at, patients.updated_at
-- studies.created_at, studies.updated_at
-- shared_files.updated_at
+Why
+---
+Adds created_at/updated_at columns to patients, studies, and shared_files tables
+to support the FHIR _lastUpdated search parameter for incremental data synchronization.
+
+Data Migration
+--------------
+None — new columns with DEFAULT now().
+
+Rollback
+--------
+Drops indexes and columns.
+
+References
+----------
+- HL7 FHIR R4: _lastUpdated search parameter
 """
 
 from alembic import op

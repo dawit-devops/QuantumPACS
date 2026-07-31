@@ -4,8 +4,24 @@ Revision ID: 018
 Revises: 017
 Create Date: 2026-07-25
 
-Adds:
-- worklist_entries table for scheduled imaging procedures
+Why
+---
+Creates the worklist_entries table for DICOM Modality Worklist (MWL) support,
+storing scheduled imaging procedures with patient demographics, modality,
+scheduled date/time, station AE title, and status tracking.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the worklist_entries table and its indexes.
+
+References
+----------
+- DICOM PS3.4: Modality Worklist SOP Class
+- ADR-018: Worklist feature design
 """
 
 from alembic import op

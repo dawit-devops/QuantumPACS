@@ -38,11 +38,11 @@ from services.interfaces import (
 setup_logging()
 log = get_logger(__name__)
 
-if config.get('sentry_dsn'):
-    sentry_sdk.init(
-        dsn=config['sentry_dsn'],
-        integrations=[StarletteIntegration()],
-    )
+sentry_sdk.init(
+    dsn=config.get('sentry_dsn', ''),
+    traces_sample_rate=float(config.get('sentry_traces_sample_rate', '1.0')),
+    integrations=[StarletteIntegration()],
+)
 
 
 from starlette.middleware.cors import CORSMiddleware

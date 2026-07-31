@@ -4,10 +4,23 @@ Revision ID: 012
 Revises: 011
 Create Date: 2026-07-25
 
-Adds:
-- oauth_providers table: id UUID PK, tenant_id TEXT, issuer TEXT,
-  client_id TEXT, client_secret TEXT, jwks_uri TEXT, token_url TEXT,
-  groups_claim TEXT, auto_provision BOOL, enabled BOOL, created_at/updated_at
+Why
+---
+Creates the oauth_providers table for multi-provider OAuth/OpenID Connect support,
+storing per-provider configuration (issuer, client credentials, JWKS URI, scopes)
+with optional tenant scoping.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the oauth_providers table.
+
+References
+----------
+- ADR-009: OAuth integration design
 """
 
 from alembic import op

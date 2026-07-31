@@ -4,8 +4,23 @@ Revision ID: 016
 Revises: 015
 Create Date: 2026-07-25
 
-Adds:
-- api_keys table with UUID PK, key_hash, prefix, service_name, permissions, expiry, etc.
+Why
+---
+Creates the api_keys table for service-to-service authentication, storing
+hashed API keys with granular permission sets and optional expiry dates
+for machine-to-machine communication.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the api_keys table and its prefix index.
+
+References
+----------
+- ADR-016: Service-to-service API key auth
 """
 
 from alembic import op

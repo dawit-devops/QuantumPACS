@@ -4,8 +4,22 @@ Revision ID: 015
 Revises: 014
 Create Date: 2026-07-25
 
-Adds:
-- decommissioned_at TIMESTAMPTZ — set when tenant is soft-deleted
+Why
+---
+Adds decommissioned_at TIMESTAMPTZ to the tenants table for tenant soft-deletion
+support, allowing decommissioned tenants to be restored if needed.
+
+Data Migration
+--------------
+None — new column only.
+
+Rollback
+--------
+Drops the decommissioned_at column.
+
+References
+----------
+- ADR-010: Multi-tenant architecture
 """
 
 from alembic import op

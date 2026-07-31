@@ -4,8 +4,23 @@ Revision ID: 007
 Revises: 368510d43c08
 Create Date: 2026-07-25
 
+Why
+---
 Adds a trigger on the files table using the existing notify_event() function
-so that file INSERT/UPDATE/DELETE events can be bridged to Redis Streams.
+so that file INSERT/UPDATE/DELETE events can be bridged to Redis Streams for
+real-time ingestion event handling.
+
+Data Migration
+--------------
+None — trigger-only change.
+
+Rollback
+--------
+Drops the notify_file_event trigger.
+
+References
+----------
+- ADR-003: PostgreSQL LISTEN/NOTIFY for event streaming
 """
 
 from alembic import op

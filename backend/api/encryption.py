@@ -1,3 +1,5 @@
+"""Symmetric encryption utilities for OAuth client secrets using Fernet (AES-128-CBC
+with HMAC-SHA256) keyed via PBKDF2-HMAC-SHA256 derivation from the application secret."""
 import base64
 
 from cryptography.fernet import Fernet

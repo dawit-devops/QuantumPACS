@@ -4,8 +4,23 @@ Revision ID: 021
 Revises: 020
 Create Date: 2026-07-26
 
-Adds:
-- routing_rules.tenant_id TEXT for tenant-scoped routing
+Why
+---
+Adds tenant_id column to routing_rules for tenant-scoped routing rules, so
+each tenant can define independent study distribution policies.
+
+Data Migration
+--------------
+None — new column only.
+
+Rollback
+--------
+Drops index and column.
+
+References
+----------
+- ADR-010: Multi-tenant architecture
+- ADR-020: DICOM study routing
 """
 
 from alembic import op

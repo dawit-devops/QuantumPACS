@@ -4,7 +4,23 @@ Revision ID: 031
 Revises: 030
 Create Date: 2026-07-29
 
-Adds webhook infrastructure for outbound event notifications.
+Why
+---
+Creates the webhooks table for outbound event notification subscriptions,
+supporting configurable event types, HMAC signing, retry logic, timeout
+settings, and delivery status tracking.
+
+Data Migration
+--------------
+None — new table only.
+
+Rollback
+--------
+Drops the webhooks table.
+
+References
+----------
+- ADR-031: Webhook event delivery system
 """
 
 from alembic import op
