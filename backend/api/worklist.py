@@ -87,13 +87,6 @@ class WorklistEntryHandler(HTTPEndpoint):
         updates = body.model_dump(exclude_none=True)
         if not updates:
             return ok({})
-
-class WorklistStationAeHandler(HTTPEndpoint):
-    @requires_permission(Permission.WORKLIST_READ)
-    async def get(self, request):
-        async with get_conn() as conn:
-            stations = await Worklist(conn).get_station_aes()
-        return ok(stations)
         async with get_conn() as conn:
             existing = await conn.fetchval(
                 "SELECT id FROM worklist_entries WHERE id = $1",
@@ -135,3 +128,11 @@ class WorklistStationAeHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({})
+
+
+class WorklistStationAeHandler(HTTPEndpoint):
+    @requires_permission(Permission.WORKLIST_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            stations = await Worklist(conn).get_station_aes()
+        return ok(stations)

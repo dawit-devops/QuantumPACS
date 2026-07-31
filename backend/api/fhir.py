@@ -17,7 +17,7 @@ from log import get_logger
 
 
 def _quote(val):
-    return "'" + str(val).replace("'", "''") + "'"
+    raise RuntimeError('Use parameterized queries instead of _quote()')
 
 log = get_logger(__name__)
 
@@ -447,13 +447,19 @@ class FhirImagingStudySearch(HTTPEndpoint):
             st = Study(conn)
             q = st.select(st.table.star)
 
+            search_conds = []
+            search_vals = []
             if 'patient' in params:
                 pid = params['patient'].replace('Patient/', '')
-                q = q.where(PseudoColumn(f"EXISTS (SELECT 1 FROM patients pa WHERE pa.id = studies.patient_id AND pa.patient_id = {_quote(pid)})"))
+                search_conds.append(f"EXISTS (SELECT 1 FROM patients pa WHERE pa.id = studies.patient_id AND pa.patient_id = ${len(search_vals) + 1})")
+                search_vals.append(pid)
             if 'accession' in params:
                 q = q.where(st.table.accession_number == params['accession'])
             if 'modality' in params:
-                q = q.where(PseudoColumn(f"EXISTS (SELECT 1 FROM series se WHERE se.study_id = studies.id AND se.modality = {_quote(params['modality'])})"))
+                search_conds.append(f"EXISTS (SELECT 1 FROM series se WHERE se.study_id = studies.id AND se.modality = ${len(search_vals) + 1})")
+                search_vals.append(params['modality'])
+            if search_conds:
+                q = q.where(PseudoColumn(' AND '.join(search_conds)))
 
             limit = None
             if '_count' in params:
@@ -469,12 +475,12 @@ class FhirImagingStudySearch(HTTPEndpoint):
                 col = allowed.get(field, 'id')
                 q = q.orderby(col, order=direction)
 
-            conds, vals, idx = _apply_last_updated(params, q, 'studies', 1)
-            if conds:
-                q = q.where(PseudoColumn(f" {' AND '.join(conds)}"))
+            lu_conds, lu_vals, _ = _apply_last_updated(params, q, 'studies', len(search_vals) + 1)
+            if lu_conds:
+                q = q.where(PseudoColumn(f" {' AND '.join(lu_conds)}"))
 
             if limit:
-                rows = await st.conn.fetch(str(q.limit(limit)), *vals)
+                rows = await st.conn.fetch(str(q.limit(limit)), *search_vals, *lu_vals)
             else:
                 rows = await st.fetch(q)
 

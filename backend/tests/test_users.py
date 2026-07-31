@@ -95,9 +95,10 @@ class TestUsers:
     @pytest.mark.asyncio
     async def test_change_password_updates_password(self):
         conn = AsyncMock()
+        conn.fetchrow.return_value = {'password': hash_password('oldpass', salt=b'\x00' * 16)}
         user = type('User', (), {'id': 3})()
         u = Users(conn=conn)
-        await u.change_password(user, 'new_secret')
+        await u.change_password(user, 'new_secret', 'oldpass')
         sql = conn.execute.call_args[0][0]
         assert 'UPDATE' in sql
 

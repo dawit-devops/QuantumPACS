@@ -91,7 +91,7 @@ class TestWorklistList:
         client = TestClient(_make_app(user))
         with patch('api.worklist.Worklist') as mock_wl_cls:
             mock_wl = AsyncMock()
-            mock_wl.search.return_value = [{'id': '1', 'patient_id': 'P001'}]
+            mock_wl.search.return_value = ([{'id': '1', 'patient_id': 'P001'}], 1)
             mock_wl_cls.return_value = mock_wl
             with patch('api.worklist.get_conn'):
                 resp = client.get('/worklist')
@@ -104,7 +104,7 @@ class TestWorklistList:
         client = TestClient(_make_app(user))
         with patch('api.worklist.Worklist') as mock_wl_cls:
             mock_wl = AsyncMock()
-            mock_wl.search.return_value = []
+            mock_wl.search.return_value = ([], 0)
             mock_wl_cls.return_value = mock_wl
             with patch('api.worklist.get_conn'):
                 client.get('/worklist?status=scheduled')
@@ -116,7 +116,7 @@ class TestWorklistList:
         client = TestClient(_make_app(user))
         with patch('api.worklist.Worklist') as mock_wl_cls:
             mock_wl = AsyncMock()
-            mock_wl.search.return_value = []
+            mock_wl.search.return_value = ([], 0)
             mock_wl_cls.return_value = mock_wl
             with patch('api.worklist.get_conn'):
                 client.get('/worklist?modality=CT')

@@ -1,16 +1,19 @@
 import os
-import sys
 
 import yaml
 
+_DEFAULT_SECRET = 'quantumpacs-default-secret-32-bytes-long!!'
+_DEFAULT_DB_PASSWORD = 'pa55w0rd'
+_DEFAULT_SUPERADMIN_PASS = 'pa55w0rd'
+
 default_config = {
-    'secret': 'quantumpacs-default-secret-32-bytes-long!!',
-    'superadmin_pass': 'pa55w0rd',
+    'secret': _DEFAULT_SECRET,
+    'superadmin_pass': _DEFAULT_SUPERADMIN_PASS,
     'db_host': '127.0.0.1',
     'db_port': '5432',
     'db_database': 'quantumpacs',
     'db_user': 'quantumpacs',
-    'db_password': 'pa55w0rd',
+    'db_password': _DEFAULT_DB_PASSWORD,
     'es_host': 'localhost',
     'cors_origins': 'http://localhost:5173',
     'allowed_hosts': 'localhost,127.0.0.1',
@@ -75,8 +78,8 @@ def load_config(overrides=None):
     if overrides:
         cfg.update(overrides)
 
-    if cfg['secret'] in ('default', 'pa55w0rd'):
-        cfg['secret'] = 'quantumpacs-dev-secret-replace-in-production-32b'
+    if cfg['secret'] in ('default', ):
+        cfg['secret'] = _DEFAULT_SECRET
 
     return cfg
 
@@ -84,14 +87,15 @@ def load_config(overrides=None):
 config = load_config()
 
 
+class ConfigurationError(RuntimeError):
+    pass
+
+
 def assert_production_secret():
-    if config['secret'] in ('default', 'pa55w0rd', 'quantumpacs-default-secret-32-bytes-long!!',
-                            'quantumpacs-dev-secret-replace-in-production-32b'):
-        import logging
-        logging.getLogger(__name__).critical(
+    if config['secret'] in ('default', 'pa55w0rd', _DEFAULT_SECRET):
+        raise ConfigurationError(
             'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
         )
-        sys.exit(1)
 
 
 def is_docker():

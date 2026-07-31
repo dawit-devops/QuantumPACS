@@ -39,12 +39,12 @@ def encrypt_secret(plaintext: str) -> str:
         return ''
     f = _get_fernet()
     if f is None:
-        return plaintext
+        raise RuntimeError('Encryption unavailable — cannot store secret')
     try:
         return f.encrypt(plaintext.encode()).decode()
     except Exception as e:
-        log.warning('Encryption failed: %s', e)
-        return plaintext
+        log.error('Encryption failed: %s', e)
+        raise
 
 
 def decrypt_secret(ciphertext: str) -> str:
@@ -52,7 +52,7 @@ def decrypt_secret(ciphertext: str) -> str:
         return ''
     f = _get_fernet()
     if f is None:
-        return ciphertext
+        raise RuntimeError('Encryption unavailable — cannot decrypt secret')
     try:
         return f.decrypt(ciphertext.encode()).decode()
     except Exception as e:
