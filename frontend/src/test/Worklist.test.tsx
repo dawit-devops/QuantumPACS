@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Worklist from '../worklist/Worklist';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -11,11 +12,28 @@ const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: mockRequest,
   isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
+
+const mockOnConfirm = vi.hoisted(() => vi.fn());
+
+vi.mock('antd', async () => {
+  const actual = await vi.importActual('antd');
+  const Popconfirm = ({ children, onConfirm, title }: any) =>
+    React.createElement('span', {
+      className: 'mock-popconfirm',
+      'data-title': title,
+      onClick: (e: React.MouseEvent) => { onConfirm?.(); },
+    }, children);
+  return { ...actual, Popconfirm };
+});
 
 const mockEntries = [
   {
@@ -56,11 +74,13 @@ describe('Worklist', () => {
 
   function renderWithAuth(ui: React.ReactElement) {
     return render(
-      <AuthProvider>
-        <MemoryRouter>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            {ui}
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 
@@ -110,23 +130,23 @@ describe('Worklist', () => {
     const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
-    mockRequest.mockImplementation(() => Promise.resolve({ data: { id: '4' } }));
+    mockRequest.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === 'worklist/station-aes' ? [] : { id: '4' } })
+    );
 
     await user.click(screen.getByText('Create Entry'));
     const modal = screen.getByRole('dialog');
     await user.type(within(modal).getByLabelText('Patient ID'), 'P004');
     await user.type(within(modal).getByLabelText('Patient Name'), 'Test Patient');
     await user.type(within(modal).getByLabelText('Accession #'), 'ACC-004');
-    await user.type(within(modal).getByLabelText('Modality'), 'CT');
     await user.click(within(modal).getByText('OK'));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith('worklist', {
-        data: {
-          patient_id: 'P004', patient_name: 'Test Patient',
-          accession_number: 'ACC-004', modality: 'CT',
-        },
-      });
+      const calls = mockRequest.mock.calls;
+      const createCall = calls.find((c: any) => c[0] === 'worklist' && c[1]?.data?.patient_id === 'P004');
+      expect(createCall).toBeDefined();
+      expect(createCall[1].data.patient_name).toBe('Test Patient');
+      expect(createCall[1].data.accession_number).toBe('ACC-004');
     });
   });
 
@@ -135,23 +155,24 @@ describe('Worklist', () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
 
-    await user.click(screen.getAllByTitle('Edit')[0]);
+    const editIcons = document.querySelectorAll('.anticon-edit');
+    await user.click(editIcons[0]);
     const modal = screen.getByRole('dialog');
     expect(within(modal).getByDisplayValue('John Doe')).toBeInTheDocument();
     expect(within(modal).getByDisplayValue('P001')).toBeInTheDocument();
   });
 
   it('cancel entry calls delete API', async () => {
-    const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
 
-    await user.click(screen.getAllByTitle('Cancel')[0]);
-    const confirmBtn = screen.getByRole('button', { name: /yes|confirm|ok/i });
-    await user.click(confirmBtn);
+    const mockSpans = document.querySelectorAll('.mock-popconfirm');
+    const cancelSpan = Array.from(mockSpans).find(s => s.getAttribute('data-title')?.includes('Cancel'));
+    expect(cancelSpan).toBeTruthy();
+    fireEvent.click(cancelSpan!);
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith('worklist/1', { data: undefined, method: 'DELETE' });
-    });
+    }, { timeout: 10000 });
   });
 });

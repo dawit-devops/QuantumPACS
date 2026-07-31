@@ -1,7 +1,7 @@
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
-from api.permissions import Permission
+from api.permissions import Permission, PERMISSION_GROUPS
 from api.response import ok, created, not_found
 from api.validate import parse_body
 from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
@@ -95,3 +95,21 @@ class RoleHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({})
+
+
+class PermissionsHandler(HTTPEndpoint):
+    @requires_permission(Permission.ROLE_READ)
+    async def get(self, request):
+        return ok({'data': PERMISSION_GROUPS})
+
+
+class RoleUsersHandler(HTTPEndpoint):
+    @requires_permission(Permission.ROLE_READ)
+    async def get(self, request):
+        role_id = request.path_params['id']
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                'SELECT id, username, admin, active FROM users WHERE role_id = $1 ORDER BY username',
+                role_id,
+            )
+        return ok({'data': [dict(r) for r in rows]})

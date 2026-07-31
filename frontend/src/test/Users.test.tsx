@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Users from '../users/Users';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -11,6 +12,10 @@ const mockRequest = vi.hoisted(() => vi.fn());
 vi.mock('../helpers', () => ({
   request: mockRequest,
   isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
@@ -40,11 +45,13 @@ describe('Users', () => {
 
   function renderWithAuth(ui: React.ReactElement) {
     return render(
-      <AuthProvider>
-        <MemoryRouter>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            {ui}
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 

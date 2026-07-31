@@ -41,7 +41,7 @@ except ImportError:
 
 
 class TokenBucket:
-    def __init__(self, max_attempts=5, window_seconds=60, lockout_attempts=10, lockout_seconds=300):
+    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.lockout_attempts = lockout_attempts
@@ -96,7 +96,7 @@ class TokenBucket:
 
 
 class RedisTokenBucket:
-    def __init__(self, max_attempts=5, window_seconds=60, lockout_attempts=10, lockout_seconds=300):
+    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.lockout_attempts = lockout_attempts
@@ -173,3 +173,4 @@ class RedisTokenBucket:
 
 
 login_bucket = RedisTokenBucket()
+password_bucket = RedisTokenBucket(max_attempts=3, window_seconds=300)

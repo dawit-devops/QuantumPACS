@@ -114,5 +114,5 @@ class TenantStatsHandler(HTTPEndpoint):
             'db_user': info.get('db_user', config['db_user']) if info else config['db_user'],
             'db_password': info.get('db_password', config['db_password']) if info else config['db_password'],
         }
-        stats = await Tenants(None).get_stats(slug, pool_info)
+        stats = await Tenants(None).get_stats(slug, pool_info, storage_quota_bytes=tenant.get('storage_quota_bytes', 0))
         return ok(stats)

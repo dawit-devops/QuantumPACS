@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu } from 'antd';
-import { FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined, KeyOutlined, ApartmentOutlined } from '@ant-design/icons';
+import { Layout, Menu, Grid, Drawer, Button, Space } from 'antd';
+import { MenuOutlined, FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined, KeyOutlined, ApartmentOutlined, SunOutlined, MoonOutlined, MedicineBoxOutlined, FundOutlined, BookOutlined, MessageOutlined, CloudServerOutlined, ApiOutlined } from '@ant-design/icons';
+import NotificationBell from '../notifications/NotificationBell';
+
+const { useBreakpoint } = Grid;
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from './ThemeProvider';
 import QuantumLogo from './QuantumLogo';
 import TenantSelector from '../auth/TenantSelector';
 import { request, clearTokens } from '../helpers';
@@ -11,31 +15,36 @@ import './Sidebar.css';
 const { Sider } = Layout;
 
 function getKey(loc: string) {
-  return loc === '/' ? 'files' : loc.slice(1).split('/')[0];
+  if (loc === '/') return 'files';
+  const parts = loc.slice(1).split('/');
+  if (parts[0] === 'fhir' && parts[1]) return 'fhir-' + parts[1];
+  return parts[0];
 }
 
 function getOpenKey(key: string) {
-  if (['replicas', 'users', 'roles', 'tenants', 'logs', 'worklist', 'service-keys', 'routing'].includes(key)) {
+  if (['replicas', 'users', 'roles', 'tenants', 'logs', 'worklist', 'service-keys', 'routing', 'fhir', 'hl7', 'dicomweb', 'integrations'].includes(key)) {
     return 'admin';
   }
   return key;
 }
 
-type PermissionCheck = { permission: string } | { adminOnly: true };
-
 function hasAnyAdminPermission(hasPermission: (p: string) => boolean, userAdmin: boolean | undefined): boolean {
   if (userAdmin) return true;
-  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ', 'WORKLIST_READ'];
+  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ', 'WORKLIST_READ', 'HL7_READ'];
   return adminPermissions.some(p => hasPermission(p));
 }
 
 function Sidebar() {
   const { hasPermission, user } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const screens = useBreakpoint();
+  const isMobile = !screens.lg;
   const loc = location.pathname;
 
   let [collapsed, setCollapsed] = useState(false);
+  let [drawerOpen, setDrawerOpen] = useState(false);
   const key = getKey(loc);
   let [selectedKey, setSelectedKey] = useState(key);
   let [openKey, setOpenKey] = useState(getOpenKey(key));
@@ -62,12 +71,8 @@ function Sidebar() {
     setOpenKey(getOpenKey(key));
   }, [loc]);
 
-  return (
-    <Sider collapsible collapsed={collapsed} onCollapse={onCollapse} theme="dark"
-      breakpoint="lg"
-      collapsedWidth="0"
-      onBreakpoint={() => {}}
-    >
+  const sidebarContent = (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{
         padding: collapsed ? '16px 8px' : '16px 24px',
         display: 'flex',
@@ -76,27 +81,26 @@ function Sidebar() {
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         marginBottom: 4,
       }}>
-        <QuantumLogo size={32} showText={!collapsed} />
+        <QuantumLogo size={32} showText={!collapsed && !isMobile} />
       </div>
       <TenantSelector />
       <Menu mode="inline" theme="dark"
-        defaultOpenKeys={[openKey]} defaultSelectedKeys={[selectedKey]} >
-
-        <Menu.Item key="files">
+        defaultOpenKeys={[openKey]} defaultSelectedKeys={[selectedKey]}
+        onClick={() => { if (isMobile) setDrawerOpen(false); }}
+      >
+        <Menu.Item key="files" aria-current={selectedKey === 'files' ? 'page' : undefined}>
           <Link to="/">
             <FileSearchOutlined />
             <span className="nav-text">Files</span>
           </Link>
         </Menu.Item>
-
-        <Menu.Item key="metrics">
+        <Menu.Item key="metrics" aria-current={selectedKey === 'metrics' ? 'page' : undefined}>
           <Link to="/metrics">
             <DashboardOutlined />
             <span className="nav-text">Metrics</span>
           </Link>
         </Menu.Item>
-
-        <Menu.Item key="account">
+        <Menu.Item key="account" aria-current={selectedKey === 'account' ? 'page' : undefined}>
           <Link to="/account">
             <UserOutlined />
             <span className="nav-text">Account</span>
@@ -175,8 +179,66 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
+            {hasPermission('SYSTEM_ADMIN') && (
+              <Menu.SubMenu key="fhir" title={<span><MedicineBoxOutlined /><span>FHIR</span></span>}>
+                <Menu.Item key="fhir-config">
+                  <Link to="/fhir/config">
+                    <MedicineBoxOutlined />
+                    <span className="nav-text">FHIR Config</span>
+                  </Link>
+                </Menu.Item>
+                <Menu.Item key="fhir-monitoring">
+                  <Link to="/fhir/monitoring">
+                    <FundOutlined />
+                    <span className="nav-text">FHIR Monitoring</span>
+                  </Link>
+                </Menu.Item>
+                <Menu.Item key="fhir-docs">
+                  <Link to="/fhir/docs">
+                    <BookOutlined />
+                    <span className="nav-text">FHIR Docs</span>
+                  </Link>
+                </Menu.Item>
+              </Menu.SubMenu>
+            )}
+            {hasPermission('HL7_READ') && (
+              <Menu.Item key="hl7">
+                <Link to="/hl7">
+                  <MessageOutlined />
+                  <span className="nav-text">HL7</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('DICOMWEB_READ') && (
+              <Menu.Item key="dicomweb">
+                <Link to="/dicomweb">
+                  <CloudServerOutlined />
+                  <span className="nav-text">DICOMweb</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission('SYSTEM_ADMIN') && (
+              <Menu.Item key="integrations">
+                <Link to="/integrations">
+                  <ApiOutlined />
+                  <span className="nav-text">Integrations</span>
+                </Link>
+              </Menu.Item>
+            )}
           </Menu.SubMenu>
         }
+        <Menu.Item key="notifications" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NotificationBell />
+            <span className="nav-text">Notifications</span>
+          </span>
+        </Menu.Item>
+        <Menu.Item key="theme-toggle" onClick={toggleTheme}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isDark ? <SunOutlined /> : <MoonOutlined />}
+            <span className="nav-text">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+          </span>
+        </Menu.Item>
         <Menu.Item key="logout">
           <Link to="/logout" onClick={handleLogout}>
             <LogoutOutlined />
@@ -184,6 +246,48 @@ function Sidebar() {
           </Link>
         </Menu.Item>
       </Menu>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <Button
+          type="text"
+          icon={<MenuOutlined />}
+          onClick={() => setDrawerOpen(true)}
+          style={{
+            position: 'fixed', top: 8, left: 8, zIndex: 100,
+            minWidth: 44, minHeight: 44,
+            color: 'var(--text-primary)',
+            fontSize: 20,
+          }}
+          aria-label="Open navigation menu"
+        />
+        <Drawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          placement="left"
+          width={280}
+          styles={{ body: { padding: 0, background: '#001529' } }}
+          title={null}
+          closable={false}
+        >
+          {sidebarContent}
+        </Drawer>
+      </>
+    );
+  }
+
+  return (
+    <Sider collapsible collapsed={collapsed} onCollapse={onCollapse} theme="dark"
+      breakpoint="lg"
+      collapsedWidth="0"
+      onBreakpoint={() => {}}
+      role="navigation"
+      aria-label="Main navigation"
+    >
+      {sidebarContent}
     </Sider>
   );
 }

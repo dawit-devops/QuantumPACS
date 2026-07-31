@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import withRouter from '../withRouter';
 import { useFetch } from '../hooks';
 import { request } from '../helpers';
-import { Form, Input, Button, message, Layout, Card, Typography, Divider } from 'antd';
+import { Form, Input, Button, message, Layout, Card, Typography, Divider, Alert } from 'antd';
 import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../common/ThemeProvider';
 import QuantumLogo from '../common/QuantumLogo';
 import './Login.css';
 const { Content } = Layout;
@@ -53,8 +54,18 @@ function LoginForm(props: any) {
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch('login');
   const [lockoutSeconds, setLockoutSeconds] = useState(getLoginDelay);
+  const [shareKeyError, setShareKeyError] = useState<string | null>(null);
   const [providers, setProviders] = useState<any[]>([]);
   const { signIn } = useAuth();
+  const { isDark } = useTheme();
+
+  useEffect(() => {
+    const err = sessionStorage.getItem('shareKeyError');
+    if (err) {
+      sessionStorage.removeItem('shareKeyError');
+      setShareKeyError('This share link has expired or is invalid. Please request a new one from the sender.');
+    }
+  }, []);
 
   useEffect(() => {
     request('oauth/providers').then((res: any) => {
@@ -76,11 +87,20 @@ function LoginForm(props: any) {
     props.history.push('/');
   }, [data]);
 
+  const errorRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!loading && error) {
-      recordFailedAttempt();
+      if (error.status !== 429) recordFailedAttempt();
       setLockoutSeconds(getLoginDelay());
-      message.error(error.error || error);
+      const msg = error.status === 429
+        ? 'Too many login attempts. Please wait before trying again.'
+        : error.error || error;
+      message.error(msg);
+      setTimeout(() => {
+        const btn = document.querySelector('.login-form-button') as HTMLButtonElement;
+        btn?.focus();
+      }, 100);
     }
   }, [loading, error]);
 
@@ -107,6 +127,10 @@ function LoginForm(props: any) {
       }
     );
   };
+
+  const prefixColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)';
+  const dividerColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.35)';
+
   return (
     <Layout style={{
       'alignItems': 'center',
@@ -117,40 +141,55 @@ function LoginForm(props: any) {
     >
       <Content>
         <Card
+          className="animate-scale-in"
           style={{ width: 380, borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}
           styles={{ body: { padding: '40px 32px' } }}
         >
           <div style={{ textAlign: 'center', marginBottom: 32 }}>
             <QuantumLogo size={48} />
           </div>
+          {shareKeyError && (
+            <Alert
+              message="Expired Share Link"
+              description={shareKeyError}
+              type="warning"
+              showIcon
+              closable
+              onClose={() => setShareKeyError(null)}
+              style={{ marginBottom: 16, borderRadius: 8 }}
+            />
+          )}
           <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 24, fontSize: 13 }}>
             Sign in to your account
           </Text>
           <Form form={form} onFinish={handleSubmit} className="login-form">
             <Form.Item name="username" rules={[{ required: true, message: 'Please input your username!' }]}>
               <Input
-                prefix={<UserOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
+                prefix={<UserOutlined style={{ color: prefixColor }} />}
                 placeholder="Username"
                 size="large"
+                autoComplete="username"
               />
             </Form.Item>
             <Form.Item name="password" rules={[{ required: true, message: 'Please input your password!' }]}>
               <Input.Password
-                prefix={<LockOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
+                prefix={<LockOutlined style={{ color: prefixColor }} />}
                 placeholder="Password"
                 size="large"
+                autoComplete="current-password"
               />
             </Form.Item>
             <Form.Item>
-              <Button type="primary" htmlType="submit" className="login-form-button"
-                size="large" loading={showLoading} disabled={lockoutSeconds > 0}>
+              <Button type="primary" htmlType="submit" className="login-form-button animate-fade-in-up"
+                size="large" loading={showLoading} disabled={lockoutSeconds > 0}
+                style={{ animationDelay: '100ms' }}>
                   {lockoutSeconds > 0 ? `Retry in ${lockoutSeconds}s` : 'Sign In'}
               </Button>
             </Form.Item>
           </Form>
           {providers.length > 0 && (
             <>
-              <Divider plain style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', margin: '16px 0' }}>
+              <Divider plain style={{ fontSize: 12, color: dividerColor, margin: '16px 0' }}>
                 or continue with SSO
               </Divider>
               {providers.map((p: any) => (

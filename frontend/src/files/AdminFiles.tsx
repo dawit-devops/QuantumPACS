@@ -1,72 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Button, Modal, Row, Col } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
-import { API_URL } from '../config';
-import { getAccessToken } from '../helpers';
-import './AdminFiles.css';
+import { Modal } from 'antd';
+import { UploadZone } from './UploadZone';
 
 export function AdminFiles(props: any) {
-  let [fileList, setFileList] = useState<any[]>([]);
-
-  const onChange = (info: any) => {
-    let fileList = [...info.fileList];
-    fileList = fileList.map((file: any) => {
-      if (file.response) {
-        file.url = file.response.url;
-      }
-      return file;
-    });
-    if (info.file.status === 'done') {
-      fileList = fileList.filter((f: any) => f.name !== info.file.name);
-    }
-    setFileList(fileList);
-  };
-
-  useEffect(() => {
-    setFileList([]);
-  }, [props]);
-
   return (
     <Modal
       open={props.visible}
-      title="Upload"
-      okText="Upload"
+      title="Upload DICOM Files"
+      footer={null}
       onCancel={props.onClose}
-      onOk={props.onClose}
+      width={560}
     >
-      <Row>
-        <Col span={8} >
-          <Upload
-            name="file"
-            multiple={true}
-            action={API_URL + '/files/upload'}
-            headers={{
-              'X-Auth-Pacs': getAccessToken() || '',
-            }}
-            onChange={onChange as any}
-            fileList={fileList}
-          >
-            <Button icon={<UploadOutlined />}>
-              Upload files
-            </Button>
-          </Upload>
-        </Col>
-        <Col span={8} id='upload_directory' >
-          <Upload
-            action={API_URL + '/files/upload'}
-            headers={{
-              'X-Auth-Pacs': getAccessToken() || '',
-            }}
-            onChange={onChange as any}
-            fileList={fileList}
-            directory
-          >
-            <Button icon={<UploadOutlined />}>
-              Upload directory
-            </Button>
-          </Upload>
-        </Col>
-      </Row>
+      <UploadZone reload={props.reload} />
     </Modal>
   );
 }

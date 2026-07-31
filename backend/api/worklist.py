@@ -25,12 +25,12 @@ class WorklistHandler(HTTPEndpoint):
         per_page = int(request.query_params.get('per_page', '20'))
 
         async with get_conn() as conn:
-            entries = await Worklist(conn).search(
+            entries, total = await Worklist(conn).search(
                 status=status, modality=modality,
                 date_from=date_from, date_to=date_to,
                 search=search, page=page, per_page=per_page,
             )
-        return ok({'data': entries})
+        return ok({'data': entries, 'total': total, 'page': page, 'per_page': per_page})
 
     @requires_permission(Permission.WORKLIST_WRITE)
     async def post(self, request):
@@ -87,6 +87,13 @@ class WorklistEntryHandler(HTTPEndpoint):
         updates = body.model_dump(exclude_none=True)
         if not updates:
             return ok({})
+
+class WorklistStationAeHandler(HTTPEndpoint):
+    @requires_permission(Permission.WORKLIST_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            stations = await Worklist(conn).get_station_aes()
+        return ok(stations)
         async with get_conn() as conn:
             existing = await conn.fetchval(
                 "SELECT id FROM worklist_entries WHERE id = $1",

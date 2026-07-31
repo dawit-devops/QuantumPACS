@@ -4,19 +4,31 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Sidebar from '../common/Sidebar';
 
 vi.mock('../hooks', () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+vi.mock('../helpers', () => ({
+  isAdmin: () => true,
+  request: vi.fn().mockResolvedValue({}),
+  clearTokens: () => {},
+  setTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
+}));
+
 function renderWithAuth(ui: React.ReactElement) {
   return render(
-    <AuthProvider>
-      <MemoryRouter initialEntries={['/']}>
-        {ui}
-      </MemoryRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/']}>
+          {ui}
+        </MemoryRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

@@ -43,6 +43,7 @@ default_config = {
     'otel_bsp_max_queue_size': '2048',
     'otel_bsp_max_export_batch_size': '512',
     'prometheus_enabled': 'true',
+    'max_upload_size_mb': '500',
     'b2_cors_origins': 'http://localhost:5173',
     'ingestion_stream': 'events:ingestion',
     'ingestion_group': 'ingestion-service',

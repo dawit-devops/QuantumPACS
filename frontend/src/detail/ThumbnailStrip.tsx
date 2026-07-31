@@ -13,7 +13,7 @@ export default function ThumbnailStrip({ files, currentFileId, onSelect }: Thumb
   if (!files || files.length <= 1) return null;
 
   return (
-    <div className="thumbnail-strip">
+    <div className="thumbnail-strip" role="listbox" aria-label="Series thumbnails">
       {files.map((f, index) => (
         <ThumbnailItem
           key={f.id}
@@ -50,11 +50,14 @@ function ThumbnailItem({ file, index, isActive, onSelect }: {
       className={`thumbnail-item ${isActive ? 'active' : ''}`}
       onClick={() => onSelect(index)}
       title={file.name}
+      aria-label={`${file.name}${isActive ? ' (active)' : ''}`}
+      aria-selected={isActive}
+      role="option"
     >
       {src && !error ? (
         <img src={src} alt={file.name} className="thumbnail-image" />
       ) : (
-        <div className="thumbnail-placeholder">
+        <div className="thumbnail-placeholder" aria-label={error ? 'Failed to load thumbnail' : 'Loading thumbnail'}>
           {error ? '!' : '...'}
         </div>
       )}

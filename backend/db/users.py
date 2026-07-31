@@ -3,6 +3,7 @@ import hashlib
 import os
 import random
 import string
+from datetime import datetime, timezone
 
 from config import config
 from exceptions import ApiException
@@ -109,13 +110,24 @@ class Users(Table):
             return role['slug'], perms
         return None, []
 
-    async def change_password(self, user, password):
-        pswd = hash_password(password)
+    async def update_last_login(self, user_id):
+        now = datetime.now(timezone.utc)
+        q = self.update().where(self.table.id == user_id).set(self.table.last_login, now)
+        await self.exec(q)
+
+    async def change_password(self, user, new_password, current_password):
+        q = self.select('password').where(self.table.id == user.id)
+        row = await self.fetchone(q)
+        if not row:
+            raise ApiException('User not found')
+        if not self._verify_password(current_password, row['password']):
+            raise ApiException('Current password is incorrect')
+        pswd = hash_password(new_password)
         q = self.update().where(self.table.id == user.id).set(self.table.password, pswd)
         await self.exec(q)
 
-    async def add_user(self, username, is_admin):
-        q = self.insert().columns('username', 'password', 'admin').insert(username, '', is_admin).returning('id')
+    async def add_user(self, username, is_admin, role_id=None):
+        q = self.insert().columns('username', 'password', 'admin', 'role_id').insert(username, '', is_admin, role_id).returning('id')
         user_id = await self.fetchval(q)
         pswd = rand_pswd()
         ph = hash_password(pswd)

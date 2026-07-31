@@ -1,86 +1,115 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Table, message, Tag, Button, Modal, Form, Input, Checkbox, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Table, message, Tag, Button, Modal, Form, Input, Checkbox, Popconfirm, Space, Typography, Tooltip, Badge } from 'antd';
+import { EditOutlined, DeleteOutlined, LockOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import withSidebar from '../common/base';
 import { request } from '../helpers';
+import { PageState } from '../common/PageState';
 
+const { Text, Paragraph } = Typography;
 const Content = Layout.Content;
 
-const PERMISSION_GROUPS: { label: string; keys: string[] }[] = [
-  { label: 'Files', keys: ['FILE_READ', 'FILE_WRITE', 'FILE_DELETE'] },
-  { label: 'Patients', keys: ['PATIENT_READ', 'PATIENT_WRITE'] },
-  { label: 'Studies', keys: ['STUDY_READ', 'STUDY_WRITE'] },
-  { label: 'Users', keys: ['USER_READ', 'USER_WRITE', 'USER_DELETE', 'USER_ADMIN'] },
-  { label: 'Replicas', keys: ['REPLICA_READ', 'REPLICA_WRITE', 'REPLICA_DELETE'] },
-  { label: 'Logs', keys: ['LOG_READ'] },
-  { label: 'Tenants', keys: ['TENANT_READ', 'TENANT_WRITE', 'TENANT_ADMIN'] },
-  { label: 'Roles', keys: ['ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'] },
-  { label: 'Service Keys', keys: ['SERVICE_KEY_READ', 'SERVICE_KEY_WRITE', 'SERVICE_KEY_DELETE'] },
-  { label: 'Worklist', keys: ['WORKLIST_READ', 'WORKLIST_WRITE'] },
-  { label: 'DICOMweb', keys: ['DICOMWEB_READ', 'DICOMWEB_WRITE'] },
-  { label: 'Routing', keys: ['ROUTING_READ', 'ROUTING_WRITE'] },
-  { label: 'Metrics', keys: ['METRICS_READ'] },
-];
+const SUPER_ADMIN_SLUG = 'super_admin';
 
 function Roles() {
   document.title = 'QuantumPACS - Roles';
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);
+  let [error, setError] = useState<string | null>(null);
   let [visible, setVisible] = useState(false);
   let [editingRole, setEditingRole] = useState<any | null>(null);
   let [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  let [permSearch, setPermSearch] = useState('');
+  let [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
   const [form] = Form.useForm();
+
+  const isEditingSuperAdmin = editingRole?.slug === SUPER_ADMIN_SLUG;
+
+  useEffect(() => {
+    request('permissions').then((res: any) => {
+      setPermGroups(res.data || {});
+    }).catch(() => {});
+  }, []);
 
   const columns: any[] = [
     {
-      title: 'Role Name',
-      dataIndex: 'name',
-      width: '20%',
+      title: 'Role', key: 'name', width: '18%',
+      render: (_: any, r: any) => (
+        <Space>
+          {r.built_in ? <LockOutlined style={{ color: '#8c8c8c' }} /> : null}
+          <Text strong={r.built_in}>{r.name}</Text>
+          {r.built_in ? <Tag color="default" style={{ fontSize: 10 }}>Built-in</Tag> : null}
+        </Space>
+      ),
     },
     {
-      title: 'Slug',
-      dataIndex: 'slug',
-      width: '15%',
+      title: 'Description', dataIndex: 'description', width: '22%',
+      render: (d: string) => d || <Text type="secondary">—</Text>,
     },
     {
-      title: 'Permissions',
-      dataIndex: 'permissions',
+      title: 'Permissions', dataIndex: 'permissions', width: '24%',
       render: (perms: string[]) =>
-        perms && perms.length > 0 ? (
-          <span>
-            {perms.slice(0, 3).map((p: string) => (
-              <Tag key={p} color="blue" style={{ marginBottom: 2 }}>{p}</Tag>
+        perms?.length ? (
+          <Space wrap size={[2, 2]}>
+            {perms.slice(0, 4).map((p: string) => (
+              <Tag key={p} color="blue" style={{ fontSize: 11, margin: 0 }}>{p}</Tag>
             ))}
-            {perms.length > 3 && <Tag color="default">+{perms.length - 3}</Tag>}
-          </span>
-        ) : null,
-    },
-    {
-      title: 'Built-in',
-      dataIndex: 'built_in',
-      render: (builtIn: boolean) =>
-        builtIn ? <Tag color="green">Yes</Tag> : <Tag color="orange">Custom</Tag>,
-    },
-    {
-      title: 'Action',
-      key: 'action',
-      render: (_: any, record: any) =>
-        record.built_in ? null : (
-          <span>
-            <EditOutlined
-              title="Edit"
-              onClick={() => handleEdit(record)}
-              style={{ cursor: 'pointer', marginRight: 12, fontSize: 16 }}
-            />
-            <Popconfirm title="Delete this role?" onConfirm={() => handleDelete(record.id)}>
-              <DeleteOutlined
-                title="Delete"
-                style={{ cursor: 'pointer', color: '#ff4d4f', fontSize: 16 }}
-              />
-            </Popconfirm>
-          </span>
+            {perms.length > 4 ? (
+              <Tag color="default" style={{ fontSize: 11, margin: 0 }}>
+                +{perms.length - 4} more
+              </Tag>
+            ) : null}
+            <Text type="secondary" style={{ fontSize: 11 }}>({perms.length})</Text>
+          </Space>
+        ) : (
+          <Text type="secondary">None</Text>
         ),
+    },
+    {
+      title: 'Users', dataIndex: 'user_count', width: '10%',
+      render: (count: number, r: any) =>
+        count > 0 ? (
+          <Button type="link" size="small" icon={<UserOutlined />} onClick={() => showRoleUsers(r)}>
+            {count}
+          </Button>
+        ) : (
+          <Text type="secondary">0</Text>
+        ),
+    },
+    {
+      title: 'Action', key: 'action', width: '16%',
+      render: (_: any, record: any) => {
+        if (!record.built_in) {
+          return (
+            <Space>
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+                Edit
+              </Button>
+              <Popconfirm title="Delete this role?" onConfirm={() => handleDelete(record.id)}>
+                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                  Delete
+                </Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+        if (record.slug === SUPER_ADMIN_SLUG) {
+          return (
+            <Tooltip title="Immutable built-in role">
+              <Button type="link" size="small" disabled icon={<EditOutlined />}>
+                Edit
+              </Button>
+            </Tooltip>
+          );
+        }
+        return (
+          <Tooltip title="Built-in roles cannot be deleted">
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+              Edit
+            </Button>
+          </Tooltip>
+        );
+      },
     },
   ];
 
@@ -90,14 +119,27 @@ function Roles() {
 
   const fetch = () => {
     setLoading(true);
-    request('roles').then((data: any) => {
+    setError(null);
+    request('roles').then((res: any) => {
       setLoading(false);
-      setData(data.data || []);
+      setData(res.data || []);
     }).catch((e: any) => {
       setLoading(false);
+      setError(e.message);
       message.error(e.message);
     });
   };
+
+  const filteredGroups = useMemo(() => {
+    if (!permSearch) return permGroups;
+    const search = permSearch.toLowerCase();
+    const result: Record<string, string[]> = {};
+    for (const [group, perms] of Object.entries(permGroups)) {
+      const matching = perms.filter(p => p.toLowerCase().includes(search));
+      if (matching.length > 0) result[group] = matching;
+    }
+    return result;
+  }, [permGroups, permSearch]);
 
   const handleCreate = () => {
     form.validateFields().then((values: any) => {
@@ -115,7 +157,7 @@ function Roles() {
   const handleEdit = (role: any) => {
     setEditingRole(role);
     setSelectedPerms(role.permissions || []);
-    form.setFieldsValue({ name: role.name, slug: role.slug });
+    form.setFieldsValue({ name: role.name, slug: role.slug, description: role.description });
     setVisible(true);
   };
 
@@ -124,6 +166,7 @@ function Roles() {
       const data: any = {};
       if (values.name !== editingRole.name) data.name = values.name;
       if (values.slug !== editingRole.slug) data.slug = values.slug;
+      if (values.description !== editingRole.description) data.description = values.description;
       data.permissions = selectedPerms;
       request(`roles/${editingRole.id}`, { data }).then(() => {
         form.resetFields();
@@ -148,6 +191,7 @@ function Roles() {
   const handleCancel = () => {
     form.resetFields();
     setSelectedPerms([]);
+    setPermSearch('');
     setEditingRole(null);
     setVisible(false);
   };
@@ -158,48 +202,159 @@ function Roles() {
     );
   };
 
+  const toggleGroup = (group: string, perms: string[]) => {
+    const allSelected = perms.every(p => selectedPerms.includes(p));
+    if (allSelected) {
+      setSelectedPerms((prev) => prev.filter(p => !perms.includes(p)));
+    } else {
+      setSelectedPerms((prev) => {
+        const next = new Set(prev);
+        perms.forEach(p => next.add(p));
+        return Array.from(next);
+      });
+    }
+  };
+
+  const showRoleUsers = (role: any) => {
+    request(`roles/${role.id}/users`).then((res: any) => {
+      const users = res.data || [];
+      Modal.info({
+        title: `Users with role "${role.name}"`,
+        width: 500,
+        content: (
+          <div>
+            {users.length === 0 ? (
+              <Text type="secondary">No users assigned to this role</Text>
+            ) : (
+              <Table
+                rowKey="id"
+                dataSource={users}
+                size="small"
+                pagination={false}
+                columns={[
+                  { title: 'Username', dataIndex: 'username' },
+                  {
+                    title: 'Status', dataIndex: 'active',
+                    render: (a: boolean) => a ? <Tag color="green">Active</Tag> : <Tag color="default">Inactive</Tag>,
+                  },
+                ]}
+              />
+            )}
+          </div>
+        ),
+      });
+    }).catch((e: any) => {
+      message.error(e.message);
+    });
+  };
+
+  const allPerms = Object.values(permGroups).flat();
+
   return (
     <Content style={{ padding: 50 }}>
       <Button type="primary" onClick={() => setVisible(true)} style={{ marginBottom: 16 }}>
         Create Role
       </Button>
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={Array.isArray(data) ? data : []}
-        loading={loading}
-      />
+      <PageState
+        error={error}
+        onRetry={() => fetch()}
+        empty={!loading && !error && data.length === 0}
+        emptyMessage="No roles defined"
+        emptyAction={
+          <Button type="primary" onClick={() => setVisible(true)}>Create Role</Button>
+        }
+      >
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={Array.isArray(data) ? data : []}
+          loading={loading}
+          expandedRowRender={(record: any) => (
+            <div style={{ padding: '8px 0' }}>
+              <Text strong style={{ fontSize: 13 }}>Permissions ({record.permissions?.length || 0})</Text>
+              <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {record.permissions?.length
+                  ? record.permissions.map((p: string) => <Tag key={p} color="blue">{p}</Tag>)
+                  : <Text type="secondary">No permissions</Text>
+                }
+              </div>
+            </div>
+          )}
+        />
+      </PageState>
+
       <Modal
         title={editingRole ? 'Edit Role' : 'Create Role'}
         open={visible}
         onCancel={handleCancel}
-        onOk={editingRole ? handleUpdate : handleCreate}
+        onOk={isEditingSuperAdmin ? undefined : (editingRole ? handleUpdate : handleCreate)}
+        okText={isEditingSuperAdmin ? 'Close' : (editingRole ? 'Update' : 'Create')}
+        width={600}
+        footer={(_, { OkBtn, CancelBtn }) => (
+          <Space>
+            <CancelBtn />
+            {!isEditingSuperAdmin && <OkBtn />}
+          </Space>
+        )}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="Role Name" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item name="name" label="Role Name" rules={[{ required: true, max: 64 }]}>
+            <Input disabled={isEditingSuperAdmin} />
           </Form.Item>
           <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
-            <Input />
+            <Input disabled={isEditingSuperAdmin} />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={2} maxLength={255} showCount disabled={isEditingSuperAdmin} />
           </Form.Item>
           <Form.Item label="Permissions">
-            {PERMISSION_GROUPS.map((group) => (
-              <div key={group.label} style={{ marginBottom: 8 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 13 }}>{group.label}</div>
-                <div>
-                  {group.keys.map((perm) => (
-                    <Checkbox
-                      key={perm}
-                      checked={selectedPerms.includes(perm)}
-                      onChange={() => togglePermission(perm)}
-                      style={{ marginRight: 12, marginBottom: 4 }}
-                    >
-                      {perm}
-                    </Checkbox>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <Input
+              placeholder="Search permissions..."
+              prefix={<SearchOutlined />}
+              value={permSearch}
+              onChange={(e) => setPermSearch(e.target.value)}
+              style={{ marginBottom: 8 }}
+              allowClear
+              onClear={() => setPermSearch('')}
+            />
+            <div style={{ maxHeight: 360, overflow: 'auto', border: '1px solid #f0f0f0', borderRadius: 6, padding: 8 }}>
+              {Object.entries(filteredGroups).map(([group, perms]) => {
+                const selectedCount = perms.filter(p => selectedPerms.includes(p)).length;
+                return (
+                  <div key={group} style={{ marginBottom: 6, padding: '4px 0', borderBottom: '1px solid #f5f5f5' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Checkbox
+                        indeterminate={selectedCount > 0 && selectedCount < perms.length}
+                        checked={selectedCount === perms.length}
+                        onChange={() => toggleGroup(group, perms)}
+                        disabled={isEditingSuperAdmin}
+                      >
+                        <Text strong style={{ fontSize: 13 }}>{group}</Text>
+                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                          ({selectedCount}/{perms.length})
+                        </Text>
+                      </Checkbox>
+                    </div>
+                    <div style={{ paddingLeft: 24 }}>
+                      {perms.map((perm) => (
+                        <Checkbox
+                          key={perm}
+                          checked={selectedPerms.includes(perm)}
+                          onChange={() => togglePermission(perm)}
+                          style={{ marginRight: 12, marginBottom: 2, fontSize: 12 }}
+                          disabled={isEditingSuperAdmin}
+                        >
+                          {perm}
+                        </Checkbox>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {Object.keys(filteredGroups).length === 0 && (
+                <Text type="secondary">No permissions match "{permSearch}"</Text>
+              )}
+            </div>
           </Form.Item>
         </Form>
       </Modal>

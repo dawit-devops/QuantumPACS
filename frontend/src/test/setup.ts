@@ -22,14 +22,16 @@ if (typeof globalThis.localStorage === 'undefined') {
   };
 }
 
-window.matchMedia = window.matchMedia || function matchMedia(this: any) {
+const _origMatchMedia = window.matchMedia;
+window.matchMedia = function matchMedia(query: string) {
+  const isDesktop = query.includes('min-width: 992');
   return {
-    matches: false,
+    matches: isDesktop,
     addListener: () => {},
     removeListener: () => {},
     addEventListener: () => {},
     removeEventListener: () => {},
-    dispatchEvent: () => {},
+    dispatchEvent: () => isDesktop,
   };
 };
 
@@ -47,3 +49,10 @@ class ResizeObserverMock {
     json: () => Promise.resolve({}),
   });
 };
+
+if (typeof globalThis.requestAnimationFrame === 'undefined') {
+  globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+    return setTimeout(cb, 16) as unknown as number;
+  };
+  globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
+}

@@ -96,7 +96,10 @@ class TestDicomLifecycleFunctions:
                 from lifecycle import _run_dicom
                 _run_dicom()
 
-                assert ModalityWorklistInformationFind in mock_ae_instance.supported_contexts
+                assert any(
+                    pc.abstract_syntax == ModalityWorklistInformationFind
+                    for pc in mock_ae_instance.supported_contexts
+                )
 
     def test_start_dicom_includes_move_get_contexts(self):
         from pynetdicom.sop_class import (
@@ -116,7 +119,13 @@ class TestDicomLifecycleFunctions:
                 from lifecycle import _run_dicom
                 _run_dicom()
 
-                assert PatientRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts
-                assert StudyRootQueryRetrieveInformationModelMove in mock_ae_instance.supported_contexts
-                assert PatientRootQueryRetrieveInformationModelGet in mock_ae_instance.supported_contexts
-                assert StudyRootQueryRetrieveInformationModelGet in mock_ae_instance.supported_contexts
+                for sop_class in (
+                    PatientRootQueryRetrieveInformationModelMove,
+                    StudyRootQueryRetrieveInformationModelMove,
+                    PatientRootQueryRetrieveInformationModelGet,
+                    StudyRootQueryRetrieveInformationModelGet,
+                ):
+                    assert any(
+                        pc.abstract_syntax == sop_class
+                        for pc in mock_ae_instance.supported_contexts
+                    )

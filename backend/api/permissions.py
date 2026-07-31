@@ -33,7 +33,28 @@ class Permission(str, Enum):
     ROUTING_READ = 'ROUTING_READ'
     ROUTING_WRITE = 'ROUTING_WRITE'
     METRICS_READ = 'METRICS_READ'
+    SYSTEM_ADMIN = 'SYSTEM_ADMIN'
+    HL7_READ = 'HL7_READ'
+    HL7_WRITE = 'HL7_WRITE'
 
+
+PERMISSION_GROUPS = {
+    'Files': ['FILE_READ', 'FILE_WRITE', 'FILE_DELETE'],
+    'Patients': ['PATIENT_READ', 'PATIENT_WRITE'],
+    'Studies': ['STUDY_READ', 'STUDY_WRITE'],
+    'Users': ['USER_READ', 'USER_WRITE', 'USER_DELETE', 'USER_ADMIN'],
+    'Replicas': ['REPLICA_READ', 'REPLICA_WRITE', 'REPLICA_DELETE'],
+    'Logs': ['LOG_READ'],
+    'Tenants': ['TENANT_READ', 'TENANT_WRITE', 'TENANT_ADMIN'],
+    'Roles': ['ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'],
+    'Service Keys': ['SERVICE_KEY_READ', 'SERVICE_KEY_WRITE', 'SERVICE_KEY_DELETE'],
+    'Worklist': ['WORKLIST_READ', 'WORKLIST_WRITE'],
+    'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
+    'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
+    'Metrics': ['METRICS_READ'],
+    'HL7': ['HL7_READ', 'HL7_WRITE'],
+    'System Admin': ['SYSTEM_ADMIN'],
+}
 
 SUPER_ADMIN_PERMISSIONS = {p.value for p in Permission}
 
@@ -54,6 +75,8 @@ BUILT_IN_ROLES = {
         Permission.DICOMWEB_READ.value, Permission.DICOMWEB_WRITE.value,
         Permission.ROUTING_READ.value, Permission.ROUTING_WRITE.value,
         Permission.METRICS_READ.value,
+        Permission.SYSTEM_ADMIN.value,
+        Permission.HL7_READ.value, Permission.HL7_WRITE.value,
     ],
     'technologist': [
         Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,

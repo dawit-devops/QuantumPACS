@@ -2,17 +2,28 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
+import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import MobileNav from '../common/MobileNav';
 
 vi.mock('../helpers', () => ({
   isAdmin: () => false,
+  request: vi.fn(),
+  clearTokens: () => {},
+  setTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 function renderWithRouter(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <MobileNav />
-    </MemoryRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <MobileNav />
+        </MemoryRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

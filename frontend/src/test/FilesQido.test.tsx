@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/AuthContext';
+import { ThemeProvider } from '../common/ThemeProvider';
 import Files from '../files/Files';
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -12,9 +13,11 @@ vi.mock('../helpers', () => ({
   open: vi.fn(),
   isAdmin: () => true,
   getAccessToken: () => 't',
-  setTokens: vi.fn(),
+  setTokens: () => {},
   tryRefreshToken: () => Promise.resolve(false),
-  clearTokens: vi.fn(),
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
 }));
 
 vi.mock('../hooks', () => ({
@@ -45,11 +48,13 @@ describe('Files QIDO-RS Search', () => {
 
   function renderWithAuth(url: string, ui: React.ReactElement) {
     return render(
-      <AuthProvider>
-        <MemoryRouter initialEntries={[url]}>
-          {ui}
-        </MemoryRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter initialEntries={[url]}>
+            {ui}
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
     );
   }
 

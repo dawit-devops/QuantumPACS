@@ -8,9 +8,10 @@ import jwt as _jwt
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.tokens import create_token as gen_token, create_token_pair, verify_refresh_token, block_token, is_blocked
-from api.ratelimit import login_bucket
+from api.ratelimit import login_bucket, password_bucket
 from api.validate import parse_body
-from api.schemas.auth import LoginRequest, ChangePasswordRequest
+from api.schemas.auth import LoginRequest
+from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
 from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRoleRequest
 from db.conn import get_conn
@@ -48,6 +49,7 @@ class Login(HTTPEndpoint):
                 return api_error('AUTH_FAILED', str(e), status=401)
 
             await login_bucket.record_db(ip, conn, success=True)
+            await Users(conn).update_last_login(data['id'])
             role_slug, permissions = await Users(conn).get_user_role(data['id'])
             access, refresh = create_token_pair(data, role=role_slug, permissions=permissions)
             resp = ok({
@@ -72,12 +74,20 @@ class Login(HTTPEndpoint):
 
 class ChangePassword(HTTPEndpoint):
     async def post(self, request):
-        body = await parse_body(ChangePasswordRequest, request)
+        body = await parse_body(ChangePasswordRequestV2, request)
+
+        user_key = f'user:{request.user.id}'
+        allowed, msg = await password_bucket.check(user_key)
+        if not allowed:
+            return api_error('RATE_LIMITED', msg, status=429)
 
         async with get_conn() as conn:
             try:
-                data = await Users(conn).change_password(request.user, body.password)
+                data = await Users(conn).change_password(
+                    request.user, body.new_password, body.current_password,
+                )
             except ApiException as e:
+                await password_bucket.record(user_key, success=False)
                 return api_error('PASSWORD_ERROR', str(e), status=400)
 
             token = _extract_token(request)
@@ -127,7 +137,7 @@ class UsersHandler(HTTPEndpoint):
         body = await parse_body(CreateUserRequest, request)
 
         async with get_conn() as conn:
-            result = await Users(conn).add_user(body.username, body.admin)
+            result = await Users(conn).add_user(body.username, body.admin, role_id=body.role_id)
 
         return ok({'password': result['password'], 'username': body.username})
 

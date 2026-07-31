@@ -1,6 +1,7 @@
 import csv
 import io
 import os.path
+from datetime import datetime, timezone
 from zipfile import ZipFile
 from uuid import uuid4
 
@@ -18,24 +19,67 @@ from api.tokens import create_token as gen_token
 from api.utils import get_id
 from api.validate import parse_body
 from api.schemas.files import FileUpdateRequest, ShareRequest
+from config import config as app_config
 from db.conn import get_conn
 from db.file_changes import FileChange
 from db.files import Files
 from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
+from db.notifications import Notifications
 from dcm.file import parse_dcm
 from es import es
 from storage.storage import Storage
 from utils import hash_file
 
 
+_DICOM_MAGIC = b'\x00' * 4 + b'\x08\x00\x00\x00'
+
+
+def _is_dicom(content: bytes) -> bool:
+    return len(content) > 132 and content[128:132] == b'DICM'
+
+
+_REQUIRED_DICOM_TAGS = ['PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'SOPInstanceUID']
+
+
 class Upload(HTTPEndpoint):
     @requires_permission(Permission.FILE_WRITE)
     async def post(self, request):
+        max_mb = int(app_config.get('max_upload_size_mb', '500'))
+        max_bytes = max_mb * 1024 * 1024
+
+        size_hint = request.headers.get('content-length')
+        if size_hint and int(size_hint) > max_bytes:
+            return api_error('FILE_TOO_LARGE', f'File exceeds {max_mb}MB limit', status=413)
+
         form = await request.form()
-        filename = form['file'].filename
-        file = form['file'].file
+        up = form['file']
+        filename = up.filename
+        file = up.file
+
+        header = file.read(256)
+        if not header or not _is_dicom(header):
+            return api_error('INVALID_FILE', 'Not a valid DICOM file', status=400)
+
+        remaining = file.read()
+        content = header + remaining
+        if len(content) > max_bytes:
+            return api_error('FILE_TOO_LARGE', f'File exceeds {max_mb}MB limit', status=413)
+
+        import io
+        buf = io.BytesIO(content)
+
+        try:
+            ds = parse_dcm(buf)
+        except Exception as e:
+            return api_error('PARSE_ERROR', f'Could not parse DICOM: {e}', status=400)
+
+        missing = [t for t in _REQUIRED_DICOM_TAGS if not ds.get(t.lower())]
+        if missing:
+            return api_error('INVALID_DICOM', f'Missing required DICOM tags: {", ".join(missing)}', status=400)
+
+        hsh = hash_file(buf)
 
         async with get_conn() as conn:
             async with conn.transaction():
@@ -43,8 +87,9 @@ class Upload(HTTPEndpoint):
                 if not master:
                     return api_error('NO_MASTER', 'No master replica set')
 
-                ds = parse_dcm(file)
-                hsh = hash_file(file)
+                existing = await Files(conn).find_by_hash(hsh)
+                if existing:
+                    return ok({'id': existing['id'], 'duplicate': True})
 
                 file_data = {
                     'name': os.path.basename(filename),
@@ -54,14 +99,27 @@ class Upload(HTTPEndpoint):
                 file_data.update(ds)
                 filedata = await Files(conn).insert_or_select(file_data)
 
+                buf.seek(0)
                 storage = await Storage.get(master)
-                ret = await storage.copy(file, filedata)
+                try:
+                    ret = await storage.copy(buf, filedata)
+                except Exception:
+                    return api_error('STORAGE_ERROR', 'Failed to store file', status=500)
 
                 await ReplicaFiles(conn).add(
                     master['id'],
                     [{'id': filedata['id'], **ret}],
                 )
-        return no_content()
+                user_id = request.user.id
+                patient_name = ds.get('patient_name', ds.get('patientname', 'Unknown'))
+                await Notifications(conn).create(
+                    user_id=user_id,
+                    event_type='study.arrived',
+                    title=f'Study arrived for {patient_name}',
+                    body=f'File {filename} uploaded successfully',
+                    link=f'/files/{filedata["id"]}',
+                )
+        return ok({'id': filedata['id'], 'duplicate': False})
 
 
 def zip_files(files, zipname):
@@ -245,6 +303,34 @@ class ShareFilesHandler(HTTPEndpoint):
         async with get_conn() as conn:
             key = await SharedFiles(conn).share(file_id, body.duration)
         return ok({'key': key})
+
+
+class ShareFilesListHandler(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
+    async def get(self, request):
+        file_id = get_id(request)
+        async with get_conn() as conn:
+            rows = await SharedFiles(conn).list_for_file(file_id)
+        now = datetime.now(timezone.utc)
+        result = []
+        for r in rows:
+            expires = r['expires']
+            result.append({
+                'id': r['id'],
+                'created': str(r['created']),
+                'expires': str(expires),
+                'hash': r['hash'][:12] + '…',
+                'active': expires > now,
+            })
+        return ok(result)
+
+    @requires_permission(Permission.FILE_WRITE)
+    async def delete(self, request):
+        file_id = get_id(request)
+        share_id = int(request.path_params['share_id'])
+        async with get_conn() as conn:
+            await SharedFiles(conn).revoke(share_id, file_id)
+        return ok({'message': 'Share link revoked'})
 
 
 class ServeThumbnail(HTTPEndpoint):
