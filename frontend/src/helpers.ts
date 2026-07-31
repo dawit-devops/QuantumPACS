@@ -52,12 +52,15 @@ export function getAccessToken(): string | null {
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem("refresh_token");
+  // Refresh token is never persisted to storage (S1); it lives only in the
+  // HttpOnly refresh_token cookie set by the backend.
+  return null;
 }
 
-export function setTokens(access: string, refresh: string): void {
+export function setTokens(access: string, _refresh?: string): void {
+  // Only the short-lived access token is stored; the refresh token travels
+  // via HttpOnly cookie so XSS cannot exfiltrate a long-lived credential.
   localStorage.setItem("access_token", access);
-  localStorage.setItem("refresh_token", refresh);
 }
 
 export function clearTokens(): void {
@@ -75,16 +78,15 @@ export function startRefreshTimer(onRefreshFailed: () => void): void {
       if (!token) return;
       const ok = await tryRefreshToken();
       if (!ok) {
-        const refreshToken = getRefreshToken();
-        if (refreshToken) {
-          const payload = refreshToken.split(".")[1];
-          try {
-            const decoded = JSON.parse(atob(payload));
-            if (decoded.exp * 1000 < Date.now()) {
-              onRefreshFailed();
-            }
-          } catch {}
-        }
+        // Refresh token expiry is unreadable (HttpOnly); approximate with the
+        // access token's own expiry to avoid logging out on transient errors.
+        const payload = token.split(".")[1];
+        try {
+          const decoded = JSON.parse(atob(payload));
+          if (decoded.exp * 1000 < Date.now() + 60000) {
+            onRefreshFailed();
+          }
+        } catch {}
       }
     },
     25 * 60 * 1000,
@@ -99,13 +101,15 @@ export function stopRefreshTimer(): void {
 }
 
 export async function tryRefreshToken(): Promise<boolean> {
-  const token = getRefreshToken();
-  if (!token) return false;
+  // Cookie-authenticated refresh: the HttpOnly refresh_token cookie is sent
+  // automatically for the /api/auth/refresh path; no client-side token needed.
   try {
     const resp = await fetch(`${API_URL}/auth/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: token }),
+      headers: new Headers({
+        "Content-Type": "application/json",
+        "X-CSRF-Token": "1",
+      }),
     });
     if (!resp.ok) return false;
     const data = await resp.json();
@@ -125,6 +129,7 @@ export const request = async (
   }
   options.headers = new Headers({
     "Content-Type": "application/json",
+    "X-CSRF-Token": "1",
   });
   const token = getAccessToken();
   if (token) {
@@ -174,31 +179,25 @@ export const request = async (
 };
 
 export const open = async (url: string): Promise<void> => {
-  return await request("files/download_token").then((data) => {
-    const token = data.token;
-    if (url.includes("?")) {
-      url = `${API_URL}/${url}&token=${token}`;
-    } else {
-      url = `${API_URL}/${url}?token=${token}`;
-    }
-    window.open(url);
-  });
+  // Same-site navigation; the HttpOnly token cookie authenticates it, so no
+  // token needs to be appended to the URL (S1-D).
+  window.open(`${API_URL}/${url}`);
 };
 
 export const parseParams = (search: string): Record<string, string> => {
   search = search.slice(1);
-  let parts = search.split("&");
-  let params: Record<string, string> = {};
-  for (let part of parts) {
-    let [name, value] = part.split("=");
+  const parts = search.split("&");
+  const params: Record<string, string> = {};
+  for (const part of parts) {
+    const [name, value] = part.split("=");
     if (name) params[name] = value;
   }
   return params;
 };
 
 export const encodeQuery = (data: Record<string, string>): string => {
-  let ret: string[] = [];
-  for (let d in data) {
+  const ret: string[] = [];
+  for (const d in data) {
     ret.push(encodeURIComponent(d) + "=" + encodeURIComponent(data[d]));
   }
   return ret.join("&");
@@ -208,16 +207,16 @@ export const updateQuery = (
   history: any,
   data: Record<string, string>,
 ): void => {
-  let { pathname, search } = history.location;
-  let params = parseParams(search);
-  for (let k in data) {
+  const { pathname, search } = history.location;
+  const params = parseParams(search);
+  for (const k in data) {
     params[k] = data[k];
   }
   history.push(`${pathname}?${encodeQuery(params)}`);
 };
 
 export const emit = (event: string, data?: any): void => {
-  let e = new CustomEvent(event, { detail: data });
+  const e = new CustomEvent(event, { detail: data });
   document.body.dispatchEvent(e);
 };
 

@@ -48,41 +48,50 @@ const STATUS_TABS = [
 function Worklist() {
   document.title = "QuantumPACS - Worklist";
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [pagination, setPagination] = useState<any>({
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<any>({
     current: 1,
     pageSize: 20,
     total: 0,
   });
-  let [visible, setVisible] = useState(false);
-  let [editingEntry, setEditingEntry] = useState<any | null>(null);
-  let [statusTab, setStatusTab] = useState("all");
-  let [stationFilter, setStationFilter] = useState<string | undefined>(
+  const [visible, setVisible] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<any | null>(null);
+  const [statusTab, setStatusTab] = useState("all");
+  const [stationFilter, setStationFilter] = useState<string | undefined>(
     undefined,
   );
-  let [searchQuery, setSearchQuery] = useState("");
-  let [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  let [stationOptions, setStationOptions] = useState<string[]>([]);
-  let [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  let [viewMode, setViewMode] = useState<"table" | "calendar">("table");
-  let [batchLoading, setBatchLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [stationOptions, setStationOptions] = useState<string[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
+  const [batchLoading, setBatchLoading] = useState(false);
   const [form] = Form.useForm();
+
+  // Debounce the search field so each keystroke does not fire a request.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const fetch = useCallback(
     (params?: any) => {
       setLoading(true);
       setError(null);
-      const query: any = { ...(params || {}) };
+      const query: Record<string, string> = {};
       if (statusTab !== "all") query.status = statusTab;
       if (stationFilter) query.station_ae_title = stationFilter;
-      if (searchQuery) query.search = searchQuery;
+      if (debouncedSearch) query.search = debouncedSearch;
       if (dateRange) {
         query.date_from = dateRange[0];
         query.date_to = dateRange[1];
       }
-      request("worklist", query)
+      if (params?.page) query.page = String(params.page);
+      if (params?.per_page) query.per_page = String(params.per_page);
+      request("worklist", { query })
         .then((res: any) => {
           setLoading(false);
           const items = Array.isArray(res.data) ? res.data : [];
@@ -99,7 +108,7 @@ function Worklist() {
           message.error(e.message);
         });
     },
-    [statusTab, stationFilter, searchQuery, dateRange],
+    [statusTab, stationFilter, debouncedSearch, dateRange],
   );
 
   useEffect(() => {

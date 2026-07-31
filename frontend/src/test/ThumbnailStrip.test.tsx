@@ -1,11 +1,8 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import ThumbnailStrip from "../detail/ThumbnailStrip";
-
-vi.mock("../helpers", () => ({
-  getAccessToken: () => "test-token",
-}));
+import { API_URL } from "../config";
 
 const mockFiles = [
   { id: 1, name: "image1.dcm" },
@@ -14,6 +11,33 @@ const mockFiles = [
 ];
 
 describe("ThumbnailStrip", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads thumbnails without appending a token to the URL", () => {
+    const srcs: string[] = [];
+    class FakeImage {
+      set src(v: string) {
+        srcs.push(v);
+      }
+      get src() {
+        return srcs[srcs.length - 1];
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
+
+    render(
+      <ThumbnailStrip files={mockFiles} currentFileId="1" onSelect={vi.fn()} />,
+    );
+
+    expect(srcs).toEqual([
+      `${API_URL}/files/1/thumbnail`,
+      `${API_URL}/files/2/thumbnail`,
+      `${API_URL}/files/3/thumbnail`,
+    ]);
+    expect(srcs.join(" ")).not.toContain("token=");
+  });
   it("renders null when files is null", () => {
     const { container } = render(
       <ThumbnailStrip

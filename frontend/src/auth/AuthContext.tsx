@@ -80,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("role");
     localStorage.removeItem("permissions");
     localStorage.removeItem("tenant_id");
+    localStorage.removeItem("tempKey");
+    sessionStorage.removeItem("shareKeyError");
     clearTokens();
     setUser(null);
   }, []);

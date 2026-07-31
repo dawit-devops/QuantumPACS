@@ -47,6 +47,7 @@ function uploadFile(
 
     xhr.open("POST", `${API_URL}/files/upload`);
     xhr.setRequestHeader("X-Auth-Pacs", getAccessToken() || "");
+    xhr.setRequestHeader("X-CSRF-Token", "1");
     xhr.send(formData);
   });
 }
@@ -152,7 +153,7 @@ export function UploadZone({ reload }: UploadZoneProps) {
           size: file.size,
           status: "error",
           progress: 0,
-          error: `File exceeds 500MB limit`,
+          error: "File exceeds 500MB limit",
         };
         setQueue((prev) => {
           const next = [...prev, entry];

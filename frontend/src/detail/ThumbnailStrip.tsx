@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { API_URL } from "../config";
-import { getAccessToken } from "../helpers";
 import "./ThumbnailStrip.css";
 
 interface ThumbnailStripProps {
@@ -50,8 +49,9 @@ function ThumbnailItem({
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const token = getAccessToken();
-    const url = `${API_URL}/files/${file.id}/thumbnail${token ? `?token=${token}` : ""}`;
+    // Same-site image fetch; the HttpOnly token cookie authenticates it, so
+    // no token is appended to the URL (S1-D).
+    const url = `${API_URL}/files/${file.id}/thumbnail`;
     const img = new Image();
     img.onload = () => setSrc(url);
     img.onerror = () => setError(true);

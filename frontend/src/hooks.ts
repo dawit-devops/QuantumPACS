@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { LOADING_DELAY, API_URL } from "./config";
-import {
-  handleResponse,
-  getAccessToken,
-  getRefreshToken,
-  setTokens,
-  tryRefreshToken,
-} from "./helpers";
+import { handleResponse, getAccessToken, tryRefreshToken } from "./helpers";
 import { navigate } from "./navigator";
 
 async function fetchWithRetry(
@@ -67,6 +61,7 @@ export function useFetch(url: string, options: any = {}) {
 
     options.headers = new Headers({
       "Content-Type": "application/json",
+      "X-CSRF-Token": "1",
     });
     addAuthHeader(options.headers);
     controller.current = new AbortController();

@@ -197,18 +197,19 @@ class TokenAuth(AuthenticationBackend):
                 if bearer and bearer.startswith('Bearer '):
                     auth = bearer[7:]
             if not auth:
-                auth = request.query_params.get('token')
-            if not auth:
                 auth = request.cookies.get('token')
+            if not auth:
+                # Query-string credentials on HTTP are share keys only; JWTs must
+                # travel via header or HttpOnly cookie so tokens never hit URLs.
+                auth = request.query_params.get('token')
+                from_query = auth is not None
+            else:
+                from_query = False
             if not auth:
                 raise AuthenticationError('Invalid auth')
 
             credentials = auth
-            try:
-                data = verify_token(credentials)
-            except _jwt.ExpiredSignatureError:
-                raise AuthenticationError('Token expired')
-            except _jwt.InvalidTokenError:
+            if from_query:
                 try:
                     async with get_conn() as conn:
                         file_id = await SharedFiles(conn).check(credentials)
@@ -221,6 +222,12 @@ class TokenAuth(AuthenticationBackend):
                 else:
                     raise AuthenticationError('Invalid auth')
             else:
+                try:
+                    data = verify_token(credentials)
+                except _jwt.ExpiredSignatureError:
+                    raise AuthenticationError('Token expired')
+                except _jwt.InvalidTokenError:
+                    raise AuthenticationError('Invalid auth')
                 if await is_blocked(data.get('jti', '')):
                     raise AuthenticationError('Token revoked')
                 cached = await _get_cached_active(data['id'])
