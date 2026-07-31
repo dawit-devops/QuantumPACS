@@ -59,7 +59,7 @@ class TenantConnectionPool:
             return
         oldest = min(cls._last_used, key=cls._last_used.get)
         import asyncio
-        asyncio.ensure_future(cls.close(oldest))
+        asyncio.create_task(cls.close(oldest))
 
 
 class Tenants(Table):

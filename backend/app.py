@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import time
 
 import sentry_sdk
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -14,7 +15,6 @@ import lifecycle
 from api.auth import TokenAuth
 from api.routes import routes
 from api.response import server_error
-from api.service_middleware import ServiceMiddleware
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
@@ -58,7 +58,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        import time
         start = time.monotonic()
         path = request.url.path
         if request.method == 'OPTIONS' and path.startswith('/api'):
@@ -180,7 +179,6 @@ app = Starlette(
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TenantMiddleware),
         Middleware(FhirAuditMiddleware),
-        Middleware(ServiceMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
         Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),

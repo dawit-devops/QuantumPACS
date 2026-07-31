@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import JSONResponse, Response

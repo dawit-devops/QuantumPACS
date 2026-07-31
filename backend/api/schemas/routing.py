@@ -1,11 +1,10 @@
-from typing import Optional
 from pydantic import BaseModel, Field
 
 
 class RoutingRuleRequest(BaseModel):
     name: str = Field(..., min_length=1)
-    description: Optional[str] = ''
+    description: str | None = ''
     conditions: str | dict = Field(default='{}')
     destination: str = Field(..., min_length=1)
-    priority: Optional[int] = 0
-    enabled: Optional[bool] = True
+    priority: int | None = 0
+    enabled: bool | None = True

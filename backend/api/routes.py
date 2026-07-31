@@ -61,104 +61,111 @@ async def openapi_spec(request):
     return FileResponse(os.path.join(DIR, '..', 'static', 'openapi.json'), media_type='application/json')
 
 
+_V2_EXCLUDE_PREFIXES = ('/v2/', '/docs', '/api/v2/')
+
+
+def v2(route_obj):
+    """Mark a Route/WebSocketRoute as needing a /v2-prefixed alias."""
+    route_obj._v2_alias = True
+    return route_obj
+
+
 _V1_ROUTES = [
-    Route('/health', endpoint=health_endpoint),
-    Route('/v2/health', endpoint=health_endpoint),
-    Route('/health', endpoint=health_endpoint),
-    Route('/v2/metrics', endpoint=metrics_endpoint),
+    v2(Route('/health', endpoint=health_endpoint)),
+    v2(Route('/metrics', endpoint=metrics_endpoint)),
     Route('/docs', endpoint=docs_page),
     Route('/docs/openapi.json', endpoint=openapi_spec),
-    Route('/replicas', endpoint=ReplicasHandlers),
-    Route('/replicas/{id}', endpoint=ReplicaHandlers),
-    Route('/login', endpoint=Login),
-    Route('/auth/refresh', endpoint=RefreshToken),
-    Route('/auth/logout', endpoint=Logout),
-    Route('/auth/revoke', endpoint=RevokeToken),
-    Route('/oauth/login', endpoint=oauth_login),
-    Route('/oauth/callback', endpoint=oauth_callback),
-    Route('/.well-known/openid-configuration', endpoint=oidc_discovery),
-    Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST']),
-    Route('/change_password', endpoint=ChangePassword),
-    Route('/account/profile', endpoint=ProfileHandler),
-    Route('/users', endpoint=UsersHandler),
-    Route('/users/deactivate', endpoint=UsersDeactivate),
-    Route('/users/new_password', endpoint=UsersNewPassword),
-    Route('/users/role', endpoint=UserRoleUpdate),
-    Route('/patients/{id}', endpoint=PatientHandler),
-    Route('/files/upload', endpoint=Upload),
-    Route('/files/download_token', endpoint=DownloadToken),
-    Route('/files/download.zip', endpoint=DownloadFiles),
-    Route('/files/download.csv', endpoint=DownloadData),
-    Route('/files', endpoint=FilesHandler),
-    Route('/files/{id}', endpoint=FileHandler),
-    Route('/files/{id}/changes', endpoint=FileChangesHandler),
-    Route('/files/{id}/share', endpoint=ShareFilesHandler),
-    Route('/files/{id}/shares', endpoint=ShareFilesListHandler),
-    Route('/files/{id}/shares/{share_id}', endpoint=ShareFilesListHandler),
-    Route('/files/{id}/data', endpoint=ServeFile),
-    Route('/files/{id}/thumbnail', endpoint=ServeThumbnail),
-    Route('/logs', endpoint=LogsHandler),
-    Route('/logs/event-types', endpoint=LogEventTypesHandler),
-    Route('/logs/actors', endpoint=LogActorsHandler),
-    Route('/roles', endpoint=RolesHandler),
-    Route('/roles/{id}', endpoint=RoleHandler),
-    Route('/roles/{id}/users', endpoint=RoleUsersHandler),
-    Route('/permissions', endpoint=PermissionsHandler),
-    Route('/notifications', endpoint=NotificationsHandler),
-    Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler),
-    Route('/notifications/read-all', endpoint=NotificationsReadAllHandler),
-    Route('/notifications/{id}', endpoint=NotificationHandler),
-    Route('/tenants', endpoint=TenantsHandler),
-    Route('/tenants/{id}', endpoint=TenantHandler),
-    Route('/tenants/{id}/stats', endpoint=TenantStatsHandler),
-    Route('/api-keys', endpoint=ApiKeysHandler),
-    Route('/api-keys/{id}', endpoint=ApiKeyHandler),
-    Route('/oauth/providers', endpoint=OAuthProvidersHandler),
-    Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler),
-    Route('/dicomweb/studies', endpoint=DicomWebStudies),
-    Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado),
-    Route('/dicomweb/studies/{study_uid}/series', endpoint=DicomWebStudies),
-    Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado),
-    Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies),
-    Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado),
-    Route('/wado', endpoint=DicomWebWadoUri),
+    v2(Route('/replicas', endpoint=ReplicasHandlers)),
+    v2(Route('/replicas/{id}', endpoint=ReplicaHandlers)),
+    v2(Route('/login', endpoint=Login)),
+    v2(Route('/auth/refresh', endpoint=RefreshToken)),
+    v2(Route('/auth/logout', endpoint=Logout)),
+    v2(Route('/auth/revoke', endpoint=RevokeToken)),
+    v2(Route('/oauth/login', endpoint=oauth_login)),
+    v2(Route('/oauth/callback', endpoint=oauth_callback)),
+    v2(Route('/.well-known/openid-configuration', endpoint=oidc_discovery)),
+    v2(Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])),
+    v2(Route('/change_password', endpoint=ChangePassword)),
+    v2(Route('/account/profile', endpoint=ProfileHandler)),
+    v2(Route('/users', endpoint=UsersHandler)),
+    v2(Route('/users/deactivate', endpoint=UsersDeactivate)),
+    v2(Route('/users/new_password', endpoint=UsersNewPassword)),
+    v2(Route('/users/role', endpoint=UserRoleUpdate)),
+    v2(Route('/patients/{id}', endpoint=PatientHandler)),
+    v2(Route('/files/upload', endpoint=Upload)),
+    v2(Route('/files/download_token', endpoint=DownloadToken)),
+    v2(Route('/files/download.zip', endpoint=DownloadFiles)),
+    v2(Route('/files/download.csv', endpoint=DownloadData)),
+    v2(Route('/files', endpoint=FilesHandler)),
+    v2(Route('/files/{id}', endpoint=FileHandler)),
+    v2(Route('/files/{id}/changes', endpoint=FileChangesHandler)),
+    v2(Route('/files/{id}/share', endpoint=ShareFilesHandler)),
+    v2(Route('/files/{id}/shares', endpoint=ShareFilesListHandler)),
+    v2(Route('/files/{id}/shares/{share_id}', endpoint=ShareFilesListHandler)),
+    v2(Route('/files/{id}/data', endpoint=ServeFile)),
+    v2(Route('/files/{id}/thumbnail', endpoint=ServeThumbnail)),
+    v2(Route('/logs', endpoint=LogsHandler)),
+    v2(Route('/logs/event-types', endpoint=LogEventTypesHandler)),
+    v2(Route('/logs/actors', endpoint=LogActorsHandler)),
+    v2(Route('/roles', endpoint=RolesHandler)),
+    v2(Route('/roles/{id}', endpoint=RoleHandler)),
+    v2(Route('/roles/{id}/users', endpoint=RoleUsersHandler)),
+    v2(Route('/permissions', endpoint=PermissionsHandler)),
+    v2(Route('/notifications', endpoint=NotificationsHandler)),
+    v2(Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler)),
+    v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
+    v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
+    v2(Route('/tenants', endpoint=TenantsHandler)),
+    v2(Route('/tenants/{id}', endpoint=TenantHandler)),
+    v2(Route('/tenants/{id}/stats', endpoint=TenantStatsHandler)),
+    v2(Route('/api-keys', endpoint=ApiKeysHandler)),
+    v2(Route('/api-keys/{id}', endpoint=ApiKeyHandler)),
+    v2(Route('/oauth/providers', endpoint=OAuthProvidersHandler)),
+    v2(Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler)),
+    v2(Route('/dicomweb/studies', endpoint=DicomWebStudies)),
+    v2(Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series', endpoint=DicomWebStudies)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    v2(Route('/wado', endpoint=DicomWebWadoUri)),
     Route('/api/v2/wado', endpoint=DicomWebWadoUri),
-    Route('/dicomweb/admin', endpoint=DicomWebAdminHandler),
-    Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler),
-    Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST']),
-    Route('/webhooks', endpoint=WebhooksHandler),
-    Route('/webhooks/{id}', endpoint=WebhookHandler),
-    Route('/fhir/metadata', endpoint=FhirMetadata),
-    Route('/fhir/Patient', endpoint=FhirPatientRoot),
-    Route('/fhir/Patient/{id}', endpoint=FhirPatientResource),
-    Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch),
-    Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
-    Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
-    Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
-    Route('/hl7', endpoint=Hl7Receiver, methods=['POST']),
-    Route('/hl7/admin/messages', endpoint=Hl7MessagesHandler),
-    Route('/hl7/admin/messages/{id}', endpoint=Hl7MessageHandler),
-    Route('/hl7/admin/metrics', endpoint=Hl7MetricsHandler),
-    Route('/hl7/admin/config', endpoint=Hl7ConfigHandler),
-    Route('/hl7/admin/status', endpoint=Hl7StatusHandler),
-    Route('/worklist/station-aes', endpoint=WorklistStationAeHandler),
-    Route('/worklist', endpoint=WorklistHandler),
-    Route('/worklist/{id}', endpoint=WorklistEntryHandler),
-    Route('/routing', endpoint=RoutingHandler),
-    Route('/routing/{id}', endpoint=RoutingRuleHandler),
-    Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler),
-    Route('/fhir/admin/clients', endpoint=FhirAdminClientsHandler),
-    Route('/fhir/admin/clients/{id}', endpoint=FhirAdminClientHandler),
-    Route('/fhir/admin/metrics', endpoint=FhirAdminMetricsHandler),
-    Route('/fhir/admin/requests', endpoint=FhirAdminRecentRequestsHandler),
-    Route('/fhir/admin/test', endpoint=FhirAdminTestHandler),
+    v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
+    v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
+    v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),
+    v2(Route('/webhooks', endpoint=WebhooksHandler)),
+    v2(Route('/webhooks/{id}', endpoint=WebhookHandler)),
+    v2(Route('/fhir/metadata', endpoint=FhirMetadata)),
+    v2(Route('/fhir/Patient', endpoint=FhirPatientRoot)),
+    v2(Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)),
+    v2(Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch)),
+    v2(Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead)),
+    v2(Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch)),
+    v2(Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead)),
+    v2(Route('/hl7', endpoint=Hl7Receiver, methods=['POST'])),
+    v2(Route('/hl7/admin/messages', endpoint=Hl7MessagesHandler)),
+    v2(Route('/hl7/admin/messages/{id}', endpoint=Hl7MessageHandler)),
+    v2(Route('/hl7/admin/metrics', endpoint=Hl7MetricsHandler)),
+    v2(Route('/hl7/admin/config', endpoint=Hl7ConfigHandler)),
+    v2(Route('/hl7/admin/status', endpoint=Hl7StatusHandler)),
+    v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
+    v2(Route('/worklist', endpoint=WorklistHandler)),
+    v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
+    v2(Route('/routing', endpoint=RoutingHandler)),
+    v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
+    v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),
+    v2(Route('/fhir/admin/clients', endpoint=FhirAdminClientsHandler)),
+    v2(Route('/fhir/admin/clients/{id}', endpoint=FhirAdminClientHandler)),
+    v2(Route('/fhir/admin/metrics', endpoint=FhirAdminMetricsHandler)),
+    v2(Route('/fhir/admin/requests', endpoint=FhirAdminRecentRequestsHandler)),
+    v2(Route('/fhir/admin/test', endpoint=FhirAdminTestHandler)),
     Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
-    Route('/ws_token', endpoint=WSToken),
-    WebSocketRoute('/ws', endpoint=WebsocketHandler),
+    v2(Route('/ws_token', endpoint=WSToken)),
+    v2(WebSocketRoute('/ws', endpoint=WebsocketHandler)),
 ]
 
 
-def _v2_alias_path(path: str) -> str:
+def _alias_path(path: str) -> str:
     if path.startswith('/v2/'):
         return path
     return '/v2' + path
@@ -167,14 +174,13 @@ def _v2_alias_path(path: str) -> str:
 def _build_v2_aliases(v1_routes):
     aliases = []
     for r in v1_routes:
-        if isinstance(r, (Route, WebSocketRoute)):
-            if (
-                r.path.startswith('/v2/')
-                or r.path.startswith('/docs')
-                or r.path.startswith('/api/v2/')
-            ):
-                continue
-            aliases.append(type(r)(_v2_alias_path(r.path), endpoint=r.endpoint))
+        if not isinstance(r, (Route, WebSocketRoute)):
+            continue
+        if not getattr(r, '_v2_alias', False):
+            continue
+        if any(r.path.startswith(p) for p in _V2_EXCLUDE_PREFIXES):
+            continue
+        aliases.append(type(r)(_alias_path(r.path), endpoint=r.endpoint))
     return aliases
 
 

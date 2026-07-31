@@ -3,8 +3,6 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = [
-    "ignore::PendingDeprecationWarning:starlette.formparsers",
-    "ignore::PendingDeprecationWarning:multipart",
     "ignore::UserWarning:jwt.warnings",
     'ignore:Using `httpx` with `starlette.testclient`:UserWarning',
     "ignore:unclosed <socket.socket:ResourceWarning",

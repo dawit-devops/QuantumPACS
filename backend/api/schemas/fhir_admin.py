@@ -1,13 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class FhirConfigUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    base_url: Optional[str] = None
-    publisher: Optional[str] = None
-    max_search_results: Optional[int] = None
-    log_retention_days: Optional[int] = None
+    enabled: bool | None = None
+    base_url: str | None = None
+    publisher: str | None = None
+    max_search_results: int | None = None
+    log_retention_days: int | None = None
 
 
 class FhirClientCreate(BaseModel):
@@ -18,8 +17,8 @@ class FhirClientCreate(BaseModel):
 
 
 class FhirClientUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    redirect_uris: Optional[str] = None
-    grant_type: Optional[str] = None
-    active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    redirect_uris: str | None = None
+    grant_type: str | None = None
+    active: bool | None = None

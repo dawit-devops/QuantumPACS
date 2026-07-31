@@ -1,5 +1,4 @@
 import functools
-from typing import Optional
 
 from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
@@ -25,7 +24,7 @@ def requires_permission(permission: Permission):
     return decorator
 
 
-def get_role_permissions(role_slug: Optional[str]) -> list[str]:
+def get_role_permissions(role_slug: str | None) -> list[str]:
     if not role_slug:
         return list(BUILT_IN_ROLES.get('cashier', []))
     return list(BUILT_IN_ROLES.get(role_slug, BUILT_IN_ROLES.get('cashier', [])))
