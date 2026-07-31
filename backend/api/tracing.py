@@ -73,8 +73,8 @@ def traced_connection(pool):
 
 class _TracedPool:
     def __init__(self, pool, tracer):
-        object.__setattr__(self, '_pool', pool)
-        object.__setattr__(self, '_tracer', tracer)
+        super().__setattr__('_pool', pool)
+        super().__setattr__('_tracer', tracer)
 
     def __getattr__(self, name):
         if name == 'acquire':
@@ -101,8 +101,8 @@ class _TracedAcquireContext:
 
 class _TracedConnection:
     def __init__(self, conn, tracer):
-        object.__setattr__(self, '_conn', conn)
-        object.__setattr__(self, '_tracer', tracer)
+        super().__setattr__('_conn', conn)
+        super().__setattr__('_tracer', tracer)
 
     def __getattr__(self, name):
         return getattr(self._conn, name)

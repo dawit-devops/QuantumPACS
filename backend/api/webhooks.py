@@ -1,4 +1,7 @@
+import ipaddress
 import json
+from urllib.parse import urlparse
+
 import httpx
 
 from starlette.endpoints import HTTPEndpoint
@@ -88,6 +91,22 @@ class WebhookTestHandler(HTTPEndpoint):
         url = body.get('url', '')
         if not url:
             return api_error('VALIDATION', 'url is required', status=400)
+
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname or ''
+            addr = ipaddress.ip_address(host)
+            private_ranges = [
+                ipaddress.ip_network('127.0.0.0/8'),
+                ipaddress.ip_network('10.0.0.0/8'),
+                ipaddress.ip_network('172.16.0.0/12'),
+                ipaddress.ip_network('192.168.0.0/16'),
+                ipaddress.ip_network('::1/128'),
+            ]
+            if any(addr in net for net in private_ranges):
+                return api_error('SSRF_BLOCKED', 'Requests to private/reserved IP ranges are blocked', status=400)
+        except ValueError:
+            pass
 
         payload = {
             'event': 'test.ping',

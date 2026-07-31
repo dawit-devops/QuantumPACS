@@ -1,5 +1,6 @@
 import binascii
 import hashlib
+import hmac
 import os
 import random
 import string
@@ -57,7 +58,7 @@ class Users(Table):
             return binascii.hexlify(data).decode('utf8') == stored
         salt = raw[:16]
         expected = hash_password(password, salt)
-        return expected == stored
+        return hmac.compare_digest(expected, stored)
 
     async def login(self, username, password):
         q = self.select('*').where(self.table.username == username)

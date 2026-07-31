@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import ipaddress
 import json
 
 import hl7
@@ -23,7 +24,12 @@ class MllpServer:
         self._port = port
         self._handler = handler or default_handler
         self._ssl_context = ssl_context
-        self._allowed_ips = allowed_ips or []
+        self._allowed_networks = []
+        for entry in (allowed_ips or []):
+            try:
+                self._allowed_networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                log.warning('Invalid IP network in allowed_ips: %s', entry)
         self._server = None
 
     async def start(self):
@@ -43,10 +49,17 @@ class MllpServer:
     async def _on_connect(self, reader, writer):
         peer = writer.get_extra_info('peername')
         peer_ip = peer[0] if peer else ''
-        if self._allowed_ips and peer_ip not in self._allowed_ips:
-            log.warning('MLLP connection rejected from %s (not in whitelist)', peer_ip)
-            writer.close()
-            return
+        if self._allowed_networks:
+            try:
+                addr = ipaddress.ip_address(peer_ip)
+                if not any(addr in net for net in self._allowed_networks):
+                    log.warning('MLLP connection rejected from %s (not in whitelist)', peer_ip)
+                    writer.close()
+                    return
+            except ValueError:
+                log.warning('MLLP connection rejected from %s (invalid IP)', peer_ip)
+                writer.close()
+                return
         try:
             while True:
                 data = await reader.readuntil(MLLP_END)
