@@ -1,6 +1,4 @@
 import json
-import sys
-import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -40,10 +38,12 @@ _EXPECTED_CHANNEL = 'channel:file:pubsub-file-1'
 
 
 def _setup_redis_mocks():
-    rasyncio = types.ModuleType('redis.asyncio')
-    rasyncio.Redis = MagicMock()
-    sys.modules['redis'] = types.ModuleType('redis')
-    sys.modules['redis.asyncio'] = rasyncio
+    mock_client = MagicMock()
+    mock_client.publish = AsyncMock()
+    mock_client.aclose = AsyncMock()
+    patcher = patch('api.redis_client.get_client', new=AsyncMock(return_value=mock_client))
+    patcher.start()
+    return patcher, mock_client
 
 
 def _reset_ws_state(app):
@@ -52,8 +52,11 @@ def _reset_ws_state(app):
 
 class TestWebsocketPubSub:
     def setup_method(self):
-        _setup_redis_mocks()
+        self._redis_patcher, self._mock_client = _setup_redis_mocks()
         self._app = _make_app()
+
+    def teardown_method(self):
+        self._redis_patcher.stop()
 
     def test_publish_to_channel(self):
         client = TestClient(self._app)
@@ -69,8 +72,7 @@ class TestWebsocketPubSub:
                 'state': {'window': 120},
             })
 
-        redis_cls = sys.modules['redis.asyncio'].Redis
-        redis_instance = redis_cls.return_value
+        redis_instance = self._mock_client
         assert redis_instance.publish.called
         channel, raw = redis_instance.publish.call_args[0]
         assert channel == _EXPECTED_CHANNEL
@@ -81,8 +83,12 @@ class TestWebsocketPubSub:
         assert redis_instance.aclose.called
 
     def test_fallback_to_local_when_redis_fails(self):
-        rasyncio = sys.modules['redis.asyncio']
-        rasyncio.Redis = MagicMock(side_effect=ConnectionError('no redis'))
+        self._redis_patcher.stop()
+        self._redis_patcher = patch(
+            'api.redis_client.get_client',
+            new=AsyncMock(side_effect=ConnectionError('no redis')),
+        )
+        self._redis_patcher.start()
 
         client = TestClient(self._app)
         with client.websocket_connect('/ws') as ws:
@@ -109,8 +115,7 @@ class TestWebsocketPubSub:
                     'state': {'counter': i},
                 })
 
-        redis_cls = sys.modules['redis.asyncio'].Redis
-        redis_instance = redis_cls.return_value
+        redis_instance = self._mock_client
         assert redis_instance.publish.call_count == 3
         for i, call_args in enumerate(redis_instance.publish.call_args_list):
             channel, raw = call_args[0]
