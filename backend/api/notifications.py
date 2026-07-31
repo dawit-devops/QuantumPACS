@@ -2,7 +2,7 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, not_found
+from api.response import ok
 from db.conn import get_conn
 from db.notifications import Notifications
 

@@ -1,5 +1,4 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from api import tracing
 
@@ -18,7 +17,6 @@ class TestTracingSetup:
 
     def test_setup_tracing_uses_batch_processor(self):
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk.trace import TracerProvider
         with patch('api.tracing.TracerProvider') as mock_provider_cls, \
              patch('api.tracing.ConsoleSpanExporter'):
             mock_provider = MagicMock()

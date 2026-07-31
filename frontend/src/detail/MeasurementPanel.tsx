@@ -1,7 +1,15 @@
-import React, { useMemo } from 'react';
-import { Button, Tag, Tooltip, Empty, Typography } from 'antd';
-import { DownloadOutlined, AimOutlined, LineOutlined, BorderOutlined, PlusCircleOutlined, RightOutlined, ArrowRightOutlined } from '@ant-design/icons';
-import { useTheme } from '../common/ThemeProvider';
+import React, { useMemo } from "react";
+import { Button, Tag, Tooltip, Empty, Typography } from "antd";
+import {
+  DownloadOutlined,
+  AimOutlined,
+  LineOutlined,
+  BorderOutlined,
+  PlusCircleOutlined,
+  RightOutlined,
+  ArrowRightOutlined,
+} from "@ant-design/icons";
+import { useTheme } from "../common/ThemeProvider";
 
 const { Text, Title: TypographyTitle } = Typography;
 
@@ -32,22 +40,28 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
 };
 
 const TOOL_COLORS: Record<string, string> = {
-  Length: '#22D3EE',
-  Angle: '#FBBF24',
-  ArrowAnnotate: '#A78BFA',
-  RectangleROI: '#34D399',
-  EllipticalROI: '#F87171',
+  Length: "#22D3EE",
+  Angle: "#FBBF24",
+  ArrowAnnotate: "#A78BFA",
+  RectangleROI: "#34D399",
+  EllipticalROI: "#F87171",
 };
 
 const TOOL_LABELS: Record<string, string> = {
-  Length: 'Length',
-  Angle: 'Angle',
-  ArrowAnnotate: 'Arrow',
-  RectangleROI: 'Rectangle ROI',
-  EllipticalROI: 'Ellipse ROI',
+  Length: "Length",
+  Angle: "Angle",
+  ArrowAnnotate: "Arrow",
+  RectangleROI: "Rectangle ROI",
+  EllipticalROI: "Ellipse ROI",
 };
 
-function MeasurementPanel({ measurements, onFocusAnnotation, collapsed, onToggle, visible }: MeasurementPanelProps) {
+function MeasurementPanel({
+  measurements,
+  onFocusAnnotation,
+  collapsed,
+  onToggle,
+  visible,
+}: MeasurementPanelProps) {
   const { isDark } = useTheme();
 
   const grouped = useMemo(() => {
@@ -62,13 +76,16 @@ function MeasurementPanel({ measurements, onFocusAnnotation, collapsed, onToggle
   if (!visible) return null;
 
   const exportCSV = () => {
-    const header = 'Type,Label,Value,Series\n';
-    const rows = measurements.map(m =>
-      `"${m.type}","${m.label}","${m.value}","${m.seriesNumber || ''}"`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const header = "Type,Label,Value,Series\n";
+    const rows = measurements
+      .map(
+        (m) =>
+          `"${m.type}","${m.label}","${m.value}","${m.seriesNumber || ""}"`,
+      )
+      .join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `measurements-${Date.now()}.csv`;
     a.click();
@@ -76,40 +93,51 @@ function MeasurementPanel({ measurements, onFocusAnnotation, collapsed, onToggle
   };
 
   return (
-    <div style={{
-      width: collapsed ? 0 : 300,
-      minWidth: collapsed ? 0 : 300,
-      overflow: 'hidden',
-      borderLeft: `1px solid var(--border-color)`,
-      background: 'var(--bg-surface)',
-      display: 'flex',
-      flexDirection: 'column',
-      transition: 'width var(--duration-normal) var(--easing-standard), min-width var(--duration-normal) var(--easing-standard)',
-    }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px 16px',
-        borderBottom: `1px solid var(--border-color)`,
-      }}>
+    <div
+      style={{
+        width: collapsed ? 0 : 300,
+        minWidth: collapsed ? 0 : 300,
+        overflow: "hidden",
+        borderLeft: `1px solid var(--border-color)`,
+        background: "var(--bg-surface)",
+        display: "flex",
+        flexDirection: "column",
+        transition:
+          "width var(--duration-normal) var(--easing-standard), min-width var(--duration-normal) var(--easing-standard)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 16px",
+          borderBottom: `1px solid var(--border-color)`,
+        }}
+      >
         <TypographyTitle level={5} style={{ margin: 0, fontSize: 13 }}>
           Measurements
           {measurements.length > 0 && (
             <Tag style={{ marginLeft: 8 }}>{measurements.length}</Tag>
           )}
         </TypographyTitle>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: "flex", gap: 4 }}>
           {measurements.length > 0 && (
             <Tooltip title="Export CSV">
-              <Button size="small" icon={<DownloadOutlined />} onClick={exportCSV} />
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                onClick={exportCSV}
+              />
             </Tooltip>
           )}
-          <Button size="small" onClick={onToggle}>✕</Button>
+          <Button size="small" onClick={onToggle}>
+            ✕
+          </Button>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
         {measurements.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -119,52 +147,94 @@ function MeasurementPanel({ measurements, onFocusAnnotation, collapsed, onToggle
         ) : (
           Object.entries(grouped).map(([toolName, items]) => (
             <div key={toolName} style={{ marginBottom: 12 }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                marginBottom: 4,
-                padding: '4px 8px',
-              }}>
-                <span style={{ color: TOOL_COLORS[toolName] || 'var(--text-muted)' }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 4,
+                  padding: "4px 8px",
+                }}
+              >
+                <span
+                  style={{
+                    color: TOOL_COLORS[toolName] || "var(--text-muted)",
+                  }}
+                >
                   {TOOL_ICONS[toolName] || <LineOutlined />}
                 </span>
-                <Text strong style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <Text
+                  strong
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
                   {TOOL_LABELS[toolName] || toolName}
                 </Text>
-                <Tag style={{ fontSize: 10, lineHeight: '16px', padding: '0 6px' }}>{items.length}</Tag>
+                <Tag
+                  style={{ fontSize: 10, lineHeight: "16px", padding: "0 6px" }}
+                >
+                  {items.length}
+                </Tag>
               </div>
               {items.map((m) => (
                 <div
                   key={m.annotationUID}
                   onClick={() => onFocusAnnotation(m.annotationUID)}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '6px 8px 6px 12px',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "6px 8px 6px 12px",
                     marginBottom: 2,
                     borderRadius: 4,
-                    cursor: 'pointer',
-                    transition: 'background var(--duration-fast)',
+                    cursor: "pointer",
+                    transition: "background var(--duration-fast)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)';
+                    e.currentTarget.style.background = isDark
+                      ? "rgba(255,255,255,0.06)"
+                      : "rgba(0,0,0,0.03)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.background = "transparent";
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {m.label && (
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-secondary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {m.label}
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-                    <Text code style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{m.value}</Text>
-                    <AimOutlined style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.6 }} />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginLeft: 8,
+                    }}
+                  >
+                    <Text code style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+                      {m.value}
+                    </Text>
+                    <AimOutlined
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-muted)",
+                        opacity: 0.6,
+                      }}
+                    />
                   </div>
                 </div>
               ))}
@@ -176,41 +246,45 @@ function MeasurementPanel({ measurements, onFocusAnnotation, collapsed, onToggle
   );
 }
 
-export function parseAnnotations(annotations: any[], image: string): Measurement[] {
+export function parseAnnotations(
+  annotations: any[],
+  image: string,
+): Measurement[] {
   if (!annotations || !Array.isArray(annotations)) return [];
 
   const results: Measurement[] = [];
 
   for (const a of annotations) {
-    const toolName = a.metadata?.toolName || '';
+    const toolName = a.metadata?.toolName || "";
     const stats = a.data?.cachedStats?.[image];
 
-    let type = '';
-    let value = '';
-    let label = a.data?.label || '';
+    let type = "";
+    let value = "";
+    let label = a.data?.label || "";
 
     switch (toolName) {
-      case 'LengthTool': {
-        type = 'Length';
+      case "LengthTool": {
+        type = "Length";
         const len = stats?.length;
-        value = len ? `${len.toFixed(1)} mm` : '';
+        value = len ? `${len.toFixed(1)} mm` : "";
         break;
       }
-      case 'AngleTool': {
-        type = 'Angle';
+      case "AngleTool": {
+        type = "Angle";
         const angle = stats?.angle;
-        value = angle ? `${angle.toFixed(1)}°` : '';
+        value = angle ? `${angle.toFixed(1)}°` : "";
         break;
       }
-      case 'ArrowAnnotateTool': {
-        type = 'ArrowAnnotate';
-        value = a.data?.text || '';
-        label = a.data?.text || '';
+      case "ArrowAnnotateTool": {
+        type = "ArrowAnnotate";
+        value = a.data?.text || "";
+        label = a.data?.text || "";
         break;
       }
-      case 'RectangleROITool':
-      case 'EllipticalROITool': {
-        type = toolName === 'RectangleROITool' ? 'RectangleROI' : 'EllipticalROI';
+      case "RectangleROITool":
+      case "EllipticalROITool": {
+        type =
+          toolName === "RectangleROITool" ? "RectangleROI" : "EllipticalROI";
         const area = stats?.area;
         const mean = stats?.mean;
         const stdDev = stats?.stdDev;
@@ -220,7 +294,7 @@ export function parseAnnotations(annotations: any[], image: string): Measurement
             value += ` μ=${mean.toFixed(1)}`;
           }
         } else {
-          value = '';
+          value = "";
         }
         break;
       }
@@ -228,7 +302,7 @@ export function parseAnnotations(annotations: any[], image: string): Measurement
         continue;
     }
 
-    if (!value && type !== 'ArrowAnnotate') continue;
+    if (!value && type !== "ArrowAnnotate") continue;
 
     results.push({
       annotationUID: a.annotationUID,

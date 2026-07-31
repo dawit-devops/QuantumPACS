@@ -205,9 +205,8 @@ class FilesHandler(HTTPEndpoint):
     async def post(self, request):
         data = await request.json()
 
-        async with get_conn() as conn:
-            data = await es.search(data)
-            return ok(data)
+        results = await es.search(data)
+        return ok(results)
 
 
 async def get_file_by_id(request):

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Select, Typography, Spin } from 'antd';
-import { useAuth } from './AuthContext';
-import { request } from '../helpers';
+import React, { useState, useEffect } from "react";
+import { Select, Typography, Spin } from "antd";
+import { useAuth } from "./AuthContext";
+import { request } from "../helpers";
 
 const { Text } = Typography;
 
@@ -13,7 +13,7 @@ export default function TenantSelector() {
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
-    request('v2/tenants')
+    request("v2/tenants")
       .then((res: any) => setTenants(res?.data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -25,8 +25,8 @@ export default function TenantSelector() {
     const t = tenants.find((t: any) => t.slug === slug);
     if (t) {
       setActiveTenant({ id: t.id, name: t.name, slug: t.slug });
-      localStorage.setItem('tenant_id', t.slug);
-      localStorage.setItem('tenant_name', t.name);
+      localStorage.setItem("tenant_id", t.slug);
+      localStorage.setItem("tenant_name", t.name);
     }
   };
 
@@ -36,8 +36,21 @@ export default function TenantSelector() {
   }));
 
   return (
-    <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-      <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4, color: 'rgba(255,255,255,0.45)' }}>
+    <div
+      style={{
+        padding: "8px 16px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <Text
+        type="secondary"
+        style={{
+          fontSize: 11,
+          display: "block",
+          marginBottom: 4,
+          color: "rgba(255,255,255,0.45)",
+        }}
+      >
         Tenant
       </Text>
       {loading ? (
@@ -48,11 +61,11 @@ export default function TenantSelector() {
           onChange={handleChange}
           options={options}
           size="small"
-          style={{ width: '100%' }}
+          style={{ width: "100%" }}
           popupMatchSelectWidth={false}
         />
       ) : (
-        <Text style={{ color: '#fff', fontSize: 13 }}>{activeTenant.name}</Text>
+        <Text style={{ color: "#fff", fontSize: 13 }}>{activeTenant.name}</Text>
       )}
     </div>
   );

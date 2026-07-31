@@ -23,7 +23,7 @@ class TestB2Storage:
 
     @pytest.fixture
     def storage(self, replica):
-        with patch('storage.b2.B2Api') as MockB2:
+        with patch('storage.b2.B2Api'):
             from storage.b2 import B2Storage
             s = B2Storage(replica)
             s.api = MagicMock()

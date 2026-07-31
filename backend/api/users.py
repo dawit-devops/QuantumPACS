@@ -1,13 +1,12 @@
 from starlette.endpoints import HTTPEndpoint
 
 from api.response import ok, paginated, api_error
-from datetime import datetime, timezone
 
 import jwt as _jwt
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.tokens import create_token as gen_token, create_token_pair, verify_refresh_token, block_token, is_blocked
+from api.tokens import create_token_pair, verify_refresh_token, block_token, is_blocked
 from api.ratelimit import login_bucket, password_bucket
 from api.validate import parse_body
 from api.schemas.auth import LoginRequest
@@ -96,7 +95,7 @@ class ChangePassword(HTTPEndpoint):
 
         async with get_conn() as conn:
             try:
-                data = await Users(conn).change_password(
+                await Users(conn).change_password(
                     request.user, body.new_password, body.current_password,
                 )
             except ApiException as e:

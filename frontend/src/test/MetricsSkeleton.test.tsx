@@ -1,22 +1,22 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MetricsSkeleton } from '../metrics/MetricsSkeleton';
+import { describe, it, expect } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { MetricsSkeleton } from "../metrics/MetricsSkeleton";
 
-describe('MetricsSkeleton', () => {
-  it('renders stat card placeholders', () => {
+describe("MetricsSkeleton", () => {
+  it("renders stat card placeholders", () => {
     render(<MetricsSkeleton />);
-    const cards = document.querySelectorAll('.ant-skeleton-input');
+    const cards = document.querySelectorAll(".ant-skeleton-input");
     expect(cards.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('renders chart area placeholders', () => {
+  it("renders chart area placeholders", () => {
     render(<MetricsSkeleton />);
-    const paragraphs = document.querySelectorAll('.ant-skeleton-paragraph');
+    const paragraphs = document.querySelectorAll(".ant-skeleton-paragraph");
     expect(paragraphs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders data-testid for loading detection', () => {
+  it("renders data-testid for loading detection", () => {
     render(<MetricsSkeleton />);
-    expect(screen.getByTestId('metrics-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId("metrics-skeleton")).toBeInTheDocument();
   });
 });

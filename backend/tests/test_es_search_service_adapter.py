@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import AsyncMock
 
 from services.search.es_search_adapter import EsSearchServiceAdapter
-from services.interfaces import SearchService
 
 
 class TestEsSearchServiceAdapter:

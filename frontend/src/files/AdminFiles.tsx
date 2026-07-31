@@ -1,5 +1,5 @@
-import { Modal } from 'antd';
-import { UploadZone } from './UploadZone';
+import { Modal } from "antd";
+import { UploadZone } from "./UploadZone";
 
 export function AdminFiles(props: any) {
   return (

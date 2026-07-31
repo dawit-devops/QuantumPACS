@@ -1,12 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
 from starlette.testclient import TestClient
-from starlette.middleware import Middleware
 
 from api.auth import User
 from api.fhir import (

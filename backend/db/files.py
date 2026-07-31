@@ -1,7 +1,7 @@
 import asyncpg
 from datetime import datetime, timezone
 import json
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from pypika.functions import Count
 from pypika import Order
@@ -253,7 +253,7 @@ class Files(Table):
         return data, total
 
     async def unindexed(self):
-        q = self.q().where(self.table.indexed == False)
+        q = self.q().where(self.table.indexed.eq(False))
         files = await self.fetch(q)
         return [self.from_row(f) for f in files]
 

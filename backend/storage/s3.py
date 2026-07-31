@@ -1,10 +1,9 @@
 import os.path
 import tempfile
-from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
 import aiobotocore.session
-from starlette.responses import StreamingResponse, RedirectResponse
+from starlette.responses import RedirectResponse
 
 from storage.storage import Storage
 

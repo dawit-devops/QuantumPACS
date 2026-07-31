@@ -7,6 +7,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
@@ -43,10 +44,6 @@ sentry_sdk.init(
     traces_sample_rate=float(config.get('sentry_traces_sample_rate', '1.0')),
     integrations=[StarletteIntegration()],
 )
-
-
-from starlette.middleware.cors import CORSMiddleware
-
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -97,7 +94,7 @@ class CustomMiddleware(BaseHTTPMiddleware):
             log.warning('%s %s -> %s (%.3fs)', request.method, path, response.status_code, elapsed)
         record_request(request.method, path, response.status_code, elapsed)
 
-        if is_docker and not path.startswith('/api') and response.status_code == 404:
+        if is_docker() and not path.startswith('/api') and response.status_code == 404:
             response = FileResponse('./static/index.html')
 
         return response

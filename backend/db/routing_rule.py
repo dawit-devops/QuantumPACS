@@ -57,7 +57,7 @@ class RoutingRule(Table):
     async def list_all(self, enabled_only=False, tenant_id=None):
         q = self.select(self.table.star)
         if enabled_only:
-            q = q.where(self.table.enabled == True)
+            q = q.where(self.table.enabled.eq(True))
         if tenant_id:
             q = q.where(self.table.tenant_id == tenant_id)
         q = q.orderby(self.table.priority)
@@ -80,7 +80,7 @@ class RoutingRule(Table):
     async def list_paginated(self, page=1, per_page=50, enabled_only=False, tenant_id=None):
         q = self.select(self.table.star)
         if enabled_only:
-            q = q.where(self.table.enabled == True)
+            q = q.where(self.table.enabled.eq(True))
         if tenant_id:
             q = q.where(self.table.tenant_id == tenant_id)
         q = q.orderby(self.table.priority)

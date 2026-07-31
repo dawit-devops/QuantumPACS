@@ -1,9 +1,7 @@
-import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from services.storage.local_storage_adapter import StorageServiceAdapter
-from services.interfaces import StorageService
 
 
 class TestStorageServiceAdapter:

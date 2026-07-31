@@ -1,16 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
-import { LOADING_DELAY, API_URL } from './config';
-import { handleResponse, getAccessToken, getRefreshToken, setTokens, tryRefreshToken } from './helpers';
-import { navigate } from './navigator';
+import { useState, useEffect, useRef } from "react";
+import { LOADING_DELAY, API_URL } from "./config";
+import {
+  handleResponse,
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+  tryRefreshToken,
+} from "./helpers";
+import { navigate } from "./navigator";
 
-async function fetchWithRetry(url: string, options: any, retries = 3): Promise<Response> {
+async function fetchWithRetry(
+  url: string,
+  options: any,
+  retries = 3,
+): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     const resp = await fetch(url, options);
     if (resp.ok || resp.status < 500) {
       return resp;
     }
     if (i < retries - 1) {
-      await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, i), 8000)));
+      await new Promise((r) =>
+        setTimeout(r, Math.min(1000 * Math.pow(2, i), 8000)),
+      );
     }
   }
   return fetch(url, options);
@@ -19,7 +31,7 @@ async function fetchWithRetry(url: string, options: any, retries = 3): Promise<R
 function addAuthHeader(headers: Headers): void {
   const token = getAccessToken();
   if (token) {
-    headers.set('X-Auth-Pacs', token);
+    headers.set("X-Auth-Pacs", token);
   }
 }
 
@@ -30,20 +42,20 @@ export function useFetch(url: string, options: any = {}) {
   const [error, setError] = useState<any>(null);
   const controller = useRef<AbortController | null>(null);
 
-  if (!url.startsWith('http')) {
+  if (!url.startsWith("http")) {
     url = `${API_URL}/${url}`;
   }
-  const exec = async (doShowLoading = true, execOptions: any = {}): Promise<void> => {
+  const exec = async (
+    doShowLoading = true,
+    execOptions: any = {},
+  ): Promise<void> => {
     if (controller.current) {
       controller.current.abort();
     }
     setLoading(true);
     let loaderTimeout: ReturnType<typeof setTimeout> | undefined;
     if (doShowLoading) {
-      loaderTimeout = setTimeout(
-        () => setShowLoading(true),
-        LOADING_DELAY,
-      );
+      loaderTimeout = setTimeout(() => setShowLoading(true), LOADING_DELAY);
     }
     const finish = () => {
       if (doShowLoading) {
@@ -54,14 +66,17 @@ export function useFetch(url: string, options: any = {}) {
     };
 
     options.headers = new Headers({
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     });
     addAuthHeader(options.headers);
     controller.current = new AbortController();
     options.signal = controller.current.signal;
 
     const doFetch = async (): Promise<any> => {
-      const resp = await fetchWithRetry(url, Object.assign({}, options, execOptions));
+      const resp = await fetchWithRetry(
+        url,
+        Object.assign({}, options, execOptions),
+      );
       return await handleResponse(resp);
     };
 
@@ -69,8 +84,7 @@ export function useFetch(url: string, options: any = {}) {
       const result = await doFetch();
       setData(result);
       finish();
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.error === 401) {
         const refreshed = await tryRefreshToken();
         if (refreshed) {
@@ -80,13 +94,12 @@ export function useFetch(url: string, options: any = {}) {
             setData(result);
             finish();
             return;
-          } catch {
-          }
+          } catch {}
         }
         if (options.unauthorized) {
           options.unauthorized();
         } else {
-          navigate('/login');
+          navigate("/login");
         }
       }
       if (!error.code || error.code !== 20) {
@@ -95,7 +108,7 @@ export function useFetch(url: string, options: any = {}) {
       finish();
     }
   };
-  return {exec, loading, showLoading, data, error, controller};
+  return { exec, loading, showLoading, data, error, controller };
 }
 
 export function useFormInput(initalState: string) {
@@ -109,7 +122,7 @@ export function useFormInput(initalState: string) {
       } else {
         setValue(e);
       }
-    }
+    },
   };
 }
 

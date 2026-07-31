@@ -1,23 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Card, Row, Col, Tag, Progress, Button, Modal, Form, Input, Popconfirm, Space, Typography, Spin, Alert, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, DatabaseOutlined, HddOutlined } from '@ant-design/icons';
-import withSidebar from '../common/base';
-import { request } from '../helpers';
-import { PageState } from '../common/PageState';
+import React, { useState, useEffect } from "react";
+import {
+  Layout,
+  Card,
+  Row,
+  Col,
+  Tag,
+  Progress,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Popconfirm,
+  Space,
+  Typography,
+  Spin,
+  Alert,
+  message,
+} from "antd";
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  UserOutlined,
+  DatabaseOutlined,
+  HddOutlined,
+} from "@ant-design/icons";
+import withSidebar from "../common/base";
+import { request } from "../helpers";
+import { PageState } from "../common/PageState";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  provisioning: { color: 'processing', label: 'Provisioning' },
-  active: { color: 'green', label: 'Active' },
-  quarantined: { color: 'orange', label: 'Quarantined' },
-  decommissioned: { color: 'default', label: 'Decommissioned' },
+  provisioning: { color: "processing", label: "Provisioning" },
+  active: { color: "green", label: "Active" },
+  quarantined: { color: "orange", label: "Quarantined" },
+  decommissioned: { color: "default", label: "Decommissioned" },
 };
 
 function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
   let val = bytes;
   while (val >= 1024 && i < units.length - 1) {
@@ -28,7 +52,7 @@ function formatBytes(bytes: number): string {
 }
 
 function Tenants() {
-  document.title = 'QuantumPACS - Tenants';
+  document.title = "QuantumPACS - Tenants";
 
   let [data, setData] = useState<any[]>([]);
   let [loading, setLoading] = useState(false);
@@ -46,29 +70,37 @@ function Tenants() {
   const fetch = () => {
     setLoading(true);
     setError(null);
-    request('tenants').then((res: any) => {
-      setLoading(false);
-      setData(res.data || []);
-    }).catch((e: any) => {
-      setLoading(false);
-      setError(e.message);
-      message.error(e.message);
-    });
+    request("tenants")
+      .then((res: any) => {
+        setLoading(false);
+        setData(res.data || []);
+      })
+      .catch((e: any) => {
+        setLoading(false);
+        setError(e.message);
+        message.error(e.message);
+      });
   };
 
   const handleProvision = () => {
-    createForm.validateFields().then((values: any) => {
-      const data: any = { name: values.name, slug: values.slug };
-      if (values.domain) data.domain = values.domain;
-      if (values.storage_quota_gb) data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
-      request('tenants', { data }).then(() => {
-        createForm.resetFields();
-        setCreateVisible(false);
-        fetch();
-      }).catch((e: any) => {
-        message.error(e.message);
-      });
-    }).catch(() => {});
+    createForm
+      .validateFields()
+      .then((values: any) => {
+        const data: any = { name: values.name, slug: values.slug };
+        if (values.domain) data.domain = values.domain;
+        if (values.storage_quota_gb)
+          data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
+        request("tenants", { data })
+          .then(() => {
+            createForm.resetFields();
+            setCreateVisible(false);
+            fetch();
+          })
+          .catch((e: any) => {
+            message.error(e.message);
+          });
+      })
+      .catch(() => {});
   };
 
   const handleEdit = (tenant: any) => {
@@ -76,49 +108,81 @@ function Tenants() {
     editForm.setFieldsValue({
       name: tenant.name,
       domain: tenant.domain,
-      storage_quota_gb: tenant.storage_quota_bytes ? Math.round(tenant.storage_quota_bytes / 1073741824) : undefined,
+      storage_quota_gb: tenant.storage_quota_bytes
+        ? Math.round(tenant.storage_quota_bytes / 1073741824)
+        : undefined,
     });
     setEditVisible(true);
   };
 
   const handleUpdate = () => {
     if (!editingTenant) return;
-    editForm.validateFields().then((values: any) => {
-      const data: any = {};
-      if (values.name !== editingTenant.name) data.name = values.name;
-      if (values.domain !== editingTenant.domain) data.domain = values.domain || null;
-      const newQuota = values.storage_quota_gb ? values.storage_quota_gb * 1073741824 : null;
-      if (newQuota !== editingTenant.storage_quota_bytes) data.storage_quota_bytes = newQuota;
-      if (Object.keys(data).length === 0) { setEditVisible(false); return; }
-      request(`tenants/${editingTenant.id}`, { data, method: 'PUT' }).then(() => {
-        setEditingTenant(null);
-        setEditVisible(false);
-        fetch();
-      }).catch((e: any) => {
-        message.error(e.message);
-      });
-    }).catch(() => {});
+    editForm
+      .validateFields()
+      .then((values: any) => {
+        const data: any = {};
+        if (values.name !== editingTenant.name) data.name = values.name;
+        if (values.domain !== editingTenant.domain)
+          data.domain = values.domain || null;
+        const newQuota = values.storage_quota_gb
+          ? values.storage_quota_gb * 1073741824
+          : null;
+        if (newQuota !== editingTenant.storage_quota_bytes)
+          data.storage_quota_bytes = newQuota;
+        if (Object.keys(data).length === 0) {
+          setEditVisible(false);
+          return;
+        }
+        request(`tenants/${editingTenant.id}`, { data, method: "PUT" })
+          .then(() => {
+            setEditingTenant(null);
+            setEditVisible(false);
+            fetch();
+          })
+          .catch((e: any) => {
+            message.error(e.message);
+          });
+      })
+      .catch(() => {});
   };
 
   const handleDecommission = (tenant: any) => {
-    request(`tenants/${tenant.id}`, { data: undefined, method: 'DELETE' }).then(() => {
-      fetch();
-    }).catch((e: any) => {
-      message.error(e.message);
-    });
+    request(`tenants/${tenant.id}`, { data: undefined, method: "DELETE" })
+      .then(() => {
+        fetch();
+      })
+      .catch((e: any) => {
+        message.error(e.message);
+      });
   };
 
   const storageBarColor = (pct: number) => {
-    if (pct > 75) return '#ef4444';
-    if (pct > 50) return '#f59e0b';
-    return '#22c55e';
+    if (pct > 75) return "#ef4444";
+    if (pct > 50) return "#f59e0b";
+    return "#22c55e";
   };
 
   return (
     <Content style={{ padding: 50 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-        <Title level={4} style={{ margin: 0 }}>Tenants</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateVisible(true); }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+          alignItems: "center",
+        }}
+      >
+        <Title level={4} style={{ margin: 0 }}>
+          Tenants
+        </Title>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            createForm.resetFields();
+            setCreateVisible(true);
+          }}
+        >
           Provision Tenant
         </Button>
       </div>
@@ -128,79 +192,109 @@ function Tenants() {
         empty={!loading && !error && data.length === 0}
         emptyMessage="No tenants provisioned"
         emptyAction={
-          <Button type="primary" onClick={() => { createForm.resetFields(); setCreateVisible(true); }}>
+          <Button
+            type="primary"
+            onClick={() => {
+              createForm.resetFields();
+              setCreateVisible(true);
+            }}
+          >
             Provision Tenant
           </Button>
         }
       >
         <Row gutter={[16, 16]}>
           {data.map((tenant) => {
-            const statusCfg = STATUS_CONFIG[tenant.status] || { color: 'default', label: tenant.status || 'Unknown' };
-            const isDecommissioned = tenant.status === 'decommissioned';
-            const isProvisioning = tenant.status === 'provisioning';
-            const isQuarantined = tenant.status === 'quarantined';
+            const statusCfg = STATUS_CONFIG[tenant.status] || {
+              color: "default",
+              label: tenant.status || "Unknown",
+            };
+            const isDecommissioned = tenant.status === "decommissioned";
+            const isProvisioning = tenant.status === "provisioning";
+            const isQuarantined = tenant.status === "quarantined";
             const usedBytes = tenant.storage_used_bytes || 0;
             const quotaBytes = tenant.storage_quota_bytes || 0;
-            const pct = quotaBytes ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100)) : 0;
+            const pct = quotaBytes
+              ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100))
+              : 0;
 
             return (
               <Col xs={24} sm={12} lg={8} xl={6} key={tenant.id}>
                 <Card
                   style={{
                     opacity: isDecommissioned ? 0.5 : 1,
-                    borderLeft: isQuarantined ? '3px solid #faad14' : undefined,
+                    borderLeft: isQuarantined ? "3px solid #faad14" : undefined,
                   }}
                   actions={
-                    isDecommissioned ? undefined : [
-                      <Button
-                        type="link"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => handleEdit(tenant)}
-                        disabled={isProvisioning || isQuarantined}
-                      >
-                        Edit
-                      </Button>,
-                      <Popconfirm
-                        title="Decommission this tenant?"
-                        description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
-                        onConfirm={() => handleDecommission(tenant)}
-                        disabled={isProvisioning}
-                      >
-                        <Button
-                          type="link"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          disabled={isProvisioning}
-                        >
-                          Decommission
-                        </Button>
-                      </Popconfirm>,
-                    ]
+                    isDecommissioned
+                      ? undefined
+                      : [
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => handleEdit(tenant)}
+                            disabled={isProvisioning || isQuarantined}
+                          >
+                            Edit
+                          </Button>,
+                          <Popconfirm
+                            title="Decommission this tenant?"
+                            description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
+                            onConfirm={() => handleDecommission(tenant)}
+                            disabled={isProvisioning}
+                          >
+                            <Button
+                              type="link"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              disabled={isProvisioning}
+                            >
+                              Decommission
+                            </Button>
+                          </Popconfirm>,
+                        ]
                   }
                 >
                   {isQuarantined && (
                     <Alert
                       type="warning"
                       message="Suspicious activity detected — tenant is read-only"
-                      style={{ marginBottom: 12, fontSize: 12, padding: '4px 8px' }}
+                      style={{
+                        marginBottom: 12,
+                        fontSize: 12,
+                        padding: "4px 8px",
+                      }}
                       showIcon
                     />
                   )}
                   {isProvisioning ? (
-                    <Spin tip="Provisioning database..." style={{ display: 'block', textAlign: 'center', padding: '24px 0' }}>
+                    <Spin
+                      tip="Provisioning database..."
+                      style={{
+                        display: "block",
+                        textAlign: "center",
+                        padding: "24px 0",
+                      }}
+                    >
                       <div style={{ padding: 24 }} />
                     </Spin>
                   ) : (
                     <>
                       <div style={{ marginBottom: 8 }}>
-                        <Text strong style={{ fontSize: 16 }}>{tenant.name}</Text>
-                        <Tag style={{ marginLeft: 6, fontSize: 10 }}>{tenant.slug}</Tag>
+                        <Text strong style={{ fontSize: 16 }}>
+                          {tenant.name}
+                        </Text>
+                        <Tag style={{ marginLeft: 6, fontSize: 10 }}>
+                          {tenant.slug}
+                        </Tag>
                       </div>
                       {tenant.domain && (
                         <div style={{ marginBottom: 8 }}>
-                          <Text type="secondary" style={{ fontSize: 12 }}>{tenant.domain}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {tenant.domain}
+                          </Text>
                         </div>
                       )}
                       <div style={{ marginBottom: 8 }}>
@@ -208,12 +302,27 @@ function Tenants() {
                       </div>
                       {quotaBytes > 0 && (
                         <div style={{ marginBottom: 8 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 12,
+                              marginBottom: 2,
+                            }}
+                          >
                             <Text type="secondary" style={{ fontSize: 11 }}>
                               <HddOutlined style={{ marginRight: 4 }} />
-                              {formatBytes(usedBytes)} / {formatBytes(quotaBytes)}
+                              {formatBytes(usedBytes)} /{" "}
+                              {formatBytes(quotaBytes)}
                             </Text>
-                            <Text style={{ fontSize: 11, color: storageBarColor(pct) }}>{pct}%</Text>
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: storageBarColor(pct),
+                              }}
+                            >
+                              {pct}%
+                            </Text>
                           </div>
                           <Progress
                             percent={pct}
@@ -223,9 +332,22 @@ function Tenants() {
                           />
                         </div>
                       )}
-                      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#888' }}>
-                        <span><UserOutlined style={{ marginRight: 4 }} />{tenant.user_count ?? '?'} users</span>
-                        <span><DatabaseOutlined style={{ marginRight: 4 }} />{tenant.study_count ?? '?'} studies</span>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          fontSize: 12,
+                          color: "#888",
+                        }}
+                      >
+                        <span>
+                          <UserOutlined style={{ marginRight: 4 }} />
+                          {tenant.user_count ?? "?"} users
+                        </span>
+                        <span>
+                          <DatabaseOutlined style={{ marginRight: 4 }} />
+                          {tenant.study_count ?? "?"} studies
+                        </span>
                       </div>
                     </>
                   )}
@@ -244,7 +366,11 @@ function Tenants() {
         okText="Provision"
       >
         <Form form={createForm} layout="vertical">
-          <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label="Tenant Name"
+            rules={[{ required: true }]}
+          >
             <Input placeholder="e.g., Memorial Hospital West" />
           </Form.Item>
           <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
@@ -262,12 +388,19 @@ function Tenants() {
       <Modal
         title="Edit Tenant"
         open={editVisible}
-        onCancel={() => { setEditingTenant(null); setEditVisible(false); }}
+        onCancel={() => {
+          setEditingTenant(null);
+          setEditVisible(false);
+        }}
         onOk={handleUpdate}
         okText="Save"
       >
         <Form form={editForm} layout="vertical">
-          <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label="Tenant Name"
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="domain" label="Custom Domain">

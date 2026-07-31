@@ -1,6 +1,5 @@
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -115,7 +114,7 @@ class TestLocalStorage:
         from io import BytesIO
         buf = BytesIO(b'fileobj content')
 
-        result = await storage.copy(buf, {
+        await storage.copy(buf, {
             'patient_id': '1', 'study_id': '2', 'series_number': '3', 'name': 'from-obj.dcm',
         })
 
@@ -205,7 +204,7 @@ class TestLocalStorage:
 
         storage._copy = _failing_copy
 
-        result = await storage.copy(src, {
+        await storage.copy(src, {
             'patient_id': '1', 'study_id': '2', 'series_number': '3', 'name': 'retry.dcm',
         })
 

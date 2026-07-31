@@ -1,4 +1,3 @@
-import pytest
 from starlette.routing import Route, Mount
 from starlette.testclient import TestClient
 

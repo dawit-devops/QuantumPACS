@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { Empty, Typography } from 'antd';
+import type { ReactNode } from "react";
+import { Empty, Typography } from "antd";
 
 const { Paragraph } = Typography;
 
@@ -11,14 +11,18 @@ interface EmptyStateProps {
 
 export function EmptyState({ description, action, title }: EmptyStateProps) {
   return (
-    <div style={{ margin: '64px auto', textAlign: 'center' }}>
+    <div style={{ margin: "64px auto", textAlign: "center" }}>
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description={
           <div>
-            {title && <Paragraph strong style={{ marginBottom: 4, fontSize: 15 }}>{title}</Paragraph>}
+            {title && (
+              <Paragraph strong style={{ marginBottom: 4, fontSize: 15 }}>
+                {title}
+              </Paragraph>
+            )}
             <Paragraph type="secondary" style={{ margin: 0 }}>
-              {description || 'No data'}
+              {description || "No data"}
             </Paragraph>
           </div>
         }

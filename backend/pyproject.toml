@@ -11,6 +11,10 @@ filterwarnings = [
     "ignore:coroutine 'handle_find_async' was never awaited:RuntimeWarning",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use sys.modules mocks before imports (E402) and compact one-liners (E701/E702)
+"tests/**" = ["E402", "E701", "E702"]
+
 [tool.coverage.run]
 source = ["."]
 omit = [

@@ -6,7 +6,6 @@ from db.conn import get_conn
 from db.users import Users
 from db.roles import Roles
 from db.tenants import Tenants
-from exceptions import ApiException
 from log import get_logger
 
 log = get_logger(__name__)

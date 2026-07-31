@@ -5,7 +5,6 @@ import json
 
 import hl7
 
-from config import config
 from db.conn import get_conn
 from db.patient import Patient
 from db.worklist import Worklist

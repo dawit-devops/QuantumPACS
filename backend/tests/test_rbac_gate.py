@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from starlette.applications import Starlette
@@ -13,7 +13,6 @@ from api.rbac import requires_permission
 from api.permissions import Permission, BUILT_IN_ROLES
 from api.auth import User
 
-from api.response import ok
 
 
 class FileReadEndpoint(HTTPEndpoint):

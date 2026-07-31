@@ -1,11 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Card, Collapse, Select, Input, Button, Tag, Spin, Descriptions, message, Space, Alert, Tabs, Tooltip, Row, Col, Typography } from 'antd';
-import { PlayCircleOutlined, CopyOutlined, DownloadOutlined, CheckCircleOutlined, CloseCircleOutlined, LinkOutlined } from '@ant-design/icons';
-import withRouter from '../withRouter';
-import withSidebar from '../common/base';
-import { request } from '../helpers';
-import { PageState } from '../common/PageState';
-import './Fhir.css';
+import React, { useState, useEffect } from "react";
+import {
+  Layout,
+  Card,
+  Collapse,
+  Select,
+  Input,
+  Button,
+  Tag,
+  Spin,
+  Descriptions,
+  message,
+  Space,
+  Alert,
+  Tabs,
+  Tooltip,
+  Row,
+  Col,
+  Typography,
+} from "antd";
+import {
+  PlayCircleOutlined,
+  CopyOutlined,
+  DownloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  LinkOutlined,
+} from "@ant-design/icons";
+import withRouter from "../withRouter";
+import withSidebar from "../common/base";
+import { request } from "../helpers";
+import { PageState } from "../common/PageState";
+import "./Fhir.css";
 
 const { Content } = Layout;
 const { TextArea } = Input;
@@ -17,15 +42,15 @@ function FhirDocs(props: any) {
   let [error, setError] = useState<string | null>(null);
 
   // Try-it panel
-  let [resourceType, setResourceType] = useState('Patient');
-  let [interaction, setInteraction] = useState('read');
-  let [resourceId, setResourceId] = useState('');
+  let [resourceType, setResourceType] = useState("Patient");
+  let [interaction, setInteraction] = useState("read");
+  let [resourceId, setResourceId] = useState("");
   let [searchParams, setSearchParams] = useState<Record<string, string>>({});
   let [response, setResponse] = useState<any>(null);
   let [executing, setExecuting] = useState(false);
   let [responseTime, setResponseTime] = useState(0);
 
-  const resourceOptions = ['Patient', 'ImagingStudy', 'DocumentReference'];
+  const resourceOptions = ["Patient", "ImagingStudy", "DocumentReference"];
 
   useEffect(() => {
     fetchCapability();
@@ -35,7 +60,7 @@ function FhirDocs(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request('fhir/metadata');
+      const res = await request("fhir/metadata");
       setCapability(res);
     } catch (e: any) {
       setError(e.message);
@@ -55,9 +80,9 @@ function FhirDocs(props: any) {
     setResponse(null);
     try {
       let url = `fhir/${resourceType}`;
-      if (interaction === 'read') {
+      if (interaction === "read") {
         if (!resourceId.trim()) {
-          message.warning('Resource ID is required');
+          message.warning("Resource ID is required");
           setExecuting(false);
           return;
         }
@@ -77,10 +102,10 @@ function FhirDocs(props: any) {
       setResponseTime(elapsed);
       setResponse(res);
     } catch (e: any) {
-      setResponse({ error: e.message || 'Request failed' });
+      setResponse({ error: e.message || "Request failed" });
       try {
         setResponse(JSON.parse(e.message));
-      } catch { }
+      } catch {}
     } finally {
       setExecuting(false);
     }
@@ -88,13 +113,15 @@ function FhirDocs(props: any) {
 
   const handleCopyResponse = () => {
     navigator.clipboard.writeText(JSON.stringify(response, null, 2));
-    message.success('Response copied');
+    message.success("Response copied");
   };
 
   const handleDownloadResponse = () => {
-    const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(response, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `${resourceType}-response.json`;
     a.click();
@@ -104,7 +131,7 @@ function FhirDocs(props: any) {
   if (loading) {
     return (
       <Content className="fhir-docs" style={{ padding: 24 }}>
-        <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />
+        <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
       </Content>
     );
   }
@@ -112,7 +139,9 @@ function FhirDocs(props: any) {
   if (error) {
     return (
       <Content className="fhir-docs" style={{ padding: 24 }}>
-        <PageState error={error} onRetry={fetchCapability}
+        <PageState
+          error={error}
+          onRetry={fetchCapability}
           emptyMessage="FHIR server unavailable — check the FHIR Config page to enable it."
         />
       </Content>
@@ -127,74 +156,151 @@ function FhirDocs(props: any) {
       <Row gutter={16}>
         {/* Capability Statement */}
         <Col span={12}>
-          <Card title="Capability Statement" extra={
-            <Button size="small" icon={<CopyOutlined />} onClick={() => {
-              navigator.clipboard.writeText(JSON.stringify(capability, null, 2));
-              message.success('Copied');
-            }}>Copy</Button>
-          }>
+          <Card
+            title="Capability Statement"
+            extra={
+              <Button
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    JSON.stringify(capability, null, 2),
+                  );
+                  message.success("Copied");
+                }}
+              >
+                Copy
+              </Button>
+            }
+          >
             <Descriptions column={1} size="small">
-              <Descriptions.Item label="Publisher">{capability?.publisher || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="FHIR Version">{capability?.fhirVersion || 'N/A'}</Descriptions.Item>
+              <Descriptions.Item label="Publisher">
+                {capability?.publisher || "N/A"}
+              </Descriptions.Item>
+              <Descriptions.Item label="FHIR Version">
+                {capability?.fhirVersion || "N/A"}
+              </Descriptions.Item>
               <Descriptions.Item label="Status">
-                <Tag color={capability?.status === 'active' ? 'green' : 'default'}>{capability?.status}</Tag>
+                <Tag
+                  color={capability?.status === "active" ? "green" : "default"}
+                >
+                  {capability?.status}
+                </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="Formats">
-                {capability?.format?.map((f: string) => <Tag key={f}>{f}</Tag>)}
+                {capability?.format?.map((f: string) => (
+                  <Tag key={f}>{f}</Tag>
+                ))}
               </Descriptions.Item>
-              <Descriptions.Item label="Software">{capability?.software?.name} {capability?.software?.version}</Descriptions.Item>
+              <Descriptions.Item label="Software">
+                {capability?.software?.name} {capability?.software?.version}
+              </Descriptions.Item>
             </Descriptions>
 
-            <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 8 }}>Supported Resources</div>
-            <Collapse ghost size="small" items={resources.map((r: any) => ({
-              key: r.type,
-              label: <span><Tag>{r.type}</Tag> {r.interaction?.map((i: any) => i.code).join(', ')}</span>,
-              children: (
-                <div>
-                  {r.searchParam?.length > 0 && (
-                    <>
-                      <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Search Parameters</div>
-                      {r.searchParam.map((p: any) => (
-                        <div key={p.name} style={{ fontSize: 12, marginBottom: 2 }}>
-                          <code>{p.name}</code> <Tag style={{ fontSize: 10 }}>{p.type}</Tag>
+            <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 8 }}>
+              Supported Resources
+            </div>
+            <Collapse
+              ghost
+              size="small"
+              items={resources.map((r: any) => ({
+                key: r.type,
+                label: (
+                  <span>
+                    <Tag>{r.type}</Tag>{" "}
+                    {r.interaction?.map((i: any) => i.code).join(", ")}
+                  </span>
+                ),
+                children: (
+                  <div>
+                    {r.searchParam?.length > 0 && (
+                      <>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            fontSize: 12,
+                            marginBottom: 4,
+                          }}
+                        >
+                          Search Parameters
                         </div>
-                      ))}
-                    </>
-                  )}
-                  {(!r.searchParam || r.searchParam.length === 0) && (
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No search parameters</div>
-                  )}
-                </div>
-              ),
-            }))} />
+                        {r.searchParam.map((p: any) => (
+                          <div
+                            key={p.name}
+                            style={{ fontSize: 12, marginBottom: 2 }}
+                          >
+                            <code>{p.name}</code>{" "}
+                            <Tag style={{ fontSize: 10 }}>{p.type}</Tag>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {(!r.searchParam || r.searchParam.length === 0) && (
+                      <div
+                        style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                      >
+                        No search parameters
+                      </div>
+                    )}
+                  </div>
+                ),
+              }))}
+            />
           </Card>
         </Col>
 
         {/* Try-it Panel */}
         <Col span={12}>
-          <Card title="Try It" extra={
-            rest?.security && <Tag>{rest.security?.description || 'SMART-on-FHIR'}</Tag>
-          }>
-            <Space direction="vertical" style={{ width: '100%' }}>
+          <Card
+            title="Try It"
+            extra={
+              rest?.security && (
+                <Tag>{rest.security?.description || "SMART-on-FHIR"}</Tag>
+              )
+            }
+          >
+            <Space direction="vertical" style={{ width: "100%" }}>
               <Space>
-                <Select value={resourceType} onChange={v => { setResourceType(v); setResponse(null); setSearchParams({}); }}
-                  style={{ width: 180 }} options={resourceOptions.map(r => ({ value: r, label: r }))} />
-                <Select value={interaction} onChange={v => setInteraction(v)} style={{ width: 120 }}
+                <Select
+                  value={resourceType}
+                  onChange={(v) => {
+                    setResourceType(v);
+                    setResponse(null);
+                    setSearchParams({});
+                  }}
+                  style={{ width: 180 }}
+                  options={resourceOptions.map((r) => ({ value: r, label: r }))}
+                />
+                <Select
+                  value={interaction}
+                  onChange={(v) => setInteraction(v)}
+                  style={{ width: 120 }}
                   options={[
-                    { value: 'read', label: 'Read by ID' },
-                    { value: 'search', label: 'Search' },
-                  ]} />
+                    { value: "read", label: "Read by ID" },
+                    { value: "search", label: "Search" },
+                  ]}
+                />
               </Space>
 
-              {interaction === 'read' ? (
-                <Input placeholder={`${resourceType} ID`} value={resourceId} onChange={e => setResourceId(e.target.value)} />
+              {interaction === "read" ? (
+                <Input
+                  placeholder={`${resourceType} ID`}
+                  value={resourceId}
+                  onChange={(e) => setResourceId(e.target.value)}
+                />
               ) : (
                 <div>
                   {getSearchParamsForResource(resourceType).map((p: any) => (
-                    <Input key={p.name}
+                    <Input
+                      key={p.name}
                       placeholder={`${p.name} (${p.type})`}
-                      value={searchParams[p.name] || ''}
-                      onChange={e => setSearchParams({ ...searchParams, [p.name]: e.target.value })}
+                      value={searchParams[p.name] || ""}
+                      onChange={(e) =>
+                        setSearchParams({
+                          ...searchParams,
+                          [p.name]: e.target.value,
+                        })
+                      }
                       style={{ marginBottom: 4 }}
                     />
                   ))}
@@ -204,22 +310,59 @@ function FhirDocs(props: any) {
                 </div>
               )}
 
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleExecute} loading={executing}
-                block>Execute</Button>
+              <Button
+                type="primary"
+                icon={<PlayCircleOutlined />}
+                onClick={handleExecute}
+                loading={executing}
+                block
+              >
+                Execute
+              </Button>
 
               {response && (
-                <Card size="small" title={
-                  <Space>
-                    {response.resourceType ? <CheckCircleOutlined style={{ color: 'green' }} /> : <CloseCircleOutlined style={{ color: 'red' }} />}
-                    <span>{response.resourceType || 'Error'} — {responseTime}ms</span>
-                  </Space>
-                } extra={
-                  <Space>
-                    <Tooltip title="Copy"><Button size="small" icon={<CopyOutlined />} onClick={handleCopyResponse} /></Tooltip>
-                    <Tooltip title="Download"><Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadResponse} /></Tooltip>
-                  </Space>
-                }>
-                  <pre style={{ maxHeight: 400, overflow: 'auto', fontSize: 12, margin: 0, whiteSpace: 'pre-wrap' }}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      {response.resourceType ? (
+                        <CheckCircleOutlined style={{ color: "green" }} />
+                      ) : (
+                        <CloseCircleOutlined style={{ color: "red" }} />
+                      )}
+                      <span>
+                        {response.resourceType || "Error"} — {responseTime}ms
+                      </span>
+                    </Space>
+                  }
+                  extra={
+                    <Space>
+                      <Tooltip title="Copy">
+                        <Button
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={handleCopyResponse}
+                        />
+                      </Tooltip>
+                      <Tooltip title="Download">
+                        <Button
+                          size="small"
+                          icon={<DownloadOutlined />}
+                          onClick={handleDownloadResponse}
+                        />
+                      </Tooltip>
+                    </Space>
+                  }
+                >
+                  <pre
+                    style={{
+                      maxHeight: 400,
+                      overflow: "auto",
+                      fontSize: 12,
+                      margin: 0,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
                     {JSON.stringify(response, null, 2)}
                   </pre>
                 </Card>

@@ -1,6 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from services.ingestion.routing import _match_condition, _cmp, evaluate_routing_rules
 

@@ -97,7 +97,7 @@ class Replica(Table):
         return await self.fetchval(q)
 
     async def master(self):
-        q = self.select('*').where(self.table.master == True)
+        q = self.select('*').where(self.table.master.eq(True))
         data = await self.fetchone(q)
         return self.to_json(data) if data else None
 

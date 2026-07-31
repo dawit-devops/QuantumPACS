@@ -133,7 +133,6 @@ def _sample_db_pool():
         return
     try:
         idle = pool.get_idle_size()
-        total = pool.get_size()
         in_use = pool.get_active_size()
         db_connections_available.labels(tenant='default').set(idle)
         db_connections_in_use.labels(tenant='default').set(in_use)
@@ -165,8 +164,7 @@ async def _check_db():
     start = time.monotonic()
     try:
         async with _probe_db() as conn:
-            val = await conn.fetchval('SELECT 1')
-            ok = val == 1
+            await conn.fetchval('SELECT 1')
     except Exception as e:
         return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
     return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}

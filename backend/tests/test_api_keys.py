@@ -204,7 +204,6 @@ class TestApiKeyValidation:
 
 class TestApiKeyCrud:
     def _make_app(self, user):
-        from api.api_keys import ApiKeysHandler, ApiKeyHandler
         return Starlette(
             routes=[
                 Route('/api/api-keys', endpoint=ApiKeysHandler),
@@ -300,7 +299,6 @@ class TestApiKeyCrud:
 
 class TestApiKeyMiddleware:
     def test_valid_api_key_returns_200(self):
-        from db.api_keys import ApiKeys
         raw_key = 'qpk_' + __import__('secrets').token_urlsafe(32)
         key_hash = __import__('hashlib').sha256(raw_key.encode()).hexdigest()
         prefix = raw_key[4:12]
@@ -367,7 +365,6 @@ class TestApiKeyMiddleware:
         ):
             mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
             from api.tokens import create_token
-            import jwt as _jwt
             with patch('api.auth.config', {'secret': SECRET, 'cors_origins': '*'}):
                 token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
                 client = TestClient(app)

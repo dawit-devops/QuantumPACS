@@ -1,46 +1,50 @@
 .viewportElement {
-    max-height: 80%;
-    margin: var(--space-5);
-    position: relative;
-    color: var(--text-inverse);
-    touch-action: none;
+  max-height: 80%;
+  margin: var(--space-5);
+  position: relative;
+  color: var(--text-inverse);
+  touch-action: none;
 }
 
 @media only screen and (max-width: 420px) {
-    .viewportElement {
-        min-width: 350px;
-        min-height: 350px;
-        max-height: 350px;
-    }
+  .viewportElement {
+    min-width: 350px;
+    min-height: 350px;
+    max-height: 350px;
+  }
 }
 
 @media only screen and (min-width: 600px) and (max-width: 767px) {
-    .viewportElement {
-        min-width: 500px;
-        min-height: 500px;
-        max-height: 500px;
-    }
+  .viewportElement {
+    min-width: 500px;
+    min-height: 500px;
+    max-height: 500px;
+  }
 }
 
 @media only screen and (min-width: 768px) {
-    .viewportElement {
-        min-width: 700px;
-        min-height: 700px;
-    }
+  .viewportElement {
+    min-width: 700px;
+    min-height: 700px;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .metadata-collapse {
-    max-width: 600px;
-    margin: var(--space-2) auto;
+  max-width: 600px;
+  margin: var(--space-2) auto;
 }
 
 @media only screen and (max-width: 767px) {
-    .metadata-collapse {
-        margin: var(--space-2);
-    }
+  .metadata-collapse {
+    margin: var(--space-2);
+  }
 }

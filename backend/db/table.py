@@ -15,7 +15,7 @@ class Table:
         self.table = Table_(self.name, alias=alias)
 
     async def sync_db(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def query(self):
         return Query_.from_(self.table)

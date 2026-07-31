@@ -1,37 +1,86 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Grid, Drawer, Button, Space } from 'antd';
-import { MenuOutlined, FileSearchOutlined, UserOutlined, LockOutlined, DatabaseOutlined, TeamOutlined, AlignLeftOutlined, SafetyCertificateOutlined, BankOutlined, LogoutOutlined, DashboardOutlined, KeyOutlined, ApartmentOutlined, SunOutlined, MoonOutlined, MedicineBoxOutlined, FundOutlined, BookOutlined, MessageOutlined, CloudServerOutlined, ApiOutlined } from '@ant-design/icons';
-import NotificationBell from '../notifications/NotificationBell';
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Layout, Menu, Grid, Drawer, Button, Space } from "antd";
+import {
+  MenuOutlined,
+  FileSearchOutlined,
+  UserOutlined,
+  LockOutlined,
+  DatabaseOutlined,
+  TeamOutlined,
+  AlignLeftOutlined,
+  SafetyCertificateOutlined,
+  BankOutlined,
+  LogoutOutlined,
+  DashboardOutlined,
+  KeyOutlined,
+  ApartmentOutlined,
+  SunOutlined,
+  MoonOutlined,
+  MedicineBoxOutlined,
+  FundOutlined,
+  BookOutlined,
+  MessageOutlined,
+  CloudServerOutlined,
+  ApiOutlined,
+} from "@ant-design/icons";
+import NotificationBell from "../notifications/NotificationBell";
 
 const { useBreakpoint } = Grid;
-import { useAuth } from '../auth/AuthContext';
-import { useTheme } from './ThemeProvider';
-import QuantumLogo from './QuantumLogo';
-import TenantSelector from '../auth/TenantSelector';
-import { request, clearTokens } from '../helpers';
-import './Sidebar.css';
+import { useAuth } from "../auth/AuthContext";
+import { useTheme } from "./ThemeProvider";
+import QuantumLogo from "./QuantumLogo";
+import TenantSelector from "../auth/TenantSelector";
+import { request, clearTokens } from "../helpers";
+import "./Sidebar.css";
 
 const { Sider } = Layout;
 
 function getKey(loc: string) {
-  if (loc === '/') return 'files';
-  const parts = loc.slice(1).split('/');
-  if (parts[0] === 'fhir' && parts[1]) return 'fhir-' + parts[1];
+  if (loc === "/") return "files";
+  const parts = loc.slice(1).split("/");
+  if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
   return parts[0];
 }
 
 function getOpenKey(key: string) {
-  if (['replicas', 'users', 'roles', 'tenants', 'logs', 'worklist', 'service-keys', 'routing', 'fhir', 'hl7', 'dicomweb', 'integrations'].includes(key)) {
-    return 'admin';
+  if (
+    [
+      "replicas",
+      "users",
+      "roles",
+      "tenants",
+      "logs",
+      "worklist",
+      "service-keys",
+      "routing",
+      "fhir",
+      "hl7",
+      "dicomweb",
+      "integrations",
+    ].includes(key)
+  ) {
+    return "admin";
   }
   return key;
 }
 
-function hasAnyAdminPermission(hasPermission: (p: string) => boolean, userAdmin: boolean | undefined): boolean {
+function hasAnyAdminPermission(
+  hasPermission: (p: string) => boolean,
+  userAdmin: boolean | undefined,
+): boolean {
   if (userAdmin) return true;
-  const adminPermissions = ['USER_READ', 'REPLICA_READ', 'TENANT_READ', 'ROLE_READ', 'LOG_READ', 'SERVICE_KEY_READ', 'WORKLIST_READ', 'HL7_READ'];
-  return adminPermissions.some(p => hasPermission(p));
+  const adminPermissions = [
+    "USER_READ",
+    "REPLICA_READ",
+    "TENANT_READ",
+    "ROLE_READ",
+    "LOG_READ",
+    "SERVICE_KEY_READ",
+    "WORKLIST_READ",
+    "HL7_READ",
+  ];
+  return adminPermissions.some((p) => hasPermission(p));
 }
 
 function Sidebar() {
@@ -56,13 +105,12 @@ function Sidebar() {
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     try {
-      await request('auth/logout', { method: 'POST' });
-    } catch {
-    }
-    localStorage.removeItem('userId');
-    localStorage.removeItem('admin');
+      await request("auth/logout", { method: "POST" });
+    } catch {}
+    localStorage.removeItem("userId");
+    localStorage.removeItem("admin");
     clearTokens();
-    navigate('/login');
+    navigate("/login");
   };
 
   useEffect(() => {
@@ -72,50 +120,67 @@ function Sidebar() {
   }, [loc]);
 
   const sidebarContent = (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{
-        padding: collapsed ? '16px 8px' : '16px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'flex-start',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        marginBottom: 4,
-      }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <div
+        style={{
+          padding: collapsed ? "16px 8px" : "16px 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: collapsed ? "center" : "flex-start",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          marginBottom: 4,
+        }}
+      >
         <QuantumLogo size={32} showText={!collapsed && !isMobile} />
       </div>
       <TenantSelector />
-      <Menu mode="inline" theme="dark"
-        defaultOpenKeys={[openKey]} defaultSelectedKeys={[selectedKey]}
-        onClick={() => { if (isMobile) setDrawerOpen(false); }}
+      <Menu
+        mode="inline"
+        theme="dark"
+        defaultOpenKeys={[openKey]}
+        defaultSelectedKeys={[selectedKey]}
+        onClick={() => {
+          if (isMobile) setDrawerOpen(false);
+        }}
       >
-        <Menu.Item key="files" aria-current={selectedKey === 'files' ? 'page' : undefined}>
+        <Menu.Item
+          key="files"
+          aria-current={selectedKey === "files" ? "page" : undefined}
+        >
           <Link to="/">
             <FileSearchOutlined />
             <span className="nav-text">Files</span>
           </Link>
         </Menu.Item>
-        <Menu.Item key="metrics" aria-current={selectedKey === 'metrics' ? 'page' : undefined}>
+        <Menu.Item
+          key="metrics"
+          aria-current={selectedKey === "metrics" ? "page" : undefined}
+        >
           <Link to="/metrics">
             <DashboardOutlined />
             <span className="nav-text">Metrics</span>
           </Link>
         </Menu.Item>
-        <Menu.Item key="account" aria-current={selectedKey === 'account' ? 'page' : undefined}>
+        <Menu.Item
+          key="account"
+          aria-current={selectedKey === "account" ? "page" : undefined}
+        >
           <Link to="/account">
             <UserOutlined />
             <span className="nav-text">Account</span>
           </Link>
         </Menu.Item>
-        {
-          hasAnyAdminPermission(hasPermission, user?.admin) &&
-          <Menu.SubMenu key="admin"
+        {hasAnyAdminPermission(hasPermission, user?.admin) && (
+          <Menu.SubMenu
+            key="admin"
             title={
               <span>
                 <LockOutlined />
                 <span>Admin</span>
               </span>
-            }>
-            {hasPermission('REPLICA_READ') && (
+            }
+          >
+            {hasPermission("REPLICA_READ") && (
               <Menu.Item key="replicas">
                 <Link to="/replicas">
                   <DatabaseOutlined />
@@ -123,7 +188,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('USER_READ') && (
+            {hasPermission("USER_READ") && (
               <Menu.Item key="users">
                 <Link to="/users">
                   <TeamOutlined />
@@ -131,7 +196,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('TENANT_READ') && (
+            {hasPermission("TENANT_READ") && (
               <Menu.Item key="tenants">
                 <Link to="/tenants">
                   <BankOutlined />
@@ -139,7 +204,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('ROLE_READ') && (
+            {hasPermission("ROLE_READ") && (
               <Menu.Item key="roles">
                 <Link to="/roles">
                   <SafetyCertificateOutlined />
@@ -147,7 +212,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('LOG_READ') && (
+            {hasPermission("LOG_READ") && (
               <Menu.Item key="logs">
                 <Link to="/logs">
                   <AlignLeftOutlined />
@@ -155,7 +220,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('WORKLIST_READ') && (
+            {hasPermission("WORKLIST_READ") && (
               <Menu.Item key="worklist">
                 <Link to="/worklist">
                   <FileSearchOutlined />
@@ -163,7 +228,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('SERVICE_KEY_READ') && (
+            {hasPermission("SERVICE_KEY_READ") && (
               <Menu.Item key="service-keys">
                 <Link to="/service-keys">
                   <KeyOutlined />
@@ -171,7 +236,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('ROUTING_READ') && (
+            {hasPermission("ROUTING_READ") && (
               <Menu.Item key="routing">
                 <Link to="/routing">
                   <ApartmentOutlined />
@@ -179,8 +244,16 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('SYSTEM_ADMIN') && (
-              <Menu.SubMenu key="fhir" title={<span><MedicineBoxOutlined /><span>FHIR</span></span>}>
+            {hasPermission("SYSTEM_ADMIN") && (
+              <Menu.SubMenu
+                key="fhir"
+                title={
+                  <span>
+                    <MedicineBoxOutlined />
+                    <span>FHIR</span>
+                  </span>
+                }
+              >
                 <Menu.Item key="fhir-config">
                   <Link to="/fhir/config">
                     <MedicineBoxOutlined />
@@ -201,7 +274,7 @@ function Sidebar() {
                 </Menu.Item>
               </Menu.SubMenu>
             )}
-            {hasPermission('HL7_READ') && (
+            {hasPermission("HL7_READ") && (
               <Menu.Item key="hl7">
                 <Link to="/hl7">
                   <MessageOutlined />
@@ -209,7 +282,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('DICOMWEB_READ') && (
+            {hasPermission("DICOMWEB_READ") && (
               <Menu.Item key="dicomweb">
                 <Link to="/dicomweb">
                   <CloudServerOutlined />
@@ -217,7 +290,7 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission('SYSTEM_ADMIN') && (
+            {hasPermission("SYSTEM_ADMIN") && (
               <Menu.Item key="integrations">
                 <Link to="/integrations">
                   <ApiOutlined />
@@ -226,17 +299,25 @@ function Sidebar() {
               </Menu.Item>
             )}
           </Menu.SubMenu>
-        }
-        <Menu.Item key="notifications" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        )}
+        <Menu.Item
+          key="notifications"
+          style={{
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            marginTop: 8,
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <NotificationBell />
             <span className="nav-text">Notifications</span>
           </span>
         </Menu.Item>
         <Menu.Item key="theme-toggle" onClick={toggleTheme}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {isDark ? <SunOutlined /> : <MoonOutlined />}
-            <span className="nav-text">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            <span className="nav-text">
+              {isDark ? "Light Mode" : "Dark Mode"}
+            </span>
           </span>
         </Menu.Item>
         <Menu.Item key="logout">
@@ -257,9 +338,13 @@ function Sidebar() {
           icon={<MenuOutlined />}
           onClick={() => setDrawerOpen(true)}
           style={{
-            position: 'fixed', top: 8, left: 8, zIndex: 100,
-            minWidth: 44, minHeight: 44,
-            color: 'var(--text-primary)',
+            position: "fixed",
+            top: 8,
+            left: 8,
+            zIndex: 100,
+            minWidth: 44,
+            minHeight: 44,
+            color: "var(--text-primary)",
             fontSize: 20,
           }}
           aria-label="Open navigation menu"
@@ -269,7 +354,7 @@ function Sidebar() {
           onClose={() => setDrawerOpen(false)}
           placement="left"
           width={280}
-          styles={{ body: { padding: 0, background: '#001529' } }}
+          styles={{ body: { padding: 0, background: "#001529" } }}
           title={null}
           closable={false}
         >
@@ -280,7 +365,11 @@ function Sidebar() {
   }
 
   return (
-    <Sider collapsible collapsed={collapsed} onCollapse={onCollapse} theme="dark"
+    <Sider
+      collapsible
+      collapsed={collapsed}
+      onCollapse={onCollapse}
+      theme="dark"
       breakpoint="lg"
       collapsedWidth="0"
       onBreakpoint={() => {}}

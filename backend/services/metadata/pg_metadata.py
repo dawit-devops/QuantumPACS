@@ -4,7 +4,6 @@ from pypika import Table as PypikaTable
 from pypika.dialects import PostgreSQLQuery as Query
 
 from db.conn import get_conn
-from services.interfaces import MetadataService
 
 
 class PgMetadataService:

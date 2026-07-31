@@ -12,7 +12,6 @@ from api.validate import parse_body
 from db.conn import get_conn
 from db.fhir_config import FhirConfig
 from db.fhir_clients import FhirClient
-from db.fhir_audit import FhirAudit
 from log import get_logger
 
 log = get_logger(__name__)
@@ -126,7 +125,7 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
         interval = interval_map.get(period, '24 hours')
 
         async with get_conn() as conn:
-            volume = await conn.fetch(f"""
+            volume = await conn.fetch("""
                 SELECT
                     resource_type,
                     method,
@@ -137,7 +136,7 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
                 ORDER BY resource_type, method
             """, interval)
 
-            status_codes = await conn.fetch(f"""
+            status_codes = await conn.fetch("""
                 SELECT
                     (status_code / 100) * 100 AS status_family,
                     COUNT(*) AS count
@@ -147,7 +146,7 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
                 ORDER BY status_family
             """, interval)
 
-            latency = await conn.fetchrow(f"""
+            latency = await conn.fetchrow("""
                 SELECT
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) AS p50,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,
@@ -156,7 +155,7 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
                 WHERE created_at > now() - $1::interval
             """, interval)
 
-            top_clients = await conn.fetch(f"""
+            top_clients = await conn.fetch("""
                 SELECT
                     COALESCE(u.email::text, 'system') AS client_name,
                     COUNT(*) AS count
@@ -168,12 +167,12 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
                 LIMIT 10
             """, interval)
 
-            total = await conn.fetchval(f"""
+            total = await conn.fetchval("""
                 SELECT COUNT(*) FROM fhir_audit
                 WHERE created_at > now() - $1::interval
             """, interval)
 
-            total_errors = await conn.fetchval(f"""
+            total_errors = await conn.fetchval("""
                 SELECT COUNT(*) FROM fhir_audit
                 WHERE created_at > now() - $1::interval AND status_code >= 400
             """, interval)

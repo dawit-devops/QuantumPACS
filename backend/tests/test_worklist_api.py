@@ -1,8 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from starlette.applications import Starlette
-from starlette.endpoints import HTTPEndpoint
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route

@@ -1,6 +1,5 @@
 import traceback
 import uuid
-from io import BytesIO
 
 from db.conn import get_conn
 from db.files import Files

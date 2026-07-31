@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
 import jwt
-import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
@@ -9,9 +8,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from api.auth import TokenAuth, User
+from api.auth import TokenAuth
 from api.tokens import create_token, create_token_pair, verify_token
-from api.users import Logout, ChangePassword
+from api.users import Logout
 
 SECRET = 'test-secret-key-for-auth-v2-tests!!'
 

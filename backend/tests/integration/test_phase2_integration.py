@@ -8,7 +8,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from api.auth import TokenAuth, User
+from api.auth import TokenAuth
 from api.tokens import create_token
 from db.oauth_providers import OAuthProviders
 
@@ -233,7 +233,6 @@ class TestRoleUpdateInvalidatesTokens:
         conn = AsyncMock()
         from db.users import Users
 
-        original = Users.bulk_increment_token_version_by_role
         with patch.object(Users, 'bulk_increment_token_version_by_role', new=AsyncMock()) as mock_bulk:
             await Users(conn).bulk_increment_token_version_by_role('role-1')
             mock_bulk.assert_awaited_once()
