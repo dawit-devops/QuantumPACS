@@ -2,6 +2,7 @@
 Supports bearer tokens via X-Auth-Pacs header, query parameter tokens for WebSocket,
 and shared-file access tokens for expiring share links."""
 import time
+from collections import OrderedDict
 
 import jwt as _jwt
 
@@ -21,6 +22,7 @@ from starlette.authentication import (
 log = get_logger(__name__)
 
 _app = None
+_MAX_CACHE_SIZE = 5000
 
 
 def set_app(app):
@@ -38,26 +40,19 @@ def _get_state():
 
 class AuthState:
     def __init__(self):
-        self.active_cache: dict = {}
+        self.active_cache: OrderedDict = OrderedDict()
         self.cache_redis = None
         self.api_key_limiter = RedisTokenBucket(max_attempts=100, window_seconds=60)
 
 
-def _get_cache_redis():
+async def _get_cache_redis():
     state = _get_state()
     if state is None:
         return None
     if state.cache_redis is None:
         try:
-            import redis.asyncio as _aioredis
-            host = config.get('redis_host', 'localhost')
-            port = int(config.get('redis_port', '6379'))
-            password = config.get('redis_password') or None
-            state.cache_redis = _aioredis.Redis(
-                host=host, port=port, password=password, db=2,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
+            from api.redis_client import get_client
+            state.cache_redis = await get_client(db=2)
         except Exception:
             pass
     return state.cache_redis
@@ -65,7 +60,7 @@ def _get_cache_redis():
 
 async def _get_cached_active(user_id):
     state = _get_state()
-    r = _get_cache_redis()
+    r = await _get_cache_redis()
     if r is not None:
         try:
             val = await r.get(f'auth:active:{user_id}')
@@ -82,7 +77,7 @@ async def _get_cached_active(user_id):
 
 async def _set_cached_active(user_id, active, ttl=60):
     state = _get_state()
-    r = _get_cache_redis()
+    r = await _get_cache_redis()
     if r is not None:
         try:
             await r.set(f'auth:active:{user_id}', b'1' if active else b'0', ex=ttl)
@@ -90,6 +85,19 @@ async def _set_cached_active(user_id, active, ttl=60):
             pass
     if state is not None:
         state.active_cache[user_id] = (active, time.monotonic() + ttl)
+        state.active_cache.move_to_end(user_id)
+        while len(state.active_cache) > _MAX_CACHE_SIZE:
+            state.active_cache.popitem(last=False)
+
+
+async def _cleanup_cache():
+    state = _get_state()
+    if state is None:
+        return
+    now = time.monotonic()
+    stale = [k for k, v in list(state.active_cache.items()) if now >= v[1]]
+    for k in stale:
+        del state.active_cache[k]
 
 
 class User(BaseUser):

@@ -15,6 +15,20 @@ from api.auth import User
 from api.validate import validation_exception_handler, _ValidationException
 
 
+class _AsyncFileMock:
+    def __init__(self, data):
+        self._data = data
+
+    async def read(self):
+        return self._data
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
+
 class _FakeAuth(BaseHTTPMiddleware):
     def __init__(self, app, user=None):
         super().__init__(app)
@@ -165,7 +179,7 @@ class TestDicomWebWadoIntegration:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
                     resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8')
 
         assert resp.status_code == 200
@@ -190,7 +204,7 @@ class TestDicomWebWadoIntegration:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('builtins.open', MagicMock(return_value=BytesIO(dcm_bytes))):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8'
                     )

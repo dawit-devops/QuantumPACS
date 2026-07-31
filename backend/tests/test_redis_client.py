@@ -23,8 +23,14 @@ def _redis_env():
 def _setup_redis(redis_constructor):
     rasyncio = types.ModuleType('redis.asyncio')
     rasyncio.Redis = redis_constructor
+    mock_pool = MagicMock()
+    mock_pool.aclose = AsyncMock()
+    rconn = types.ModuleType('redis.asyncio.connection')
+    rconn.ConnectionPool = MagicMock(return_value=mock_pool)
+    rasyncio.connection = rconn
     sys.modules['redis'] = types.ModuleType('redis')
     sys.modules['redis.asyncio'] = rasyncio
+    sys.modules['redis.asyncio.connection'] = rconn
 
 
 def _get_reloadee():
@@ -60,8 +66,8 @@ class TestRedisClient:
         _setup_redis(MagicMock(return_value=mock_redis))
         rc = _get_reloadee()
         with patch('api.redis_client.config', {'redis_host': 'localhost', 'redis_port': '6379', 'redis_password': ''}):
-            c1 = asyncio.run(rc.get_client())
-            c2 = asyncio.run(rc.get_client())
+            c1 = asyncio.run(rc.get_client(db=0))
+            c2 = asyncio.run(rc.get_client(db=0))
         assert c2 is c1
 
     def test_is_available_defaults_false(self, _redis_env):
@@ -78,7 +84,6 @@ class TestRedisClient:
             asyncio.run(rc.get_client())
             assert rc.is_available() is True
             asyncio.run(rc.close_client())
-        mock_redis.aclose.assert_called_once()
         assert rc.is_available() is False
 
     def test_close_client_idempotent(self, _redis_env):

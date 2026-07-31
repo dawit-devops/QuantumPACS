@@ -1,9 +1,13 @@
+"""DICOMweb REST API endpoints — implements QIDO-RS (search), WADO-RS (retrieve), and STOW-RS
+(store) conforming to the DICOMweb standard. Provides JSON and bulk-data access to studies,
+series, and instances stored in the QuantumPACS backend."""
 import json
 from io import BytesIO
 
+import aiofiles
 from pydicom import dcmread
 from starlette.endpoints import HTTPEndpoint
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 
 from api.rbac import requires_permission
 from api.permissions import Permission
@@ -245,8 +249,8 @@ async def _wado_retrieve_instance(conn, master, instance_uid):
     file_data['meta'] = json.loads(file_data.get('meta') or '{}')
     file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
     path = await storage.fetch(file_data)
-    with open(path, 'rb') as f:
-        content = f.read()
+    async with aiofiles.open(path, 'rb') as f:
+        content = await f.read()
     return Response(content, media_type='application/dicom')
 
 
@@ -286,24 +290,23 @@ async def _wado_retrieve_study(conn, master, study_uid):
 async def _wado_build_multipart(rows, master):
     storage = await Storage.get(master)
     boundary = 'WADO_BOUNDARY'
-    body_parts = []
-    for row in rows:
-        file_data = dict(row)
-        file_data['meta'] = json.loads(file_data.get('meta') or '{}')
-        file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
-        path = await storage.fetch(file_data)
-        with open(path, 'rb') as f:
-            content = f.read()
-        part = (
-            f'--{boundary}\r\n'
-            f'Content-Type: application/dicom\r\n\r\n'
-        ).encode('latin-1') + content + b'\r\n'
-        body_parts.append(part)
-    body_parts.append(f'--{boundary}--\r\n'.encode('latin-1'))
-    body = b''.join(body_parts)
 
-    return Response(
-        body,
+    async def _iter_chunks():
+        for row in rows:
+            file_data = dict(row)
+            file_data['meta'] = json.loads(file_data.get('meta') or '{}')
+            file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
+            path = await storage.fetch(file_data)
+            async with aiofiles.open(path, 'rb') as f:
+                content = await f.read()
+            yield (
+                f'--{boundary}\r\n'
+                f'Content-Type: application/dicom\r\n\r\n'
+            ).encode('latin-1') + content + b'\r\n'
+        yield f'--{boundary}--\r\n'.encode('latin-1')
+
+    return StreamingResponse(
+        _iter_chunks(),
         media_type=f'multipart/related; type=application/dicom; boundary={boundary}',
     )
 
