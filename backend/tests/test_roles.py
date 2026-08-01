@@ -72,7 +72,7 @@ class TestRoles:
         r = Roles(conn=conn)
         await r.seed_built_in_roles()
         calls = conn.execute.call_args_list
-        assert len(calls) == 7
+        assert len(calls) == 8
         sql = calls[0][0][0]
         args = calls[0][0][1:]
         assert 'INSERT INTO' in sql
