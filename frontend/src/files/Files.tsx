@@ -18,7 +18,8 @@ import type { InputRef } from "antd";
 import type { ColumnType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request, open } from "../helpers";
+import { open } from "../helpers";
+import { qidoSearch, searchFiles } from "../api/files";
 import { PageState } from "../common/PageState";
 import { AdminFiles } from "./AdminFiles";
 import AdvancedSearch from "./AdvancedSearch";
@@ -157,11 +158,8 @@ function Files(props: any) {
   const fetchQidoResults = (
     qidoParams: Record<string, string>,
   ): Promise<any[]> => {
-    return request("v2/dicomweb/studies", { query: qidoParams }).then(
-      (res: any) => {
-        const results = Array.isArray(res) ? res : res.data || [];
-        return dicomJsonToFlat(results);
-      },
+    return qidoSearch(qidoParams).then((results) =>
+      dicomJsonToFlat(results),
     );
   };
 
@@ -210,8 +208,8 @@ function Files(props: any) {
   };
 
   const fallbackToV2 = (searchObj: any) => {
-    request("files", { data: searchObj })
-      .then((data: any) => {
+    searchFiles(searchObj)
+      .then((data) => {
         setLoading(false);
         setData(data.data);
         setPagination(Object.assign({}, pagination, { total: data.total }));

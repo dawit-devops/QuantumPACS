@@ -28,7 +28,7 @@ import {
 } from "@ant-design/icons";
 import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getFhirMetadata, fhirResourceRequest } from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
 
@@ -60,7 +60,7 @@ function FhirDocs(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("fhir/metadata");
+      const res = await getFhirMetadata();
       setCapability(res);
     } catch (e: any) {
       setError(e.message);
@@ -97,7 +97,7 @@ function FhirDocs(props: any) {
       }
 
       const start = performance.now();
-      const res = await request(url);
+      const res = await fhirResourceRequest(url);
       const elapsed = Math.round(performance.now() - start);
       setResponseTime(elapsed);
       setResponse(res);

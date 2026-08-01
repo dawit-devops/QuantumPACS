@@ -18,7 +18,8 @@ import {
 import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request, open } from "../helpers";
+import { open } from "../helpers";
+import { getFhirMetrics, getFhirRecentRequests } from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
 
@@ -44,7 +45,7 @@ function FhirMonitoring(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request(`fhir/admin/metrics?period=${period}`);
+      const res = await getFhirMetrics(period);
       setMetrics(res);
     } catch (e: any) {
       setError(e.message);
@@ -56,10 +57,12 @@ function FhirMonitoring(props: any) {
   const fetchRequests = async () => {
     setRequestsLoading(true);
     try {
-      let q = `fhir/admin/requests?limit=${limit}&offset=${offset}`;
-      if (resourceFilter) q += `&resource_type=${resourceFilter}`;
-      if (statusFilter) q += `&status_min=${statusFilter}`;
-      const res = await request(q);
+      const res = await getFhirRecentRequests({
+        limit,
+        offset,
+        ...(resourceFilter ? { resource_type: resourceFilter } : {}),
+        ...(statusFilter ? { status_min: statusFilter } : {}),
+      });
       setRequests(res.requests || []);
       setRequestsTotal(res.total || 0);
     } catch {
