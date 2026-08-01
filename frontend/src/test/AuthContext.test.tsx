@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, beforeEach } from "vitest";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import ProtectedRoute from "../auth/ProtectedRoute";

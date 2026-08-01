@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
 import { ConfigProvider, Spin } from "antd";
 import { createRoot } from "react-dom/client";
 import "./common/tokens.css";
