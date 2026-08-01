@@ -19,7 +19,8 @@ echo "--- 1. Config File ---"
 CONFIG="$DIR/backend/config.local.yaml"
 if [ ! -f "$CONFIG" ]; then
     warn "config.local.yaml not found — creating from defaults"
-    cat > "$CONFIG" <<'EOF'
+    NEW_SECRET=$(openssl rand -hex 24)
+    cat > "$CONFIG" <<EOF
 db_host: 127.0.0.1
 db_port: 5433
 db_user: quantumpacs
@@ -27,7 +28,7 @@ db_password: pa55w0rd
 db_database: quantumpacs
 redis_host: localhost
 redis_port: 6379
-secret: quantum-local-dev-secret-replace-in-prod-2026-07-28
+secret: $NEW_SECRET
 EOF
     pass "created $CONFIG"
 fi
@@ -56,14 +57,16 @@ fi
 SECRET=$(grep -E '^secret:' "$CONFIG" | awk '{print $2}' | tr -d ' ')
 if [ -z "$SECRET" ] || [ "$SECRET" = "default" ] || [ "$SECRET" = "pa55w0rd" ] || \
    [ "$SECRET" = "quantumpacs-default-secret-32-bytes-long!!" ] || \
-   [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ]; then
+   [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ] || \
+   [ "$SECRET" = "quantumpacs-compose-secret-change-me" ]; then
     fail "secret is a known default — assert_production_secret() will exit"
+    NEW_SECRET=$(openssl rand -hex 24)
     if ! grep -q '^secret:' "$CONFIG"; then
-        echo 'secret: quantum-local-dev-secret-replace-in-prod-2026-07-28' >> "$CONFIG"
+        echo "secret: $NEW_SECRET" >> "$CONFIG"
     else
-        sed -i 's|^secret:.*|secret: quantum-local-dev-secret-replace-in-prod-2026-07-28|' "$CONFIG"
+        sed -i "s|^secret:.*|secret: $NEW_SECRET|" "$CONFIG"
     fi
-    pass "fixed secret"
+    pass "fixed secret (random)"
 else
     pass "secret is custom"
 fi

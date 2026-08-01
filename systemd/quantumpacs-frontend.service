@@ -1,0 +1,17 @@
+[Unit]
+Description=QuantumPACS Frontend (Vite dev server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/OPP/openpacs/frontend
+Environment=PATH=__NODE_BIN__:/usr/bin:/bin
+ExecStart=__NODE__/frontend/node_modules/.bin/vite --host 0.0.0.0 --port 5173
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
