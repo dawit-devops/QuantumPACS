@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { BASE } from './helpers';
 
-const BASE = 'http://localhost:5173';
 const ADMIN = { username: 'admin', password: 'pa55w0rd' };
 
 async function login(page: any) {
@@ -11,6 +11,9 @@ async function login(page: any) {
   await page.getByPlaceholder('Password').fill(ADMIN.password);
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page.getByText('Search Studies').first()).toBeVisible({ timeout: 15000 });
+  // Let background fetches (notifications poll etc.) settle so no error
+  // toast is left overlapping the sidebar.
+  await page.waitForTimeout(2500);
 }
 
 test.describe('Admin Navigation', () => {
@@ -69,7 +72,8 @@ test.describe('Admin Navigation', () => {
     await page.getByText('Admin').first().click();
     await page.getByText('Logs').first().click();
     await expect(page).toHaveURL(/\/logs/, { timeout: 10000 });
-    await expect(page.getByText('Audit Log').first()).toBeVisible({ timeout: 10000 });
+    // The page body renders the audit table (no "Audit Log" heading text).
+    await expect(page.getByText('Event Type').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('navigates to Service Keys page', async ({ page }) => {
@@ -101,7 +105,9 @@ test.describe('Admin Navigation', () => {
   });
 
   test('navigates to Account page', async ({ page }) => {
-    await page.getByText('Account').first().click();
+    // Click the sidebar link by role so a transient toast cannot swallow
+    // the pointer event on the menu item text span.
+    await page.getByRole('link', { name: /account/i }).click();
     await expect(page).toHaveURL(/\/account/, { timeout: 10000 });
   });
 

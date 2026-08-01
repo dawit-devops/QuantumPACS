@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { clearAndGo } from './helpers';
+import { clearAndGo, BASE } from './helpers';
 
 test.describe('Login Flow', () => {
   test('renders login page with branding', async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe('Login Flow', () => {
   });
 
   test('redirects unauthenticated user to login', async ({ page }) => {
-    await page.goto('http://localhost:5173/users', { waitUntil: 'networkidle' });
+    await page.goto(`${BASE}/users`, { waitUntil: 'networkidle' });
     await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
   });
 });
