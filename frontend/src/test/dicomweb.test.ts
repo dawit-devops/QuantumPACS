@@ -7,7 +7,7 @@ import {
   Study,
   Series,
   Instance,
-} from "../dicomweb/dicomweb";
+} from "../api/studies";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -53,7 +53,7 @@ describe("dicomweb", () => {
       mockFetch.mockResolvedValue(mockDicomJsonResponse([]));
       await searchStudies();
       const headers = mockFetch.mock.calls[0][1]?.headers;
-      expect(headers["X-Auth-Pacs"]).toBe("test-token");
+      expect(headers?.get?.("X-Auth-Pacs")).toBe("test-token");
     });
 
     it("returns empty array on empty response", async () => {

@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router";
 
 export default function withRouter(Component: React.ComponentType<any>) {
   return function Wrapped(props: any) {

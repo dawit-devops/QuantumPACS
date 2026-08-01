@@ -71,8 +71,12 @@ describe("StudyBrowser", () => {
     render(<StudyBrowser />);
     fireEvent.click(screen.getByText("Search"));
 
-    await waitFor(() => {
-      expect(screen.getByText("DICOMweb error: 500")).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText("500")).toBeInTheDocument();
+      },
+      // request() retries GETs with exponential backoff (1s+2s+4s)
+      { timeout: 12000 },
+    );
   });
 });

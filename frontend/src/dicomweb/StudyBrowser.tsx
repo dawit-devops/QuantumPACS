@@ -9,7 +9,7 @@ import {
   Study,
   Series,
   Instance,
-} from "./dicomweb";
+} from "../api/studies";
 
 interface StudyBrowserProps {
   onSelectInstance?: (wadoRsUrl: string) => void;

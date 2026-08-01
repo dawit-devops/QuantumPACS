@@ -24,7 +24,15 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listRoles,
+  listPermissions,
+  createRole,
+  updateRole,
+  deleteRole,
+  listRoleUsers,
+  type Role,
+} from "../api/roles";
 import { PageState } from "../common/PageState";
 
 const { Text, Paragraph } = Typography;
@@ -35,7 +43,7 @@ const SUPER_ADMIN_SLUG = "super_admin";
 function Roles() {
   useDocumentTitle("QuantumPACS - Roles");
 
-  let [data, setData] = useState<any[]>([]);
+  let [data, setData] = useState<Role[]>([]);
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [visible, setVisible] = useState(false);
@@ -48,10 +56,8 @@ function Roles() {
   const isEditingSuperAdmin = editingRole?.slug === SUPER_ADMIN_SLUG;
 
   useEffect(() => {
-    request("permissions")
-      .then((res: any) => {
-        setPermGroups(res.data || {});
-      })
+    listPermissions()
+      .then(setPermGroups)
       .catch(() => {});
   }, []);
 
@@ -185,10 +191,10 @@ function Roles() {
   const fetch = () => {
     setLoading(true);
     setError(null);
-    request("roles")
-      .then((res: any) => {
+    listRoles()
+      .then((res) => {
         setLoading(false);
-        setData(res.data || []);
+        setData(res);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -212,7 +218,7 @@ function Roles() {
     form
       .validateFields()
       .then((values: any) => {
-        request("roles", { data: { ...values, permissions: selectedPerms } })
+        createRole({ ...values, permissions: selectedPerms })
           .then(() => {
             form.resetFields();
             setSelectedPerms([]);
@@ -247,7 +253,7 @@ function Roles() {
         if (values.description !== editingRole.description)
           data.description = values.description;
         data.permissions = selectedPerms;
-        request(`roles/${editingRole.id}`, { data })
+        updateRole(editingRole.id, data)
           .then(() => {
             form.resetFields();
             setSelectedPerms([]);
@@ -263,7 +269,7 @@ function Roles() {
   };
 
   const handleDelete = (id: number) => {
-    request(`roles/${id}`, { data: undefined, method: "DELETE" })
+    deleteRole(id)
       .then(() => {
         fetch();
       })
@@ -300,9 +306,8 @@ function Roles() {
   };
 
   const showRoleUsers = (role: any) => {
-    request(`roles/${role.id}/users`)
-      .then((res: any) => {
-        const users = res.data || [];
+    listRoleUsers(role.id)
+      .then((users) => {
         Modal.info({
           title: `Users with role "${role.name}"`,
           width: 500,

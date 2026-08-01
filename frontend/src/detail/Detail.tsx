@@ -1,6 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import withRouter from "../withRouter";
 import {
   Layout,
@@ -29,7 +29,7 @@ import withSidebar from "../common/base";
 
 const { useBreakpoint } = Grid;
 import { request } from "../helpers";
-import { wadoRsUrl } from "../dicomweb/dicomweb";
+import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
