@@ -7,7 +7,9 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/Documents/OPP/openpacs/frontend
 Environment=PATH=__NODE_BIN__:/usr/bin:/bin
-ExecStart=__NODE__/frontend/node_modules/.bin/vite --host 0.0.0.0 --port 5173
+# WorkingDirectory is the frontend dir, so node runs the local vite script
+# directly (__NODE_BIN__ resolves to the nvm node bin dir).
+ExecStart=__NODE_BIN__/node node_modules/.bin/vite --host 0.0.0.0 --port 5173
 Restart=always
 RestartSec=5
 StandardOutput=journal

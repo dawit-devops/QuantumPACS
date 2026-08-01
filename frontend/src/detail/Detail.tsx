@@ -1,6 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import withRouter from "../withRouter";
 import {
   Layout,

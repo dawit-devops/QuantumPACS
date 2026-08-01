@@ -28,7 +28,7 @@ fi
 mkdir -p "$UNIT_DIR"
 
 sed 's|%h|'"$HOME"'|g' "$SRC_DIR/quantumpacs-backend.service" > "$UNIT_DIR/quantumpacs-backend.service"
-sed -e 's|%h|'"$HOME"'|g' -e "s|__NODE_BIN__|$NODE_BIN|g" -e "s|__NODE__|$NODE_BIN/node|g" \
+sed -e 's|%h|'"$HOME"'|g' -e "s|__NODE_BIN__|$NODE_BIN|g" \
     "$SRC_DIR/quantumpacs-frontend.service" > "$UNIT_DIR/quantumpacs-frontend.service"
 
 systemctl --user daemon-reload
