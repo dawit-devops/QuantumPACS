@@ -191,4 +191,8 @@ routes = [
     Mount('/api', app=Router(routes)),
 ]
 if is_docker():
-    routes.append(Mount('/', app=StaticFiles(directory='static'), name="static"))
+    # static/ (docs.html, openapi.json, SPA build) is generated, not committed
+    # (gitignored) — mount only when present so fresh checkouts still start.
+    _static_dir = os.path.join(os.path.dirname(DIR), 'static')
+    if os.path.isdir(_static_dir):
+        routes.append(Mount('/', app=StaticFiles(directory=_static_dir), name="static"))
