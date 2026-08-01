@@ -32,24 +32,47 @@ verify_config() {
         fi
     fi
 
-    # Fix default secret
+    # Fix default secret — generate a random per-machine secret instead of a
+    # repo-visible literal (D-M8).
     local SECRET
     SECRET=$(grep -E '^secret:' "$CONFIG" 2>/dev/null | awk '{print $2}' | tr -d ' ')
     if [ -z "$SECRET" ] || [ "$SECRET" = "default" ] || [ "$SECRET" = "pa55w0rd" ] || \
        [ "$SECRET" = "quantumpacs-default-secret-32-bytes-long!!" ] || \
-       [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ]; then
-        echo "  fixing default secret → custom dev secret"
+       [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ] || \
+       [ "$SECRET" = "quantumpacs-compose-secret-change-me" ]; then
+        local NEW_SECRET
+        NEW_SECRET=$(openssl rand -hex 24)
+        echo "  fixing default secret → random dev secret"
         if grep -q '^secret:' "$CONFIG" 2>/dev/null; then
-            sed -i 's|^secret:.*|secret: quantum-local-dev-secret-replace-in-prod-2026-07-28|' "$CONFIG"
+            sed -i "s|^secret:.*|secret: $NEW_SECRET|" "$CONFIG"
         else
-            echo 'secret: quantum-local-dev-secret-replace-in-prod-2026-07-28' >> "$CONFIG"
+            echo "secret: $NEW_SECRET" >> "$CONFIG"
         fi
     fi
 }
 
+require_units() {
+    local MISSING=0
+    for unit in quantumpacs-backend.service quantumpacs-frontend.service; do
+        if ! systemctl --user list-unit-files "$unit" >/dev/null 2>&1 || \
+           ! systemctl --user list-unit-files "$unit" 2>/dev/null | grep -q "$unit"; then
+            echo "ERROR: systemd unit $unit not installed" >&2
+            MISSING=1
+        fi
+    done
+    if [ "$MISSING" -ne 0 ]; then
+        echo "Run: scripts/dev.sh install-units" >&2
+        exit 1
+    fi
+}
+
 case "$CMD" in
+  install-units)
+    bash "$DIR/scripts/install_systemd.sh"
+    ;;
   start)
     echo "Starting QuantumPACS dev services..."
+    require_units
     verify_config
     echo "  starting PostgreSQL (Docker)..."
     docker compose up -d 2>&1 || true
@@ -73,6 +96,7 @@ case "$CMD" in
     ;;
   restart)
     echo "Restarting QuantumPACS dev services..."
+    require_units
     systemctl --user stop quantumpacs-backend.service 2>/dev/null || true
     cleanup_port 8080
     cleanup_port 11112
@@ -87,6 +111,7 @@ case "$CMD" in
   status)
     echo "=== QuantumPACS Status ==="
     echo ""
+    require_units
     BE_STATUS=$(systemctl --user is-active quantumpacs-backend.service 2>/dev/null)
     FE_STATUS=$(systemctl --user is-active quantumpacs-frontend.service 2>/dev/null)
     PG_STATUS=$(docker ps --filter name=quantumpacs-postgres-1 --format '{{.Status}}' 2>/dev/null || echo "not running")
@@ -130,7 +155,7 @@ case "$CMD" in
     journalctl --user -u quantumpacs-frontend.service -f --no-pager 2>&1
     ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|verify|logs|logs-fe}"
+    echo "Usage: $0 {start|stop|restart|status|verify|install-units|logs|logs-fe}"
     exit 1
     ;;
 esac

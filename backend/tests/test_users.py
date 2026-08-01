@@ -181,3 +181,38 @@ class TestUsers:
         sql = conn.execute.call_args[0][0]
         assert 'role_id' in sql
         assert 'super_admin' not in sql
+
+    @pytest.mark.asyncio
+    async def test_add_superadmin_repairs_missing_role_id(self):
+        # Regression: bootstrap ran before roles were seeded, leaving the
+        # admin user with role_id NULL and every RBAC endpoint 403-ing.
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            {'id': 1, 'username': 'admin', 'admin': True, 'role_id': None},
+            {'id': 7, 'slug': 'super_admin'},
+        ]
+        ctx = AsyncMock()
+        conn.transaction = MagicMock(return_value=ctx)
+        ctx.__aenter__ = AsyncMock(return_value=conn)
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        u = Users(conn=conn)
+        await u.add_superadmin()
+        sql = conn.execute.call_args[0][0]
+        assert 'UPDATE' in sql.upper()
+        assert 'role_id' in sql
+        assert '"id"=1' in sql
+
+    @pytest.mark.asyncio
+    async def test_add_superadmin_skips_when_role_linked(self):
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            {'id': 1, 'username': 'admin', 'admin': True, 'role_id': 7},
+            {'id': 7, 'slug': 'super_admin'},
+        ]
+        ctx = AsyncMock()
+        conn.transaction = MagicMock(return_value=ctx)
+        ctx.__aenter__ = AsyncMock(return_value=conn)
+        ctx.__aexit__ = AsyncMock(return_value=None)
+        u = Users(conn=conn)
+        await u.add_superadmin()
+        conn.execute.assert_not_called()

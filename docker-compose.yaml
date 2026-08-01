@@ -42,16 +42,64 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: quantumpacs
-      POSTGRES_PASSWORD: pa55w0rd
-      POSTGRES_DB: quantumpacs
+      POSTGRES_USER: ${POSTGRES_USER:-quantumpacs}
+      # Override via .env — never commit real credentials to this file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quantumpacs-local-dev-only}
+      POSTGRES_DB: ${POSTGRES_DB:-quantumpacs}
     volumes:
       - quantumpacs_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quantumpacs"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quantumpacs}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # App stack (backend + frontend). Opt-in via --profile app so the dev
+  # workflow (systemd units for apps, compose only for postgres/es) is
+  # unchanged. Production/CI uses: docker compose --profile app up -d.
+  backend:
+    build:
+      context: ./backend
+    image: quantumpacs-backend:${IMAGE_TAG:-latest}
+    container_name: quantumpacs-backend-1
+    restart: unless-stopped
+    profiles: ["app"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-quantumpacs}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-quantumpacs-local-dev-only}
+      DB_DATABASE: ${POSTGRES_DB:-quantumpacs}
+      REDIS_HOST: ${REDIS_HOST:-localhost}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      SECRET: ${QUANTUMPACS_SECRET:-quantumpacs-compose-secret-change-me}
+      SUPERADMIN_PASS: ${SUPERADMIN_PASS:-pa55w0rd}
+      SEED_RBAC_PASSWORD: ${SEED_RBAC_PASSWORD:-pa55w0rd}
+      QUANTUMPACS_DOCKER: "true"
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).status == 200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+    image: quantumpacs-frontend:${IMAGE_TAG:-latest}
+    container_name: quantumpacs-frontend-1
+    restart: unless-stopped
+    profiles: ["app"]
+    ports:
+      - "${FRONTEND_PORT:-8081}:8080"
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   quantumpacs_pgdata:

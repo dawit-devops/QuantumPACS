@@ -49,7 +49,11 @@ test.describe('API Integration', () => {
   });
 
   test('CORS headers present on API response', async ({ page }) => {
-    const resp = await page.request.get(`${API_BASE}/api/health`);
+    // Starlette CORSMiddleware only emits ACAO when the request carries an
+    // Origin header, so send one that matches the configured allow-list.
+    const resp = await page.request.get(`${API_BASE}/api/health`, {
+      headers: { origin: 'http://localhost:5173' },
+    });
     expect(resp.headers()['access-control-allow-origin']).toBeTruthy();
   });
 

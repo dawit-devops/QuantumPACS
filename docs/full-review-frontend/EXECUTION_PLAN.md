@@ -62,22 +62,31 @@ Legend: ✅ done (merged PR) · 🔲 planned
 
 ---
 
-## Sprint 4: CI/CD Truth (P1/P2, medium) — PLANNED
+## Sprint 4: CI/CD Truth (P1/P2, medium) — DONE (PR #78)
 
 ~2-3 days. Fixes the pipeline/ops contradictions so CI reflects reality.
 
 | # | Issue | File(s) | Fix | Status |
 |---|-------|---------|-----|--------|
-| D-H1 | Node 3-way version skew (CI 20 / Docker 22 float / dev 24) | `.github/workflows/ci.yml`, `frontend/Dockerfile` | `.nvmrc` at 22; CI uses it; Docker pinned digest | 🔲 |
-| D-H3 | Playwright E2E (11 specs) never runs in CI | `.github/workflows/ci.yml`, `frontend/e2e/` | New `e2e` job (build → serve → playwright) | 🔲 |
-| D-H4 | App images built then discarded; compose has no app services | `docker-compose.yaml`, `.github/workflows/ci.yml` | Compose app services + registry tags; nginx `backend:8080` proxy target exists | 🔲 |
-| D-H5 | systemd units untracked; dev.sh swallows failures | `systemd/*.service`, `scripts/dev.sh` | Units + install script in repo; dev.sh errors on missing units | 🔲 |
-| D-M1 | npm audit continue-on-error | `.github/workflows/ci.yml` | Fail on high/critical advisories | 🔲 |
-| D-M2 | No caching / concurrency / path filters | `.github/workflows/ci.yml` | Setup-node cache, concurrency group, path filters | 🔲 |
-| D-M3 / D-M4 | Trivy superficial + `@master`; nginx root, no HEALTHCHECKs | `.github/workflows/ci.yml`, `frontend/Dockerfile` | Pin Trivy action version, deeper scan scope; non-root nginx + healthchecks | 🔲 |
-| D-M6 / D-M8 | Hardcoded `pa55w0rd` in compose/scripts; repo-visible dev secret | `docker-compose.yaml`, `scripts/*`, `backend/config.local.yaml` | Env-var driven secrets, dev secret out of repo | 🔲 |
-| D-M7 | No frontend `.dockerignore` | `frontend/.dockerignore` | Exclude node_modules/dist/tests | 🔲 |
-| D-M12 / D-M13 | dev/prod runtime divergence; no rollback story | `scripts/dev.sh`, `docs/ops-guide.md` | Parity docs; rollback procedure | 🔲 |
+| D-H1 | Node 3-way version skew (CI 20 / Docker 22 float / dev 24) | `.github/workflows/ci.yml`, `frontend/Dockerfile` | `.nvmrc` at 22.12.0; CI uses `node-version-file`; Docker pinned `node:22.12.0-alpine` + `nginx:1.27.4-alpine` | ✅ |
+| D-H3 | Playwright E2E (11 specs) never runs in CI | `.github/workflows/ci.yml`, `frontend/e2e/` | New `e2e` job (postgres+redis services → alembic migrate → seed RBAC users → uvicorn → build → vite preview → playwright chromium) | ✅ |
+| D-H4 | App images built then discarded; compose has no app services | `docker-compose.yaml`, `.github/workflows/ci.yml` | Compose app services under `profiles: [app]`; sha tags + GHCR push on main/v3-dev; nginx `backend:8080` proxy target exists | ✅ |
+| D-H5 | systemd units untracked; dev.sh swallows failures | `systemd/*.service`, `scripts/dev.sh` | Units in repo (`%h`-based) + `scripts/install_systemd.sh`; dev.sh `require_units` + `install-units` command | ✅ |
+| D-M1 | npm audit continue-on-error | `.github/workflows/ci.yml`, `.github/workflows/security.yml` | Audit now fails on high/critical (0 advisories currently) | ✅ |
+| D-M2 | No caching / concurrency / path filters | `.github/workflows/ci.yml` | Setup-node cache (npm), `concurrency` group + cancel-in-progress, path filters on both workflows | ✅ |
+| D-M3 / D-M4 | Trivy superficial + `@master`; nginx root, no HEALTHCHECKs | `.github/workflows/ci.yml`, `frontend/Dockerfile`, `backend/Dockerfile` | Trivy pinned `@v0.24.0`, backend+frontend scans; nginx runs as `USER nginx` on 8080; HEALTHCHECKs in both images | ✅ |
+| D-M6 / D-M8 | Hardcoded `pa55w0rd` in compose/scripts; repo-visible dev secret | `docker-compose.yaml`, `scripts/*`, `backend/config.local.yaml` | Compose password env-driven (`POSTGRES_PASSWORD`); `verify_config.sh`/`dev.sh` generate random secrets (config.local.yaml already gitignored) | ✅ |
+| D-M7 | No frontend `.dockerignore` | `frontend/.dockerignore` | Added (node_modules/dist/e2e/coverage/logs) | ✅ |
+| D-M12 / D-M13 | dev/prod runtime divergence; no rollback story | `scripts/dev.sh`, `docs/ops-guide.md` | Parity table + rollback procedure sections in ops-guide | ✅ |
+
+**Also in #78 (found by making E2E run):**
+- RBAC bootstrap bug: `add_superadmin` left `admin.role_id` NULL when roles were seeded later → every permission-gated endpoint 403'd for admin. Fixed in `db/users.py` (self-healing repair) + regression tests (`tests/test_users.py`).
+- `migrations/versions/032_add_performance_indexes.py` failed on fresh DBs: `CREATE INDEX CONCURRENTLY` inside alembic's transaction and `jsonb_path_ops` on a TEXT column. Fixed with `autocommit_block()` + `log::jsonb` cast.
+- `receptionist` was missing from `BUILT_IN_ROLES` (silently fell back to cashier perms) — added with sensible permissions.
+- `api/response.py` `_default` didn't serialize `pgproto.UUID` — `GET /api/users` 500'd once seeded users had real `role_id`s (LEFT JOIN roles.id is a UUID). Now str()-ed; regression tests in `tests/test_response.py`.
+- `backend/management/seed_rbac.py`: seeds `role_<slug>` users (idempotent, env-driven password) for RBAC testing.
+- New `frontend/e2e/rbac.spec.ts`: 30+ tests covering per-role sidebar visibility, role-based page routes, and a full API permission matrix (6 endpoints × 7 roles).
+- E2E spec fixes to match reality: CORS test now sends an Origin header (Starlette only emits ACAO with Origin); Logs page asserts the audit table header instead of a nonexistent "Audit Log" heading; base URLs env-driven (`E2E_BASE_URL`); playwright uses bundled chromium in CI.
 
 ---
 

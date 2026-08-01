@@ -163,13 +163,20 @@ Returns:
 
 ### Docker Healthcheck
 
-The Docker image includes a healthcheck that pings `/api/health` every 30s:
+The Docker images include healthchecks:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+  # Backend (slim image has no curl — uses stdlib urllib)
+  test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).status == 200 else 1)"]
   interval: 30s
-  timeout: 10s
+  timeout: 5s
+  retries: 3
+
+  # Frontend (nginx alpine)
+  test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+  interval: 30s
+  timeout: 5s
   retries: 3
 ```
 
@@ -202,6 +209,68 @@ Notable migration sequence:
 | 002 | PKs, indexes, constraints | None (CONCURRENT) |
 | 003 | FK cascades, TIMESTAMPTZ | Brief write lock |
 | 004 | BIGINT IDENTITY | Brief write lock |
+
+## Rollback Procedure
+
+Downgrade strategy when a release must be reverted (D-M13):
+
+### 1. Database
+
+```bash
+# Only if the new version contains migrations the old version cannot read.
+# Plain DROP for index migrations; migrations using CONCURRENTLY are
+# non-transactional and must be reverted with their downgrade().
+cd /opt/quantumpacs/backend
+alembic downgrade -1
+
+# Verify: alembic current
+```
+
+If the DB cannot be downgraded safely (destructive changes), restore from the
+latest backup instead — see "Disaster Recovery" below.
+
+### 2. Application
+
+```bash
+# systemd deployment
+git checkout <previous-tag>
+scripts/install_systemd.sh
+systemctl --user restart quantumpacs-backend.service quantumpacs-frontend.service
+
+# container deployment (images are tagged with the commit sha; `latest` is
+# also pushed for main/v3-dev)
+docker compose --profile app up -d \
+  --force-recreate --no-deps backend frontend \
+  && docker image pull quantumpacs-backend:<previous-sha>
+```
+
+### 3. Verify
+
+```bash
+curl -sf http://localhost:8080/api/health | python3 -m json.tool
+curl -sf http://localhost:5173/ > /dev/null && echo "frontend up"
+```
+
+### 4. Communications
+
+- Post a rollback notice in the team channel with the previous tag/sha.
+- Log the reason in the incident tracker; backfilled into `docs/` after the fact.
+
+## Environment Parity
+
+Dev / CI / production should differ only in credentials and scale (D-M12):
+
+| Aspect | Dev (systemd) | CI (GitHub Actions) | Prod (docker compose) |
+|--------|---------------|----------------------|-----------------------|
+| Node | `.nvmrc` (22.12.0) via nvm | `node-version-file: frontend/.nvmrc` | `node:22.12.0-alpine` image |
+| Backend | `uvicorn` in venv | `uvicorn` + alembic upgrade + seed | `quantumpacs-backend` image |
+| Config | `config.local.yaml` (gitignored) | env vars in workflow | env vars via `.env` |
+| DB | Docker postgres:16 | postgres:16 service | postgres:16 service |
+| Migration | `manage db migrate` | `alembic upgrade head` in e2e job | `alembic upgrade head` on deploy |
+
+The single source of truth for the Node version is `frontend/.nvmrc`; the
+frontend Dockerfile pins the same exact version. CI installs a pinned
+playwright chromium so e2e runs match local results.
 
 ## Disaster Recovery
 

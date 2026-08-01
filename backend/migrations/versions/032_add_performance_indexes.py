@@ -26,26 +26,29 @@ depends_on = None
 
 
 def upgrade():
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_files_sop_instance_uid "
-        "ON files(sop_instance_uid) WHERE sop_instance_uid IS NOT NULL"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_series_instance_uid "
-        "ON series(series_instance_uid) WHERE series_instance_uid IS NOT NULL"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_studies_study_instance_uid "
-        "ON studies(study_instance_uid) WHERE study_instance_uid IS NOT NULL"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_worklist_entries_status "
-        "ON worklist_entries(status)"
-    )
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_audit_log_event_type "
-        "ON logs USING gin (log jsonb_path_ops)"
-    )
+    # CONCURRENTLY cannot run inside a transaction block; alembic wraps
+    # migrations in one by default, so run these outside it.
+    with op.get_context().autocommit_block():
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_files_sop_instance_uid "
+            "ON files(sop_instance_uid) WHERE sop_instance_uid IS NOT NULL"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_series_instance_uid "
+            "ON series(series_instance_uid) WHERE series_instance_uid IS NOT NULL"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_studies_study_instance_uid "
+            "ON studies(study_instance_uid) WHERE study_instance_uid IS NOT NULL"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_worklist_entries_status "
+            "ON worklist_entries(status)"
+        )
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_audit_log_event_type "
+            "ON logs USING gin ((log::jsonb) jsonb_path_ops)"
+        )
 
 
 def downgrade():

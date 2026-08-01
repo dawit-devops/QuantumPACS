@@ -1,5 +1,28 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main, v3-dev, phase/**]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'docker/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, v3-dev]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'docker/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/**'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-backend:
     runs-on: ubuntu-latest
@@ -14,15 +37,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: cd frontend && npm ci && npx prettier --check src/
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci --legacy-peer-deps
+      - run: cd frontend && npx prettier --check src/
+      - name: npm audit (fail on high/critical)
+        run: cd frontend && npm audit --audit-level=high
   typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: cd frontend && npm ci && npx tsc --noEmit
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci --legacy-peer-deps && npx tsc --noEmit
   test-backend:
     runs-on: ubuntu-latest
     services:
@@ -42,26 +74,124 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: cd frontend && npm ci && npx vitest run
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci --legacy-peer-deps && npx vitest run
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: quantumpacs, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
+        ports: ['5432:5432']
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USER: quantumpacs
+      DB_PASSWORD: pa55w0rd
+      DB_DATABASE: quantumpacs
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      SECRET: quantumpacs-e2e-ci-only-secret
+      SUPERADMIN_PASS: pa55w0rd
+      QUANTUMPACS_DOCKER: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14' }
+      - run: pip install -r backend/requirements.txt
+      - name: Migrate database
+        run: cd backend && alembic upgrade head
+      - name: Seed RBAC role users
+        run: cd backend && python -m management.seed_rbac
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup uvicorn app:app --host 0.0.0.0 --port 8080 > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/api/health > /dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "backend did not become healthy" && tail -30 /tmp/backend.log && exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci --legacy-peer-deps
+      - run: cd frontend && npx playwright install --with-deps chromium
+      - run: cd frontend && npm run build
+      - name: Serve built frontend
+        working-directory: frontend
+        run: |
+          nohup npx vite preview --port 5173 --strictPort > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5173/ > /dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "preview did not start" && tail -30 /tmp/preview.log && exit 1
+      - name: Run Playwright e2e
+        working-directory: frontend
+        env:
+          CI: 'true'
+          E2E_BASE_URL: http://localhost:5173
+        run: npx playwright test --reporter=line
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
   build-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: cd frontend && npm ci && npm run build
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci --legacy-peer-deps && npm run build
       - run: cd frontend && node scripts/check-bundle-size.mjs
       - run: cd frontend && npx vitest run --coverage
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t quantumpacs-backend backend/
-      - run: docker build -t quantumpacs-frontend frontend/
+      - name: Set image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+      - name: Build backend image
+        run: docker build -t quantumpacs-backend:${{ steps.meta.outputs.tag }} -t quantumpacs-backend:latest backend/
+      - name: Build frontend image
+        run: docker build -t quantumpacs-frontend:${{ steps.meta.outputs.tag }} -t quantumpacs-frontend:latest frontend/
+      - name: Push images to GHCR
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/v3-dev')
+        env:
+          REGISTRY: ghcr.io/${{ github.repository }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag quantumpacs-backend:${{ steps.meta.outputs.tag }} $REGISTRY/quantumpacs-backend:${{ steps.meta.outputs.tag }}
+          docker tag quantumpacs-backend:${{ steps.meta.outputs.tag }} $REGISTRY/quantumpacs-backend:latest
+          docker tag quantumpacs-frontend:${{ steps.meta.outputs.tag }} $REGISTRY/quantumpacs-frontend:${{ steps.meta.outputs.tag }}
+          docker tag quantumpacs-frontend:${{ steps.meta.outputs.tag }} $REGISTRY/quantumpacs-frontend:latest
+          docker push $REGISTRY/quantumpacs-backend:${{ steps.meta.outputs.tag }}
+          docker push $REGISTRY/quantumpacs-backend:latest
+          docker push $REGISTRY/quantumpacs-frontend:${{ steps.meta.outputs.tag }}
+          docker push $REGISTRY/quantumpacs-frontend:latest
   vuln-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
+      - name: Trivy scan backend
+        uses: aquasecurity/trivy-action@v0.24.0
         with: { scan-type: 'fs', scan-ref: 'backend/', format: 'table' }
+      - name: Trivy scan frontend
+        uses: aquasecurity/trivy-action@v0.24.0
+        with: { scan-type: 'fs', scan-ref: 'frontend/', format: 'table' }

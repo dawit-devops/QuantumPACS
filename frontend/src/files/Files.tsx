@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import withRouter from "../withRouter";
 import Highlighter from "react-highlight-words";
 import {
