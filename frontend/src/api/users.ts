@@ -57,7 +57,10 @@ export const listUsers = (params: ListUsersParams = {}): Promise<UsersPage> => {
 export const assignRole = (userId: number, roleId: number): Promise<void> =>
   // Backend route is PUT /api/users/role (UserRoleUpdate); the bare request()
   // helper defaulted to POST, so role assignment never reached the server.
-  request("users/role", { method: "PUT", data: { user_id: userId, role_id: roleId } });
+  request("users/role", {
+    method: "PUT",
+    data: { user_id: userId, role_id: roleId },
+  });
 
 export const deactivateUser = (id: number): Promise<void> =>
   request("users/deactivate", { data: { id } });
