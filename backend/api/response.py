@@ -10,6 +10,10 @@ from starlette.responses import JSONResponse as _StarletteJSONResponse
 def _default(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    # asyncpg returns UUID columns as pgproto.UUID (a uuid.UUID subclass);
+    # role_id joins otherwise 500 on serialization.
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
     raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
 
 

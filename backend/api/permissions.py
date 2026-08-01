@@ -112,4 +112,10 @@ BUILT_IN_ROLES = {
         Permission.PATIENT_READ.value,
         Permission.PATIENT_WRITE.value,
     ],
+    'receptionist': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.PATIENT_WRITE.value,
+        Permission.WORKLIST_READ.value,
+    ],
 }

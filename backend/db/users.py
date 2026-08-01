@@ -84,14 +84,19 @@ class Users(Table):
         async with self.conn.transaction():
             q = self.select('*').where(self.table.username == 'admin')
             data = await self.fetchone(q)
+            from db.roles import Roles
+            role = await Roles(self.conn).get_by_slug('super_admin')
+            role_id = role['id'] if role else None
             if not data:
                 pswd = hash_password(config['superadmin_pass'])
-                from db.roles import Roles
-                role = await Roles(self.conn).get_by_slug('super_admin')
-                role_id = role['id'] if role else None
                 q = self.insert().columns('username', 'password', 'admin', 'role_id').insert(
                     'admin', pswd, True, role_id,
                 )
+                await self.exec(q)
+            elif data['role_id'] is None and role_id:
+                # Bootstrap may pre-date role seeding; link the super_admin role
+                # so RBAC permission checks resolve instead of 403-ing admin.
+                q = self.update().where(self.table.id == data['id']).set(self.table.role_id, role_id)
                 await self.exec(q)
 
     async def get_user_role(self, user_id):
