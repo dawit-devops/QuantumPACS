@@ -87,7 +87,7 @@ Legend: ✅ done (merged PR) · 🔲 planned
 
 | # | Issue | File(s) | Fix | Status |
 |---|-------|---------|-----|--------|
-| A-2 / H-7 / Q-3 | No typed API layer (~200 stringly-typed URLs); helpers/hooks/dicomweb triplicated | `src/helpers.ts`, `src/hooks.ts`, `src/dicomweb.ts` | `request<T>` generics; consolidate to one transport; typed `src/api/` modules | 🔄 1/2 done |
+| A-2 / H-7 / Q-3 | No typed API layer (~200 stringly-typed URLs); helpers/hooks/dicomweb triplicated | `src/helpers.ts`, `src/hooks.ts`, `src/dicomweb.ts` | `request<T>` generics; consolidate to one transport; typed `src/api/` modules | 🔄 3/4 done (client, studies, roles, users, notifications, logs, fhir, files; ~19 raw call sites left) |
 | A-1 / A-9 / M-security | Error contract broken (envelope vs `Error(status)` strings); server text may leak | `src/helpers.ts`, `backend/api/response.py` | Client parses envelope; sanitize server text in errors | 🔲 |
 | A-4 / H-8 | withRouter legacy HOC over RR7 | `src/withRouter.tsx` | Migrate to router hooks; delete HOC | 🔲 |
 | H-10 | 94 static `message.*` calls | `src/**/*.tsx` | antd `App.useApp()` context | 🔲 |
