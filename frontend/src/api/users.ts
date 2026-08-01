@@ -68,4 +68,15 @@ export const deactivateUser = (id: number): Promise<void> =>
 export const resetPassword = (id: number): Promise<{ password: string }> =>
   request<{ password: string }>("users/new_password", { data: { id } });
 
+export interface CreateUserInput {
+  username: string;
+  admin?: boolean;
+  role_id?: number;
+}
+
+export const createUser = (
+  input: CreateUserInput,
+): Promise<{ username: string; password: string }> =>
+  request<{ username: string; password: string }>("users", { data: input });
+
 export { listRoles, type Role };

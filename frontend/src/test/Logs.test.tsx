@@ -7,10 +7,16 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Logs from "../logs/Logs";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListLogs = vi.hoisted(() => vi.fn());
+const mockListLogActors = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/logs", () => ({
+  listLogs: mockListLogs,
+  listLogActors: mockListLogActors,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -51,15 +57,12 @@ async function waitForTable() {
 describe("Logs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "logs")
-        return Promise.resolve({ data: mockLogs, total: 2, has_more: false });
-      if (url === "logs/event-types")
-        return Promise.resolve({ data: ["auth.login", "study.read"] });
-      if (url === "logs/actors")
-        return Promise.resolve({ data: ["admin", "system"] });
-      return Promise.resolve({});
-    });
+    mockListLogs.mockImplementation(() =>
+      Promise.resolve({ data: mockLogs, total: 2, has_more: false }),
+    );
+    mockListLogActors.mockImplementation(() =>
+      Promise.resolve(["admin", "system"]),
+    );
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -101,7 +104,7 @@ describe("Logs", () => {
   it("calls logs endpoint on mount", async () => {
     renderWithAuth(<Logs />);
     await waitForTable();
-    expect(mockRequest).toHaveBeenCalledWith("logs", expect.any(Object));
+    expect(mockListLogs).toHaveBeenCalled();
   });
 
   it("renders live streaming toggle", async () => {
@@ -117,16 +120,12 @@ describe("Logs", () => {
   });
 
   it("shows empty state when no logs", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "logs")
-        return Promise.resolve({ data: [], total: 0, has_more: false });
-      if (url === "logs/event-types") return Promise.resolve({ data: [] });
-      if (url === "logs/actors") return Promise.resolve({ data: [] });
-      return Promise.resolve({});
-    });
+    mockListLogs.mockImplementation(() =>
+      Promise.resolve({ data: [], total: 0, has_more: false }),
+    );
     renderWithAuth(<Logs />);
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("logs", expect.any(Object));
+      expect(mockListLogs).toHaveBeenCalled();
     });
   });
 });

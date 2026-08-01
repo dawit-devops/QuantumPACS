@@ -11,7 +11,8 @@ import {
   Typography,
 } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
-import { request } from "../helpers";
+import { createUser } from "../api/users";
+import { listRoles } from "../api/roles";
 
 const { Text, Paragraph } = Typography;
 
@@ -79,10 +80,8 @@ export function AddUser(props: any) {
 
   useEffect(() => {
     if (visible) {
-      request("roles")
-        .then((res: any) => {
-          setRoles(res.data || []);
-        })
+      listRoles()
+        .then(setRoles)
         .catch(() => {});
     }
   }, [visible]);
@@ -104,7 +103,7 @@ export function AddUser(props: any) {
           admin: values.admin || false,
         };
         if (values.role_id) data.role_id = values.role_id;
-        request("users", { data })
+        createUser(data)
           .then((res: any) => {
             form.resetFields();
             setVisible(false);

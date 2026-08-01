@@ -26,7 +26,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listLogs, listLogActors } from "../api/logs";
 import { PageState } from "../common/PageState";
 
 const { Text } = Typography;
@@ -194,7 +194,7 @@ function Logs() {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("logs", { query: buildQuery(extra) });
+      const res = await listLogs(buildQuery(extra));
       const items = res.data || [];
       setData(items);
       setTotal(res.total || 0);
@@ -214,7 +214,7 @@ function Logs() {
     if (!latestIdRef.current) return;
     try {
       const q = buildQuery({ cursor: latestIdRef.current, limit: 200 });
-      const res = await request("logs", { query: q });
+      const res = await listLogs(q);
       const newItems = (res.data || []).filter(
         (item: any) => item.id > (latestIdRef.current || 0),
       );
@@ -279,10 +279,8 @@ function Logs() {
     if (actorDebounceRef.current) clearTimeout(actorDebounceRef.current);
     actorDebounceRef.current = setTimeout(async () => {
       try {
-        const res = await request("logs/actors", {
-          query: { search: value, limit: "10" },
-        });
-        setActors(res.data || []);
+        const res = await listLogActors(value);
+        setActors(res);
       } catch {}
     }, 300);
   };

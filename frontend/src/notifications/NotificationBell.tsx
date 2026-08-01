@@ -18,7 +18,14 @@ import {
   CheckCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router";
-import { request } from "../helpers";
+import {
+  getUnreadCount,
+  listNotifications,
+  markRead as markReadApi,
+  markAllRead as markAllReadApi,
+  deleteNotification,
+  clearNotifications,
+} from "../api/notifications";
 
 const { Text } = Typography;
 
@@ -44,17 +51,16 @@ function NotificationBell() {
 
   const fetchUnread = async () => {
     try {
-      const res = await request("notifications/unread-count");
-      setUnread(res.count || 0);
+      setUnread(await getUnreadCount());
     } catch {}
   };
 
   const fetchList = async () => {
     setLoading(true);
     try {
-      const res = await request("notifications");
-      setNotifs(res.data || []);
-      setTotal(res.total || 0);
+      const res = await listNotifications();
+      setNotifs(res.data);
+      setTotal(res.total);
     } catch {
       message.error("Failed to load notifications");
     } finally {
@@ -76,7 +82,7 @@ function NotificationBell() {
   };
 
   const markRead = async (id: string) => {
-    await request(`notifications/${id}`, { method: "POST" });
+    await markReadApi(id);
     setNotifs((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
     );
@@ -84,20 +90,20 @@ function NotificationBell() {
   };
 
   const markAllRead = async () => {
-    await request("notifications/read-all", { method: "POST" });
+    await markAllReadApi();
     setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnread(0);
     message.success("All marked as read");
   };
 
   const dismiss = async (id: string) => {
-    await request(`notifications/${id}`, { method: "DELETE" });
+    await deleteNotification(id);
     setNotifs((prev) => prev.filter((n) => n.id !== id));
     setTotal((prev) => prev - 1);
   };
 
   const dismissAll = async () => {
-    await request("notifications", { method: "DELETE" });
+    await clearNotifications();
     setNotifs([]);
     setTotal(0);
     setUnread(0);
