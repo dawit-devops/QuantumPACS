@@ -13,6 +13,11 @@
   localStorage on sign-in (`permissions` JSON array, `admin`, `role`, `tenant_id`).
 - `RequirePermission` component (`frontend/src/auth/RequirePermission.tsx`): renders
   children only when `hasPermission(permission)` is true, else `null`.
+- `PermissionRoute` component (`frontend/src/auth/PermissionRoute.tsx`): route-level
+  gate — unauthenticated → `/login`; authenticated without the required permission →
+  `/` (Files); authenticated + permission → renders children. Applied to every admin
+  route in `index.tsx` (same permission matrix as Sidebar.tsx) to close the
+  deep-link gap.
 - `ProtectedRoute`: gates routes on auth (userId or tempKey share-link). Share-link
   mode (`tempKey`) bypasses normal auth and hides the entire sidebar.
 - Session tokens: access + refresh via `helpers.ts` (`setTokens`, `startRefreshTimer`).

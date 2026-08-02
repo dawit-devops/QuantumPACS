@@ -79,6 +79,9 @@ function hasAnyAdminPermission(
     "SERVICE_KEY_READ",
     "WORKLIST_READ",
     "HL7_READ",
+    "ROUTING_READ",
+    "DICOMWEB_READ",
+    "SYSTEM_ADMIN",
   ];
   return adminPermissions.some((p) => hasPermission(p));
 }

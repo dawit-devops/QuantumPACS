@@ -14,6 +14,7 @@ import { renderEmpty } from "./common/EmptyState";
 import { OnboardingTour } from "./common/OnboardingTour";
 import { HelpButton } from "./common/HelpButton";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import PermissionRoute from "./auth/PermissionRoute";
 
 const Login = React.lazy(() => import("./login/Login"));
 const Account = React.lazy(() => import("./account/Account"));
@@ -94,33 +95,33 @@ function ThemedApp() {
                 <Route
                   path="/replicas"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="REPLICA_READ">
                       <Replicas />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/users"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="USER_READ">
                       <Users />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/roles"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="ROLE_READ">
                       <Roles />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/tenants"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="TENANT_READ">
                       <Tenants />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
@@ -134,81 +135,81 @@ function ThemedApp() {
                 <Route
                   path="/logs"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="LOG_READ">
                       <Logs />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/worklist"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="WORKLIST_READ">
                       <Worklist />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/service-keys"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="SERVICE_KEY_READ">
                       <ServiceKeys />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/routing"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="ROUTING_READ">
                       <RoutingRules />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/fhir/config"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="SYSTEM_ADMIN">
                       <FhirConfig />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/fhir/monitoring"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="SYSTEM_ADMIN">
                       <FhirMonitoring />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/fhir/docs"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="SYSTEM_ADMIN">
                       <FhirDocs />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/hl7"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="HL7_READ">
                       <Hl7Dashboard />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/dicomweb"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="DICOMWEB_READ">
                       <DicomWebAdmin />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
                   path="/integrations"
                   element={
-                    <ProtectedRoute>
+                    <PermissionRoute permission="SYSTEM_ADMIN">
                       <Integrations />
-                    </ProtectedRoute>
+                    </PermissionRoute>
                   }
                 />
                 <Route
