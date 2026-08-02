@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import withRouter from "../withRouter";
+import { useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
 import { listLoginProviders } from "../api/auth";
 import {
@@ -61,6 +61,7 @@ function clearAttempts() {
 
 function LoginForm(props: any) {
   useDocumentTitle("QuantumPACS - Login");
+  const navigate = useNavigate();
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch("login");
@@ -103,7 +104,7 @@ function LoginForm(props: any) {
       },
       data.refresh_token,
     );
-    props.history.push("/");
+    navigate("/");
   }, [data]);
 
   const errorRef = React.useRef<HTMLDivElement>(null);
@@ -279,4 +280,4 @@ function LoginForm(props: any) {
   );
 }
 
-export default withRouter(LoginForm);
+export default LoginForm;

@@ -1,6 +1,5 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useEffect, useState } from "react";
-import withRouter from "../withRouter";
 import { getProfile, updateProfile, changePassword } from "../api/account";
 import withSidebar from "../common/base";
 import {
@@ -304,4 +303,4 @@ function Account(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Account));
+export default withSidebar(Account);

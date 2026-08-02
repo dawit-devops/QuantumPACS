@@ -26,7 +26,6 @@ import {
   CloseCircleOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import { getFhirMetadata, fhirResourceRequest } from "../api/fhir";
 import { PageState } from "../common/PageState";
@@ -375,4 +374,4 @@ function FhirDocs(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirDocs));
+export default withSidebar(FhirDocs);

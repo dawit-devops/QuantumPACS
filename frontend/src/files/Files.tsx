@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router";
-import withRouter from "../withRouter";
+import { Link, useNavigate } from "react-router";
 import Highlighter from "react-highlight-words";
 import {
   Layout,
@@ -96,6 +95,7 @@ function searchToQidoParams(searchObj: any): Record<string, string> {
 function Files(props: any) {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
+  const navigate = useNavigate();
 
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({
@@ -139,7 +139,7 @@ function Files(props: any) {
       }
       s = Object.assign(s, so);
     }
-    props.history.push(encodeUrl(s));
+    navigate(encodeUrl(s));
   };
 
   useEffect(() => {
@@ -251,9 +251,9 @@ function Files(props: any) {
     setSearchText("");
     setGlobSearch(value);
     if (value) {
-      props.history.push(encodeUrl({ query: value }));
+      navigate(encodeUrl({ query: value }));
     } else {
-      props.history.push("");
+      navigate("");
     }
   };
 
@@ -372,7 +372,7 @@ function Files(props: any) {
       if (!f[0].length || !f[1].length) continue;
       so[f[0]] = [f[1]];
     }
-    props.history.push(encodeUrl(so));
+    navigate(encodeUrl(so));
   };
 
   const columns: ColumnType<any>[] = [
@@ -527,7 +527,7 @@ function Files(props: any) {
                 className="stagger-enter"
                 size="small"
                 hoverable
-                onClick={() => props.history.push(`/files/${item.id}`)}
+                onClick={() => navigate(`/files/${item.id}`)}
                 style={
                   {
                     cursor: "pointer",
@@ -594,4 +594,4 @@ function Files(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Files));
+export default withSidebar(Files);

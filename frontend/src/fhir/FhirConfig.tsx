@@ -24,7 +24,6 @@ import {
   KeyOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import {
   getFhirConfig,
@@ -471,4 +470,4 @@ function FhirConfig(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirConfig));
+export default withSidebar(FhirConfig);

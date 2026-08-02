@@ -26,7 +26,6 @@ import {
   ApiOutlined,
   SendOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import {
   listOauthProviders,
@@ -544,4 +543,4 @@ function Integrations(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Integrations));
+export default withSidebar(Integrations);

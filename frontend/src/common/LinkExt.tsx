@@ -1,10 +1,12 @@
 import React from "react";
-import withRouter from "../withRouter";
+import { useLocation, useNavigate } from "react-router";
 import { parseParams, encodeQuery } from "../helpers";
 
 function LinkExt(props: any) {
-  let { history, reload } = props;
-  let { pathname, search } = history.location;
+  let { reload } = props;
+  const location = useLocation();
+  const navigate = useNavigate();
+  let { pathname, search } = location;
   let loc = pathname + search;
   let href: string | undefined;
 
@@ -20,21 +22,21 @@ function LinkExt(props: any) {
     }
   }
 
-  const navigate = (event: React.MouseEvent) => {
+  const onNavigate = (event: React.MouseEvent) => {
     event.preventDefault();
 
-    if (loc !== href) {
-      history.push(href);
+    if (loc !== href && href) {
+      navigate(href);
     } else {
       if (reload) reload();
     }
   };
 
   return (
-    <a href={href} onClick={navigate}>
+    <a href={href} onClick={onNavigate}>
       {props.children}
     </a>
   );
 }
 
-export default withRouter(LinkExt);
+export default LinkExt;

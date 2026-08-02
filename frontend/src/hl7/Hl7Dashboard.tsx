@@ -27,7 +27,6 @@ import {
   WarningOutlined,
   InfoCircleOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import {
   listHl7Messages,
@@ -690,4 +689,4 @@ function Hl7Dashboard(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Hl7Dashboard));
+export default withSidebar(Hl7Dashboard);

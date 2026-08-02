@@ -1,15 +1,17 @@
 import { useEffect } from "react";
-import withRouter from "../withRouter";
+import { useNavigate, useParams } from "react-router";
 import { Spin } from "antd";
 
-function ShareView(props: any) {
+function ShareView() {
+  const navigate = useNavigate();
+  const { key } = useParams();
+
   useEffect(() => {
-    const key = props.match.params.key;
     if (key) {
       localStorage.setItem("tempKey", key);
     }
-    props.history.replace("/");
-  }, [props.history, props.match.params.key]);
+    navigate("/", { replace: true });
+  }, [navigate, key]);
 
   return (
     <div
@@ -25,4 +27,4 @@ function ShareView(props: any) {
   );
 }
 
-export default withRouter(ShareView);
+export default ShareView;

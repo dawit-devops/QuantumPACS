@@ -23,7 +23,7 @@ import {
 import withSidebar from "../common/base";
 import { getPatient } from "../api/patient";
 import { PageState } from "../common/PageState";
-import withRouter from "../withRouter";
+import { useNavigate, useParams } from "react-router";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
@@ -36,12 +36,13 @@ function Patient(props: any) {
   let [error, setError] = useState<string | null>(null);
   let [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
 
-  const patientId = props.match?.params?.id;
+  const navigate = useNavigate();
+  const { id: patientId } = useParams();
 
   const fetchPatient = () => {
     setLoading(true);
     setError(null);
-    getPatient(patientId)
+    getPatient(patientId as string)
       .then((res: any) => {
         setLoading(false);
         setData(res);
@@ -119,7 +120,7 @@ function Patient(props: any) {
             <a
               onClick={(e) => {
                 e.stopPropagation();
-                props.history.push(`/files/${f.id}`);
+                navigate(`/files/${f.id}`);
               }}
             >
               <Space size={4}>
@@ -252,4 +253,4 @@ function Patient(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Patient));
+export default withSidebar(Patient);

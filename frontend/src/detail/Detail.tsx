@@ -1,7 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
-import { Link } from "react-router";
-import withRouter from "../withRouter";
+import { Link, useParams, useNavigate } from "react-router";
 import {
   Layout,
   message,
@@ -48,7 +47,9 @@ function wrap(txt: string) {
 
 function Detail(props: any) {
   useDocumentTitle("QuantumPACS - Detail");
-  const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
+  const navigate = useNavigate();
+  const params = useParams();
+  const imagePath = `wadouri:${API_URL}/files/${params.id}/data`;
   const screens = useBreakpoint();
   const isMobile = !screens.md;
   const { hasPermission } = useAuth();
@@ -86,11 +87,11 @@ function Detail(props: any) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    let params = props.match.params;
+    const { id } = params;
 
-    setImage(`wadouri:${API_URL}/files/${params.id}/data`);
+    setImage(`wadouri:${API_URL}/files/${id}/data`);
 
-    getFile(params.id)
+    getFile(id as string)
       .then((data: any) => {
         const meta = data?.meta || {};
         if (
@@ -132,11 +133,11 @@ function Detail(props: any) {
         setError(msg);
         message.error(msg);
         if (e.message === "404") {
-          props.history.push("/");
+          navigate("/");
         }
       });
     // eslint-disable-next-line
-  }, [props.match.params.id]);
+  }, [params.id]);
 
   const background = tab === "image" ? "var(--viewer-bg)" : "";
 
@@ -291,7 +292,7 @@ function Detail(props: any) {
                 file={data}
                 files={series?.files || null}
                 changeFile={(v: number) =>
-                  props.history.push(`/files/${series?.files[v].id}`)
+                  navigate(`/files/${series?.files[v].id}`)
                 }
                 image={image}
                 wadoRsImage={wadoRsImage}
@@ -333,4 +334,4 @@ function Detail(props: any) {
   );
 }
 
-export default withSidebar(withRouter(Detail));
+export default withSidebar(Detail);

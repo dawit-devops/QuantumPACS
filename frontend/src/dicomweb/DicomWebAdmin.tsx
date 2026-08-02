@@ -20,7 +20,6 @@ import {
   DownloadOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import { getDicomwebAdmin } from "../api/dicomweb-admin";
 import { PageState } from "../common/PageState";
@@ -269,4 +268,4 @@ function DicomWebAdmin(props: any) {
   );
 }
 
-export default withRouter(withSidebar(DicomWebAdmin));
+export default withSidebar(DicomWebAdmin);

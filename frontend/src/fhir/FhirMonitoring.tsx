@@ -16,7 +16,6 @@ import {
   message,
 } from "antd";
 import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
 import { open } from "../helpers";
 import { getFhirMetrics, getFhirRecentRequests } from "../api/fhir";
@@ -359,4 +358,4 @@ function FhirMonitoring(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirMonitoring));
+export default withSidebar(FhirMonitoring);

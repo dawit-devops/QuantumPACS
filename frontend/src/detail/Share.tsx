@@ -1,6 +1,5 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useCallback, useEffect } from "react";
-import withRouter from "../withRouter";
 import {
   Form,
   Input,
@@ -293,4 +292,4 @@ function Share(props: any) {
   );
 }
 
-export default withRouter(Share);
+export default Share;
