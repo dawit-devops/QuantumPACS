@@ -120,7 +120,12 @@ export function UploadZone({ reload }: UploadZoneProps) {
               });
               return;
             }
-          } catch {}
+          } catch {
+            // Unparseable server response — treat as a failed upload instead
+            // of silently marking the file done (Q-18).
+            updateFile(id, { status: "error", error: "Bad server response", progress: 0 });
+            return;
+          }
           updateFile(id, { status: "done", progress: 100 });
           reload?.();
           setTimeout(() => removeFile(id), 3000);
@@ -239,7 +244,10 @@ export function UploadZone({ reload }: UploadZoneProps) {
                 });
                 return;
               }
-            } catch {}
+            } catch {
+              updateFile(id, { status: "error", error: "Bad server response", progress: 0 });
+              return;
+            }
             updateFile(id, { status: "done", progress: 100 });
             reload?.();
             setTimeout(() => removeFile(id), 3000);

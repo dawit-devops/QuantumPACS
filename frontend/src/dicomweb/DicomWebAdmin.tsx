@@ -34,9 +34,9 @@ const serviceIcons: Record<string, React.ReactNode> = {
 };
 
 function DicomWebAdmin(props: any) {
-  let [info, setInfo] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInfo();

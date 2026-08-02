@@ -199,12 +199,11 @@ export const request = async <T = any>(
       }
     }
     // AbortError (DOMException code 20 / name AbortError) is the caller
-    // signalling cancellation — swallow it like the legacy hook did.
-    const aborted =
-      error?.name === "AbortError" || error?.code === 20;
-    if (!aborted) {
-      throw error instanceof ApiError ? error : Error(String(error?.message || error));
-    }
-    return undefined as T;
+    // signalling cancellation. useFetch already filters it before setting
+    // state; re-throwing here guarantees request() never resolves undefined
+    // (Q-19) — callers can rely on a result object or a thrown error.
+    if (error instanceof ApiError) throw error;
+    if (error?.name === "AbortError" || error?.code === 20) throw error;
+    throw Error(String(error?.message || error));
   }
 };

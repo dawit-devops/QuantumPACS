@@ -26,18 +26,18 @@ const { RangePicker } = DatePicker;
 
 function FhirMonitoring(props: any) {
   const { message } = App.useApp();
-  let [metrics, setMetrics] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
-  let [period, setPeriod] = useState("24h");
-  let [requests, setRequests] = useState<any[]>([]);
-  let [requestsLoading, setRequestsLoading] = useState(false);
-  let [requestsTotal, setRequestsTotal] = useState(0);
-  let [resourceFilter, setResourceFilter] = useState("");
-  let [statusFilter, setStatusFilter] = useState("");
-  let [limit, setLimit] = useState(50);
-  let [offset, setOffset] = useState(0);
-  let [autoRefresh, setAutoRefresh] = useState(true);
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState("24h");
+  const [requests, setRequests] = useState<any[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsTotal, setRequestsTotal] = useState(0);
+  const [resourceFilter, setResourceFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMetrics = async () => {
@@ -64,7 +64,8 @@ function FhirMonitoring(props: any) {
       });
       setRequests(res.requests || []);
       setRequestsTotal(res.total || 0);
-    } catch {
+    } catch (e: unknown) {
+      setError((e as Error).message || "Failed to load FHIR requests");
     } finally {
       setRequestsLoading(false);
     }

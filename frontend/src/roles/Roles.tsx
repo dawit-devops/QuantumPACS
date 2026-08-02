@@ -43,14 +43,14 @@ function Roles() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Roles");
 
-  let [data, setData] = useState<Role[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [visible, setVisible] = useState(false);
-  let [editingRole, setEditingRole] = useState<Role | null>(null);
-  let [selectedPerms, setSelectedPerms] = useState<string[]>([]);
-  let [permSearch, setPermSearch] = useState("");
-  let [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
+  const [data, setData] = useState<Role[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [permSearch, setPermSearch] = useState("");
+  const [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
   const [form] = Form.useForm();
 
   const isEditingSuperAdmin = editingRole?.slug === SUPER_ADMIN_SLUG;

@@ -54,14 +54,14 @@ function Detail() {
   const isMobile = !screens.md;
   const { hasPermission } = useAuth();
 
-  let [tab, setTab] = useState("image");
-  let [data, setData] = useState<FileRecord>({ id: 0 });
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [study, setStudy] = useState<FileStudy | null>(null);
-  let [series, setSeries] = useState<FileSeries | null>(null);
-  let [image, setImage] = useState(imagePath);
-  let [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
+  const [tab, setTab] = useState("image");
+  const [data, setData] = useState<FileRecord>({ id: 0 });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [study, setStudy] = useState<FileStudy | null>(null);
+  const [series, setSeries] = useState<FileSeries | null>(null);
+  const [image, setImage] = useState(imagePath);
+  const [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
   const tempKey = localStorage.getItem("tempKey");
   const [showShortcuts, setShowShortcuts] = useState(false);
 

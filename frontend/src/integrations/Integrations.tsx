@@ -48,21 +48,21 @@ const { TextArea } = Input;
 function Integrations(props: any) {
   const { message } = App.useApp();
   // ---- OAuth Providers ----
-  let [providers, setProviders] = useState<OauthProvider[]>([]);
-  let [providersLoading, setProvidersLoading] = useState(true);
-  let [providerModal, setProviderModal] = useState(false);
-  let [editingProvider, setEditingProvider] = useState<OauthProvider | null>(null);
-  let [providerForm] = Form.useForm();
+  const [providers, setProviders] = useState<OauthProvider[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providerModal, setProviderModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(null);
+  const [providerForm] = Form.useForm();
 
   // ---- Webhooks ----
-  let [webhooks, setWebhooks] = useState<Webhook[]>([]);
-  let [availableEvents, setAvailableEvents] = useState<string[]>([]);
-  let [webhooksLoading, setWebhooksLoading] = useState(true);
-  let [whModal, setWhModal] = useState(false);
-  let [editingWh, setEditingWh] = useState<Webhook | null>(null);
-  let [whForm] = Form.useForm();
-  let [testResult, setTestResult] = useState<any>(null);
-  let [testing, setTesting] = useState(false);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [availableEvents, setAvailableEvents] = useState<string[]>([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(true);
+  const [whModal, setWhModal] = useState(false);
+  const [editingWh, setEditingWh] = useState<Webhook | null>(null);
+  const [whForm] = Form.useForm();
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
 
   const fetchProviders = async () => {
     setProvidersLoading(true);

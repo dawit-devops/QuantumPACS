@@ -23,12 +23,11 @@ export const open = async (url: string): Promise<void> => {
 };
 
 export const parseParams = (search: string): Record<string, string> => {
-  search = search.slice(1);
-  const parts = search.split("&");
+  // URLSearchParams decodes percent-encoding and + (Q-21) — the old manual
+  // split leaked %20 into searches and broke on values containing '='.
   const params: Record<string, string> = {};
-  for (const part of parts) {
-    const [name, value] = part.split("=");
-    if (name) params[name] = value;
+  for (const [name, value] of new URLSearchParams(search)) {
+    params[name] = value;
   }
   return params;
 };

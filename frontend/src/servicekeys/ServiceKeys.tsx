@@ -74,11 +74,11 @@ function ServiceKeys() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Service Keys");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [visible, setVisible] = useState(false);
-  let [rawKey, setRawKey] = useState<string | null>(null);
-  let [showRevoked, setShowRevoked] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [rawKey, setRawKey] = useState<string | null>(null);
+  const [showRevoked, setShowRevoked] = useState(false);
   const [form] = Form.useForm();
 
   const filteredData = useMemo(

@@ -49,12 +49,12 @@ function Replicas() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Replicas");
 
-  let [data, setData] = useState<Replica[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [currReplica, setCurrReplica] = useState<Replica | null>(null);
-  let [editDelayForm] = Form.useForm();
+  const [data, setData] = useState<Replica[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currReplica, setCurrReplica] = useState<Replica | null>(null);
+  const [editDelayForm] = Form.useForm();
 
   useEffect(() => {
     // Replica status has no server push channel, so poll — but only while the

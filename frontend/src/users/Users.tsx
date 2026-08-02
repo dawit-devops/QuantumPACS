@@ -35,13 +35,13 @@ function Users() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Users");
 
-  let [data, setData] = useState<User[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [password, setPassword] = useState<string | null>(null);
-  let [roles, setRoles] = useState<Role[]>([]);
-  let [changingRole, setChangingRole] = useState<{
+  const [data, setData] = useState<User[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState<string | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [changingRole, setChangingRole] = useState<{
     userId: number;
     roleId: number | null;
   } | null>(null);

@@ -24,18 +24,18 @@ function RoutingRules() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Routing Rules");
 
-  let [data, setData] = useState<RoutingRule[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [pagination, setPagination] = useState<any>({
+  const [data, setData] = useState<RoutingRule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<any>({
     current: 1,
     pageSize: 50,
     total: 0,
     pages: 0,
   });
-  let [visible, setVisible] = useState(false);
-  let [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
-  let [conditions, setConditions] = useState<Record<string, any>>({});
+  const [visible, setVisible] = useState(false);
+  const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
+  const [conditions, setConditions] = useState<Record<string, any>>({});
   const [form] = Form.useForm();
 
   const columns: any[] = [

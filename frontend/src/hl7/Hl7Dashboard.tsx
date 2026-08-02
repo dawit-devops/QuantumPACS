@@ -22,32 +22,32 @@ function Hl7Dashboard() {
   const { message } = App.useApp();
 
   // Messages tab
-  let [messages, setMessages] = useState<any[]>([]);
-  let [total, setTotal] = useState(0);
-  let [msgLoading, setMsgLoading] = useState(true);
-  let [msgError, setMsgError] = useState<string | null>(null);
-  let [msgFilter, setMsgFilter] = useState("");
-  let [statusFilter, setStatusFilter] = useState("");
-  let [patientFilter, setPatientFilter] = useState("");
-  let [facilityFilter, setFacilityFilter] = useState("");
-  let [limit] = useState(50);
-  let [offset, setOffset] = useState(0);
-  let [detailModal, setDetailModal] = useState<any>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [msgLoading, setMsgLoading] = useState(true);
+  const [msgError, setMsgError] = useState<string | null>(null);
+  const [msgFilter, setMsgFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [patientFilter, setPatientFilter] = useState("");
+  const [facilityFilter, setFacilityFilter] = useState("");
+  const [limit] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const [detailModal, setDetailModal] = useState<any>(null);
 
   // Analytics tab
-  let [metrics, setMetrics] = useState<any>(null);
-  let [metricsLoading, setMetricsLoading] = useState(false);
-  let [period, setPeriod] = useState("24h");
+  const [metrics, setMetrics] = useState<any>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [period, setPeriod] = useState("24h");
 
   // Config tab
-  let [config, setConfig] = useState<any>(null);
-  let [configLoading, setConfigLoading] = useState(false);
-  let [configError, setConfigError] = useState<string | null>(null);
-  let [status, setStatus] = useState<any>(null);
-  let [statusLoading, setStatusLoading] = useState(false);
-  let [configSaving, setConfigSaving] = useState(false);
-  let [allowedIpsText, setAllowedIpsText] = useState("");
-  let [mllpPort, setMllpPort] = useState(12579);
+  const [config, setConfig] = useState<any>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [status, setStatus] = useState<any>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [allowedIpsText, setAllowedIpsText] = useState("");
+  const [mllpPort, setMllpPort] = useState(12579);
 
   const fetchMessages = async () => {
     setMsgLoading(true);

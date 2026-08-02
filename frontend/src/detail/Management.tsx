@@ -13,7 +13,7 @@ function Management(props: any) {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Management");
   const navigate = useNavigate();
-  let [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const confirmDelete = () => {
     Modal.confirm({

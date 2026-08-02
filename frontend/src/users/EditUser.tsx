@@ -74,9 +74,9 @@ export function AddUserFinish(props: any) {
 
 export function AddUser(props: any) {
   const { message } = App.useApp();
-  let [visible, setVisible] = useState(false);
-  let [result, setResult] = useState<any>({});
-  let [roles, setRoles] = useState<any[]>([]);
+  const [visible, setVisible] = useState(false);
+  const [result, setResult] = useState<any>({});
+  const [roles, setRoles] = useState<any[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {

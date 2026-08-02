@@ -55,12 +55,12 @@ function Tenants() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Tenants");
 
-  let [data, setData] = useState<Tenant[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [createVisible, setCreateVisible] = useState(false);
-  let [editVisible, setEditVisible] = useState(false);
-  let [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [data, setData] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [createVisible, setCreateVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
 

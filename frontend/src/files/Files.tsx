@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import Highlighter from "react-highlight-words";
 import { App,
   Layout,
@@ -105,25 +105,26 @@ function Files() {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const navigate = useNavigate();
+  const location = useLocation();
 
-  let [data, setData] = useState<FileRow[]>([]);
-  let [pagination, setPagination] = useState<{
+  const [data, setData] = useState<FileRow[]>([]);
+  const [pagination, setPagination] = useState<{
     pageSize: number;
     current?: number;
     total?: number;
   }>({ pageSize: PAGINATION.limit });
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [showUpload, setShowUpload] = useState(false);
-  let [showAdvanced, setShowAdvanced] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   let searchInput = useRef<InputRef>(null);
-  let [globSearchCurrent, setGlobSearchCurrent] = useState("");
-  let [globSearch, setGlobSearch] = useState("");
-  let [searchText, setSearchText] = useState("");
-  let [advancedFields, setAdvancedFields] = useState(
+  const [globSearchCurrent, setGlobSearchCurrent] = useState("");
+  const [globSearch, setGlobSearch] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [advancedFields, setAdvancedFields] = useState(
     initialAdvancedFields.map((e) => [...e]),
   );
-  let [selected, setSelected] = useState<FileRow[]>([]);
+  const [selected, setSelected] = useState<FileRow[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
@@ -152,19 +153,6 @@ function Files() {
     }
     navigate(encodeUrl(s));
   };
-
-  useEffect(() => {
-    fetch();
-    // eslint-disable-next-line
-  }, [window.location.search]);
-
-  useEffect(() => {
-    setPagination(
-      Object.assign({}, pagination, { pageSize: PAGINATION.limit }),
-    );
-    fetch();
-    // eslint-disable-next-line
-  }, [PAGINATION.limit]);
 
   const fetchQidoResults = (
     qidoParams: Record<string, string>,
@@ -217,6 +205,22 @@ function Files() {
       fallbackToV2(searchObj);
     }
   };
+
+  useEffect(() => {
+    // fetch is intentionally omitted: it is recreated every render, and the
+    // URL search (via useLocation) is the only thing that must trigger a
+    // reload here.
+    fetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
+
+  useEffect(() => {
+    setPagination(
+      Object.assign({}, pagination, { pageSize: PAGINATION.limit }),
+    );
+    fetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [PAGINATION.limit]);
 
   const fallbackToV2 = (searchObj: Record<string, unknown>) => {
     searchFiles(searchObj)

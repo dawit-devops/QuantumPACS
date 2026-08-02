@@ -31,10 +31,10 @@ const Content = Layout.Content;
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
 
-  let [data, setData] = useState<PatientSummary>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const [data, setData] = useState<PatientSummary>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
 
   const navigate = useNavigate();
   const { id: patientId } = useParams();

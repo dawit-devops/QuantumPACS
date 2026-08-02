@@ -35,6 +35,7 @@ import {
 } from "../api/worklist";
 import { PageState } from "../common/PageState";
 import { CreateEntry } from "./CreateEntry";
+import CalendarView from "./CalendarView";
 import dayjs from "dayjs";
 import "./Worklist.css";
 
@@ -76,6 +77,7 @@ function Worklist() {
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [stationOptions, setStationOptions] = useState<string[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [tabTotals, setTabTotals] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
   const [batchLoading, setBatchLoading] = useState(false);
   const [form] = Form.useForm();
@@ -86,18 +88,47 @@ function Worklist() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetch = useCallback(
-    (params?: any) => {
-      setLoading(true);
-      setError(null);
+  const buildQuery = useCallback(
+    (overrides?: Record<string, string>) => {
       const query: Record<string, string> = {};
-      if (statusTab !== "all") query.status = statusTab;
       if (stationFilter) query.station_ae_title = stationFilter;
       if (debouncedSearch) query.search = debouncedSearch;
       if (dateRange) {
         query.date_from = dateRange[0];
         query.date_to = dateRange[1];
       }
+      if (overrides) Object.assign(query, overrides);
+      return query;
+    },
+    [stationFilter, debouncedSearch, dateRange],
+  );
+
+  const fetchTabTotals = useCallback(() => {
+    // Server-side per-status totals for the tab badges: the current page
+    // only reflects the active filter, so per-tab counts cannot be derived
+    // client-side (Q-7).
+    Promise.all(
+      STATUS_TABS.filter((t) => t.key !== "all").map((t) =>
+        listWorklist(buildQuery({ status: t.key, page: "1", per_page: "1" })),
+      ),
+    )
+      .then((results) => {
+        const totals: Record<string, number> = {};
+        STATUS_TABS.filter((t) => t.key !== "all").forEach((t, i) => {
+          totals[t.key] = results[i]?.total || 0;
+        });
+        setTabTotals(totals);
+      })
+      .catch(() => {});
+  }, [buildQuery]);
+
+  const fetch = useCallback(
+    (params?: any) => {
+      setLoading(true);
+      setError(null);
+      const query = buildQuery(
+        statusTab !== "all" ? { status: statusTab } : {},
+      );
       if (params?.page) query.page = String(params.page);
       if (params?.per_page) query.per_page = String(params.per_page);
       listWorklist(query)
@@ -116,8 +147,9 @@ function Worklist() {
           setError(e.message);
           message.error(e.message);
         });
+      fetchTabTotals();
     },
-    [statusTab, stationFilter, debouncedSearch, dateRange],
+    [statusTab, buildQuery, fetchTabTotals],
   );
 
   useEffect(() => {
@@ -254,16 +286,25 @@ function Worklist() {
   const handleBatchCancel = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
+    // Track failures individually so a fully-failed batch reports failure
+    // instead of a false success (Q-17).
     Promise.all(
       ids.map((id) =>
-        deleteWorklistEntry(id as number).catch(
-          () => {},
+        deleteWorklistEntry(id as number).then(
+          () => true,
+          () => false,
         ),
       ),
-    ).then(() => {
+    ).then((results) => {
       setBatchLoading(false);
-      setSelectedRowKeys([]);
-      message.success(`Cancelled ${ids.length} entries`);
+      const ok = results.filter(Boolean).length;
+      const failed = ids.length - ok;
+      setSelectedRowKeys(ids.filter((_, i) => !results[i]));
+      if (failed > 0) {
+        message.error(`Cancelled ${ok}/${ids.length} entries (${failed} failed)`);
+      } else {
+        message.success(`Cancelled ${ok} entries`);
+      }
       fetch();
     });
   };
@@ -273,14 +314,21 @@ function Worklist() {
     const ids = [...selectedRowKeys];
     Promise.all(
       ids.map((id) =>
-        markWorklistPerformed(id as number).catch(
-          () => {},
+        markWorklistPerformed(id as number).then(
+          () => true,
+          () => false,
         ),
       ),
-    ).then(() => {
+    ).then((results) => {
       setBatchLoading(false);
-      setSelectedRowKeys([]);
-      message.success(`Marked ${ids.length} entries as performed`);
+      const ok = results.filter(Boolean).length;
+      const failed = ids.length - ok;
+      setSelectedRowKeys(ids.filter((_, i) => !results[i]));
+      if (failed > 0) {
+        message.error(`Marked ${ok}/${ids.length} performed (${failed} failed)`);
+      } else {
+        message.success(`Marked ${ok} entries as performed`);
+      }
       fetch();
     });
   };
@@ -298,24 +346,14 @@ function Worklist() {
   };
 
   const countedTabs = useMemo(() => {
-    return STATUS_TABS.map((tab) => {
-      let count: number | undefined;
-      if (tab.key === "all") {
-        count = data.length;
-      } else {
-        count = data.filter((e) => e.status === tab.key).length;
-      }
-      return { ...tab, count };
-    });
-  }, [data]);
+    return STATUS_TABS.map((tab) => ({
+      ...tab,
+      count: tab.key === "all" ? pagination.total : tabTotals[tab.key],
+    }));
+  }, [pagination.total, tabTotals]);
 
-  const filteredData = useMemo(() => {
-    let items = data;
-    if (statusTab !== "all") {
-      items = items.filter((e) => e.status === statusTab);
-    }
-    return items;
-  }, [data, statusTab]);
+  // The server already filters by the active status tab (query.status), so
+  // data is exactly the current view — no client-side re-filter (Q-7).
 
   const columns: any[] = [
     {
@@ -429,19 +467,6 @@ function Worklist() {
     },
   ];
 
-  const calendarEntries = useMemo(() => {
-    const grouped: Record<string, any[]> = {};
-    for (const entry of filteredData) {
-      const date = entry.scheduled_date || "No date";
-      if (!grouped[date]) grouped[date] = [];
-      grouped[date].push(entry);
-    }
-    const sorted = Object.entries(grouped).sort(([a], [b]) =>
-      a.localeCompare(b),
-    );
-    return sorted;
-  }, [filteredData]);
-
   const rowSelection = {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
@@ -465,7 +490,7 @@ function Worklist() {
       >
         {loading
           ? "Loading worklist"
-          : `${filteredData.length} worklist entries`}
+          : `${data.length} worklist entries`}
       </div>
 
       <div className="worklist-toolbar">
@@ -577,7 +602,7 @@ function Worklist() {
       <PageState
         error={error}
         onRetry={() => fetch()}
-        empty={!loading && !error && filteredData.length === 0}
+        empty={!loading && !error && data.length === 0}
         emptyMessage={
           statusTab !== "all"
             ? `No ${statusTab} entries`
@@ -600,7 +625,7 @@ function Worklist() {
           <Table
             rowKey="id"
             columns={columns}
-            dataSource={filteredData}
+            dataSource={data}
             loading={loading}
             pagination={pagination}
             onChange={handleTableChange}
@@ -608,64 +633,7 @@ function Worklist() {
             size="middle"
           />
         ) : (
-          <div className="calendar-view">
-            {calendarEntries.map(([date, entries]) => (
-              <div key={date} className="calendar-day">
-                <div className="calendar-day-header">
-                  {date === "No date" ? "Unscheduled" : date}
-                  <Tag style={{ marginLeft: 8 }}>{entries.length}</Tag>
-                </div>
-                {entries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={`calendar-entry ${entry.status}`}
-                    onClick={() => handleEdit(entry)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleEdit(entry);
-                    }}
-                  >
-                    <Tag
-                      color={STATUS_COLORS[entry.status]}
-                      style={{ margin: 0, flexShrink: 0 }}
-                    >
-                      {entry.status}
-                    </Tag>
-                    <span style={{ fontWeight: 500, flex: 1 }}>
-                      {entry.patient_name || entry.patient_id}
-                    </span>
-                    <span
-                      style={{
-                        color: "var(--text-secondary, #64748b)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {entry.modality}
-                    </span>
-                    {entry.scheduled_time && (
-                      <span
-                        style={{
-                          color: "var(--text-secondary, #64748b)",
-                          fontSize: 13,
-                        }}
-                      >
-                        {entry.scheduled_time}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        color: "var(--text-secondary, #64748b)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {entry.accession_number}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+          <CalendarView entries={data} onEdit={handleEdit} />
         )}
       </PageState>
 

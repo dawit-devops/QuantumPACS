@@ -41,21 +41,21 @@ const { Content } = Layout;
 
 function FhirConfig(props: any) {
   const { message } = App.useApp();
-  let [config, setConfig] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [saving, setSaving] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [clients, setClients] = useState<FhirClient[]>([]);
-  let [clientsLoading, setClientsLoading] = useState(false);
-  let [modalOpen, setModalOpen] = useState(false);
-  let [newClient, setNewClient] = useState<any>({
+  const [config, setConfig] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [clients, setClients] = useState<FhirClient[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [newClient, setNewClient] = useState<any>({
     name: "",
     description: "",
     redirect_uris: "",
   });
-  let [secretModal, setSecretModal] = useState<any>(null);
-  let [testResult, setTestResult] = useState<any>(null);
-  let [testing, setTesting] = useState(false);
+  const [secretModal, setSecretModal] = useState<any>(null);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
 
   const fetchConfig = async () => {
     setLoading(true);

@@ -26,9 +26,9 @@ const columns = [
 
 function Changes(props: any) {
   const { message } = App.useApp();
-  let [data, setData] = useState<any[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetch();

@@ -131,13 +131,13 @@ function Metrics() {
   useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
 
-  let [data, setData] = useState<any>(null);
-  let [health, setHealth] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
-  let [timeRange, setTimeRange] = useState("30d");
-  let [autoRefresh, setAutoRefresh] = useState(false);
-  let [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [data, setData] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState("30d");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMetrics = useCallback(() => {

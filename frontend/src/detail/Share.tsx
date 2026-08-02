@@ -31,12 +31,12 @@ const { Text } = Typography;
 function Share(props: any) {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Share");
-  let [loading, setLoading] = useState(false);
-  let [key, setKey] = useState<string | null>(null);
-  let [copied, setCopied] = useState(false);
-  let [links, setLinks] = useState<any[]>([]);
-  let [linksLoading, setLinksLoading] = useState(false);
-  let [revoking, setRevoking] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [key, setKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [links, setLinks] = useState<any[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const fetchLinks = useCallback(() => {

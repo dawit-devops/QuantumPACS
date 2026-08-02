@@ -36,18 +36,18 @@ const { Paragraph, Text } = Typography;
 
 function FhirDocs(props: any) {
   const { message } = App.useApp();
-  let [capability, setCapability] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
+  const [capability, setCapability] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Try-it panel
-  let [resourceType, setResourceType] = useState("Patient");
-  let [interaction, setInteraction] = useState("read");
-  let [resourceId, setResourceId] = useState("");
-  let [searchParams, setSearchParams] = useState<Record<string, string>>({});
-  let [response, setResponse] = useState<any>(null);
-  let [executing, setExecuting] = useState(false);
-  let [responseTime, setResponseTime] = useState(0);
+  const [resourceType, setResourceType] = useState("Patient");
+  const [interaction, setInteraction] = useState("read");
+  const [resourceId, setResourceId] = useState("");
+  const [searchParams, setSearchParams] = useState<Record<string, string>>({});
+  const [response, setResponse] = useState<any>(null);
+  const [executing, setExecuting] = useState(false);
+  const [responseTime, setResponseTime] = useState(0);
 
   const resourceOptions = ["Patient", "ImagingStudy", "DocumentReference"];
 

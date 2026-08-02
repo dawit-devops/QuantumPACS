@@ -112,7 +112,7 @@ export function EditReplicaModal(props: any) {
 
 export function AddReplica(props: any) {
   const { message } = App.useApp();
-  let [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(false);
   const [form] = Form.useForm();
 
   const showModal = () => {

@@ -82,32 +82,48 @@ function NotificationBell() {
   };
 
   const markRead = async (id: string) => {
-    await markReadApi(id);
-    setNotifs((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
-    setUnread((prev) => Math.max(0, prev - 1));
+    try {
+      await markReadApi(id);
+      setNotifs((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+      setUnread((prev) => Math.max(0, prev - 1));
+    } catch (e) {
+      message.error(`Failed to mark read: ${(e as Error).message || ""}`);
+    }
   };
 
   const markAllRead = async () => {
-    await markAllReadApi();
-    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
-    setUnread(0);
-    message.success("All marked as read");
+    try {
+      await markAllReadApi();
+      setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnread(0);
+      message.success("All marked as read");
+    } catch (e) {
+      message.error(`Failed to mark all read: ${(e as Error).message || ""}`);
+    }
   };
 
   const dismiss = async (id: string) => {
-    await deleteNotification(id);
-    setNotifs((prev) => prev.filter((n) => n.id !== id));
-    setTotal((prev) => prev - 1);
+    try {
+      await deleteNotification(id);
+      setNotifs((prev) => prev.filter((n) => n.id !== id));
+      setTotal((prev) => prev - 1);
+    } catch (e) {
+      message.error(`Failed to dismiss: ${(e as Error).message || ""}`);
+    }
   };
 
   const dismissAll = async () => {
-    await clearNotifications();
-    setNotifs([]);
-    setTotal(0);
-    setUnread(0);
-    message.success("All notifications dismissed");
+    try {
+      await clearNotifications();
+      setNotifs([]);
+      setTotal(0);
+      setUnread(0);
+      message.success("All notifications dismissed");
+    } catch (e) {
+      message.error(`Failed to dismiss all: ${(e as Error).message || ""}`);
+    }
   };
 
   const handleClick = (n: any) => {
