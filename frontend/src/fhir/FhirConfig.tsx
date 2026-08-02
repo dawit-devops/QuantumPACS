@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Switch,
@@ -10,7 +10,6 @@ import {
   Modal,
   Form,
   Tag,
-  message,
   Space,
   Alert,
   Tooltip,
@@ -40,6 +39,7 @@ import "./Fhir.css";
 const { Content } = Layout;
 
 function FhirConfig(props: any) {
+  const { message } = App.useApp();
   let [config, setConfig] = useState<any>(null);
   let [loading, setLoading] = useState(true);
   let [saving, setSaving] = useState(false);

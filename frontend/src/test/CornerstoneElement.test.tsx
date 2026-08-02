@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import CornerstoneElement from "../detail/CornerstoneElement";
 
@@ -128,28 +129,28 @@ describe("CornerstoneElement", () => {
   });
 
   it("renders viewport element", () => {
-    const { container } = render(<CornerstoneElement {...defaultProps} />);
+    const { container } = renderWithApp(<CornerstoneElement {...defaultProps} />);
     const viewportEl = container.querySelector(".viewportElement");
     expect(viewportEl).toBeInTheDocument();
   });
 
   it("renders Zoom info", () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     expect(screen.getByText(/Zoom/)).toBeInTheDocument();
   });
 
   it("renders WW/WC info", () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     expect(screen.getByText(/WW\/WC/)).toBeInTheDocument();
   });
 
   it("renders collapsible metadata panel", () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     expect(screen.getByText("Metadata")).toBeInTheDocument();
   });
 
   it("renders bottom touch toolbar with min 44px buttons", () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     const buttons = screen
       .getAllByRole("button")
       .filter(
@@ -167,12 +168,12 @@ describe("CornerstoneElement", () => {
   it("uses wadoRsImage when provided instead of fallback image", () => {
     const wadoRsUrl =
       "wadors:https://pacs.example.com/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9";
-    render(<CornerstoneElement {...defaultProps} wadoRsImage={wadoRsUrl} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} wadoRsImage={wadoRsUrl} />);
     expect(screen.getByText(/Zoom/)).toBeInTheDocument();
   });
 
   it("enables a stack viewport on the element on mount", async () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     await waitFor(() =>
       expect(engineMock.enableElement).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -184,7 +185,7 @@ describe("CornerstoneElement", () => {
   });
 
   it("loads the initial image into the stack", async () => {
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     await waitFor(() =>
       expect(viewportInstance.setStack).toHaveBeenCalledWith(["wsi://test"]),
     );
@@ -192,7 +193,7 @@ describe("CornerstoneElement", () => {
 
   it("restores persisted annotations when the viewport is ready", async () => {
     const { annotation } = await import("@cornerstonejs/tools");
-    render(
+    renderWithApp(
       <CornerstoneElement
         {...defaultProps}
         file={{
@@ -214,7 +215,7 @@ describe("CornerstoneElement", () => {
 
   it("swaps the stack and purges the image cache when the image changes", async () => {
     const { cache } = await import("@cornerstonejs/core");
-    const { rerender } = render(<CornerstoneElement {...defaultProps} />);
+    const { rerender } = renderWithApp(<CornerstoneElement {...defaultProps} />);
     await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
 
     const newUrl = "wadors:https://pacs.example.com/dicomweb/new/instance";
@@ -223,19 +224,19 @@ describe("CornerstoneElement", () => {
     await waitFor(() =>
       expect(viewportInstance.setStack).toHaveBeenCalledWith([newUrl]),
     );
-    expect(cache.purgeCache).toHaveBeenCalled();
+    await waitFor(() => expect(cache.purgeCache).toHaveBeenCalled());
   });
 
   it("does not purge the cache on the initial mount", async () => {
     const { cache } = await import("@cornerstonejs/core");
-    render(<CornerstoneElement {...defaultProps} />);
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
     await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
     expect(cache.purgeCache).not.toHaveBeenCalled();
   });
 
   it("tears down the viewport, listeners, and ws handlers on unmount", async () => {
     const removeKeydown = vi.spyOn(document, "removeEventListener");
-    const { unmount } = render(<CornerstoneElement {...defaultProps} />);
+    const { unmount } = renderWithApp(<CornerstoneElement {...defaultProps} />);
     await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
 
     unmount();

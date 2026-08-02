@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -30,7 +31,7 @@ const mockProfile = {
 };
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(
+  return renderWithApp(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter>{ui}</MemoryRouter>

@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router";
-import {
+import { App,
   Layout,
-  message,
   Menu,
   Breadcrumb,
   Grid,
@@ -46,6 +45,7 @@ function wrap(txt: string) {
 }
 
 function Detail(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Detail");
   const navigate = useNavigate();
   const params = useParams();

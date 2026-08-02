@@ -2,11 +2,10 @@ import { useDocumentTitle } from "../hooks";
 import React, { useEffect, useState } from "react";
 import { getProfile, updateProfile, changePassword } from "../api/account";
 import withSidebar from "../common/base";
-import {
+import { App,
   Form,
   Input,
   Button,
-  message,
   Layout,
   Card,
   Typography,
@@ -29,6 +28,7 @@ const { Content } = Layout;
 const { Text, Title } = Typography;
 
 function Account(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Account");
 
   const [profile, setProfile] = useState<any>(null);

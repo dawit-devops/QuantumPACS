@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Collapse,
@@ -9,7 +9,6 @@ import {
   Tag,
   Spin,
   Descriptions,
-  message,
   Space,
   Alert,
   Tabs,
@@ -36,6 +35,7 @@ const { TextArea } = Input;
 const { Paragraph, Text } = Typography;
 
 function FhirDocs(props: any) {
+  const { message } = App.useApp();
   let [capability, setCapability] = useState<any>(null);
   let [loading, setLoading] = useState(true);
   let [error, setError] = useState<string | null>(null);

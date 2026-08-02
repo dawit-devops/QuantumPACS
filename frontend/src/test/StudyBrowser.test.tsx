@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import StudyBrowser from "../dicomweb/StudyBrowser";
 
@@ -17,7 +18,7 @@ describe("StudyBrowser", () => {
   });
 
   it("renders search input and buttons", () => {
-    render(<StudyBrowser />);
+    renderWithApp(<StudyBrowser />);
     expect(screen.getByPlaceholderText("Patient ID")).toBeInTheDocument();
     expect(screen.getByText("Search")).toBeInTheDocument();
     expect(screen.getByText("Clear")).toBeInTheDocument();
@@ -36,7 +37,7 @@ describe("StudyBrowser", () => {
       ]),
     );
 
-    render(<StudyBrowser />);
+    renderWithApp(<StudyBrowser />);
     fireEvent.click(screen.getByText("Search"));
 
     await waitFor(() => {
@@ -54,7 +55,7 @@ describe("StudyBrowser", () => {
       ]),
     );
 
-    render(<StudyBrowser />);
+    renderWithApp(<StudyBrowser />);
     fireEvent.click(screen.getByText("Search"));
 
     await waitFor(() => {
@@ -68,7 +69,7 @@ describe("StudyBrowser", () => {
   it("shows error message on fetch failure", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500 });
 
-    render(<StudyBrowser />);
+    renderWithApp(<StudyBrowser />);
     fireEvent.click(screen.getByText("Search"));
 
     await waitFor(

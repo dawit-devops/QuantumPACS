@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -72,6 +71,7 @@ function LastUsed({ at }: { at: string | null }) {
 }
 
 function ServiceKeys() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Service Keys");
 
   let [data, setData] = useState<any[]>([]);

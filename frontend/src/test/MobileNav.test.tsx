@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -16,7 +17,7 @@ vi.mock("../helpers", () => ({
 }));
 
 function renderWithRouter(path: string) {
-  return render(
+  return renderWithApp(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter initialEntries={[path]}>

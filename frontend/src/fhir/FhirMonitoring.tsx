@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
+import { App,
   Layout,
   Card,
   Row,
@@ -13,7 +13,6 @@ import {
   Space,
   Spin,
   Tabs,
-  message,
 } from "antd";
 import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
@@ -26,6 +25,7 @@ const { Content } = Layout;
 const { RangePicker } = DatePicker;
 
 function FhirMonitoring(props: any) {
+  const { message } = App.useApp();
   let [metrics, setMetrics] = useState<any>(null);
   let [loading, setLoading] = useState(true);
   let [error, setError] = useState<string | null>(null);

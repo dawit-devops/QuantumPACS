@@ -6,14 +6,13 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import {
+import { App,
   Layout,
   Card,
   Col,
   Row,
   Statistic,
   Table,
-  message,
   Tag,
   Select,
   Switch,
@@ -128,6 +127,7 @@ function getCSSVar(name: string): string {
 }
 
 function Metrics() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
 

@@ -2,11 +2,10 @@ import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
 import { listLoginProviders } from "../api/auth";
-import {
+import { App,
   Form,
   Input,
   Button,
-  message,
   Layout,
   Card,
   Typography,
@@ -60,6 +59,7 @@ function clearAttempts() {
 }
 
 function LoginForm(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Login");
   const navigate = useNavigate();
 

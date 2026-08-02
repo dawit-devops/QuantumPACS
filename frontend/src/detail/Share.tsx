@@ -1,11 +1,10 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useCallback, useEffect } from "react";
-import {
+import { App,
   Form,
   Input,
   InputNumber,
   Button,
-  message,
   Layout,
   Modal,
   Row,
@@ -30,6 +29,7 @@ const { Content } = Layout;
 const { Text } = Typography;
 
 function Share(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Share");
   let [loading, setLoading] = useState(false);
   let [key, setKey] = useState<string | null>(null);

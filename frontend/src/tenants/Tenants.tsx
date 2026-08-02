@@ -1,6 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Row,
@@ -16,7 +16,6 @@ import {
   Typography,
   Spin,
   Alert,
-  message,
 } from "antd";
 import {
   PlusOutlined,
@@ -53,6 +52,7 @@ function formatBytes(bytes: number): string {
 }
 
 function Tenants() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Tenants");
 
   let [data, setData] = useState<any[]>([]);

@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, within, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -74,7 +75,7 @@ describe("Roles", () => {
   });
 
   function renderWithAuth(ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter>{ui}</MemoryRouter>

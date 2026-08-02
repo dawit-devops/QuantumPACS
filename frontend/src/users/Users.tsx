@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Tag,
   Divider,
   Popconfirm,
@@ -33,6 +32,7 @@ import { BulkImport } from "./BulkImport";
 const Content = Layout.Content;
 
 function Users() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Users");
 
   let [data, setData] = useState<User[]>([]);

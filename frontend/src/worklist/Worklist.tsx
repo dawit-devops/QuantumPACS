@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -54,6 +53,7 @@ const STATUS_TABS = [
 ];
 
 function Worklist() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Worklist");
 
   const [data, setData] = useState<any[]>([]);

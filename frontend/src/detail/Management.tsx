@@ -1,7 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState } from "react";
 import { useNavigate } from "react-router";
-import { Button, message, Layout, Modal } from "antd";
+import { Button, message, App, Layout, Modal } from "antd";
 import { deleteFile } from "../api/files";
 const { Content } = Layout;
 
@@ -10,6 +10,7 @@ function sleep(ms: number) {
 }
 
 function Management(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Management");
   const navigate = useNavigate();
   let [loading, setLoading] = useState(false);

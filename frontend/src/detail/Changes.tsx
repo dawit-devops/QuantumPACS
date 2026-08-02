@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Table, message, Tag } from "antd";
+import { Table, message, App, Tag } from "antd";
 import { listFileChanges } from "../api/files";
 
 const columns = [
@@ -25,6 +25,7 @@ const columns = [
 ];
 
 function Changes(props: any) {
+  const { message } = App.useApp();
   let [data, setData] = useState<any[]>([]);
   let [pagination, setPagination] = useState<any>({});
   let [loading, setLoading] = useState(false);

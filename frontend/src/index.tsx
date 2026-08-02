@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
-import { ConfigProvider, Spin } from "antd";
+import { App as AntdApp, ConfigProvider, Spin } from "antd";
 import { createRoot } from "react-dom/client";
 import "./common/tokens.css";
 import "./index.css";
@@ -63,7 +63,8 @@ function ThemedApp() {
       theme={isDark ? darkTheme : lightTheme}
       renderEmpty={renderEmpty}
     >
-      <BrowserRouter>
+      <AntdApp>
+        <BrowserRouter>
         <AuthProvider>
           <NavigatorSetter />
           <ErrorBoundary>
@@ -243,7 +244,8 @@ function ThemedApp() {
             <HelpButton />
           </ErrorBoundary>
         </AuthProvider>
-      </BrowserRouter>
+        </BrowserRouter>
+      </AntdApp>
     </ConfigProvider>
   );
 }

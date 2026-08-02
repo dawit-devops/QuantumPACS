@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { useFormInput, usePrevious } from "../hooks";
 
 describe("useFormInput", () => {

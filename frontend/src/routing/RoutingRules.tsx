@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -22,6 +21,7 @@ import { RuleConditionBuilder } from "./RuleConditionBuilder";
 const Content = Layout.Content;
 
 function RoutingRules() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Routing Rules");
 
   let [data, setData] = useState<any[]>([]);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Button, Modal, Form, Input, Select, message, InputNumber } from "antd";
+import { Button, Modal, Form, Input, Select, message, App, InputNumber } from "antd";
 import { createReplica } from "../api/replicas";
 
 const Option = Select.Option;
@@ -111,6 +111,7 @@ export function EditReplicaModal(props: any) {
 }
 
 export function AddReplica(props: any) {
+  const { message } = App.useApp();
   let [visible, setVisible] = useState(false);
   const [form] = Form.useForm();
 

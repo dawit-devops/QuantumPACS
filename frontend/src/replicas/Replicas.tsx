@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Tag,
   Popconfirm,
   Divider,
@@ -47,6 +46,7 @@ export function EditDelay(props: any) {
 }
 
 function Replicas() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Replicas");
 
   let [data, setData] = useState<any[]>([]);

@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Tag,
   Button,
   Modal,
@@ -41,6 +40,7 @@ const Content = Layout.Content;
 const SUPER_ADMIN_SLUG = "super_admin";
 
 function Roles() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Roles");
 
   let [data, setData] = useState<Role[]>([]);

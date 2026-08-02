@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
 import Highlighter from "react-highlight-words";
-import {
+import { App,
   Layout,
   Table,
   Input,
-  message,
   Button,
   Row,
   Col,
@@ -93,6 +92,7 @@ function searchToQidoParams(searchObj: any): Record<string, string> {
 }
 
 function Files(props: any) {
+  const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const navigate = useNavigate();

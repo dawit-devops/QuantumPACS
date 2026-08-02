@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
+import { App,
   Badge,
   Drawer,
   List,
   Button,
   Space,
   Typography,
-  message,
   Empty,
   Spin,
   Tag,
@@ -41,6 +40,7 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 function NotificationBell() {
+  const { message } = App.useApp();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<any[]>([]);

@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Button,
   Modal,
   Form,
   Input,
   Checkbox,
   Select,
-  message,
   Space,
   Typography,
 } from "antd";
@@ -17,6 +16,7 @@ import { listRoles } from "../api/roles";
 const { Text, Paragraph } = Typography;
 
 export function AddUserFinish(props: any) {
+  const { message } = App.useApp();
   const copyPassword = () => {
     navigator.clipboard.writeText(props.password);
     message.success("Password copied to clipboard");
@@ -73,6 +73,7 @@ export function AddUserFinish(props: any) {
 }
 
 export function AddUser(props: any) {
+  const { message } = App.useApp();
   let [visible, setVisible] = useState(false);
   let [result, setResult] = useState<any>({});
   let [roles, setRoles] = useState<any[]>([]);

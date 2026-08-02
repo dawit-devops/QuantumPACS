@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -62,7 +63,7 @@ describe("Files QIDO-RS Search", () => {
   });
 
   function renderWithAuth(url: string, ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter initialEntries={[url]}>{ui}</MemoryRouter>

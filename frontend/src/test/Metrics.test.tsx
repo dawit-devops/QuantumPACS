@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router";
 import { AuthProvider } from "../auth/AuthContext";
@@ -31,7 +32,7 @@ vi.mock("react-chartjs-2", () => ({
 }));
 
 function renderWithAuth(ui: React.ReactElement) {
-  return render(
+  return renderWithApp(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter>{ui}</MemoryRouter>

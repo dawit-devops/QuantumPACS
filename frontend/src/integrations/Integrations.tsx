@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Table,
@@ -12,7 +12,6 @@ import {
   InputNumber,
   Switch,
   Space,
-  message,
   Popconfirm,
   Descriptions,
   Tabs,
@@ -45,6 +44,7 @@ const { Content } = Layout;
 const { TextArea } = Input;
 
 function Integrations(props: any) {
+  const { message } = App.useApp();
   // ---- OAuth Providers ----
   let [providers, setProviders] = useState<any[]>([]);
   let [providersLoading, setProvidersLoading] = useState(true);

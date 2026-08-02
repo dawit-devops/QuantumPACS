@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -47,7 +48,7 @@ describe("TenantSelector", () => {
     initAuth();
     mockListSessionTenants.mockResolvedValue(mockTenants);
 
-    render(
+    renderWithApp(
       <MemoryRouter>
         <AuthProvider>
           <TenantSelector />
@@ -63,7 +64,7 @@ describe("TenantSelector", () => {
   it("renders nothing when not authenticated", async () => {
     mockListSessionTenants.mockResolvedValue(mockTenants);
 
-    render(
+    renderWithApp(
       <MemoryRouter>
         <AuthProvider>
           <TenantSelector />
@@ -78,7 +79,7 @@ describe("TenantSelector", () => {
     initAuth();
     mockListSessionTenants.mockResolvedValue(mockTenants);
 
-    render(
+    renderWithApp(
       <MemoryRouter>
         <AuthProvider>
           <TenantSelector />
@@ -100,7 +101,7 @@ describe("TenantSelector", () => {
     initAuth();
     mockListSessionTenants.mockResolvedValue(mockTenants);
 
-    render(
+    renderWithApp(
       <MemoryRouter>
         <AuthProvider>
           <TenantSelector />

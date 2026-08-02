@@ -1,10 +1,9 @@
 import { useState, useRef } from "react";
-import {
+import { App,
   Modal,
   Button,
   Upload,
   Table,
-  message,
   Tag,
   Typography,
   Progress,
@@ -26,6 +25,7 @@ interface BulkImportProps {
 }
 
 export function BulkImport({ reload }: BulkImportProps) {
+  const { message } = App.useApp();
   const [visible, setVisible] = useState(false);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [importing, setImporting] = useState(false);

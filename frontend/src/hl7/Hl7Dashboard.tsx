@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Table,
@@ -15,7 +15,6 @@ import {
   Descriptions,
   Modal,
   Spin,
-  message,
   Tooltip,
   Alert,
 } from "antd";
@@ -43,6 +42,7 @@ const { Content } = Layout;
 const { TextArea } = Input;
 
 function Hl7Dashboard(props: any) {
+  const { message } = App.useApp();
   // Messages tab
   let [messages, setMessages] = useState<any[]>([]);
   let [total, setTotal] = useState(0);

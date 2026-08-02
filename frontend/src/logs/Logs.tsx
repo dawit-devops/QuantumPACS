@@ -6,10 +6,9 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Tag,
   Button,
   Switch,
@@ -126,6 +125,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 const ALL_EVENT_TYPES = Object.values(EVENT_GROUPS).flat();
 
 function Logs() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Audit Logs");
 
   let [data, setData] = useState<any[]>([]);
