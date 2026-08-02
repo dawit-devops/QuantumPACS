@@ -16,6 +16,18 @@ cleanup_port() {
     done
 }
 
+# Fail loudly instead of silently starting nothing: start/restart need the
+# backend + frontend units to exist (scripts/install_systemd_units.sh).
+require_units() {
+    local DEST="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    for unit in quantumpacs-backend.service quantumpacs-frontend.service; do
+        if [ ! -f "$DEST/$unit" ]; then
+            echo "error: $unit not installed at $DEST — run scripts/install_systemd_units.sh first" >&2
+            exit 1
+        fi
+    done
+}
+
 verify_config() {
     local CONFIG="$DIR/backend/config.local.yaml"
     if [ ! -f "$CONFIG" ]; then return; fi
@@ -50,9 +62,10 @@ verify_config() {
 case "$CMD" in
   start)
     echo "Starting QuantumPACS dev services..."
+    require_units
     verify_config
     echo "  starting PostgreSQL (Docker)..."
-    docker compose up -d 2>&1 || true
+    docker compose up -d
     echo "  starting backend..."
     systemctl --user start quantumpacs-backend.service 2>/dev/null || systemctl --user restart quantumpacs-backend.service
     sleep 2
@@ -73,11 +86,12 @@ case "$CMD" in
     ;;
   restart)
     echo "Restarting QuantumPACS dev services..."
+    require_units
     systemctl --user stop quantumpacs-backend.service 2>/dev/null || true
     cleanup_port 8080
     cleanup_port 11112
     verify_config
-    docker compose up -d 2>&1 || true
+    docker compose up -d
     systemctl --user start quantumpacs-backend.service
     sleep 2
     systemctl --user restart quantumpacs-frontend.service 2>/dev/null || true
