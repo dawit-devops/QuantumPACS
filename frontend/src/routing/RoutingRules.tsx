@@ -15,7 +15,7 @@ import {
 } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listRoutingRules, createRoutingRule, updateRoutingRule, deleteRoutingRule } from "../api/routing";
 import { PageState } from "../common/PageState";
 import { RuleConditionBuilder } from "./RuleConditionBuilder";
 
@@ -106,8 +106,8 @@ function RoutingRules() {
   const fetch = (params: any) => {
     setLoading(true);
     setError(null);
-    request("routing", params)
-      .then((res: any) => {
+    listRoutingRules(params)
+      .then((res) => {
         setLoading(false);
         setData(Array.isArray(res.data) ? res.data : []);
         if (res.pagination) setPagination(res.pagination);
@@ -128,7 +128,7 @@ function RoutingRules() {
     form
       .validateFields()
       .then((values: any) => {
-        request("routing", { data: { ...values, conditions } })
+        createRoutingRule({ ...values, conditions })
           .then(() => {
             form.resetFields();
             setConditions({});
@@ -176,7 +176,7 @@ function RoutingRules() {
           setEditingRule(null);
           return;
         }
-        request(`routing/${editingRule.id}`, { data })
+        updateRoutingRule(editingRule.id, data)
           .then(() => {
             form.resetFields();
             setConditions({});
@@ -192,7 +192,7 @@ function RoutingRules() {
   };
 
   const handleDelete = (id: string) => {
-    request(`routing/${id}`, { data: undefined, method: "DELETE" })
+    deleteRoutingRule(id)
       .then(() => {
         fetch({ page: 1, per_page: 50 });
       })

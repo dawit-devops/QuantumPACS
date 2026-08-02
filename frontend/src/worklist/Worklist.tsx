@@ -25,7 +25,14 @@ import {
   TableOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listWorklist,
+  listStationAes,
+  createWorklistEntry,
+  updateWorklistEntry,
+  deleteWorklistEntry,
+  markWorklistPerformed,
+} from "../api/worklist";
 import { PageState } from "../common/PageState";
 import { CreateEntry } from "./CreateEntry";
 import dayjs from "dayjs";
@@ -92,7 +99,7 @@ function Worklist() {
       }
       if (params?.page) query.page = String(params.page);
       if (params?.per_page) query.per_page = String(params.per_page);
-      request("worklist", { query })
+      listWorklist(query)
         .then((res: any) => {
           setLoading(false);
           const items = Array.isArray(res.data) ? res.data : [];
@@ -114,7 +121,7 @@ function Worklist() {
 
   useEffect(() => {
     fetch();
-    request("worklist/station-aes", { method: "GET" })
+    listStationAes()
       .then((res: any) => {
         if (Array.isArray(res)) setStationOptions(res);
         else if (res?.data) setStationOptions(res.data);
@@ -147,7 +154,7 @@ function Worklist() {
           data.scheduled_date = data.scheduled_date.format("YYYY-MM-DD");
         if (data.scheduled_time)
           data.scheduled_time = data.scheduled_time.format("HH:mm");
-        request("worklist", { data })
+        createWorklistEntry(data)
           .then(() => {
             form.resetFields();
             setVisible(false);
@@ -205,7 +212,7 @@ function Worklist() {
           setEditingEntry(null);
           return;
         }
-        request(`worklist/${editingEntry.id}`, { data })
+        updateWorklistEntry(editingEntry.id, data)
           .then(() => {
             form.resetFields();
             setEditingEntry(null);
@@ -220,7 +227,7 @@ function Worklist() {
   };
 
   const handleCancel = (id: string) => {
-    request(`worklist/${id}`, { data: undefined, method: "DELETE" })
+    deleteWorklistEntry(id)
       .then(() => {
         fetch();
         setSelectedRowKeys((prev) => prev.filter((k) => k !== id));
@@ -231,7 +238,7 @@ function Worklist() {
   };
 
   const handleMarkPerformed = (id: string) => {
-    request(`worklist/${id}`, { data: { status: "performed" } })
+    markWorklistPerformed(id)
       .then(() => {
         message.success("Marked as performed");
         fetch();
@@ -247,7 +254,7 @@ function Worklist() {
     const ids = [...selectedRowKeys];
     Promise.all(
       ids.map((id) =>
-        request(`worklist/${id}`, { data: undefined, method: "DELETE" }).catch(
+        deleteWorklistEntry(id as number).catch(
           () => {},
         ),
       ),
@@ -264,7 +271,7 @@ function Worklist() {
     const ids = [...selectedRowKeys];
     Promise.all(
       ids.map((id) =>
-        request(`worklist/${id}`, { data: { status: "performed" } }).catch(
+        markWorklistPerformed(id as number).catch(
           () => {},
         ),
       ),

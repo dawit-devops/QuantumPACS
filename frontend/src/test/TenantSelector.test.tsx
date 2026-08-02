@@ -5,10 +5,12 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import TenantSelector from "../auth/TenantSelector";
 
-const mockRequest = vi.hoisted(() => vi.fn());
-
+const mockListSessionTenants = vi.hoisted(() => vi.fn());
+vi.mock("../api/tenants", () => ({
+  listSessionTenants: mockListSessionTenants,
+}));
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -43,7 +45,7 @@ function initAuth(tenantId = "main", tenantName = "Main Hospital") {
 describe("TenantSelector", () => {
   it("renders tenant name when active tenant is set in localStorage", async () => {
     initAuth();
-    mockRequest.mockResolvedValue({ data: mockTenants });
+    mockListSessionTenants.mockResolvedValue(mockTenants);
 
     render(
       <MemoryRouter>
@@ -59,7 +61,7 @@ describe("TenantSelector", () => {
   });
 
   it("renders nothing when not authenticated", async () => {
-    mockRequest.mockResolvedValue({ data: mockTenants });
+    mockListSessionTenants.mockResolvedValue(mockTenants);
 
     render(
       <MemoryRouter>
@@ -74,7 +76,7 @@ describe("TenantSelector", () => {
 
   it("displays tenant list in Select dropdown", async () => {
     initAuth();
-    mockRequest.mockResolvedValue({ data: mockTenants });
+    mockListSessionTenants.mockResolvedValue(mockTenants);
 
     render(
       <MemoryRouter>
@@ -96,7 +98,7 @@ describe("TenantSelector", () => {
 
   it("switches active tenant via dropdown", async () => {
     initAuth();
-    mockRequest.mockResolvedValue({ data: mockTenants });
+    mockListSessionTenants.mockResolvedValue(mockTenants);
 
     render(
       <MemoryRouter>

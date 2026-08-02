@@ -29,7 +29,14 @@ import {
 } from "@ant-design/icons";
 import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listHl7Messages,
+  getHl7Message,
+  getHl7Metrics,
+  getHl7Config,
+  updateHl7Config,
+  getHl7Status,
+} from "../api/hl7";
 import { PageState } from "../common/PageState";
 import "./Hl7.css";
 
@@ -69,12 +76,14 @@ function Hl7Dashboard(props: any) {
     setMsgLoading(true);
     setMsgError(null);
     try {
-      let q = `hl7/admin/messages?limit=${limit}&offset=${offset}`;
-      if (msgFilter) q += `&message_type=${msgFilter}`;
-      if (statusFilter) q += `&parse_status=${statusFilter}`;
-      if (patientFilter) q += `&patient_id=${patientFilter}`;
-      if (facilityFilter) q += `&sending_facility=${facilityFilter}`;
-      const res = await request(q);
+      const res = await listHl7Messages({
+        limit,
+        offset,
+        ...(msgFilter ? { message_type: msgFilter } : {}),
+        ...(statusFilter ? { parse_status: statusFilter } : {}),
+        ...(patientFilter ? { patient_id: patientFilter } : {}),
+        ...(facilityFilter ? { sending_facility: facilityFilter } : {}),
+      });
       setMessages(res.messages || []);
       setTotal(res.total || 0);
     } catch (e: any) {
@@ -87,7 +96,7 @@ function Hl7Dashboard(props: any) {
   const fetchMetrics = async () => {
     setMetricsLoading(true);
     try {
-      const res = await request(`hl7/admin/metrics?period=${period}`);
+      const res = await getHl7Metrics(period);
       setMetrics(res);
     } catch {
     } finally {
@@ -98,7 +107,7 @@ function Hl7Dashboard(props: any) {
   const fetchConfig = async () => {
     setConfigLoading(true);
     try {
-      const res = await request("hl7/admin/config");
+      const res = await getHl7Config();
       setConfig(res);
       setConfigError(null);
       setAllowedIpsText((res.allowed_ips || []).join("\n"));
@@ -117,7 +126,7 @@ function Hl7Dashboard(props: any) {
   const fetchStatus = async () => {
     setStatusLoading(true);
     try {
-      const res = await request("hl7/admin/status");
+      const res = await getHl7Status();
       setStatus(res);
     } catch {
     } finally {
@@ -140,7 +149,7 @@ function Hl7Dashboard(props: any) {
 
   const handleViewDetail = async (id: string) => {
     try {
-      const res = await request(`hl7/admin/messages/${id}`);
+      const res = await getHl7Message(id);
       setDetailModal(res);
     } catch (e: any) {
       message.error(e.message);
@@ -158,10 +167,7 @@ function Hl7Dashboard(props: any) {
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
-      await request("hl7/admin/config", {
-        method: "PUT",
-        data: { mllp_port: mllpPort, allowed_ips: ips },
-      });
+      await updateHl7Config({ mllp_port: mllpPort, allowed_ips: ips });
       message.success("Configuration saved");
       fetchConfig();
       fetchStatus();

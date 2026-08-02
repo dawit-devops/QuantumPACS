@@ -16,6 +16,14 @@ const { requestMock } = vi.hoisted(() => ({
   requestMock: vi.fn().mockResolvedValue({}),
 }));
 
+const { mockLogout } = vi.hoisted(() => ({
+  mockLogout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../api/auth", () => ({
+  logout: mockLogout,
+}));
+
 vi.mock("../helpers", () => ({
   isAdmin: () => true,
   request: requestMock,
@@ -122,9 +130,7 @@ describe("Sidebar", () => {
 
     await user.click(screen.getByText("Logout"));
 
-    expect(requestMock).toHaveBeenCalledWith("auth/logout", {
-      method: "POST",
-    });
+    expect(mockLogout).toHaveBeenCalled();
     expect(localStorage.getItem("userId")).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();

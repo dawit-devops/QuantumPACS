@@ -6,9 +6,14 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Metrics from "../metrics/Metrics";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockGetDashboardMetrics = vi.hoisted(() => vi.fn());
+const mockGetHealth = vi.hoisted(() => vi.fn());
+vi.mock("../api/metrics", () => ({
+  getDashboardMetrics: mockGetDashboardMetrics,
+  getHealth: mockGetHealth,
+}));
 vi.mock("../helpers", () => ({
-  request: (...args: any[]) => mockRequest(...args),
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => false,
   setTokens: () => {},
   clearTokens: () => {},
@@ -59,7 +64,8 @@ describe("Metrics", () => {
   });
 
   it("renders spinner while loading", () => {
-    mockRequest.mockReturnValue(new Promise(() => {}));
+    mockGetDashboardMetrics.mockReturnValue(new Promise(() => {}));
+    mockGetHealth.mockResolvedValue(null);
     renderWithAuth(<Metrics />);
 
     const spinner = document.querySelector(".ant-spin-spinning");
@@ -67,7 +73,8 @@ describe("Metrics", () => {
   });
 
   it("renders stat cards after data loads", async () => {
-    mockRequest.mockResolvedValue(mockData);
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(null);
     renderWithAuth(<Metrics />);
 
     await waitFor(() => {
@@ -81,7 +88,8 @@ describe("Metrics", () => {
   });
 
   it("renders modality distribution chart", async () => {
-    mockRequest.mockResolvedValue(mockData);
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(null);
     renderWithAuth(<Metrics />);
 
     await waitFor(() => {
@@ -94,7 +102,8 @@ describe("Metrics", () => {
   });
 
   it("renders ingestion chart", async () => {
-    mockRequest.mockResolvedValue(mockData);
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(null);
     renderWithAuth(<Metrics />);
 
     await waitFor(() => {
@@ -107,20 +116,17 @@ describe("Metrics", () => {
   });
 
   it("renders system health pills", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "v2/health")
-        return Promise.resolve({
-          status: "ok",
-          components: {
-            database: { status: "ok", latency_ms: 2 },
-            elasticsearch: { status: "ok", latency_ms: 5 },
-            redis: { status: "ok", latency_ms: 1 },
-            storage: { status: "ok", latency_ms: 3 },
-            dicom_listener: { status: "degraded", latency_ms: 200 },
-            ingestion_service: { status: "ok", latency_ms: 10 },
-          },
-        });
-      return Promise.resolve(mockData);
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue({
+      status: "ok",
+      components: {
+        database: { status: "ok", latency_ms: 2 },
+        elasticsearch: { status: "ok", latency_ms: 5 },
+        redis: { status: "ok", latency_ms: 1 },
+        storage: { status: "ok", latency_ms: 3 },
+        dicom_listener: { status: "degraded", latency_ms: 200 },
+        ingestion_service: { status: "ok", latency_ms: 10 },
+      },
     });
     renderWithAuth(<Metrics />);
 
@@ -134,16 +140,13 @@ describe("Metrics", () => {
   });
 
   it("renders component latency chart", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "v2/health")
-        return Promise.resolve({
-          status: "ok",
-          components: {
-            database: { status: "ok", latency_ms: 2 },
-            elasticsearch: { status: "degraded", latency_ms: 500 },
-          },
-        });
-      return Promise.resolve(mockData);
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue({
+      status: "ok",
+      components: {
+        database: { status: "ok", latency_ms: 2 },
+        elasticsearch: { status: "degraded", latency_ms: 500 },
+      },
     });
     renderWithAuth(<Metrics />);
 

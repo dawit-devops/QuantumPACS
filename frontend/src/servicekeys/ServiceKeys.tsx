@@ -22,7 +22,7 @@ import {
   ReloadOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listApiKeys, createApiKey, deleteApiKey } from "../api/servicekeys";
 
 const Content = Layout.Content;
 
@@ -173,10 +173,10 @@ function ServiceKeys() {
 
   const fetch = () => {
     setLoading(true);
-    request("api-keys")
-      .then((res: any) => {
+    listApiKeys()
+      .then((res) => {
         setLoading(false);
-        setData(Array.isArray(res.data) ? res.data : []);
+        setData(Array.isArray(res) ? res : []);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -188,10 +188,10 @@ function ServiceKeys() {
     form
       .validateFields()
       .then((values: any) => {
-        request("api-keys", { data: values })
-          .then((res: any) => {
+        createApiKey(values)
+          .then((res) => {
             form.resetFields();
-            setRawKey(res.data.raw_key);
+            setRawKey(res.raw_key);
             setVisible(false);
             fetch();
           })
@@ -203,7 +203,7 @@ function ServiceKeys() {
   };
 
   const handleRevoke = (id: string) => {
-    request(`api-keys/${id}`, { data: undefined, method: "DELETE" })
+    deleteApiKey(id)
       .then(() => {
         fetch();
       })

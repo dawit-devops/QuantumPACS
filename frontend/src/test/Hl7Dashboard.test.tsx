@@ -7,10 +7,24 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Hl7Dashboard from "../hl7/Hl7Dashboard";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListHl7Messages = vi.hoisted(() => vi.fn());
+const mockGetHl7Metrics = vi.hoisted(() => vi.fn());
+const mockGetHl7Config = vi.hoisted(() => vi.fn());
+const mockUpdateHl7Config = vi.hoisted(() => vi.fn());
+const mockGetHl7Status = vi.hoisted(() => vi.fn());
+const mockGetHl7Message = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/hl7", () => ({
+  listHl7Messages: mockListHl7Messages,
+  getHl7Metrics: mockGetHl7Metrics,
+  getHl7Config: mockGetHl7Config,
+  updateHl7Config: mockUpdateHl7Config,
+  getHl7Status: mockGetHl7Status,
+  getHl7Message: mockGetHl7Message,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -60,15 +74,15 @@ async function waitForMessagesTab() {
 describe("Hl7Dashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string) => {
-      if (url.startsWith("hl7/admin/messages"))
-        return Promise.resolve({ messages: mockMessages, total: 2 });
-      if (url.startsWith("hl7/admin/metrics"))
-        return Promise.resolve(mockMetrics);
-      if (url === "hl7/admin/config") return Promise.resolve(mockConfig);
-      if (url === "hl7/admin/status") return Promise.resolve(mockStatus);
-      return Promise.resolve({});
+    mockListHl7Messages.mockResolvedValue({
+      messages: mockMessages,
+      total: 2,
     });
+    mockGetHl7Metrics.mockResolvedValue(mockMetrics);
+    mockGetHl7Config.mockResolvedValue(mockConfig);
+    mockGetHl7Status.mockResolvedValue(mockStatus);
+    mockUpdateHl7Config.mockResolvedValue({ updated: [] });
+    mockGetHl7Message.mockResolvedValue({} as any);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -95,8 +109,8 @@ describe("Hl7Dashboard", () => {
   it("fetches messages on mount", async () => {
     renderWithAuth(<Hl7Dashboard />);
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        "hl7/admin/messages?limit=50&offset=0",
+      expect(mockListHl7Messages).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 50, offset: 0 }),
       );
     });
   });
@@ -134,14 +148,14 @@ describe("Hl7Dashboard", () => {
 
   it("disables Save and shows an alert when config fails to load", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "hl7/admin/config")
-        return Promise.reject(new Error("connection refused"));
-      if (url.startsWith("hl7/admin/messages"))
-        return Promise.resolve({ messages: mockMessages, total: 2 });
-      if (url === "hl7/admin/status") return Promise.resolve(mockStatus);
-      return Promise.resolve({});
+    mockGetHl7Config.mockRejectedValue(new Error("connection refused"));
+    mockListHl7Messages.mockResolvedValue({
+      messages: mockMessages,
+      total: 2,
     });
+    mockGetHl7Status.mockResolvedValue(mockStatus);
+    mockUpdateHl7Config.mockResolvedValue({ updated: [] });
+    mockGetHl7Message.mockResolvedValue({} as any);
     renderWithAuth(<Hl7Dashboard />);
     await waitForMessagesTab();
     await user.click(screen.getByText("Configuration"));

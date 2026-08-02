@@ -2,7 +2,7 @@ import { useDocumentTitle } from "../hooks";
 import React, { useState } from "react";
 import withRouter from "../withRouter";
 import { Button, message, Layout, Modal } from "antd";
-import { request } from "../helpers";
+import { deleteFile } from "../api/files";
 const { Content } = Layout;
 
 function sleep(ms: number) {
@@ -23,7 +23,7 @@ function Management(props: any) {
       cancelText: "Cancel",
       onOk: () => {
         setLoading(true);
-        return request(`files/${props.file.id}`, { method: "DELETE" })
+        return deleteFile(props.file.id)
           .then(() => sleep(1000))
           .then(() => props.history.push("/"))
           .catch(() => message.error("Deletion failed"))

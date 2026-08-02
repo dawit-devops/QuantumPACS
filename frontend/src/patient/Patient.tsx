@@ -21,7 +21,7 @@ import {
   MedicineBoxOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getPatient } from "../api/patient";
 import { PageState } from "../common/PageState";
 import withRouter from "../withRouter";
 
@@ -41,7 +41,7 @@ function Patient(props: any) {
   const fetchPatient = () => {
     setLoading(true);
     setError(null);
-    request(`patients/${patientId}`)
+    getPatient(patientId)
       .then((res: any) => {
         setLoading(false);
         setData(res);

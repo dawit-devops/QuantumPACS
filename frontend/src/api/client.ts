@@ -69,7 +69,11 @@ export const request = async <T = any>(
     options.headers.set("X-Auth-Pacs", token);
   }
   if (options.data) {
-    options.method = "POST";
+    // Default to POST for payloads, but honor an explicit method — the
+    // legacy helper overwrote PUT/DELETE with POST whenever data was
+    // present, silently 405-ing every PUT endpoint (users/role, tenants,
+    // worklist, replicas, fhir admin, ...).
+    options.method = options.method || "POST";
     options.body = JSON.stringify(options.data);
     delete options.data;
   }

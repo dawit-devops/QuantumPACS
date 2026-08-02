@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button, Modal, Form, Input, Select, message, InputNumber } from "antd";
-import { request } from "../helpers";
+import { createReplica } from "../api/replicas";
 
 const Option = Select.Option;
 
@@ -126,7 +126,7 @@ export function AddReplica(props: any) {
     form
       .validateFields()
       .then((values: any) => {
-        request("replicas", { data: values })
+        createReplica(values)
           .then(() => {
             form.resetFields();
             setVisible(false);

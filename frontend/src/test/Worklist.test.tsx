@@ -13,10 +13,24 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Worklist from "../worklist/Worklist";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListWorklist = vi.hoisted(() => vi.fn());
+const mockListStationAes = vi.hoisted(() => vi.fn());
+const mockCreateWorklistEntry = vi.hoisted(() => vi.fn());
+const mockUpdateWorklistEntry = vi.hoisted(() => vi.fn());
+const mockDeleteWorklistEntry = vi.hoisted(() => vi.fn());
+const mockMarkWorklistPerformed = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/worklist", () => ({
+  listWorklist: mockListWorklist,
+  listStationAes: mockListStationAes,
+  createWorklistEntry: mockCreateWorklistEntry,
+  updateWorklistEntry: mockUpdateWorklistEntry,
+  deleteWorklistEntry: mockDeleteWorklistEntry,
+  markWorklistPerformed: mockMarkWorklistPerformed,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -100,9 +114,19 @@ async function waitForTable() {
 describe("Worklist", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation(() =>
-      Promise.resolve({ data: mockEntries }),
+    mockListWorklist.mockImplementation(() =>
+      Promise.resolve({
+        data: mockEntries,
+        total: mockEntries.length,
+        page: 1,
+        per_page: 20,
+      }),
     );
+    mockListStationAes.mockResolvedValue([]);
+    mockCreateWorklistEntry.mockResolvedValue({} as any);
+    mockUpdateWorklistEntry.mockResolvedValue(undefined);
+    mockDeleteWorklistEntry.mockResolvedValue(undefined);
+    mockMarkWorklistPerformed.mockResolvedValue(undefined);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -145,7 +169,7 @@ describe("Worklist", () => {
   it("calls request with correct endpoint and query object on mount", async () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
-    expect(mockRequest).toHaveBeenCalledWith("worklist", { query: {} });
+    expect(mockListWorklist).toHaveBeenCalledWith({});
   });
 
   it("sends debounced search text as a query param", async () => {
@@ -157,12 +181,9 @@ describe("Worklist", () => {
 
     await waitFor(
       () => {
-        const calls = mockRequest.mock.calls;
-        const searchCall = calls.find(
-          (c: any) =>
-            c[0] === "worklist" && c[1]?.query?.search === "CT" && !c[1]?.data,
+        expect(mockListWorklist).toHaveBeenCalledWith(
+          expect.objectContaining({ search: "CT" }),
         );
-        expect(searchCall).toBeDefined();
       },
       { timeout: 5000 },
     );
@@ -180,13 +201,9 @@ describe("Worklist", () => {
     );
     await waitFor(
       () => {
-        const calls = mockRequest.mock.calls;
-        expect(
-          calls.find(
-            (c: any) =>
-              c[0] === "worklist" && c[1]?.query?.status === "performed",
-          ),
-        ).toBeDefined();
+        expect(mockListWorklist).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "performed" }),
+        );
       },
       { timeout: 5000 },
     );
@@ -210,11 +227,12 @@ describe("Worklist", () => {
     const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
-    mockRequest.mockImplementation((url: string) =>
-      Promise.resolve({
-        data: url === "worklist/station-aes" ? [] : { id: "4" },
-      }),
-    );
+    mockCreateWorklistEntry.mockResolvedValue({ id: 4 } as any);
+    mockListStationAes.mockResolvedValue([]);
+    mockCreateWorklistEntry.mockResolvedValue({} as any);
+    mockUpdateWorklistEntry.mockResolvedValue(undefined);
+    mockDeleteWorklistEntry.mockResolvedValue(undefined);
+    mockMarkWorklistPerformed.mockResolvedValue(undefined);
 
     await user.click(screen.getByText("Create Entry"));
     const modal = screen.getByRole("dialog");
@@ -227,13 +245,13 @@ describe("Worklist", () => {
     await user.click(within(modal).getByText("OK"));
 
     await waitFor(() => {
-      const calls = mockRequest.mock.calls;
-      const createCall = calls.find(
-        (c: any) => c[0] === "worklist" && c[1]?.data?.patient_id === "P004",
+      expect(mockCreateWorklistEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          patient_id: "P004",
+          patient_name: "Test Patient",
+          accession_number: "ACC-004",
+        }),
       );
-      expect(createCall).toBeDefined();
-      expect(createCall?.[1]?.data.patient_name).toBe("Test Patient");
-      expect(createCall?.[1]?.data.accession_number).toBe("ACC-004");
     });
   });
 
@@ -262,10 +280,7 @@ describe("Worklist", () => {
 
     await waitFor(
       () => {
-        expect(mockRequest).toHaveBeenCalledWith("worklist/1", {
-          data: undefined,
-          method: "DELETE",
-        });
+        expect(mockDeleteWorklistEntry).toHaveBeenCalledWith("1");
       },
       { timeout: 10000 },
     );

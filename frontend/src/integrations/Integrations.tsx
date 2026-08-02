@@ -28,7 +28,17 @@ import {
 } from "@ant-design/icons";
 import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listOauthProviders,
+  createOauthProvider,
+  updateOauthProvider,
+  deleteOauthProvider,
+  listWebhooks,
+  createWebhook,
+  updateWebhook,
+  deleteWebhook,
+  testWebhook,
+} from "../api/integrations";
 import { PageState } from "../common/PageState";
 import "./Integrations.css";
 
@@ -56,8 +66,8 @@ function Integrations(props: any) {
   const fetchProviders = async () => {
     setProvidersLoading(true);
     try {
-      const res = await request("oauth/providers");
-      setProviders(res?.data || []);
+      const res = await listOauthProviders();
+      setProviders(res || []);
     } catch {
     } finally {
       setProvidersLoading(false);
@@ -67,7 +77,7 @@ function Integrations(props: any) {
   const fetchWebhooks = async () => {
     setWebhooksLoading(true);
     try {
-      const res = await request("webhooks");
+      const res = await listWebhooks();
       setWebhooks(res?.webhooks || []);
       setAvailableEvents(res?.available_events || []);
     } catch {
@@ -104,13 +114,10 @@ function Integrations(props: any) {
     const values = await providerForm.validateFields();
     try {
       if (editingProvider) {
-        await request(`oauth/providers/${editingProvider.id}`, {
-          method: "PUT",
-          data: values,
-        });
+        await updateOauthProvider(editingProvider.id, values);
         message.success("OAuth provider updated");
       } else {
-        await request("oauth/providers", { method: "POST", data: values });
+        await createOauthProvider(values);
         message.success("OAuth provider created");
       }
       setProviderModal(false);
@@ -122,7 +129,7 @@ function Integrations(props: any) {
 
   const handleProviderDelete = async (id: string) => {
     try {
-      await request(`oauth/providers/${id}`, { method: "DELETE" });
+      await deleteOauthProvider(id);
       message.success("OAuth provider deleted");
       fetchProviders();
     } catch (e: any) {
@@ -152,13 +159,10 @@ function Integrations(props: any) {
     const values = await whForm.validateFields();
     try {
       if (editingWh) {
-        await request(`webhooks/${editingWh.id}`, {
-          method: "PUT",
-          data: values,
-        });
+        await updateWebhook(editingWh.id, values);
         message.success("Webhook updated");
       } else {
-        await request("webhooks", { method: "POST", data: values });
+        await createWebhook(values);
         message.success("Webhook created");
       }
       setWhModal(false);
@@ -170,7 +174,7 @@ function Integrations(props: any) {
 
   const handleWhDelete = async (id: string) => {
     try {
-      await request(`webhooks/${id}`, { method: "DELETE" });
+      await deleteWebhook(id);
       message.success("Webhook deleted");
       fetchWebhooks();
     } catch (e: any) {
@@ -183,9 +187,9 @@ function Integrations(props: any) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await request("webhooks/test", {
-        method: "POST",
-        data: { url: values.url, secret: values.secret },
+      const res = await testWebhook({
+        url: values.url,
+        secret: values.secret,
       });
       setTestResult(res);
     } catch (e: any) {

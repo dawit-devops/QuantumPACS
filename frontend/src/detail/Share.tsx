@@ -25,7 +25,7 @@ import {
   DeleteOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
-import { request } from "../helpers";
+import { listFileShares, createFileShare, revokeFileShare } from "../api/files";
 
 const { Content } = Layout;
 const { Text } = Typography;
@@ -42,8 +42,8 @@ function Share(props: any) {
 
   const fetchLinks = useCallback(() => {
     setLinksLoading(true);
-    request(`files/${props.file.id}/shares`, { method: "GET" })
-      .then((res: any) => setLinks(res.data || res || []))
+    listFileShares(props.file.id)
+      .then((res) => setLinks(res))
       .catch(() => {})
       .finally(() => setLinksLoading(false));
   }, [props.file.id]);
@@ -57,7 +57,7 @@ function Share(props: any) {
     form
       .validateFields()
       .then((values: any) => {
-        request(`files/${props.file.id}/share`, { data: values })
+        createFileShare(props.file.id, values)
           .then((data: any) => {
             setLoading(false);
             setKey(data.key);
@@ -112,9 +112,7 @@ function Share(props: any) {
   const handleRevoke = async (shareId: string) => {
     setRevoking(shareId);
     try {
-      await request(`files/${props.file.id}/shares/${shareId}`, {
-        method: "DELETE",
-      });
+      await revokeFileShare(props.file.id, shareId);
       message.success("Share link revoked");
       fetchLinks();
     } catch {

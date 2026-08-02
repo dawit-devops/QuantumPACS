@@ -48,7 +48,7 @@ import {
 } from "chart.js";
 import withSidebar from "../common/base";
 import { useTheme } from "../common/ThemeProvider";
-import { request } from "../helpers";
+import { getDashboardMetrics, getHealth } from "../api/metrics";
 import { PageState } from "../common/PageState";
 import "./Metrics.css";
 
@@ -144,8 +144,8 @@ function Metrics() {
     setLoading(true);
     setError(null);
     Promise.all([
-      request(`v2/dashboard/metrics?range=${timeRange}`),
-      request("v2/health").catch(() => null),
+      getDashboardMetrics(timeRange),
+      getHealth(),
     ])
       .then(([metricsResp, healthResp]) => {
         setData(metricsResp);

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import withRouter from "../withRouter";
 import { useFetch, useDocumentTitle } from "../hooks";
-import { request } from "../helpers";
+import { listLoginProviders } from "../api/auth";
 import {
   Form,
   Input,
@@ -81,9 +81,9 @@ function LoginForm(props: any) {
   }, []);
 
   useEffect(() => {
-    request("oauth/providers")
-      .then((res: any) => {
-        if (res?.data) setProviders(res.data);
+    listLoginProviders()
+      .then((res) => {
+        setProviders(res);
       })
       .catch(() => {});
   }, []);

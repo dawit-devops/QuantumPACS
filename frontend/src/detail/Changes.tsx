@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Table, message, Tag } from "antd";
-import { request } from "../helpers";
+import { listFileChanges } from "../api/files";
 
 const columns = [
   {
@@ -51,7 +51,7 @@ function Changes(props: any) {
 
   const fetch = (params?: any) => {
     setLoading(true);
-    request(`files/${props.file.id}/changes`, params || {})
+    listFileChanges(props.file.id, params || {})
       .then((data: any) => {
         const pager = Object.assign({}, pagination, {
           total: data.data.length,

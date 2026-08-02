@@ -28,7 +28,7 @@ import { PageState } from "../common/PageState";
 import withSidebar from "../common/base";
 
 const { useBreakpoint } = Grid;
-import { request } from "../helpers";
+import { getFile } from "../api/files";
 import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";
@@ -90,7 +90,7 @@ function Detail(props: any) {
 
     setImage(`wadouri:${API_URL}/files/${params.id}/data`);
 
-    request(`files/${params.id}`)
+    getFile(params.id)
       .then((data: any) => {
         const meta = data?.meta || {};
         if (

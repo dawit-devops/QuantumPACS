@@ -27,7 +27,7 @@ import {
   HddOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listTenants, createTenant, updateTenant, deleteTenant } from "../api/tenants";
 import { PageState } from "../common/PageState";
 
 const { Text, Title } = Typography;
@@ -71,10 +71,10 @@ function Tenants() {
   const fetch = () => {
     setLoading(true);
     setError(null);
-    request("tenants")
-      .then((res: any) => {
+    listTenants()
+      .then((res) => {
         setLoading(false);
-        setData(res.data || []);
+        setData(res);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -91,7 +91,7 @@ function Tenants() {
         if (values.domain) data.domain = values.domain;
         if (values.storage_quota_gb)
           data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
-        request("tenants", { data })
+        createTenant(data)
           .then(() => {
             createForm.resetFields();
             setCreateVisible(false);
@@ -134,7 +134,7 @@ function Tenants() {
           setEditVisible(false);
           return;
         }
-        request(`tenants/${editingTenant.id}`, { data, method: "PUT" })
+        updateTenant(editingTenant.id, data)
           .then(() => {
             setEditingTenant(null);
             setEditVisible(false);
@@ -148,7 +148,7 @@ function Tenants() {
   };
 
   const handleDecommission = (tenant: any) => {
-    request(`tenants/${tenant.id}`, { data: undefined, method: "DELETE" })
+    deleteTenant(tenant.id)
       .then(() => {
         fetch();
       })

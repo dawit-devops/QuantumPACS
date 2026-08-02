@@ -15,7 +15,7 @@ import {
   Tooltip,
 } from "antd";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listReplicas, createReplica, updateReplica, deleteReplica } from "../api/replicas";
 import { PageState } from "../common/PageState";
 import { AddReplica } from "./EditReplica";
 
@@ -65,11 +65,11 @@ function Replicas() {
     const refresh = () => {
       if (document.visibilityState !== "visible" || inFlight) return;
       inFlight = true;
-      request("replicas")
-        .then((res: any) => {
-          setData(res.data);
+      listReplicas()
+        .then((res) => {
+          setData(res);
           setPagination((p: any) =>
-            Object.assign({}, p, { total: res.data.length }),
+            Object.assign({}, p, { total: res.length }),
           );
         })
         .catch((e: any) => {
@@ -111,11 +111,11 @@ function Replicas() {
   const fetch = (showLoading?: any) => {
     if (showLoading !== false) setLoading(true);
     setError(null);
-    request("replicas")
-      .then((res: any) => {
-        const pager = Object.assign({}, pagination, { total: res.data.length });
+    listReplicas()
+      .then((res) => {
+        const pager = Object.assign({}, pagination, { total: res.length });
         if (showLoading !== false) setLoading(false);
-        setData(res.data);
+        setData(res);
         setPagination(pager);
       })
       .catch((e: any) => {
@@ -133,7 +133,7 @@ function Replicas() {
     editDelayForm
       .validateFields()
       .then((values: any) => {
-        request(`replicas/${currReplica.id}`, { data: values })
+        updateReplica(currReplica.id, values)
           .then(() => {
             editDelayForm.resetFields();
             setCurrReplica(null);
@@ -147,13 +147,13 @@ function Replicas() {
   };
 
   const setMaster = (replica: any) => {
-    request(`replicas/${replica.id}`, { data: { master: true } })
+    updateReplica(replica.id, { master: true })
       .then(fetch)
       .catch(() => message.error("Failed to change master"));
   };
 
   const handleDelete = (replica: number) => {
-    request(`replicas/${replica}`, { method: "DELETE" })
+    deleteReplica(replica)
       .then(fetch)
       .catch(() => {
         message.error("Deletion failed");

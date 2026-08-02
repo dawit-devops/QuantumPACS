@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Select, Typography, Spin } from "antd";
 import { useAuth } from "./AuthContext";
-import { request } from "../helpers";
+import { listSessionTenants } from "../api/tenants";
 
 const { Text } = Typography;
 
@@ -13,8 +13,8 @@ export default function TenantSelector() {
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
-    request("v2/tenants")
-      .then((res: any) => setTenants(res?.data || []))
+    listSessionTenants()
+      .then(setTenants)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [isAuthenticated]);

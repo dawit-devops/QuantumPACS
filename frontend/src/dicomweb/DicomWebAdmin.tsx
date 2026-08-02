@@ -22,7 +22,7 @@ import {
 } from "@ant-design/icons";
 import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getDicomwebAdmin } from "../api/dicomweb-admin";
 import { PageState } from "../common/PageState";
 import "./DicomWebAdmin.css";
 
@@ -47,7 +47,7 @@ function DicomWebAdmin(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("dicomweb/admin");
+      const res = await getDicomwebAdmin();
       setInfo(res);
     } catch (e: any) {
       setError(e.message);
