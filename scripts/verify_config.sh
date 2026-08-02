@@ -23,7 +23,7 @@ if [ ! -f "$CONFIG" ]; then
 db_host: 127.0.0.1
 db_port: 5433
 db_user: quantumpacs
-db_password: pa55w0rd
+db_password: ${POSTGRES_PASSWORD:-pa55w0rd}
 db_database: quantumpacs
 redis_host: localhost
 redis_port: 6379

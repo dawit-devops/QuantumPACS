@@ -8,35 +8,34 @@ QuantumPACS stores all metadata in PostgreSQL 16. The database is the single sou
 
 ### Automated Daily Backup
 
-A systemd timer is recommended:
+Ship units live in `deploy/systemd/` — copy them into the systemd search path
+and adjust `ExecStart` paths for the install location:
 
-```ini
-# /etc/systemd/system/quantumpacs-backup.service
-[Unit]
-Description=QuantumPACS daily database backup
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/pg_dump -h localhost -U quantumpacs -d quantumpacs \
-  --format=custom --compress=9 \
-  --file=/backups/quantumpacs-$(date +%%Y%%m%%d-%%H%%M).dump
-Environment=PGPASSWORD=your_db_password
+```bash
+sudo cp deploy/systemd/quantumpacs-backup.service deploy/systemd/quantumpacs-backup.timer \
+        deploy/systemd/quantumpacs-failure-notify@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now quantumpacs-backup.timer
 ```
 
-```ini
-# /etc/systemd/system/quantumpacs-backup.timer
-[Unit]
-Description=Run QuantumPACS backup daily at 3am
+- `quantumpacs-backup.service` runs `scripts/backup_db.sh`, which discovers
+  the real PostgreSQL host port and password from the running
+  `quantumpacs-postgres-1` container (no hardcoded credentials). Override
+  `DATABASE_URL` (via `Environment=`) to back up a remote replica, or set
+  `BACKUP_DIR`/`RETENTION_DAYS` (default 14 days).
+- `quantumpacs-backup.timer` runs daily at 02:30 with `Persistent=true`
+  (missed runs fire at boot).
+- `quantumpacs-failure-notify@.service` is an `OnFailure=` target for
+  service units — the failing unit's journal tail is logged and an optional
+  webhook (Slack/Teams) is POSTed. Enable it by adding
+  `OnFailure=quantumpacs-failure-notify@%n.service` to a unit, and put
+  `QUANTUMPACS_NOTIFY_WEBHOOK=...` in `/etc/quantumpacs/notify.env`.
 
-[Timer]
-OnCalendar=03:00:00
-Persistent=true
+Manual backup:
 
-[Install]
-WantedBy=timers.target
+```bash
+bash scripts/backup_db.sh
 ```
-
-Enable: `systemctl enable --now quantumpacs-backup.timer`
 
 ### Retention Policy
 
