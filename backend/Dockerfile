@@ -7,6 +7,10 @@ FROM python:3.14-slim AS runtime
 WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY . .
+# routes.py mounts StaticFiles('static') when QUANTUMPACS_DOCKER=true —
+# the dir is gitignored (dev-only docs.html/openapi.json) so the image must
+# create it or the app crashes at import (caught by docker-smoke, D-M11).
+RUN mkdir -p static
 RUN groupadd -r quantumpacs && useradd -r -g quantumpacs -d /app -s /sbin/nologin -u 10001 quantumpacs && \
     chown -R quantumpacs:quantumpacs /app
 USER quantumpacs
