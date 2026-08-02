@@ -26,9 +26,8 @@ export interface TenantStats {
 export const listTenants = (): Promise<Tenant[]> =>
   request<{ data: Tenant[] }>("tenants").then((res) => res.data ?? []);
 
-export const createTenant = (
-  data: Record<string, unknown>,
-): Promise<Tenant> => request<Tenant>("tenants", { data });
+export const createTenant = (data: Record<string, unknown>): Promise<Tenant> =>
+  request<Tenant>("tenants", { data });
 
 export const updateTenant = (
   id: number,

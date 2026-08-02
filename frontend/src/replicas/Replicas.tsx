@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Tag,
@@ -14,7 +15,13 @@ import { App,
   Tooltip,
 } from "antd";
 import withSidebar from "../common/base";
-import { listReplicas, createReplica, updateReplica, deleteReplica, type Replica } from "../api/replicas";
+import {
+  listReplicas,
+  createReplica,
+  updateReplica,
+  deleteReplica,
+  type Replica,
+} from "../api/replicas";
 import { PageState } from "../common/PageState";
 import { AddReplica } from "./EditReplica";
 

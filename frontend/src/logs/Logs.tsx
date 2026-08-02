@@ -6,7 +6,8 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Tag,
@@ -228,9 +229,7 @@ function Logs() {
         ? tableRef.current.scrollTop < 100
         : true;
       if (isAtTop) {
-        setData((prev) =>
-          [...newItems, ...prev].slice(0, MAX_STREAMED_ROWS),
-        );
+        setData((prev) => [...newItems, ...prev].slice(0, MAX_STREAMED_ROWS));
         setNewEventIds((prev) => {
           const next = new Set(prev);
           ids.forEach((id: number) => next.add(id));

@@ -1,7 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router";
-import { App,
+import {
+  App,
   Layout,
   Menu,
   Breadcrumb,
@@ -26,7 +27,13 @@ import { PageState } from "../common/PageState";
 import withSidebar from "../common/base";
 
 const { useBreakpoint } = Grid;
-import { getFile, type FileRecord, type FileStudy, type FileSeries, type FileNode } from "../api/files";
+import {
+  getFile,
+  type FileRecord,
+  type FileStudy,
+  type FileSeries,
+  type FileNode,
+} from "../api/files";
 import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";

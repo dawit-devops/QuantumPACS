@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Button,
@@ -14,7 +15,13 @@ import { App,
 } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { listRoutingRules, createRoutingRule, updateRoutingRule, deleteRoutingRule, type RoutingRule } from "../api/routing";
+import {
+  listRoutingRules,
+  createRoutingRule,
+  updateRoutingRule,
+  deleteRoutingRule,
+  type RoutingRule,
+} from "../api/routing";
 import { PageState } from "../common/PageState";
 import { RuleConditionBuilder } from "./RuleConditionBuilder";
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import Highlighter from "react-highlight-words";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Input,
@@ -241,9 +242,7 @@ function Files() {
         // ES fallback rows are loosely-typed docs; the table only reads the
         // flat string keys shared with the QIDO path.
         setData(data.data as FileRow[]);
-        setPagination((prev) =>
-          Object.assign({}, prev, { total: data.total }),
-        );
+        setPagination((prev) => Object.assign({}, prev, { total: data.total }));
       })
       .catch((e: any) => {
         setLoading(false);
@@ -377,12 +376,18 @@ function Files() {
     setSearchText("");
   };
 
-  const onAdvancedSearchChangeLabel = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const onAdvancedSearchChangeLabel = (
+    i: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     advancedFields[i][0] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
 
-  const onAdvancedSearchChange = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const onAdvancedSearchChange = (
+    i: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     advancedFields[i][1] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
@@ -473,7 +478,9 @@ function Files() {
   const rowSelection = {
     onChange: (selectedRowKeys: React.Key[]) => {
       setSelected(
-        selectedRowKeys.map((k) => data.find((r) => r.id === String(k))).filter(Boolean) as FileRow[],
+        selectedRowKeys
+          .map((k) => data.find((r) => r.id === String(k)))
+          .filter(Boolean) as FileRow[],
       );
     },
     getCheckboxProps: (record: FileRow) => ({

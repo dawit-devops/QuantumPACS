@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import { App,
+import {
+  App,
   Layout,
   Card,
   Row,
@@ -26,7 +27,13 @@ import {
   HddOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { listTenants, createTenant, updateTenant, deleteTenant, type Tenant } from "../api/tenants";
+import {
+  listTenants,
+  createTenant,
+  updateTenant,
+  deleteTenant,
+  type Tenant,
+} from "../api/tenants";
 import { PageState } from "../common/PageState";
 
 const { Text, Title } = Typography;

@@ -13,7 +13,6 @@ export const renderWithApp = (ui: React.ReactElement) => {
   const result = render(<App>{ui}</App>);
   return {
     ...result,
-    rerender: (next: React.ReactElement) =>
-      result.rerender(<App>{next}</App>),
+    rerender: (next: React.ReactElement) => result.rerender(<App>{next}</App>),
   };
 };

@@ -31,8 +31,7 @@ export const createOauthProvider = (
 export const updateOauthProvider = (
   id: string,
   data: Record<string, unknown>,
-): Promise<void> =>
-  request(`oauth/providers/${id}`, { method: "PUT", data });
+): Promise<void> => request(`oauth/providers/${id}`, { method: "PUT", data });
 
 export const deleteOauthProvider = (id: string): Promise<void> =>
   request(`oauth/providers/${id}`, { method: "DELETE" });
@@ -47,8 +46,7 @@ export const listWebhooks = (): Promise<WebhookList> =>
 
 export const createWebhook = (
   data: Record<string, unknown>,
-): Promise<Webhook> =>
-  request<Webhook>("webhooks", { method: "POST", data });
+): Promise<Webhook> => request<Webhook>("webhooks", { method: "POST", data });
 
 export const updateWebhook = (
   id: number | string,

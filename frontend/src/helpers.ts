@@ -1,10 +1,6 @@
 import { API_URL } from "./config";
 
-export {
-  request,
-  handleResponse,
-  fetchWithRetry,
-} from "./api/client";
+export { request, handleResponse, fetchWithRetry } from "./api/client";
 export type { RequestOptions } from "./api/client";
 export {
   getAccessToken,

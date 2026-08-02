@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { App,
+import {
+  App,
   Layout,
   Card,
   Table,
@@ -51,7 +52,9 @@ function Integrations(props: any) {
   const [providers, setProviders] = useState<OauthProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providerModal, setProviderModal] = useState(false);
-  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(null);
+  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(
+    null,
+  );
   const [providerForm] = Form.useForm();
 
   // ---- Webhooks ----

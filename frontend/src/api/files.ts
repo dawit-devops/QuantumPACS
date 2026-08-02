@@ -11,7 +11,7 @@ export const qidoSearch = (
   request<DicomJsonObject[] | { data: DicomJsonObject[] }>(
     "v2/dicomweb/studies",
     { query: params },
-  ).then((res) => (Array.isArray(res) ? res : res?.data ?? []));
+  ).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
 
 export interface FileSearchResult {
   data: Record<string, unknown>[];
@@ -90,12 +90,12 @@ export const listFileChanges = (
 ): Promise<FileChange[]> =>
   request<{ data: FileChange[] } | FileChange[]>(`files/${id}/changes`, {
     query: params,
-  }).then((res) => (Array.isArray(res) ? res : res?.data ?? []));
+  }).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
 
 export const listFileShares = (id: number | string): Promise<FileShare[]> =>
   request<{ data: FileShare[] } | FileShare[]>(`files/${id}/shares`, {
     method: "GET",
-  }).then((res) => (Array.isArray(res) ? res : res?.data ?? []));
+  }).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
 
 export const createFileShare = (
   id: number,
@@ -106,4 +106,5 @@ export const createFileShare = (
 export const revokeFileShare = (
   id: number | string,
   shareId: number | string,
-): Promise<void> => request(`files/${id}/shares/${shareId}`, { method: "DELETE" });
+): Promise<void> =>
+  request(`files/${id}/shares/${shareId}`, { method: "DELETE" });

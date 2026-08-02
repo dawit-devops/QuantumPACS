@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useCallback, useEffect } from "react";
-import { App,
+import {
+  App,
   Form,
   Input,
   InputNumber,

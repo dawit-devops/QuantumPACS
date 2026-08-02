@@ -1,16 +1,6 @@
 import React from "react";
-import {
-  Table,
-  Tag,
-  Button,
-  Select,
-  Input,
-  Space,
-} from "antd";
-import {
-  ReloadOutlined,
-  SearchOutlined,
-} from "@ant-design/icons";
+import { Table, Tag, Button, Select, Input, Space } from "antd";
+import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { StatusBadge } from "./StatusBadge";
 
 interface MessagesTabProps {

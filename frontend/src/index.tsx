@@ -69,54 +69,57 @@ function ThemedApp() {
     >
       <AntdApp>
         <BrowserRouter>
-        <AuthProvider>
-          <NavigatorSetter />
-          <ErrorBoundary>
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    height: "100vh",
-                  }}
-                >
-                  <Spin size="large" />
-                </div>
-              }
-            >
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/account" element={<Account />} />
-                  <Route path="/replicas" element={<Replicas />} />
-                  <Route path="/users" element={<Users />} />
-                  <Route path="/roles" element={<Roles />} />
-                  <Route path="/tenants" element={<Tenants />} />
-                  <Route path="/metrics" element={<Metrics />} />
-                  <Route path="/logs" element={<Logs />} />
-                  <Route path="/worklist" element={<Worklist />} />
-                  <Route path="/service-keys" element={<ServiceKeys />} />
-                  <Route path="/routing" element={<RoutingRules />} />
-                  <Route path="/fhir/config" element={<FhirConfig />} />
-                  <Route path="/fhir/monitoring" element={<FhirMonitoring />} />
-                  <Route path="/fhir/docs" element={<FhirDocs />} />
-                  <Route path="/hl7" element={<Hl7Dashboard />} />
-                  <Route path="/dicomweb" element={<DicomWebAdmin />} />
-                  <Route path="/integrations" element={<Integrations />} />
-                  <Route path="/patients/:id" element={<Patient />} />
-                  <Route path="/files/:id" element={<Detail />} />
-                  <Route path="/" element={<Files />} />
-                </Route>
-                <Route path="/view/:key" element={<ShareView />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-            <OnboardingTour onComplete={() => {}} />
-            <HelpButton />
-          </ErrorBoundary>
-        </AuthProvider>
+          <AuthProvider>
+            <NavigatorSetter />
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      height: "100vh",
+                    }}
+                  >
+                    <Spin size="large" />
+                  </div>
+                }
+              >
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/account" element={<Account />} />
+                    <Route path="/replicas" element={<Replicas />} />
+                    <Route path="/users" element={<Users />} />
+                    <Route path="/roles" element={<Roles />} />
+                    <Route path="/tenants" element={<Tenants />} />
+                    <Route path="/metrics" element={<Metrics />} />
+                    <Route path="/logs" element={<Logs />} />
+                    <Route path="/worklist" element={<Worklist />} />
+                    <Route path="/service-keys" element={<ServiceKeys />} />
+                    <Route path="/routing" element={<RoutingRules />} />
+                    <Route path="/fhir/config" element={<FhirConfig />} />
+                    <Route
+                      path="/fhir/monitoring"
+                      element={<FhirMonitoring />}
+                    />
+                    <Route path="/fhir/docs" element={<FhirDocs />} />
+                    <Route path="/hl7" element={<Hl7Dashboard />} />
+                    <Route path="/dicomweb" element={<DicomWebAdmin />} />
+                    <Route path="/integrations" element={<Integrations />} />
+                    <Route path="/patients/:id" element={<Patient />} />
+                    <Route path="/files/:id" element={<Detail />} />
+                    <Route path="/" element={<Files />} />
+                  </Route>
+                  <Route path="/view/:key" element={<ShareView />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+              <OnboardingTour onComplete={() => {}} />
+              <HelpButton />
+            </ErrorBoundary>
+          </AuthProvider>
         </BrowserRouter>
       </AntdApp>
     </ConfigProvider>

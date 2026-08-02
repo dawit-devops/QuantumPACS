@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
 import { listLoginProviders } from "../api/auth";
-import { App,
+import {
+  App,
   Form,
   Input,
   Button,

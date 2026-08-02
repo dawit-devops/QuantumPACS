@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Tag,
