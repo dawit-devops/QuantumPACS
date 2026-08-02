@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -62,16 +62,6 @@ describe("Files QIDO-RS Search", () => {
     localStorage.setItem("admin", "true");
   });
 
-  function renderWithAuth(url: string, ui: React.ReactElement) {
-    return renderWithApp(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter initialEntries={[url]}>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
-
   it("calls QIDO-RS endpoint when query param has Patient ID search", async () => {
     mockQidoSearch.mockImplementation(() => Promise.resolve(mockQidoResponse));
     mockSearchFiles.mockImplementation(() => Promise.resolve(mockV2Results));
@@ -82,7 +72,9 @@ describe("Files QIDO-RS Search", () => {
       value: { ...window.location, search: '?{"query":"P001"}' },
     } as any);
 
-    renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
+    renderWithAuth(<Files />, {
+      initialEntries: ["/?%7B%22query%22%3A%22P001%22%7D"],
+    });
 
     await waitFor(() => {
       expect(mockQidoSearch).toHaveBeenCalled();
@@ -104,7 +96,9 @@ describe("Files QIDO-RS Search", () => {
       value: { ...window.location, search: '?{"query":"P001"}' },
     } as any);
 
-    renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
+    renderWithAuth(<Files />, {
+      initialEntries: ["/?%7B%22query%22%3A%22P001%22%7D"],
+    });
 
     await waitFor(() => {
       expect(mockSearchFiles).toHaveBeenCalled();
@@ -128,7 +122,9 @@ describe("Files QIDO-RS Search", () => {
       value: { ...window.location, search: '?{"query":"P001"}' },
     } as any);
 
-    renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
+    renderWithAuth(<Files />, {
+      initialEntries: ["/?%7B%22query%22%3A%22P001%22%7D"],
+    });
 
     await waitFor(() => {
       expect(mockSearchFiles).toHaveBeenCalled();

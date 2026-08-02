@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -71,16 +71,6 @@ describe("DicomWebAdmin", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
-
-  function renderWithAuth(ui: React.ReactElement) {
-    return renderWithApp(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
 
   it("fetches info on mount", async () => {
     renderWithAuth(<DicomWebAdmin />);

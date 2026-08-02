@@ -220,6 +220,46 @@ describe("token helpers", () => {
     expect(mockFetch.mock.calls[2][1].headers.get("X-CSRF-Token")).toBe("1");
     vi.unstubAllGlobals();
   });
+
+  it("surfaces backend 403 as ApiError even with forged localStorage admin flag", async () => {
+    // (T-M3) localStorage 'admin' is a UI convenience mirror, never an
+    // authorization source: the backend decides via JWT claims. A forged
+    // flag must not turn a 403 into success — the error must propagate.
+    localStorage.setItem("admin", "true");
+    localStorage.setItem("access_token", "attacker-token");
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: "Missing permission: USER_ADMIN" }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { request } = await import("../helpers");
+    await expect(request("users")).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining("Missing permission"),
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("does not refresh tokens on 403 — permission is not a session problem", async () => {
+    const { tryRefreshToken } = await import("../helpers");
+    const refreshSpy = vi
+      .spyOn({ tryRefreshToken }, "tryRefreshToken")
+      .mockResolvedValue(true);
+    localStorage.setItem("access_token", "t");
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: "nope" }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { request } = await import("../helpers");
+    await expect(request("users")).rejects.toMatchObject({ status: 403 });
+    expect(refreshSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("fetchWithRetry", () => {
