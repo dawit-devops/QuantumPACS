@@ -94,7 +94,7 @@ Legend: ✅ done (merged PR) · 🔲 planned
 | B-H2 | unused @cornerstonejs/metadata dep | package.json | removed | ✅ |
 | Q-2 | Hl7Dashboard 660-LOC monolith | src/hl7/Hl7Dashboard.tsx | split into tab components + StatusBadge | ✅ |
 | D-C1 | No API contract for frontend consumers | docs/ | Contract doc from openapi.json (error envelope, auth, WS); document dicomweb.ts pattern as standard | ✅ |
-| Q-5 | ~406 `any` | `src/**/*.ts` | Tighten top-10 offenders with the new typed layer | 🔲 |
+| Q-5 | ~406 `any` | `src/**/*.ts` | Tighten top-10 offenders with the new typed layer | ✅ |
 
 ---
 
