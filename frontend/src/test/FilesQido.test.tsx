@@ -1,15 +1,22 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { renderWithApp } from "./renderWithApp";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Files from "../files/Files";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockQidoSearch = vi.hoisted(() => vi.fn());
+const mockSearchFiles = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/files", () => ({
+  qidoSearch: mockQidoSearch,
+  searchFiles: mockSearchFiles,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   open: vi.fn(),
   isAdmin: () => true,
   getAccessToken: () => "t",
@@ -56,7 +63,7 @@ describe("Files QIDO-RS Search", () => {
   });
 
   function renderWithAuth(url: string, ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter initialEntries={[url]}>{ui}</MemoryRouter>
@@ -66,11 +73,8 @@ describe("Files QIDO-RS Search", () => {
   }
 
   it("calls QIDO-RS endpoint when query param has Patient ID search", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url.startsWith("v2/dicomweb/studies"))
-        return Promise.resolve(mockQidoResponse);
-      return Promise.resolve(mockV2Results);
-    });
+    mockQidoSearch.mockImplementation(() => Promise.resolve(mockQidoResponse));
+    mockSearchFiles.mockImplementation(() => Promise.resolve(mockV2Results));
 
     const originalSearch = window.location.search;
     Object.defineProperty(window, "location", {
@@ -81,14 +85,8 @@ describe("Files QIDO-RS Search", () => {
     renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalled();
+      expect(mockQidoSearch).toHaveBeenCalled();
     });
-
-    const calls = mockRequest.mock.calls;
-    const qidoCall = calls.find((c: any[]) =>
-      c[0]?.startsWith("v2/dicomweb/studies"),
-    );
-    expect(qidoCall).toBeDefined();
 
     Object.defineProperty(window, "location", {
       writable: true,
@@ -97,11 +95,8 @@ describe("Files QIDO-RS Search", () => {
   });
 
   it("falls back to v2 search when QIDO-RS returns empty results", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url.startsWith("v2/dicomweb/studies"))
-        return Promise.resolve({ data: [] });
-      return Promise.resolve(mockV2Results);
-    });
+    mockQidoSearch.mockImplementation(() => Promise.resolve([]));
+    mockSearchFiles.mockImplementation(() => Promise.resolve(mockV2Results));
 
     const originalSearch = window.location.search;
     Object.defineProperty(window, "location", {
@@ -112,9 +107,7 @@ describe("Files QIDO-RS Search", () => {
     renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
 
     await waitFor(() => {
-      const calls = mockRequest.mock.calls;
-      const v2Call = calls.find((c: any[]) => c[0] === "files");
-      expect(v2Call).toBeDefined();
+      expect(mockSearchFiles).toHaveBeenCalled();
     });
 
     Object.defineProperty(window, "location", {
@@ -124,11 +117,10 @@ describe("Files QIDO-RS Search", () => {
   });
 
   it("falls back to v2 search when QIDO-RS request fails", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url.startsWith("v2/dicomweb/studies"))
-        return Promise.reject(new Error("Network error"));
-      return Promise.resolve(mockV2Results);
-    });
+    mockQidoSearch.mockImplementation(() =>
+      Promise.reject(new Error("Network error")),
+    );
+    mockSearchFiles.mockImplementation(() => Promise.resolve(mockV2Results));
 
     const originalSearch = window.location.search;
     Object.defineProperty(window, "location", {
@@ -139,9 +131,7 @@ describe("Files QIDO-RS Search", () => {
     renderWithAuth("/?%7B%22query%22%3A%22P001%22%7D", <Files />);
 
     await waitFor(() => {
-      const calls = mockRequest.mock.calls;
-      const v2Call = calls.find((c: any[]) => c[0] === "files");
-      expect(v2Call).toBeDefined();
+      expect(mockSearchFiles).toHaveBeenCalled();
     });
 
     Object.defineProperty(window, "location", {

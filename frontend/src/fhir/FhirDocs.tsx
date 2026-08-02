@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Collapse,
@@ -9,7 +9,6 @@ import {
   Tag,
   Spin,
   Descriptions,
-  message,
   Space,
   Alert,
   Tabs,
@@ -26,9 +25,8 @@ import {
   CloseCircleOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getFhirMetadata, fhirResourceRequest } from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
 
@@ -37,18 +35,19 @@ const { TextArea } = Input;
 const { Paragraph, Text } = Typography;
 
 function FhirDocs(props: any) {
-  let [capability, setCapability] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
+  const { message } = App.useApp();
+  const [capability, setCapability] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Try-it panel
-  let [resourceType, setResourceType] = useState("Patient");
-  let [interaction, setInteraction] = useState("read");
-  let [resourceId, setResourceId] = useState("");
-  let [searchParams, setSearchParams] = useState<Record<string, string>>({});
-  let [response, setResponse] = useState<any>(null);
-  let [executing, setExecuting] = useState(false);
-  let [responseTime, setResponseTime] = useState(0);
+  const [resourceType, setResourceType] = useState("Patient");
+  const [interaction, setInteraction] = useState("read");
+  const [resourceId, setResourceId] = useState("");
+  const [searchParams, setSearchParams] = useState<Record<string, string>>({});
+  const [response, setResponse] = useState<any>(null);
+  const [executing, setExecuting] = useState(false);
+  const [responseTime, setResponseTime] = useState(0);
 
   const resourceOptions = ["Patient", "ImagingStudy", "DocumentReference"];
 
@@ -60,7 +59,7 @@ function FhirDocs(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("fhir/metadata");
+      const res = await getFhirMetadata();
       setCapability(res);
     } catch (e: any) {
       setError(e.message);
@@ -97,7 +96,7 @@ function FhirDocs(props: any) {
       }
 
       const start = performance.now();
-      const res = await request(url);
+      const res = await fhirResourceRequest(url);
       const elapsed = Math.round(performance.now() - start);
       setResponseTime(elapsed);
       setResponse(res);
@@ -375,4 +374,4 @@ function FhirDocs(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirDocs));
+export default withSidebar(FhirDocs);

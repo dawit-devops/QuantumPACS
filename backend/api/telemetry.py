@@ -166,7 +166,7 @@ async def _check_db():
         async with _probe_db() as conn:
             await conn.fetchval('SELECT 1')
     except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
     return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
 
 
@@ -182,7 +182,7 @@ async def _check_es():
             return {'status': 'error', 'latency_ms': latency, 'message': 'ping returned false'}
         return {'status': 'degraded', 'latency_ms': 0, 'message': 'ES unavailable, search fallback active'}
     except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
 
 
 async def _check_redis():
@@ -197,7 +197,7 @@ async def _check_redis():
             return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
         return {'status': 'degraded', 'latency_ms': 0, 'message': 'Redis unavailable'}
     except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
 
 
 async def _check_storage():
@@ -212,7 +212,7 @@ async def _check_storage():
             return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000), 'master': masters[0], 'replicas': backends}
         return {'status': 'degraded', 'latency_ms': 0, 'replicas': backends, 'message': 'No master replica configured'}
     except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': str(e)}
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
 
 
 async def _check_dicom_listener():
@@ -238,7 +238,7 @@ async def _check_ingestion_service():
         total_pending = sum(info.get('pending', 0) for info in metrics.values())
         return {'status': 'ok', 'stream_lag': total_pending}
     except Exception as e:
-        return {'status': 'error', 'stream_lag': -1, 'message': str(e)}
+        return {'status': 'error', 'stream_lag': -1, 'message': (str(e) or type(e).__name__)[:200]}
 
 
 async def health_endpoint(request):

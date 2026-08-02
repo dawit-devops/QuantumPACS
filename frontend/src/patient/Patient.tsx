@@ -21,9 +21,9 @@ import {
   MedicineBoxOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
-import withRouter from "../withRouter";
+import { useNavigate, useParams } from "react-router";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
@@ -31,17 +31,18 @@ const Content = Layout.Content;
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
 
-  let [data, setData] = useState<any>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const [data, setData] = useState<PatientSummary>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
 
-  const patientId = props.match?.params?.id;
+  const navigate = useNavigate();
+  const { id: patientId } = useParams();
 
   const fetchPatient = () => {
     setLoading(true);
     setError(null);
-    request(`patients/${patientId}`)
+    getPatient(patientId as string)
       .then((res: any) => {
         setLoading(false);
         setData(res);
@@ -119,7 +120,7 @@ function Patient(props: any) {
             <a
               onClick={(e) => {
                 e.stopPropagation();
-                props.history.push(`/files/${f.id}`);
+                navigate(`/files/${f.id}`);
               }}
             >
               <Space size={4}>
@@ -252,4 +253,4 @@ function Patient(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Patient));
+export default withSidebar(Patient);

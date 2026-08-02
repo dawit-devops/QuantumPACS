@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
-import { message } from "antd";
+import { App } from "antd";
 import { annotation as csAnnotation } from "@cornerstonejs/tools";
 import type { StackViewport } from "@cornerstonejs/core";
 import * as ws from "../../ws";
@@ -22,6 +22,7 @@ export function useAnnotationSync({
   getViewport,
   propsRef,
 }: UseAnnotationSyncParams) {
+  const { message } = App.useApp();
   const stateRef = useRef<any>(null);
   const stateVerRef = useRef(0);
   const stateVerSentRef = useRef(0);

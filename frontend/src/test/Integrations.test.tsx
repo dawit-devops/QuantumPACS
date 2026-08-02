@@ -1,16 +1,32 @@
 import React from "react";
 import { render, screen, within, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Integrations from "../integrations/Integrations";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListOauthProviders = vi.hoisted(() => vi.fn());
+const mockListWebhooks = vi.hoisted(() => vi.fn());
+const mockCreateWebhook = vi.hoisted(() => vi.fn());
+const mockDeleteWebhook = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/integrations", () => ({
+  listOauthProviders: mockListOauthProviders,
+  createOauthProvider: vi.fn(),
+  updateOauthProvider: vi.fn(),
+  deleteOauthProvider: vi.fn(),
+  listWebhooks: mockListWebhooks,
+  createWebhook: mockCreateWebhook,
+  updateWebhook: vi.fn(),
+  deleteWebhook: mockDeleteWebhook,
+  testWebhook: vi.fn(() => Promise.resolve({})),
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -66,23 +82,20 @@ async function waitForTabs() {
 describe("Integrations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "webhooks")
-        return Promise.resolve({
-          webhooks: mockWebhooks,
-          available_events: mockEvents,
-        });
-      if (url === "oauth/providers")
-        return Promise.resolve({ data: mockProviders });
-      return Promise.resolve({});
+    mockListWebhooks.mockResolvedValue({
+      webhooks: mockWebhooks,
+      available_events: mockEvents,
     });
+    mockListOauthProviders.mockResolvedValue(mockProviders);
+    mockCreateWebhook.mockResolvedValue({} as any);
+    mockDeleteWebhook.mockResolvedValue(undefined);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
   function renderWithAuth(ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter>{ui}</MemoryRouter>
@@ -138,18 +151,7 @@ describe("Integrations", () => {
 
   it("creates a webhook via modal", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "webhooks" && opts?.method === "POST")
-        return Promise.resolve({});
-      if (url === "webhooks")
-        return Promise.resolve({
-          webhooks: mockWebhooks,
-          available_events: mockEvents,
-        });
-      if (url === "oauth/providers")
-        return Promise.resolve({ data: mockProviders });
-      return Promise.resolve({});
-    });
+    mockCreateWebhook.mockResolvedValue({} as any);
     renderWithAuth(<Integrations />);
     await waitForTabs();
     await user.click(screen.getByText("Add Webhook"));
@@ -161,10 +163,7 @@ describe("Integrations", () => {
     );
     await user.click(within(modal).getByText("OK"));
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        "webhooks",
-        expect.objectContaining({ method: "POST" }),
-      );
+      expect(mockCreateWebhook).toHaveBeenCalled();
     });
   });
 
@@ -177,9 +176,7 @@ describe("Integrations", () => {
     await screen.findByText("Delete this webhook?");
     await user.click(screen.getByText("OK"));
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("webhooks/1", {
-        method: "DELETE",
-      });
+      expect(mockDeleteWebhook).toHaveBeenCalledWith(1);
     });
   });
 
@@ -198,7 +195,7 @@ describe("Integrations", () => {
   it("calls endpoints on mount", async () => {
     renderWithAuth(<Integrations />);
     await waitForTabs();
-    expect(mockRequest).toHaveBeenCalledWith("webhooks");
-    expect(mockRequest).toHaveBeenCalledWith("oauth/providers");
+    expect(mockListWebhooks).toHaveBeenCalled();
+    expect(mockListOauthProviders).toHaveBeenCalled();
   });
 });

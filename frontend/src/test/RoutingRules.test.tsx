@@ -1,16 +1,27 @@
 import React from "react";
 import { render, screen, within, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import RoutingRules from "../routing/RoutingRules";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListRoutingRules = vi.hoisted(() => vi.fn());
+const mockCreateRoutingRule = vi.hoisted(() => vi.fn());
+const mockUpdateRoutingRule = vi.hoisted(() => vi.fn());
+const mockDeleteRoutingRule = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/routing", () => ({
+  listRoutingRules: mockListRoutingRules,
+  createRoutingRule: mockCreateRoutingRule,
+  updateRoutingRule: mockUpdateRoutingRule,
+  deleteRoutingRule: mockDeleteRoutingRule,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -55,20 +66,20 @@ async function waitForTable() {
 describe("RoutingRules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (opts?.data) return Promise.resolve({ data: { id: "new" } });
-      return Promise.resolve({
-        data: mockRules,
-        pagination: { page: 1, per_page: 50, total: 2, pages: 1 },
-      });
+    mockListRoutingRules.mockResolvedValue({
+      data: mockRules,
+      pagination: { page: 1, per_page: 50, total: 2, pages: 1 },
     });
+    mockCreateRoutingRule.mockResolvedValue({ id: "new" } as any);
+    mockUpdateRoutingRule.mockResolvedValue(undefined);
+    mockDeleteRoutingRule.mockResolvedValue(undefined);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
   function renderWithAuth(ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter>{ui}</MemoryRouter>
@@ -101,7 +112,7 @@ describe("RoutingRules", () => {
   it("calls request with correct endpoint on mount", async () => {
     renderWithAuth(<RoutingRules />);
     await waitForTable();
-    expect(mockRequest).toHaveBeenCalledWith("routing", {
+    expect(mockListRoutingRules).toHaveBeenCalledWith({
       page: 1,
       per_page: 50,
     });
@@ -130,13 +141,12 @@ describe("RoutingRules", () => {
     await user.click(within(modal).getByText("OK"));
 
     await waitFor(() => {
-      const calls = mockRequest.mock.calls;
-      const createCall = calls.find(
-        (c: any) => c[0] === "routing" && c[1]?.data?.name === "Route XR Chest",
+      expect(mockCreateRoutingRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Route XR Chest",
+          destination: "replica_1",
+        }),
       );
-      expect(createCall).toBeDefined();
-      expect(createCall?.[1]?.data.name).toBe("Route XR Chest");
-      expect(createCall?.[1]?.data.destination).toBe("replica_1");
     });
   });
 
@@ -150,10 +160,7 @@ describe("RoutingRules", () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("routing/1", {
-        data: undefined,
-        method: "DELETE",
-      });
+      expect(mockDeleteRoutingRule).toHaveBeenCalledWith("1");
     });
   });
 });

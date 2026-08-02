@@ -1,12 +1,13 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { renderWithApp } from "./renderWithApp";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect } from "vitest";
 import NotFound from "../notfound/NotFound";
 
 describe("NotFound", () => {
   it("renders without crashing", () => {
-    render(
+    renderWithApp(
       <MemoryRouter>
         <NotFound />
       </MemoryRouter>,
@@ -14,7 +15,7 @@ describe("NotFound", () => {
   });
 
   it("renders heading", () => {
-    render(
+    renderWithApp(
       <MemoryRouter>
         <NotFound />
       </MemoryRouter>,
@@ -23,7 +24,7 @@ describe("NotFound", () => {
   });
 
   it("renders link to home page", () => {
-    render(
+    renderWithApp(
       <MemoryRouter>
         <NotFound />
       </MemoryRouter>,

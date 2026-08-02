@@ -1,14 +1,5 @@
+import { request } from "./client";
 import { API_URL } from "../config";
-import { getAccessToken } from "../helpers";
-
-async function request(path: string): Promise<any> {
-  const token = getAccessToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["X-Auth-Pacs"] = token;
-  const resp = await fetch(`${API_URL}${path}`, { headers });
-  if (!resp.ok) throw new Error(`DICOMweb error: ${resp.status}`);
-  return resp.json();
-}
 
 export interface Study {
   studyInstanceUid: string;
@@ -90,12 +81,12 @@ export async function searchStudies(
   query?: Record<string, string>,
 ): Promise<Study[]> {
   const qs = query ? "?" + new URLSearchParams(query).toString() : "";
-  const data = await request(`/dicomweb/studies${qs}`);
+  const data = await request<Study[]>(`/dicomweb/studies${qs}`);
   return (data || []).map(mapStudy);
 }
 
 export async function getSeries(studyUid: string): Promise<Series[]> {
-  const data = await request(`/dicomweb/studies/${studyUid}/series`);
+  const data = await request<Series[]>(`/dicomweb/studies/${studyUid}/series`);
   return (data || []).map(mapSeries);
 }
 
@@ -103,7 +94,7 @@ export async function getInstances(
   studyUid: string,
   seriesUid: string,
 ): Promise<Instance[]> {
-  const data = await request(
+  const data = await request<Instance[]>(
     `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances`,
   );
   return (data || []).map(mapInstance);

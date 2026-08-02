@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Switch,
@@ -10,7 +10,6 @@ import {
   Modal,
   Form,
   Tag,
-  message,
   Space,
   Alert,
   Tooltip,
@@ -24,36 +23,45 @@ import {
   KeyOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  getFhirConfig,
+  updateFhirConfig,
+  listFhirClients,
+  createFhirClient,
+  updateFhirClient,
+  deleteFhirClient,
+  testFhirConnection,
+  type FhirClient,
+} from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
 
 const { Content } = Layout;
 
 function FhirConfig(props: any) {
-  let [config, setConfig] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [saving, setSaving] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [clients, setClients] = useState<any[]>([]);
-  let [clientsLoading, setClientsLoading] = useState(false);
-  let [modalOpen, setModalOpen] = useState(false);
-  let [newClient, setNewClient] = useState<any>({
+  const { message } = App.useApp();
+  const [config, setConfig] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [clients, setClients] = useState<FhirClient[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [newClient, setNewClient] = useState<any>({
     name: "",
     description: "",
     redirect_uris: "",
   });
-  let [secretModal, setSecretModal] = useState<any>(null);
-  let [testResult, setTestResult] = useState<any>(null);
-  let [testing, setTesting] = useState(false);
+  const [secretModal, setSecretModal] = useState<any>(null);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
 
   const fetchConfig = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("fhir/admin/config");
+      const res = await getFhirConfig();
       setConfig(res);
     } catch (e: any) {
       setError(e.message);
@@ -65,8 +73,8 @@ function FhirConfig(props: any) {
   const fetchClients = async () => {
     setClientsLoading(true);
     try {
-      const res = await request("fhir/admin/clients");
-      setClients(res.clients || []);
+      const res = await listFhirClients();
+      setClients(res);
     } catch {
     } finally {
       setClientsLoading(false);
@@ -81,10 +89,7 @@ function FhirConfig(props: any) {
   const handleToggle = async (checked: boolean) => {
     setSaving(true);
     try {
-      const res = await request("fhir/admin/config", {
-        method: "PUT",
-        data: { enabled: checked },
-      });
+      const res = await updateFhirConfig({ enabled: String(checked) });
       setConfig(res);
       message.success(`FHIR ${checked ? "enabled" : "disabled"}`);
     } catch (e: any) {
@@ -97,14 +102,11 @@ function FhirConfig(props: any) {
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
-      const res = await request("fhir/admin/config", {
-        method: "PUT",
-        data: {
-          base_url: config.base_url,
-          publisher: config.publisher,
-          max_search_results: config.max_search_results,
-          log_retention_days: config.log_retention_days,
-        },
+      const res = await updateFhirConfig({
+        base_url: config.base_url,
+        publisher: config.publisher,
+        max_search_results: config.max_search_results,
+        log_retention_days: config.log_retention_days,
       });
       setConfig(res);
       message.success("Configuration saved");
@@ -119,7 +121,7 @@ function FhirConfig(props: any) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await request("fhir/admin/test");
+      const res = await testFhirConnection();
       setTestResult(res);
     } catch (e: any) {
       setTestResult({ reachable: false, error: e.message });
@@ -134,10 +136,7 @@ function FhirConfig(props: any) {
       return;
     }
     try {
-      const res = await request("fhir/admin/clients", {
-        method: "POST",
-        data: newClient,
-      });
+      const res = await createFhirClient(newClient);
       setSecretModal(res);
       setModalOpen(false);
       setNewClient({ name: "", description: "", redirect_uris: "" });
@@ -149,10 +148,7 @@ function FhirConfig(props: any) {
 
   const handleDeactivateClient = async (id: string, active: boolean) => {
     try {
-      await request(`fhir/admin/clients/${id}`, {
-        method: "PUT",
-        data: { active },
-      });
+      await updateFhirClient(id, { active });
       message.success(active ? "Client activated" : "Client deactivated");
       fetchClients();
     } catch (e: any) {
@@ -167,7 +163,7 @@ function FhirConfig(props: any) {
         "This action cannot be undone. Integrations using this client will stop working.",
       onOk: async () => {
         try {
-          await request(`fhir/admin/clients/${id}`, { method: "DELETE" });
+          await deleteFhirClient(id);
           message.success("Client deleted");
           fetchClients();
         } catch (e: any) {
@@ -475,4 +471,4 @@ function FhirConfig(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirConfig));
+export default withSidebar(FhirConfig);

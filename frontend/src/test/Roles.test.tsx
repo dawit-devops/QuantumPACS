@@ -1,21 +1,27 @@
 import React from "react";
 import { render, screen, within, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Roles from "../roles/Roles";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListRoles = vi.hoisted(() => vi.fn());
+const mockListPermissions = vi.hoisted(() => vi.fn());
+const mockCreateRole = vi.hoisted(() => vi.fn());
+const mockUpdateRole = vi.hoisted(() => vi.fn());
+const mockDeleteRole = vi.hoisted(() => vi.fn());
+const mockListRoleUsers = vi.hoisted(() => vi.fn());
 
-vi.mock("../helpers", () => ({
-  request: mockRequest,
-  isAdmin: () => true,
-  setTokens: () => {},
-  clearTokens: () => {},
-  startRefreshTimer: () => {},
-  stopRefreshTimer: () => {},
+vi.mock("../api/roles", () => ({
+  listRoles: mockListRoles,
+  listPermissions: mockListPermissions,
+  createRole: mockCreateRole,
+  updateRole: mockUpdateRole,
+  deleteRole: mockDeleteRole,
+  listRoleUsers: mockListRoleUsers,
 }));
 
 vi.mock("../hooks", () => ({
@@ -23,41 +29,29 @@ vi.mock("../hooks", () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
-function defaultMock(url: string) {
-  if (url === "permissions") {
-    return Promise.resolve({
-      data: {
-        Files: ["FILE_READ", "FILE_WRITE", "FILE_DELETE"],
-        Patients: ["PATIENT_READ", "PATIENT_WRITE"],
-      },
-    });
-  }
-  return Promise.resolve({
-    data: [
-      {
-        id: 1,
-        name: "Administrator",
-        slug: "admin",
-        permissions: ["FILE_READ", "FILE_WRITE"],
-        built_in: true,
-      },
-      {
-        id: 2,
-        name: "Technologist",
-        slug: "technologist",
-        permissions: ["FILE_READ"],
-        built_in: true,
-      },
-      {
-        id: 3,
-        name: "Custom Role",
-        slug: "custom",
-        permissions: ["PATIENT_READ"],
-        built_in: false,
-      },
-    ],
-  });
-}
+const mockRoles = [
+  {
+    id: 1,
+    name: "Administrator",
+    slug: "admin",
+    permissions: ["FILE_READ", "FILE_WRITE"],
+    built_in: true,
+  },
+  {
+    id: 2,
+    name: "Technologist",
+    slug: "technologist",
+    permissions: ["FILE_READ"],
+    built_in: true,
+  },
+  {
+    id: 3,
+    name: "Custom Role",
+    slug: "custom",
+    permissions: ["PATIENT_READ"],
+    built_in: false,
+  },
+];
 
 async function waitForTable() {
   await screen.findByText("Administrator");
@@ -66,14 +60,22 @@ async function waitForTable() {
 describe("Roles", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation(defaultMock);
+    mockListRoles.mockResolvedValue(mockRoles);
+    mockListPermissions.mockResolvedValue({
+      Files: ["FILE_READ", "FILE_WRITE", "FILE_DELETE"],
+      Patients: ["PATIENT_READ", "PATIENT_WRITE"],
+    });
+    mockCreateRole.mockResolvedValue(undefined);
+    mockUpdateRole.mockResolvedValue(undefined);
+    mockDeleteRole.mockResolvedValue(undefined);
+    mockListRoleUsers.mockResolvedValue([]);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
   function renderWithAuth(ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter>{ui}</MemoryRouter>
@@ -113,10 +115,6 @@ describe("Roles", () => {
     const user = userEvent.setup();
     renderWithAuth(<Roles />);
     await waitForTable();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "permissions") return defaultMock("permissions");
-      return Promise.resolve({ data: { id: 4 } });
-    });
 
     await user.click(screen.getByText("Create Role"));
 
@@ -127,31 +125,15 @@ describe("Roles", () => {
 
     await user.click(within(modal).getByText("Create"));
 
-    expect(mockRequest).toHaveBeenCalledWith("roles", {
-      data: {
-        name: "Test Role",
-        slug: "test-role",
-        permissions: ["FILE_READ"],
-      },
+    expect(mockCreateRole).toHaveBeenCalledWith({
+      name: "Test Role",
+      slug: "test-role",
+      permissions: ["FILE_READ"],
     });
   });
 
   it("edit modal opens with pre-filled values when clicking edit", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "permissions") return defaultMock("permissions");
-      if (url === "roles/3")
-        return Promise.resolve({
-          data: {
-            id: 3,
-            name: "Custom Role",
-            slug: "custom",
-            permissions: ["PATIENT_READ"],
-            built_in: false,
-          },
-        });
-      return defaultMock(url);
-    });
     renderWithAuth(<Roles />);
     await waitForTable();
 
@@ -165,11 +147,6 @@ describe("Roles", () => {
 
   it("edit role sends updated permissions", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "permissions") return defaultMock("permissions");
-      if (opts?.data?.permissions) return Promise.resolve({ data: { id: 3 } });
-      return defaultMock(url);
-    });
     renderWithAuth(<Roles />);
     await waitForTable();
 
@@ -181,42 +158,14 @@ describe("Roles", () => {
     await user.click(within(modal).getByText("Update"));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("roles/3", {
-        data: { permissions: ["FILE_READ"] },
+      expect(mockUpdateRole).toHaveBeenCalledWith(3, {
+        permissions: ["FILE_READ"],
       });
     });
   });
 
   it("delete role calls API and refreshes list", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "permissions") return defaultMock("permissions");
-      return Promise.resolve({
-        data: [
-          {
-            id: 1,
-            name: "Administrator",
-            slug: "admin",
-            permissions: ["FILE_READ", "FILE_WRITE"],
-            built_in: true,
-          },
-          {
-            id: 2,
-            name: "Technologist",
-            slug: "technologist",
-            permissions: ["FILE_READ"],
-            built_in: true,
-          },
-          {
-            id: 3,
-            name: "Custom Role",
-            slug: "custom",
-            permissions: ["PATIENT_READ"],
-            built_in: false,
-          },
-        ],
-      });
-    });
     renderWithAuth(<Roles />);
     await waitForTable();
 
@@ -226,10 +175,7 @@ describe("Roles", () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("roles/3", {
-        data: undefined,
-        method: "DELETE",
-      });
+      expect(mockDeleteRole).toHaveBeenCalledWith(3);
     });
   });
 

@@ -1,7 +1,8 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
@@ -14,6 +15,14 @@ vi.mock("../hooks", () => ({
 
 const { requestMock } = vi.hoisted(() => ({
   requestMock: vi.fn().mockResolvedValue({}),
+}));
+
+const { mockLogout } = vi.hoisted(() => ({
+  mockLogout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../api/auth", () => ({
+  logout: mockLogout,
 }));
 
 vi.mock("../helpers", () => ({
@@ -29,7 +38,7 @@ vi.mock("../helpers", () => ({
 }));
 
 function renderWithAuth(ui: React.ReactElement) {
-  return render(
+  return renderWithApp(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter initialEntries={["/"]}>{ui}</MemoryRouter>
@@ -122,9 +131,7 @@ describe("Sidebar", () => {
 
     await user.click(screen.getByText("Logout"));
 
-    expect(requestMock).toHaveBeenCalledWith("auth/logout", {
-      method: "POST",
-    });
+    expect(mockLogout).toHaveBeenCalled();
     expect(localStorage.getItem("userId")).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();

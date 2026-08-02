@@ -1,10 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import withRouter from "../withRouter";
-import {
+import { Link, useParams, useNavigate } from "react-router";
+import { App,
   Layout,
-  message,
   Menu,
   Breadcrumb,
   Grid,
@@ -28,8 +26,8 @@ import { PageState } from "../common/PageState";
 import withSidebar from "../common/base";
 
 const { useBreakpoint } = Grid;
-import { request } from "../helpers";
-import { wadoRsUrl } from "../dicomweb/dicomweb";
+import { getFile, type FileRecord, type FileStudy, type FileSeries, type FileNode } from "../api/files";
+import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
@@ -46,21 +44,24 @@ function wrap(txt: string) {
   return `(${txt})`;
 }
 
-function Detail(props: any) {
+function Detail() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Detail");
-  const imagePath = `wadouri:${API_URL}/files/${props.match.params.id}/data`;
+  const navigate = useNavigate();
+  const params = useParams();
+  const imagePath = `wadouri:${API_URL}/files/${params.id}/data`;
   const screens = useBreakpoint();
   const isMobile = !screens.md;
   const { hasPermission } = useAuth();
 
-  let [tab, setTab] = useState("image");
-  let [data, setData] = useState<any>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [study, setStudy] = useState<any>(null);
-  let [series, setSeries] = useState<any>(null);
-  let [image, setImage] = useState(imagePath);
-  let [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
+  const [tab, setTab] = useState("image");
+  const [data, setData] = useState<FileRecord>({ id: 0 });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [study, setStudy] = useState<FileStudy | null>(null);
+  const [series, setSeries] = useState<FileSeries | null>(null);
+  const [image, setImage] = useState(imagePath);
+  const [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
   const tempKey = localStorage.getItem("tempKey");
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -86,34 +87,27 @@ function Detail(props: any) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    let params = props.match.params;
+    const { id } = params;
 
-    setImage(`wadouri:${API_URL}/files/${params.id}/data`);
+    setImage(`wadouri:${API_URL}/files/${id}/data`);
 
-    request(`files/${params.id}`)
-      .then((data: any) => {
-        const meta = data?.meta || {};
-        if (
-          meta.study_instance_uid &&
-          meta.series_instance_uid &&
-          meta.sop_instance_uid
-        ) {
-          setWadoRsImage(
-            wadoRsUrl(
-              meta.study_instance_uid,
-              meta.series_instance_uid,
-              meta.sop_instance_uid,
-            ),
-          );
+    getFile(id as string)
+      .then((data: FileRecord) => {
+        const meta: Record<string, unknown> = data?.meta || {};
+        const studyUid = String(meta.study_instance_uid || "");
+        const seriesUid = String(meta.series_instance_uid || "");
+        const sopUid = String(meta.sop_instance_uid || "");
+        if (studyUid && seriesUid && sopUid) {
+          setWadoRsImage(wadoRsUrl(studyUid, seriesUid, sopUid));
         }
         // Mount the viewer only once all metadata is in place: the remount
         // hack below used to force a second mount because the viewer could
         // initialize with empty props. CornerstoneElement now mounts
         // after-metadata and its checkReady loop covers engine readiness.
-        for (let s of data.patient.studies) {
+        for (let s of data.patient?.studies ?? []) {
           if (s.id === data.study_db_id) {
             setStudy(s);
-            for (let sr of s.series) {
+            for (let sr of s.series ?? []) {
               if (sr.id === data.series_db_id) {
                 setSeries(sr);
               }
@@ -123,7 +117,7 @@ function Detail(props: any) {
         setData(data);
         setLoading(false);
       })
-      .catch((e: any) => {
+      .catch((e: Error) => {
         setLoading(false);
         let msg = "File fail to load";
         if (e.message === "404") {
@@ -132,54 +126,54 @@ function Detail(props: any) {
         setError(msg);
         message.error(msg);
         if (e.message === "404") {
-          props.history.push("/");
+          navigate("/");
         }
       });
     // eslint-disable-next-line
-  }, [props.match.params.id]);
+  }, [params.id]);
 
   const background = tab === "image" ? "var(--viewer-bg)" : "";
 
-  const changeStudy = (e: any, s: any) => {
+  const changeStudy = (e: React.MouseEvent, s: FileStudy) => {
     e.preventDefault();
     setStudy(s);
-    setSeries(s.series[0]);
+    setSeries(s.series?.[0] ?? null);
   };
 
-  const studiesDrop = (data: any) => {
+  const studiesDrop = (data: FileStudy[] | undefined) => {
     if (!data) return [];
-    return data.map((d: any) => ({
+    return data.map((d: FileStudy) => ({
       key: d.study_id,
       label: (
         <a
           href=""
-          onClick={(e: any) => changeStudy(e, d)}
-        >{`Study ${d.study_id} ${wrap(d.description)}`}</a>
+          onClick={(e: React.MouseEvent) => changeStudy(e, d)}
+        >{`Study ${d.study_id ?? ""} ${wrap(d.description ?? "")}`}</a>
       ),
     }));
   };
 
-  const changeSeries = (e: any, s: any) => {
+  const changeSeries = (e: React.MouseEvent, s: FileSeries) => {
     e.preventDefault();
     setSeries(s);
   };
 
-  const seriesDrop = (data: any) => {
+  const seriesDrop = (data: FileSeries[] | undefined) => {
     if (!data) return [];
-    return data.map((d: any) => ({
+    return data.map((d: FileSeries) => ({
       key: d.number,
       label: (
         <a
           href=""
-          onClick={(e: any) => changeSeries(e, d)}
-        >{`Series ${d.number} ${wrap(d.description)}`}</a>
+          onClick={(e: React.MouseEvent) => changeSeries(e, d)}
+        >{`Series ${d.number ?? ""} ${wrap(d.description ?? "")}`}</a>
       ),
     }));
   };
 
-  const filesDrop = (data: any) => {
+  const filesDrop = (data: FileNode[] | undefined) => {
     if (!data) return [];
-    return data.map((d: any) => ({
+    return data.map((d: FileNode) => ({
       key: d.id,
       label: <Link to={`/files/${d.id}`}>{`File ${d.name}`}</Link>,
     }));
@@ -260,13 +254,13 @@ function Detail(props: any) {
               menu={{ items: studiesDrop(data.patient.studies) }}
             >
               {isMobile
-                ? `S:${study?.study_id}`
-                : `Study ${study?.study_id} ${wrap(study?.description)}`}
+                ? `S:${study?.study_id ?? ""}`
+                : `Study ${study?.study_id ?? ""} ${wrap(study?.description ?? "")}`}
             </Breadcrumb.Item>
             <Breadcrumb.Item menu={{ items: seriesDrop(study?.series) }}>
               {isMobile
-                ? `Ser:${series?.number}`
-                : `Series ${series?.number} ${wrap(series?.description)}`}
+                ? `Ser:${series?.number ?? ""}`
+                : `Series ${series?.number ?? ""} ${wrap(series?.description ?? "")}`}
             </Breadcrumb.Item>
             <Breadcrumb.Item menu={{ items: filesDrop(series?.files) }}>
               {isMobile ? data.name : `File ${data.name}`}
@@ -290,9 +284,10 @@ function Detail(props: any) {
               <CornerstoneElement
                 file={data}
                 files={series?.files || null}
-                changeFile={(v: number) =>
-                  props.history.push(`/files/${series?.files[v].id}`)
-                }
+                changeFile={(v: number) => {
+                  const target = series?.files?.[v];
+                  if (target) navigate(`/files/${target.id}`);
+                }}
                 image={image}
                 wadoRsImage={wadoRsImage}
                 progressive={true}
@@ -314,7 +309,7 @@ function Detail(props: any) {
         </div>
         <KeyValueTable
           style={tab !== "data" ? { display: "none" } : {}}
-          rowKey={(record: any) => record.key}
+          rowKey={(record: { key: string }) => record.key}
           pagination={{ pageSize: 20 }}
           file={data}
           loading={loading}
@@ -333,4 +328,4 @@ function Detail(props: any) {
   );
 }
 
-export default withSidebar(withRouter(Detail));
+export default withSidebar(Detail);

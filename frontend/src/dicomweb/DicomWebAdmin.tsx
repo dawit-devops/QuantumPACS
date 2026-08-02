@@ -20,9 +20,8 @@ import {
   DownloadOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { getDicomwebAdmin } from "../api/dicomweb-admin";
 import { PageState } from "../common/PageState";
 import "./DicomWebAdmin.css";
 
@@ -35,9 +34,9 @@ const serviceIcons: Record<string, React.ReactNode> = {
 };
 
 function DicomWebAdmin(props: any) {
-  let [info, setInfo] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInfo();
@@ -47,7 +46,7 @@ function DicomWebAdmin(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("dicomweb/admin");
+      const res = await getDicomwebAdmin();
       setInfo(res);
     } catch (e: any) {
       setError(e.message);
@@ -269,4 +268,4 @@ function DicomWebAdmin(props: any) {
   );
 }
 
-export default withRouter(withSidebar(DicomWebAdmin));
+export default withSidebar(DicomWebAdmin);

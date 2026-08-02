@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
-import withRouter from "../withRouter";
+import { useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
-import { request } from "../helpers";
-import {
+import { listLoginProviders } from "../api/auth";
+import { App,
   Form,
   Input,
   Button,
-  message,
   Layout,
   Card,
   Typography,
@@ -60,7 +59,9 @@ function clearAttempts() {
 }
 
 function LoginForm(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Login");
+  const navigate = useNavigate();
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch("login");
@@ -81,9 +82,9 @@ function LoginForm(props: any) {
   }, []);
 
   useEffect(() => {
-    request("oauth/providers")
-      .then((res: any) => {
-        if (res?.data) setProviders(res.data);
+    listLoginProviders()
+      .then((res) => {
+        setProviders(res);
       })
       .catch(() => {});
   }, []);
@@ -103,7 +104,7 @@ function LoginForm(props: any) {
       },
       data.refresh_token,
     );
-    props.history.push("/");
+    navigate("/");
   }, [data]);
 
   const errorRef = React.useRef<HTMLDivElement>(null);
@@ -115,7 +116,7 @@ function LoginForm(props: any) {
       const msg =
         error.status === 429
           ? "Too many login attempts. Please wait before trying again."
-          : error.error || error;
+          : error.message || error;
       message.error(msg);
       setTimeout(() => {
         const btn = document.querySelector(
@@ -279,4 +280,4 @@ function LoginForm(props: any) {
   );
 }
 
-export default withRouter(LoginForm);
+export default LoginForm;

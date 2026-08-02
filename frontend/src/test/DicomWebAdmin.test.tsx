@@ -1,16 +1,19 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import DicomWebAdmin from "../dicomweb/DicomWebAdmin";
 
-const mockRequest = vi.hoisted(() => vi.fn());
-
+const mockGetDicomwebAdmin = vi.hoisted(() => vi.fn());
+vi.mock("../api/dicomweb-admin", () => ({
+  getDicomwebAdmin: mockGetDicomwebAdmin,
+}));
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -63,14 +66,14 @@ async function waitForReady() {
 describe("DicomWebAdmin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockResolvedValue(mockInfo);
+    mockGetDicomwebAdmin.mockResolvedValue(mockInfo);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
   function renderWithAuth(ui: React.ReactElement) {
-    return render(
+    return renderWithApp(
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter>{ui}</MemoryRouter>
@@ -82,7 +85,7 @@ describe("DicomWebAdmin", () => {
   it("fetches info on mount", async () => {
     renderWithAuth(<DicomWebAdmin />);
     await waitForReady();
-    expect(mockRequest).toHaveBeenCalledWith("dicomweb/admin");
+    expect(mockGetDicomwebAdmin).toHaveBeenCalled();
   });
 
   it("renders all three service cards", async () => {

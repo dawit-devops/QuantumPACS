@@ -1,6 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
-import {
+import { App,
   Layout,
   Card,
   Row,
@@ -16,7 +16,6 @@ import {
   Typography,
   Spin,
   Alert,
-  message,
 } from "antd";
 import {
   PlusOutlined,
@@ -27,7 +26,7 @@ import {
   HddOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listTenants, createTenant, updateTenant, deleteTenant, type Tenant } from "../api/tenants";
 import { PageState } from "../common/PageState";
 
 const { Text, Title } = Typography;
@@ -53,14 +52,15 @@ function formatBytes(bytes: number): string {
 }
 
 function Tenants() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Tenants");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [createVisible, setCreateVisible] = useState(false);
-  let [editVisible, setEditVisible] = useState(false);
-  let [editingTenant, setEditingTenant] = useState<any | null>(null);
+  const [data, setData] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [createVisible, setCreateVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -71,10 +71,10 @@ function Tenants() {
   const fetch = () => {
     setLoading(true);
     setError(null);
-    request("tenants")
-      .then((res: any) => {
+    listTenants()
+      .then((res) => {
         setLoading(false);
-        setData(res.data || []);
+        setData(res);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -91,7 +91,7 @@ function Tenants() {
         if (values.domain) data.domain = values.domain;
         if (values.storage_quota_gb)
           data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
-        request("tenants", { data })
+        createTenant(data)
           .then(() => {
             createForm.resetFields();
             setCreateVisible(false);
@@ -134,7 +134,7 @@ function Tenants() {
           setEditVisible(false);
           return;
         }
-        request(`tenants/${editingTenant.id}`, { data, method: "PUT" })
+        updateTenant(editingTenant.id, data)
           .then(() => {
             setEditingTenant(null);
             setEditVisible(false);
@@ -148,7 +148,7 @@ function Tenants() {
   };
 
   const handleDecommission = (tenant: any) => {
-    request(`tenants/${tenant.id}`, { data: undefined, method: "DELETE" })
+    deleteTenant(tenant.id)
       .then(() => {
         fetch();
       })
@@ -206,7 +206,7 @@ function Tenants() {
       >
         <Row gutter={[16, 16]}>
           {data.map((tenant) => {
-            const statusCfg = STATUS_CONFIG[tenant.status] || {
+            const statusCfg = STATUS_CONFIG[tenant.status ?? "active"] || {
               color: "default",
               label: tenant.status || "Unknown",
             };

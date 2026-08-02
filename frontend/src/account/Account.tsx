@@ -1,13 +1,11 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useEffect, useState } from "react";
-import withRouter from "../withRouter";
-import { request } from "../helpers";
+import { getProfile, updateProfile, changePassword } from "../api/account";
 import withSidebar from "../common/base";
-import {
+import { App,
   Form,
   Input,
   Button,
-  message,
   Layout,
   Card,
   Typography,
@@ -30,6 +28,7 @@ const { Content } = Layout;
 const { Text, Title } = Typography;
 
 function Account(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Account");
 
   const [profile, setProfile] = useState<any>(null);
@@ -42,9 +41,9 @@ function Account(props: any) {
   const { user } = useAuth();
 
   useEffect(() => {
-    request("account/profile", { method: "GET" })
-      .then((res: any) => {
-        setProfile(res.data || res);
+    getProfile()
+      .then((res) => {
+        setProfile(res);
       })
       .catch((err: any) => {
         message.error("Failed to load profile");
@@ -57,10 +56,7 @@ function Account(props: any) {
   const handleEmailSave = async () => {
     setSavingEmail(true);
     try {
-      await request("account/profile", {
-        method: "PUT",
-        body: JSON.stringify({ email: emailValue }),
-      });
+      await updateProfile({ email: emailValue });
       message.success("Email updated");
       setEmailEditing(false);
       setProfile((prev: any) => ({ ...prev, email: emailValue }));
@@ -74,13 +70,10 @@ function Account(props: any) {
   const handlePasswordChange = async (values: any) => {
     setPwLoading(true);
     try {
-      await request("change_password", {
-        method: "POST",
-        body: JSON.stringify({
-          current_password: values.current_password,
-          new_password: values.new_password,
-          new_password2: values.new_password2,
-        }),
+      await changePassword({
+        current_password: values.current_password,
+        new_password: values.new_password,
+        new_password2: values.new_password2,
       });
       message.success("Password changed successfully");
       pwForm.resetFields();
@@ -310,4 +303,4 @@ function Account(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Account));
+export default withSidebar(Account);

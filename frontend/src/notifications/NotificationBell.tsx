@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
+import { App,
   Badge,
   Drawer,
   List,
   Button,
   Space,
   Typography,
-  message,
   Empty,
   Spin,
   Tag,
@@ -17,8 +16,15 @@ import {
   DeleteOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
-import { request } from "../helpers";
+import { useNavigate } from "react-router";
+import {
+  getUnreadCount,
+  listNotifications,
+  markRead as markReadApi,
+  markAllRead as markAllReadApi,
+  deleteNotification,
+  clearNotifications,
+} from "../api/notifications";
 
 const { Text } = Typography;
 
@@ -34,6 +40,7 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 function NotificationBell() {
+  const { message } = App.useApp();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<any[]>([]);
@@ -44,17 +51,16 @@ function NotificationBell() {
 
   const fetchUnread = async () => {
     try {
-      const res = await request("notifications/unread-count");
-      setUnread(res.count || 0);
+      setUnread(await getUnreadCount());
     } catch {}
   };
 
   const fetchList = async () => {
     setLoading(true);
     try {
-      const res = await request("notifications");
-      setNotifs(res.data || []);
-      setTotal(res.total || 0);
+      const res = await listNotifications();
+      setNotifs(res.data);
+      setTotal(res.total);
     } catch {
       message.error("Failed to load notifications");
     } finally {
@@ -76,32 +82,48 @@ function NotificationBell() {
   };
 
   const markRead = async (id: string) => {
-    await request(`notifications/${id}`, { method: "POST" });
-    setNotifs((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
-    setUnread((prev) => Math.max(0, prev - 1));
+    try {
+      await markReadApi(id);
+      setNotifs((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+      setUnread((prev) => Math.max(0, prev - 1));
+    } catch (e) {
+      message.error(`Failed to mark read: ${(e as Error).message || ""}`);
+    }
   };
 
   const markAllRead = async () => {
-    await request("notifications/read-all", { method: "POST" });
-    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
-    setUnread(0);
-    message.success("All marked as read");
+    try {
+      await markAllReadApi();
+      setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnread(0);
+      message.success("All marked as read");
+    } catch (e) {
+      message.error(`Failed to mark all read: ${(e as Error).message || ""}`);
+    }
   };
 
   const dismiss = async (id: string) => {
-    await request(`notifications/${id}`, { method: "DELETE" });
-    setNotifs((prev) => prev.filter((n) => n.id !== id));
-    setTotal((prev) => prev - 1);
+    try {
+      await deleteNotification(id);
+      setNotifs((prev) => prev.filter((n) => n.id !== id));
+      setTotal((prev) => prev - 1);
+    } catch (e) {
+      message.error(`Failed to dismiss: ${(e as Error).message || ""}`);
+    }
   };
 
   const dismissAll = async () => {
-    await request("notifications", { method: "DELETE" });
-    setNotifs([]);
-    setTotal(0);
-    setUnread(0);
-    message.success("All notifications dismissed");
+    try {
+      await clearNotifications();
+      setNotifs([]);
+      setTotal(0);
+      setUnread(0);
+      message.success("All notifications dismissed");
+    } catch (e) {
+      message.error(`Failed to dismiss all: ${(e as Error).message || ""}`);
+    }
   };
 
   const handleClick = (n: any) => {

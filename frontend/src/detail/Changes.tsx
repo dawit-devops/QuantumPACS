@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Table, message, Tag } from "antd";
-import { request } from "../helpers";
+import { Table, message, App, Tag } from "antd";
+import { listFileChanges } from "../api/files";
 
 const columns = [
   {
@@ -25,9 +25,10 @@ const columns = [
 ];
 
 function Changes(props: any) {
-  let [data, setData] = useState<any[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
+  const { message } = App.useApp();
+  const [data, setData] = useState<any[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetch();
@@ -51,7 +52,7 @@ function Changes(props: any) {
 
   const fetch = (params?: any) => {
     setLoading(true);
-    request(`files/${props.file.id}/changes`, params || {})
+    listFileChanges(props.file.id, params || {})
       .then((data: any) => {
         const pager = Object.assign({}, pagination, {
           total: data.data.length,

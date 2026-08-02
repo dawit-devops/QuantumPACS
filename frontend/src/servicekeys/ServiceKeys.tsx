@@ -1,9 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -22,7 +21,7 @@ import {
   ReloadOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listApiKeys, createApiKey, deleteApiKey } from "../api/servicekeys";
 
 const Content = Layout.Content;
 
@@ -72,13 +71,14 @@ function LastUsed({ at }: { at: string | null }) {
 }
 
 function ServiceKeys() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Service Keys");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [visible, setVisible] = useState(false);
-  let [rawKey, setRawKey] = useState<string | null>(null);
-  let [showRevoked, setShowRevoked] = useState(false);
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [rawKey, setRawKey] = useState<string | null>(null);
+  const [showRevoked, setShowRevoked] = useState(false);
   const [form] = Form.useForm();
 
   const filteredData = useMemo(
@@ -173,10 +173,10 @@ function ServiceKeys() {
 
   const fetch = () => {
     setLoading(true);
-    request("api-keys")
-      .then((res: any) => {
+    listApiKeys()
+      .then((res) => {
         setLoading(false);
-        setData(Array.isArray(res.data) ? res.data : []);
+        setData(Array.isArray(res) ? res : []);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -188,10 +188,10 @@ function ServiceKeys() {
     form
       .validateFields()
       .then((values: any) => {
-        request("api-keys", { data: values })
-          .then((res: any) => {
+        createApiKey(values)
+          .then((res) => {
             form.resetFields();
-            setRawKey(res.data.raw_key);
+            setRawKey(res.raw_key);
             setVisible(false);
             fetch();
           })
@@ -203,7 +203,7 @@ function ServiceKeys() {
   };
 
   const handleRevoke = (id: string) => {
-    request(`api-keys/${id}`, { data: undefined, method: "DELETE" })
+    deleteApiKey(id)
       .then(() => {
         fetch();
       })

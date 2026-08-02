@@ -130,8 +130,11 @@ class WebhookTestHandler(HTTPEndpoint):
                 'body': resp.text[:500],
             })
         except Exception as e:
+            # httpx errors embed URLs/connection internals — bound the text so
+            # diagnostic payloads never carry unbounded exception content.
+            detail = str(e) or type(e).__name__
             return ok({
                 'success': False,
                 'status_code': 0,
-                'error': str(e),
+                'error': detail[:200],
             })

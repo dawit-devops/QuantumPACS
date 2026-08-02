@@ -1,7 +1,8 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, beforeEach } from "vitest";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import ProtectedRoute from "../auth/ProtectedRoute";
@@ -85,7 +86,7 @@ describe("AuthProvider", () => {
   });
 
   it("provides isAuthenticated=false when no token exists", () => {
-    render(
+    renderWithApp(
       <AuthProvider>
         <TestConsumer />
       </AuthProvider>,
@@ -97,7 +98,7 @@ describe("AuthProvider", () => {
 
   it("signIn sets localStorage and updates auth state", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithApp(
       <AuthProvider>
         <SignInTestConsumer />
       </AuthProvider>,
@@ -129,7 +130,7 @@ describe("AuthProvider", () => {
     sessionStorage.setItem("shareKeyError", "expired");
 
     const user = userEvent.setup();
-    render(
+    renderWithApp(
       <AuthProvider>
         <SignOutTestConsumer />
       </AuthProvider>,
@@ -159,7 +160,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("admin", "true");
     localStorage.setItem("role", "admin");
 
-    render(
+    renderWithApp(
       <AuthProvider>
         <RequirePermission permission="admin">
           <div data-testid="admin-content">Admin Panel</div>
@@ -176,7 +177,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "user");
 
-    render(
+    renderWithApp(
       <AuthProvider>
         <RequirePermission permission="admin">
           <div data-testid="admin-content">Admin Panel</div>
@@ -187,7 +188,7 @@ describe("AuthProvider", () => {
   });
 
   it("redirects unauthenticated users to /login", () => {
-    render(
+    renderWithApp(
       <MemoryRouter initialEntries={["/dashboard"]}>
         <AuthProvider>
           <Routes>
@@ -218,7 +219,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "user");
 
-    render(
+    renderWithApp(
       <MemoryRouter initialEntries={["/dashboard"]}>
         <AuthProvider>
           <Routes>
@@ -243,7 +244,7 @@ describe("AuthProvider", () => {
   });
 
   it("throws when useAuth is used outside AuthProvider", () => {
-    expect(() => render(<BrokenComponent />)).toThrow(
+    expect(() => renderWithApp(<BrokenComponent />)).toThrow(
       "useAuth must be used within an AuthProvider",
     );
   });
@@ -259,7 +260,7 @@ describe("AuthProvider", () => {
       JSON.stringify(["FILE_READ", "STUDY_READ", "WORKLIST_READ"]),
     );
 
-    render(
+    renderWithApp(
       <AuthProvider>
         <PermissionTestConsumer />
       </AuthProvider>,
@@ -276,7 +277,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("role", "super_admin");
     localStorage.setItem("permissions", JSON.stringify([]));
 
-    render(
+    renderWithApp(
       <AuthProvider>
         <PermissionTestConsumer />
       </AuthProvider>,
@@ -292,7 +293,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "user");
 
-    render(
+    renderWithApp(
       <AuthProvider>
         <TestConsumer />
       </AuthProvider>,

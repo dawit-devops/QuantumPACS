@@ -6,10 +6,9 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
+import { App,
   Layout,
   Table,
-  message,
   Tag,
   Button,
   Switch,
@@ -26,7 +25,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { listLogs, listLogActors } from "../api/logs";
 import { PageState } from "../common/PageState";
 
 const { Text } = Typography;
@@ -126,26 +125,27 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 const ALL_EVENT_TYPES = Object.values(EVENT_GROUPS).flat();
 
 function Logs() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Audit Logs");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [total, setTotal] = useState(0);
-  let [hasMore, setHasMore] = useState(false);
-  let [page, setPage] = useState(1);
-  let [cursor, setCursor] = useState<number | null>(null);
-  let [cursorMap, setCursorMap] = useState<Record<number, number | null>>({
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [cursorMap, setCursorMap] = useState<Record<number, number | null>>({
     1: null,
   });
 
-  let [eventTypeFilter, setEventTypeFilter] = useState<string[]>([]);
-  let [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  let [actorFilter, setActorFilter] = useState<string>("");
-  let [actors, setActors] = useState<string[]>([]);
-  let [streaming, setStreaming] = useState(false);
-  let [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
-  let [newEventsAvailable, setNewEventsAvailable] = useState(false);
+  const [eventTypeFilter, setEventTypeFilter] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [actorFilter, setActorFilter] = useState<string>("");
+  const [actors, setActors] = useState<string[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
+  const [newEventsAvailable, setNewEventsAvailable] = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const latestIdRef = useRef<number | null>(null);
@@ -194,7 +194,7 @@ function Logs() {
     setLoading(true);
     setError(null);
     try {
-      const res = await request("logs", { query: buildQuery(extra) });
+      const res = await listLogs(buildQuery(extra));
       const items = res.data || [];
       setData(items);
       setTotal(res.total || 0);
@@ -214,7 +214,7 @@ function Logs() {
     if (!latestIdRef.current) return;
     try {
       const q = buildQuery({ cursor: latestIdRef.current, limit: 200 });
-      const res = await request("logs", { query: q });
+      const res = await listLogs(q);
       const newItems = (res.data || []).filter(
         (item: any) => item.id > (latestIdRef.current || 0),
       );
@@ -243,7 +243,13 @@ function Logs() {
       } else {
         setNewEventsAvailable(true);
       }
-    } catch {}
+    } catch (e: unknown) {
+      // Live tail polling dies silently otherwise — surface once instead of
+      // spamming on every 30s poll cycle.
+      const msg = (e as Error).message || "Log polling failed";
+      setError(msg);
+      message.error(msg);
+    }
   };
 
   const handlePageChange = (newPage: number) => {
@@ -279,11 +285,13 @@ function Logs() {
     if (actorDebounceRef.current) clearTimeout(actorDebounceRef.current);
     actorDebounceRef.current = setTimeout(async () => {
       try {
-        const res = await request("logs/actors", {
-          query: { search: value, limit: "10" },
-        });
-        setActors(res.data || []);
-      } catch {}
+        const res = await listLogActors(value);
+        setActors(res);
+      } catch (e: unknown) {
+        const msg = (e as Error).message || "Actor search failed";
+        setError(msg);
+        message.error(msg);
+      }
     }, 300);
   };
 

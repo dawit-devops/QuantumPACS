@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Card, Table, Input, Button, Space, message } from "antd";
+import { Card, Table, Input, Button, Space, message, App } from "antd";
 import { SearchOutlined, ReloadOutlined } from "@ant-design/icons";
 import {
   searchStudies,
@@ -9,13 +9,14 @@ import {
   Study,
   Series,
   Instance,
-} from "./dicomweb";
+} from "../api/studies";
 
 interface StudyBrowserProps {
   onSelectInstance?: (wadoRsUrl: string) => void;
 }
 
 export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
+  const { message } = App.useApp();
   const [query, setQuery] = useState("");
   const [studies, setStudies] = useState<Study[]>([]);
   const [series, setSeries] = useState<Series[]>([]);

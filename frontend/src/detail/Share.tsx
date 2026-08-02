@@ -1,12 +1,10 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useCallback, useEffect } from "react";
-import withRouter from "../withRouter";
-import {
+import { App,
   Form,
   Input,
   InputNumber,
   Button,
-  message,
   Layout,
   Modal,
   Row,
@@ -25,25 +23,26 @@ import {
   DeleteOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
-import { request } from "../helpers";
+import { listFileShares, createFileShare, revokeFileShare } from "../api/files";
 
 const { Content } = Layout;
 const { Text } = Typography;
 
 function Share(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Share");
-  let [loading, setLoading] = useState(false);
-  let [key, setKey] = useState<string | null>(null);
-  let [copied, setCopied] = useState(false);
-  let [links, setLinks] = useState<any[]>([]);
-  let [linksLoading, setLinksLoading] = useState(false);
-  let [revoking, setRevoking] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [key, setKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [links, setLinks] = useState<any[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const fetchLinks = useCallback(() => {
     setLinksLoading(true);
-    request(`files/${props.file.id}/shares`, { method: "GET" })
-      .then((res: any) => setLinks(res.data || res || []))
+    listFileShares(props.file.id)
+      .then((res) => setLinks(res))
       .catch(() => {})
       .finally(() => setLinksLoading(false));
   }, [props.file.id]);
@@ -57,7 +56,7 @@ function Share(props: any) {
     form
       .validateFields()
       .then((values: any) => {
-        request(`files/${props.file.id}/share`, { data: values })
+        createFileShare(props.file.id, values)
           .then((data: any) => {
             setLoading(false);
             setKey(data.key);
@@ -112,9 +111,7 @@ function Share(props: any) {
   const handleRevoke = async (shareId: string) => {
     setRevoking(shareId);
     try {
-      await request(`files/${props.file.id}/shares/${shareId}`, {
-        method: "DELETE",
-      });
+      await revokeFileShare(props.file.id, shareId);
       message.success("Share link revoked");
       fetchLinks();
     } catch {
@@ -295,4 +292,4 @@ function Share(props: any) {
   );
 }
 
-export default withRouter(Share);
+export default Share;

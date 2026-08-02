@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router";
 import { Layout, Menu, Grid, Drawer, Button, Space } from "antd";
 import {
   MenuOutlined,
@@ -31,6 +31,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "./ThemeProvider";
 import QuantumLogo from "./QuantumLogo";
 import TenantSelector from "../auth/TenantSelector";
+import { logout } from "../api/auth";
 import { request } from "../helpers";
 import "./Sidebar.css";
 
@@ -105,7 +106,7 @@ function Sidebar() {
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     try {
-      await request("auth/logout", { method: "POST" });
+      await logout();
     } catch {}
     // signOut clears the token pair plus all session keys (S1-B); the logout
     // endpoint blocks the cookies server-side before the navigation.
