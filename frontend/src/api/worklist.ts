@@ -4,12 +4,18 @@ export interface WorklistEntry {
   id: number;
   patient_id?: string;
   patient_name?: string;
+  patient_birth_date?: string;
+  patient_sex?: string;
   accession_number?: string;
+  requested_procedure_id?: string;
+  requested_procedure_desc?: string;
   modality?: string;
   status?: string;
+  scheduled_date?: string;
   scheduled_time?: string;
   performed_at?: string | null;
   description?: string;
+  station_ae_title?: string | string[];
 }
 
 export interface WorklistPage {

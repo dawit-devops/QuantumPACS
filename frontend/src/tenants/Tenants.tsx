@@ -26,7 +26,7 @@ import {
   HddOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { listTenants, createTenant, updateTenant, deleteTenant } from "../api/tenants";
+import { listTenants, createTenant, updateTenant, deleteTenant, type Tenant } from "../api/tenants";
 import { PageState } from "../common/PageState";
 
 const { Text, Title } = Typography;
@@ -55,12 +55,12 @@ function Tenants() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Tenants");
 
-  let [data, setData] = useState<any[]>([]);
+  let [data, setData] = useState<Tenant[]>([]);
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [createVisible, setCreateVisible] = useState(false);
   let [editVisible, setEditVisible] = useState(false);
-  let [editingTenant, setEditingTenant] = useState<any | null>(null);
+  let [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -206,7 +206,7 @@ function Tenants() {
       >
         <Row gutter={[16, 16]}>
           {data.map((tenant) => {
-            const statusCfg = STATUS_CONFIG[tenant.status] || {
+            const statusCfg = STATUS_CONFIG[tenant.status ?? "active"] || {
               color: "default",
               label: tenant.status || "Unknown",
             };

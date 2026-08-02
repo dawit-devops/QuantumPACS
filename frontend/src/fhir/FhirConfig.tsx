@@ -32,6 +32,7 @@ import {
   updateFhirClient,
   deleteFhirClient,
   testFhirConnection,
+  type FhirClient,
 } from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
@@ -44,7 +45,7 @@ function FhirConfig(props: any) {
   let [loading, setLoading] = useState(true);
   let [saving, setSaving] = useState(false);
   let [error, setError] = useState<string | null>(null);
-  let [clients, setClients] = useState<any[]>([]);
+  let [clients, setClients] = useState<FhirClient[]>([]);
   let [clientsLoading, setClientsLoading] = useState(false);
   let [modalOpen, setModalOpen] = useState(false);
   let [newClient, setNewClient] = useState<any>({

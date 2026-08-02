@@ -4,6 +4,8 @@ export interface PatientSummary {
   id?: number;
   patient_id?: string;
   name?: string;
+  birth_date?: string;
+  sex?: string;
   studies?: Array<Record<string, unknown>>;
 }
 

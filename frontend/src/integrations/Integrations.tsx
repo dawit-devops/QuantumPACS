@@ -36,6 +36,8 @@ import {
   updateWebhook,
   deleteWebhook,
   testWebhook,
+  type OauthProvider,
+  type Webhook,
 } from "../api/integrations";
 import { PageState } from "../common/PageState";
 import "./Integrations.css";
@@ -46,18 +48,18 @@ const { TextArea } = Input;
 function Integrations(props: any) {
   const { message } = App.useApp();
   // ---- OAuth Providers ----
-  let [providers, setProviders] = useState<any[]>([]);
+  let [providers, setProviders] = useState<OauthProvider[]>([]);
   let [providersLoading, setProvidersLoading] = useState(true);
   let [providerModal, setProviderModal] = useState(false);
-  let [editingProvider, setEditingProvider] = useState<any>(null);
+  let [editingProvider, setEditingProvider] = useState<OauthProvider | null>(null);
   let [providerForm] = Form.useForm();
 
   // ---- Webhooks ----
-  let [webhooks, setWebhooks] = useState<any[]>([]);
+  let [webhooks, setWebhooks] = useState<Webhook[]>([]);
   let [availableEvents, setAvailableEvents] = useState<string[]>([]);
   let [webhooksLoading, setWebhooksLoading] = useState(true);
   let [whModal, setWhModal] = useState(false);
-  let [editingWh, setEditingWh] = useState<any>(null);
+  let [editingWh, setEditingWh] = useState<Webhook | null>(null);
   let [whForm] = Form.useForm();
   let [testResult, setTestResult] = useState<any>(null);
   let [testing, setTesting] = useState(false);

@@ -5,8 +5,8 @@ export interface RoutingRule {
   name?: string;
   description?: string;
   conditions?: unknown;
-  target?: string;
-  active?: boolean;
+  destination?: string;
+  enabled?: boolean;
   priority?: number;
 }
 

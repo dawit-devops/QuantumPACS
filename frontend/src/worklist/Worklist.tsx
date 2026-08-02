@@ -31,6 +31,7 @@ import {
   updateWorklistEntry,
   deleteWorklistEntry,
   markWorklistPerformed,
+  type WorklistEntry,
 } from "../api/worklist";
 import { PageState } from "../common/PageState";
 import { CreateEntry } from "./CreateEntry";
@@ -56,7 +57,7 @@ function Worklist() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Worklist");
 
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<WorklistEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<any>({
@@ -65,7 +66,7 @@ function Worklist() {
     total: 0,
   });
   const [visible, setVisible] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<any | null>(null);
+  const [editingEntry, setEditingEntry] = useState<WorklistEntry | null>(null);
   const [statusTab, setStatusTab] = useState("all");
   const [stationFilter, setStationFilter] = useState<string | undefined>(
     undefined,
@@ -186,6 +187,7 @@ function Worklist() {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingEntry) return;
         const data: any = {};
         for (const key of [
           "patient_name",
@@ -196,7 +198,7 @@ function Worklist() {
           "requested_procedure_desc",
           "modality",
           "station_ae_title",
-        ]) {
+        ] as const) {
           if (values[key] !== undefined && values[key] !== editingEntry[key]) {
             data[key] = Array.isArray(values[key])
               ? values[key][0]

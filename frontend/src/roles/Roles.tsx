@@ -47,7 +47,7 @@ function Roles() {
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [visible, setVisible] = useState(false);
-  let [editingRole, setEditingRole] = useState<any | null>(null);
+  let [editingRole, setEditingRole] = useState<Role | null>(null);
   let [selectedPerms, setSelectedPerms] = useState<string[]>([]);
   let [permSearch, setPermSearch] = useState("");
   let [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
@@ -247,6 +247,7 @@ function Roles() {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingRole) return;
         const data: any = {};
         if (values.name !== editingRole.name) data.name = values.name;
         if (values.slug !== editingRole.slug) data.slug = values.slug;

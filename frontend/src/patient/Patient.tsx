@@ -21,7 +21,7 @@ import {
   MedicineBoxOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { getPatient } from "../api/patient";
+import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
 import { useNavigate, useParams } from "react-router";
 
@@ -31,7 +31,7 @@ const Content = Layout.Content;
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
 
-  let [data, setData] = useState<any>({});
+  let [data, setData] = useState<PatientSummary>({});
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);

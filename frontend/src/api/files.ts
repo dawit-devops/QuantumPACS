@@ -1,4 +1,5 @@
 import { request } from "./client";
+import type { PatientSummary } from "./patient";
 
 export type DicomJsonObject = Record<string, unknown>;
 
@@ -37,8 +38,48 @@ export interface FileShare {
   [key: string]: unknown;
 }
 
-export const getFile = (id: number | string): Promise<Record<string, unknown>> =>
-  request<Record<string, unknown>>(`files/${id}`);
+export interface FileNode {
+  id: number;
+  name?: string;
+  hash?: string;
+  indexed?: boolean;
+  sop_instance_uid?: string;
+  deleted?: boolean;
+}
+
+export interface FileSeries {
+  id: number;
+  study_id?: number;
+  number?: string | number;
+  modality?: string;
+  description?: string;
+  series_instance_uid?: string;
+  files?: FileNode[];
+}
+
+export interface FileStudy {
+  id: number;
+  study_id?: string;
+  description?: string;
+  study_instance_uid?: string;
+  accession_number?: string;
+  series?: FileSeries[];
+}
+
+export interface FileRecord {
+  id: number;
+  name?: string;
+  meta?: Record<string, unknown>;
+  tools_state?: unknown;
+  patient_db_id?: number;
+  study_db_id?: number;
+  series_db_id?: number;
+  patient_id?: string;
+  patient?: PatientSummary & { studies?: FileStudy[] };
+}
+
+export const getFile = (id: number | string): Promise<FileRecord> =>
+  request<FileRecord>(`files/${id}`);
 
 export const deleteFile = (id: number | string): Promise<void> =>
   request(`files/${id}`, { method: "DELETE" });

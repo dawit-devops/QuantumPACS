@@ -17,7 +17,7 @@ import type { ColumnType } from "antd/es/table";
 import { SearchOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { open } from "../helpers";
-import { qidoSearch, searchFiles } from "../api/files";
+import { qidoSearch, searchFiles, DicomJsonObject } from "../api/files";
 import { PageState } from "../common/PageState";
 import { AdminFiles } from "./AdminFiles";
 import AdvancedSearch from "./AdvancedSearch";
@@ -25,13 +25,17 @@ import { PAGINATION } from "../config";
 import "./Files.css";
 
 const Content = Layout.Content;
+// Flat row shape both the QIDO path and the ES fallback produce — the
+// columns render from string keys, so the row type is a string map.
+export type FileRow = Record<string, string>;
+
 const Search = Input.Search;
 
-function encodeUrl(obj: any) {
+function encodeUrl(obj: Record<string, unknown>) {
   return "?" + encodeURIComponent(JSON.stringify(obj));
 }
 
-function decodeUrl(url: string) {
+function decodeUrl(url: string): Record<string, unknown> {
   if (!url.length) return {};
   return JSON.parse(decodeURIComponent(url.slice(1)));
 }
@@ -51,30 +55,35 @@ const initialAdvancedFields = [
   ["SOP Class UID", ""],
 ];
 
-function extractDicomValue(tag: any): string {
+function extractDicomValue(tag: DicomJsonObject | undefined): string {
   if (!tag || !tag.Value) return "";
-  if (typeof tag.Value[0] === "object") {
-    return tag.Value.map((v: any) => v.Alphabetic || v.Value || "").join(" ");
+  const values = tag.Value as unknown[];
+  if (typeof values[0] === "object" && values[0] !== null) {
+    return (values as Record<string, unknown>[])
+      .map((v) => v.Alphabetic || v.Value || "")
+      .join(" ");
   }
-  return tag.Value.join(" ");
+  return values.join(" ");
 }
 
-function dicomJsonToFlat(studies: any[]): any[] {
-  return studies.map((s: any) => ({
-    id: extractDicomValue(s["0020000D"]),
-    "Patient ID": extractDicomValue(s["00100020"]),
-    "Patient's Name": extractDicomValue(s["00100010"]),
-    "Study ID": extractDicomValue(s["0020000D"]),
-    "Study Description": extractDicomValue(s["00081030"]),
-    Modality: extractDicomValue(s["00080060"]),
-    "Accession Number": extractDicomValue(s["00080050"]),
-    "Study Date": extractDicomValue(s["00080020"]),
-    "Series Number": extractDicomValue(s["00200011"]),
-    "Series Description": extractDicomValue(s["0008103E"]),
+function dicomJsonToFlat(studies: DicomJsonObject[]): FileRow[] {
+  return studies.map((s) => ({
+    id: extractDicomValue(s["0020000D"] as DicomJsonObject),
+    "Patient ID": extractDicomValue(s["00100020"] as DicomJsonObject),
+    "Patient's Name": extractDicomValue(s["00100010"] as DicomJsonObject),
+    "Study ID": extractDicomValue(s["0020000D"] as DicomJsonObject),
+    "Study Description": extractDicomValue(s["00081030"] as DicomJsonObject),
+    Modality: extractDicomValue(s["00080060"] as DicomJsonObject),
+    "Accession Number": extractDicomValue(s["00080050"] as DicomJsonObject),
+    "Study Date": extractDicomValue(s["00080020"] as DicomJsonObject),
+    "Series Number": extractDicomValue(s["00200011"] as DicomJsonObject),
+    "Series Description": extractDicomValue(s["0008103E"] as DicomJsonObject),
   }));
 }
 
-function searchToQidoParams(searchObj: any): Record<string, string> {
+function searchToQidoParams(
+  searchObj: Record<string, unknown>,
+): Record<string, string> {
   const params: Record<string, string> = {};
   const fieldMap: Record<string, string> = {
     "Patient ID": "PatientID",
@@ -91,16 +100,18 @@ function searchToQidoParams(searchObj: any): Record<string, string> {
   return params;
 }
 
-function Files(props: any) {
+function Files() {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const navigate = useNavigate();
 
-  let [data, setData] = useState<any[]>([]);
-  let [pagination, setPagination] = useState<any>({
-    pageSize: PAGINATION.limit,
-  });
+  let [data, setData] = useState<FileRow[]>([]);
+  let [pagination, setPagination] = useState<{
+    pageSize: number;
+    current?: number;
+    total?: number;
+  }>({ pageSize: PAGINATION.limit });
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [showUpload, setShowUpload] = useState(false);
@@ -112,7 +123,7 @@ function Files(props: any) {
   let [advancedFields, setAdvancedFields] = useState(
     initialAdvancedFields.map((e) => [...e]),
   );
-  let [selected, setSelected] = useState<any[]>([]);
+  let [selected, setSelected] = useState<FileRow[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
@@ -157,7 +168,7 @@ function Files(props: any) {
 
   const fetchQidoResults = (
     qidoParams: Record<string, string>,
-  ): Promise<any[]> => {
+  ): Promise<FileRow[]> => {
     return qidoSearch(qidoParams).then((results) =>
       dicomJsonToFlat(results),
     );
@@ -168,7 +179,7 @@ function Files(props: any) {
     setError(null);
     const searchObj = decodeUrl(window.location.search);
     if (searchObj.query) {
-      setGlobSearch(searchObj.query);
+      setGlobSearch(String(searchObj.query));
       setSearchText("");
     } else {
       let set = false;
@@ -188,7 +199,7 @@ function Files(props: any) {
     const hasQidoParams = Object.keys(qidoParams).length > 0;
     if (hasQidoParams) {
       fetchQidoResults(qidoParams)
-        .then((results: any[]) => {
+        .then((results: FileRow[]) => {
           setLoading(false);
           if (results.length > 0) {
             setData(results);
@@ -207,11 +218,13 @@ function Files(props: any) {
     }
   };
 
-  const fallbackToV2 = (searchObj: any) => {
+  const fallbackToV2 = (searchObj: Record<string, unknown>) => {
     searchFiles(searchObj)
       .then((data) => {
         setLoading(false);
-        setData(data.data);
+        // ES fallback rows are loosely-typed docs; the table only reads the
+        // flat string keys shared with the QIDO path.
+        setData(data.data as FileRow[]);
         setPagination(Object.assign({}, pagination, { total: data.total }));
       })
       .catch((e: any) => {
@@ -257,10 +270,10 @@ function Files(props: any) {
     }
   };
 
-  const getColumnSearchProps = (
+  const getColumnSearchProps = <T extends object>(
     dataIndex: string,
-    options: any = {},
-  ): ColumnType<any> => ({
+    options: { render?: (text: string, record: T) => React.ReactNode } = {},
+  ): ColumnType<T> => ({
     filterDropdown: ({
       setSelectedKeys,
       selectedKeys,
@@ -308,7 +321,7 @@ function Files(props: any) {
         setTimeout(() => (searchInput.current as any)?.select());
       }
     },
-    render: (text: any, record: any) => {
+    render: (text: any, record: T) => {
       if (options.render) {
         return options.render(text, record);
       }
@@ -330,25 +343,28 @@ function Files(props: any) {
     },
   });
 
-  const handleColumnSearch = (selectedKeys: any, confirm: any) => {
+  const handleColumnSearch = (
+    selectedKeys: readonly React.Key[],
+    confirm: () => void,
+  ) => {
     confirm();
     setPagination(Object.assign({}, pagination, { current: 1 }));
     setGlobSearchCurrent("");
     setGlobSearch("");
-    setSearchText(selectedKeys[0]);
+    setSearchText(selectedKeys[0] !== undefined ? String(selectedKeys[0]) : "");
   };
 
-  const handleReset = (clearFilters: any) => {
-    clearFilters();
+  const handleReset = (clearFilters?: () => void) => {
+    clearFilters?.();
     setSearchText("");
   };
 
-  const onAdvancedSearchChangeLabel = (i: number, e: any) => {
+  const onAdvancedSearchChangeLabel = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
     advancedFields[i][0] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
 
-  const onAdvancedSearchChange = (i: number, e: any) => {
+  const onAdvancedSearchChange = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
     advancedFields[i][1] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
@@ -367,7 +383,7 @@ function Files(props: any) {
     setGlobSearchCurrent("");
     setGlobSearch("");
     setShowAdvanced(false);
-    let so: any = {};
+    let so: Record<string, string[]> = {};
     for (let f of advancedFields) {
       if (!f[0].length || !f[1].length) continue;
       so[f[0]] = [f[1]];
@@ -375,19 +391,19 @@ function Files(props: any) {
     navigate(encodeUrl(so));
   };
 
-  const columns: ColumnType<any>[] = [
+  const columns: ColumnType<FileRow>[] = [
     {
       title: "ID",
       dataIndex: "id",
-      render: (text: any, record: any) => (
+      render: (text: string, record: FileRow) => (
         <Link to={"/files/" + record.id}>{text}</Link>
       ),
     },
     {
       title: "Patient ID",
       dataIndex: "Patient ID",
-      ...getColumnSearchProps("Patient ID", {
-        render: (text: any, record: any) => (
+      ...getColumnSearchProps<FileRow>("Patient ID", {
+        render: (text: string, record: FileRow) => (
           <Link to={"/patients/" + record.patient_db_id}>{text}</Link>
         ),
       }),
@@ -395,27 +411,27 @@ function Files(props: any) {
     {
       title: "Patient Name",
       dataIndex: "Patient's Name",
-      ...getColumnSearchProps("Patient's Name"),
+      ...getColumnSearchProps<FileRow>("Patient's Name"),
     },
     {
       title: "Study ID",
       dataIndex: "Study ID",
-      ...getColumnSearchProps("Study ID"),
+      ...getColumnSearchProps<FileRow>("Study ID"),
     },
     {
       title: "Study Description",
       dataIndex: "Study Description",
-      ...getColumnSearchProps("Study Description"),
+      ...getColumnSearchProps<FileRow>("Study Description"),
     },
     {
       title: "Series Number",
       dataIndex: "Series Number",
-      ...getColumnSearchProps("Series Number"),
+      ...getColumnSearchProps<FileRow>("Series Number"),
     },
     {
       title: "Series Description",
       dataIndex: "Series Description",
-      ...getColumnSearchProps("Series Description"),
+      ...getColumnSearchProps<FileRow>("Series Description"),
     },
     {
       title: "Modality",
@@ -437,10 +453,12 @@ function Files(props: any) {
   ];
 
   const rowSelection = {
-    onChange: (selectedRowKeys: any, selectedRows: any) => {
-      setSelected(selectedRowKeys);
+    onChange: (selectedRowKeys: React.Key[]) => {
+      setSelected(
+        selectedRowKeys.map((k) => data.find((r) => r.id === String(k))).filter(Boolean) as FileRow[],
+      );
     },
-    getCheckboxProps: (record: any) => ({
+    getCheckboxProps: (record: FileRow) => ({
       disabled: false,
       name: record.name,
     }),
@@ -521,7 +539,7 @@ function Files(props: any) {
       >
         {isMobile ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {data.map((item: any, idx: number) => (
+            {data.map((item: FileRow, idx: number) => (
               <Card
                 key={item.id}
                 className="stagger-enter"
@@ -577,14 +595,14 @@ function Files(props: any) {
             className="filesTable"
             scroll={{ x: 500 }}
             columns={columns}
-            rowKey={(record: any) => record.id}
+            rowKey={(record: FileRow) => record.id}
             dataSource={data}
             rowSelection={rowSelection}
             pagination={pagination}
             loading={loading}
             onChange={handleTableChange}
             rowClassName={() => "stagger-enter"}
-            onRow={(_: any, index?: number) => ({
+            onRow={(_: FileRow, index?: number) => ({
               style: { "--stagger-index": index ?? 0 } as React.CSSProperties,
             })}
           />

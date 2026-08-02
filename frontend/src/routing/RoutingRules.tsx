@@ -14,7 +14,7 @@ import { App,
 } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { listRoutingRules, createRoutingRule, updateRoutingRule, deleteRoutingRule } from "../api/routing";
+import { listRoutingRules, createRoutingRule, updateRoutingRule, deleteRoutingRule, type RoutingRule } from "../api/routing";
 import { PageState } from "../common/PageState";
 import { RuleConditionBuilder } from "./RuleConditionBuilder";
 
@@ -24,7 +24,7 @@ function RoutingRules() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Routing Rules");
 
-  let [data, setData] = useState<any[]>([]);
+  let [data, setData] = useState<RoutingRule[]>([]);
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
   let [pagination, setPagination] = useState<any>({
@@ -34,7 +34,7 @@ function RoutingRules() {
     pages: 0,
   });
   let [visible, setVisible] = useState(false);
-  let [editingRule, setEditingRule] = useState<any | null>(null);
+  let [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
   let [conditions, setConditions] = useState<Record<string, any>>({});
   const [form] = Form.useForm();
 
@@ -159,6 +159,7 @@ function RoutingRules() {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingRule) return;
         const data: any = {};
         for (const key of [
           "name",
@@ -166,7 +167,7 @@ function RoutingRules() {
           "priority",
           "enabled",
           "description",
-        ]) {
+        ] as const) {
           if (values[key] !== undefined && values[key] !== editingRule[key])
             data[key] = values[key];
         }

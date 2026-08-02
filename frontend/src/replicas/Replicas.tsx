@@ -14,7 +14,7 @@ import { App,
   Tooltip,
 } from "antd";
 import withSidebar from "../common/base";
-import { listReplicas, createReplica, updateReplica, deleteReplica } from "../api/replicas";
+import { listReplicas, createReplica, updateReplica, deleteReplica, type Replica } from "../api/replicas";
 import { PageState } from "../common/PageState";
 import { AddReplica } from "./EditReplica";
 
@@ -49,11 +49,11 @@ function Replicas() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Replicas");
 
-  let [data, setData] = useState<any[]>([]);
+  let [data, setData] = useState<Replica[]>([]);
   let [pagination, setPagination] = useState<any>({});
   let [loading, setLoading] = useState(false);
   let [error, setError] = useState<string | null>(null);
-  let [currReplica, setCurrReplica] = useState<any>(null);
+  let [currReplica, setCurrReplica] = useState<Replica | null>(null);
   let [editDelayForm] = Form.useForm();
 
   useEffect(() => {
@@ -133,6 +133,7 @@ function Replicas() {
     editDelayForm
       .validateFields()
       .then((values: any) => {
+        if (!currReplica) return;
         updateReplica(currReplica.id, values)
           .then(() => {
             editDelayForm.resetFields();
