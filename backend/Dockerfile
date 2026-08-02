@@ -11,4 +11,7 @@ RUN groupadd -r quantumpacs && useradd -r -g quantumpacs -d /app -s /sbin/nologi
     chown -R quantumpacs:quantumpacs /app
 USER quantumpacs
 EXPOSE 8080
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+# `python -m uvicorn` instead of the bare `uvicorn` console script: the
+# builder's /usr/local/bin is not copied into the runtime image, so the
+# entry point script would be missing (D-M11 docker-smoke caught this).
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
