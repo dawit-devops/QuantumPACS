@@ -25,6 +25,7 @@ import {
   deleteNotification,
   clearNotifications,
 } from "../api/notifications";
+import * as ws from "../ws";
 
 const { Text } = Typography;
 
@@ -70,8 +71,17 @@ function NotificationBell() {
 
   useEffect(() => {
     fetchUnread();
+    // (P-M1) The backend pushes a {'type': 'notifications'} event over the WS
+    // channel when a notification is created, so the badge refreshes
+    // immediately. The poll stays as a fallback for when the socket is down
+    // (e.g. behind a proxy that drops long-lived connections).
+    const onWsEvent = (data: any) => {
+      if (data?.type === "notifications") fetchUnread();
+    };
+    ws.addEventListener(onWsEvent);
     intervalRef.current = setInterval(fetchUnread, 30000);
     return () => {
+      ws.removeEventListener(onWsEvent);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);

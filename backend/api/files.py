@@ -27,6 +27,7 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
 from db.notifications import Notifications
+from api.ws import broadcast_to_user
 from dcm.file import parse_dcm
 from es import es
 from storage.storage import Storage
@@ -118,6 +119,10 @@ class Upload(HTTPEndpoint):
                     title=f'Study arrived for {patient_name}',
                     body=f'File {filename} uploaded successfully',
                     link=f'/files/{filedata["id"]}',
+                )
+                await broadcast_to_user(
+                    user_id,
+                    {'type': 'notifications'},
                 )
         return ok({'id': filedata['id'], 'duplicate': False})
 
