@@ -29,6 +29,10 @@ const Content = Layout.Content;
 // columns render from string keys, so the row type is a string map.
 export type FileRow = Record<string, string>;
 
+// (P-M4) Hard ceiling on QIDO results rendered in the table; prevents an
+// unbounded study list from ballooning the DOM.
+const QIDO_RESULT_CAP = 100;
+
 const Search = Input.Search;
 
 function encodeUrl(obj: Record<string, unknown>) {
@@ -163,8 +167,11 @@ function Files() {
   const fetchQidoResults = (
     qidoParams: Record<string, string>,
   ): Promise<FileRow[]> => {
-    return qidoSearch(qidoParams).then((results) =>
-      dicomJsonToFlat(results),
+    // (P-M4) Explicit limit: the backend caps at 100 by default, but passing
+    // it keeps the frontend contract stable if that default ever changes.
+    const capped = { ...qidoParams, limit: String(QIDO_RESULT_CAP) };
+    return qidoSearch(capped).then((results) =>
+      dicomJsonToFlat(results).slice(0, QIDO_RESULT_CAP),
     );
   };
 
@@ -197,8 +204,11 @@ function Files() {
           setLoading(false);
           if (results.length > 0) {
             setData(results);
-            setPagination(
-              Object.assign({}, pagination, { total: results.length }),
+            // Functional update: `pagination` in this closure may be stale
+            // (P-M3) — merging total into the latest state avoids resurrecting
+            // an old page after a race between search and page change.
+            setPagination((prev) =>
+              Object.assign({}, prev, { total: results.length }),
             );
             return;
           }
@@ -220,13 +230,9 @@ function Files() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  useEffect(() => {
-    setPagination(
-      Object.assign({}, pagination, { pageSize: PAGINATION.limit }),
-    );
-    fetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [PAGINATION.limit]);
+  // No second mount effect for PAGINATION.limit — it is a module constant,
+  // so a separate effect would fire once on mount and duplicate the first
+  // search request (P-M3).
 
   const fallbackToV2 = (searchObj: Record<string, unknown>) => {
     searchFiles(searchObj)
@@ -235,7 +241,9 @@ function Files() {
         // ES fallback rows are loosely-typed docs; the table only reads the
         // flat string keys shared with the QIDO path.
         setData(data.data as FileRow[]);
-        setPagination(Object.assign({}, pagination, { total: data.total }));
+        setPagination((prev) =>
+          Object.assign({}, prev, { total: data.total }),
+        );
       })
       .catch((e: any) => {
         setLoading(false);

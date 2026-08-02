@@ -24,6 +24,7 @@ import {
   TableOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import { mapLimit } from "../helpers";
 import {
   listWorklist,
   listStationAes,
@@ -200,7 +201,7 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleEdit = (entry: any) => {
+  const handleEdit = useCallback((entry: any) => {
     setEditingEntry(entry);
     form.setFieldsValue({
       ...entry,
@@ -213,7 +214,7 @@ function Worklist() {
         : null,
     });
     setVisible(true);
-  };
+  }, []);
 
   const handleUpdate = () => {
     form
@@ -260,7 +261,7 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleCancel = (id: string) => {
+  const handleCancel = useCallback((id: string) => {
     deleteWorklistEntry(id)
       .then(() => {
         fetch();
@@ -269,9 +270,9 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
-  const handleMarkPerformed = (id: string) => {
+  const handleMarkPerformed = useCallback((id: string) => {
     markWorklistPerformed(id)
       .then(() => {
         message.success("Marked as performed");
@@ -281,19 +282,18 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
   const handleBatchCancel = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
     // Track failures individually so a fully-failed batch reports failure
-    // instead of a false success (Q-17).
-    Promise.all(
-      ids.map((id) =>
-        deleteWorklistEntry(id as number).then(
-          () => true,
-          () => false,
-        ),
+    // instead of a false success (Q-17). Runs at most 4 concurrent requests
+    // so a large selection cannot fan out hundreds of calls (P-M8).
+    mapLimit(ids, 4, (id) =>
+      deleteWorklistEntry(id as number).then(
+        () => true,
+        () => false,
       ),
     ).then((results) => {
       setBatchLoading(false);
@@ -312,12 +312,10 @@ function Worklist() {
   const handleBatchPerformed = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
-    Promise.all(
-      ids.map((id) =>
-        markWorklistPerformed(id as number).then(
-          () => true,
-          () => false,
-        ),
+    mapLimit(ids, 4, (id) =>
+      markWorklistPerformed(id as number).then(
+        () => true,
+        () => false,
       ),
     ).then((results) => {
       setBatchLoading(false);
@@ -355,7 +353,10 @@ function Worklist() {
   // The server already filters by the active status tab (query.status), so
   // data is exactly the current view — no client-side re-filter (Q-7).
 
-  const columns: any[] = [
+  // (P-M6) Columns are stable across renders — memoize so the Table doesn't
+  // re-render its full cell set on every state change (e.g. each keystroke).
+  const columns: any[] = useMemo(
+    () => [
     {
       title: "Patient Name",
       dataIndex: "patient_name",
@@ -465,7 +466,9 @@ function Worklist() {
         </span>
       ),
     },
-  ];
+    ],
+    [handleEdit, handleCancel, handleMarkPerformed],
+  );
 
   const rowSelection = {
     selectedRowKeys,
