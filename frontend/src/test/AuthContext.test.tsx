@@ -126,7 +126,7 @@ describe("AuthProvider", () => {
     localStorage.setItem("admin", "false");
     localStorage.setItem("access_token", "t");
     localStorage.setItem("refresh_token", "r");
-    localStorage.setItem("tempKey", "share-temp");
+    sessionStorage.setItem("tempKey", "share-temp");
     sessionStorage.setItem("shareKeyError", "expired");
 
     const user = userEvent.setup();
@@ -148,7 +148,7 @@ describe("AuthProvider", () => {
     expect(localStorage.getItem("userId")).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
-    expect(localStorage.getItem("tempKey")).toBeNull();
+    expect(sessionStorage.getItem("tempKey")).toBeNull();
     expect(sessionStorage.getItem("shareKeyError")).toBeNull();
     expect(screen.queryByTestId("auth-user")).toBeNull();
   });

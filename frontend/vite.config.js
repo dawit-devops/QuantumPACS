@@ -66,9 +66,10 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
-      "/api": "http://localhost:8080",
-      "/ws": {
-        target: "ws://localhost:8080",
+      // WS upgrade support: the socket lives under /api/ws and the backend
+      // rejects non-upgrade requests, so this must be ws-capable.
+      "/api": {
+        target: "http://localhost:8080",
         ws: true,
       },
     },

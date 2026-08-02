@@ -74,16 +74,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(() => {
     stopRefreshTimer();
+    // Single source of truth for session teardown (A-6): every key written
+    // during sign-in must be cleared here so logout leaves no stale identity.
+    // Keys written elsewhere (theme, tour flag) are UI prefs, not identity.
     localStorage.removeItem("userId");
     localStorage.removeItem("username");
     localStorage.removeItem("admin");
     localStorage.removeItem("role");
     localStorage.removeItem("permissions");
     localStorage.removeItem("tenant_id");
+    localStorage.removeItem("tenant_name");
     localStorage.removeItem("tempKey");
+    sessionStorage.removeItem("tempKey");
     sessionStorage.removeItem("shareKeyError");
     clearTokens();
     setUser(null);
+    setActiveTenant(null);
   }, []);
 
   const hasPermission = useCallback(

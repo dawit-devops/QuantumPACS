@@ -169,7 +169,7 @@ export const request = async <T = any>(
         ? error.status === 401
         : error?.error === 401;
     if (is401) {
-      const tempKey = localStorage.getItem("tempKey");
+      const tempKey = sessionStorage.getItem("tempKey");
       if (tempKey) {
         sessionStorage.setItem("shareKeyError", "expired");
       }

@@ -51,9 +51,13 @@ function ThemedApp() {
   const params = new URLSearchParams(window.location.search);
   const tempKey = params.get("key");
 
-  if (tempKey) {
-    localStorage.setItem("tempKey", tempKey);
-  }
+  // (M1) Store the share key in an effect, not during render — effects run
+  // after commit, keeping the storage write out of the render phase.
+  useEffect(() => {
+    if (tempKey) {
+      sessionStorage.setItem("tempKey", tempKey);
+    }
+  }, [tempKey]);
   useEffect(() => {
     init();
   }, []);
@@ -84,159 +88,28 @@ function ThemedApp() {
             >
               <Routes>
                 <Route path="/login" element={<Login />} />
-                <Route
-                  path="/account"
-                  element={
-                    <ProtectedRoute>
-                      <Account />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/replicas"
-                  element={
-                    <ProtectedRoute>
-                      <Replicas />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/users"
-                  element={
-                    <ProtectedRoute>
-                      <Users />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/roles"
-                  element={
-                    <ProtectedRoute>
-                      <Roles />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenants"
-                  element={
-                    <ProtectedRoute>
-                      <Tenants />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/metrics"
-                  element={
-                    <ProtectedRoute>
-                      <Metrics />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/logs"
-                  element={
-                    <ProtectedRoute>
-                      <Logs />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/worklist"
-                  element={
-                    <ProtectedRoute>
-                      <Worklist />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/service-keys"
-                  element={
-                    <ProtectedRoute>
-                      <ServiceKeys />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/routing"
-                  element={
-                    <ProtectedRoute>
-                      <RoutingRules />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/config"
-                  element={
-                    <ProtectedRoute>
-                      <FhirConfig />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/monitoring"
-                  element={
-                    <ProtectedRoute>
-                      <FhirMonitoring />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/docs"
-                  element={
-                    <ProtectedRoute>
-                      <FhirDocs />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/hl7"
-                  element={
-                    <ProtectedRoute>
-                      <Hl7Dashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/dicomweb"
-                  element={
-                    <ProtectedRoute>
-                      <DicomWebAdmin />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/integrations"
-                  element={
-                    <ProtectedRoute>
-                      <Integrations />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/patients/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Patient />
-                    </ProtectedRoute>
-                  }
-                />
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/account" element={<Account />} />
+                  <Route path="/replicas" element={<Replicas />} />
+                  <Route path="/users" element={<Users />} />
+                  <Route path="/roles" element={<Roles />} />
+                  <Route path="/tenants" element={<Tenants />} />
+                  <Route path="/metrics" element={<Metrics />} />
+                  <Route path="/logs" element={<Logs />} />
+                  <Route path="/worklist" element={<Worklist />} />
+                  <Route path="/service-keys" element={<ServiceKeys />} />
+                  <Route path="/routing" element={<RoutingRules />} />
+                  <Route path="/fhir/config" element={<FhirConfig />} />
+                  <Route path="/fhir/monitoring" element={<FhirMonitoring />} />
+                  <Route path="/fhir/docs" element={<FhirDocs />} />
+                  <Route path="/hl7" element={<Hl7Dashboard />} />
+                  <Route path="/dicomweb" element={<DicomWebAdmin />} />
+                  <Route path="/integrations" element={<Integrations />} />
+                  <Route path="/patients/:id" element={<Patient />} />
+                  <Route path="/files/:id" element={<Detail />} />
+                  <Route path="/" element={<Files />} />
+                </Route>
                 <Route path="/view/:key" element={<ShareView />} />
-                <Route
-                  path="/files/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Detail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <Files />
-                    </ProtectedRoute>
-                  }
-                />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

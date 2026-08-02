@@ -37,7 +37,13 @@ function encodeUrl(obj: Record<string, unknown>) {
 
 function decodeUrl(url: string): Record<string, unknown> {
   if (!url.length) return {};
-  return JSON.parse(decodeURIComponent(url.slice(1)));
+  try {
+    return JSON.parse(decodeURIComponent(url.slice(1)));
+  } catch {
+    // A truncated or hand-edited search string must not crash the browser
+    // (M2) — fall back to an empty search instead.
+    return {};
+  }
 }
 
 const initialAdvancedFields = [

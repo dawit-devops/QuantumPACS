@@ -10,9 +10,11 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 
 function wsUrl(token: string): string {
+  // Backend mounts the WS route under /api (Mount('/api', Router(routes))),
+  // so the socket lives at <host><API_URL pathname>/ws — not a bare /ws.
   const url = new URL(API_URL);
   const scheme = url.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${url.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${scheme}://${url.host}${url.pathname}/ws?token=${encodeURIComponent(token)}`;
 }
 
 function connect(token: string): void {

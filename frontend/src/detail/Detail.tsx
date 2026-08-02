@@ -62,7 +62,7 @@ function Detail() {
   const [series, setSeries] = useState<FileSeries | null>(null);
   const [image, setImage] = useState(imagePath);
   const [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
-  const tempKey = localStorage.getItem("tempKey");
+  const tempKey = sessionStorage.getItem("tempKey");
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   const [rawAnnotations, setRawAnnotations] = useState<any[]>([]);

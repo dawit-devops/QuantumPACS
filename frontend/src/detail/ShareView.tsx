@@ -8,7 +8,7 @@ function ShareView() {
 
   useEffect(() => {
     if (key) {
-      localStorage.setItem("tempKey", key);
+      sessionStorage.setItem("tempKey", key);
     }
     navigate("/", { replace: true });
   }, [navigate, key]);
