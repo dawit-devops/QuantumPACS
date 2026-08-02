@@ -22,22 +22,24 @@ description: |
 
 metadata:
   author: quantumrad
-  version: "1.0.0"
-  sources:
-    - frontend/docs/frontend-developer.md
-    - frontend/docs/ui-ux-designer.md
-    - frontend/docs/ui-visual-validator.md
-  depends_on:
-    - docs/PRD-v3.md
-    - docs/PRD.md
-    - docs/User-Stories.md
-    - docs/UX-Functionality.md
-    - docs/SPRINT_ARTIFACT.md
-    - docs/IMPLEMENTATION_PLAN-v3.md
-    - docs/IMPLEMENTATION_PLAN.md
-    - docs/design-tokens.json
-    - docs/component-specs.md
-    - docs/user-flows/
+  version: "2.2.0"
+  changelog: |
+    v2.2.0 — 2026-08-02:
+    - Added artifact 08 (Implementation Roadmap) template with dependency-ordered plan, status tracking, and next-steps section
+    - Added Section 9 (Document Discovery) for dynamic discovery of agent sources and grounding docs
+    - Added artifact 08 pipeline step (step 13) in Section 5
+    - Added quality gate 6.6 for implementation roadmap in Section 6
+    - Added cross-artifact dependency ordering in traceability matrix template (artifact 07)
+    v2.1.0 — 2026-08-02:
+    - Added dynamic document discovery for agent sources and grounding docs
+    - Added artifact 07 (Traceability Matrix) for cross-artifact and cross-role dependency tracking
+    - Added delta/update mode (--delta) for incremental requirement changes
+    - Added pipeline iteration loop (steps 10-12) with stakeholder feedback integration
+    - Enhanced invocation map with partial package triggers and validation command
+    - Added automated validation (Section 6.5) with ID consistency, traceability, quantification, and verifiability checks
+    - Added version management conventions (SemVer, CHANGELOG.md, diff-friendly output)
+  sources: auto  # Dynamically discovered via Section 9 discovery rules
+  depends_on: auto  # Dynamically discovered via Section 9 discovery rules
   delegates:
     - ui-ux-pro-max        # When designing specific screens/patterns
     - frontend-design      # When defining aesthetic direction
@@ -69,14 +71,44 @@ design), and **ui-visual-validator** (skeptical verification) — into one pipel
 | "UI/UX requirements for <role>" | Produce artifact 04 only |
 | "metrics and SLAs for <role>" | Produce artifact 05 only |
 | "acceptance criteria for <role>" | Produce artifact 06 only |
+| "traceability for <role>" | Produce artifact 07 only (traceability matrix) |
 | "requirements for all 19 roles" | Run full pipeline for every role in Section 1 |
 | "build requirements for <feature>" | Cross-role pass: all roles touching the feature |
 | "acceptance criteria for <user story #N>" | Single story → Given/When/Then AC with validator gate |
+| "update requirements for <role>" | Delta mode: produce only changed artifacts + DELTA.md |
+| "validate requirements for <role>" | Run automated validation (Section 6.5) against existing package |
+| "requirements status" | List all roles with package status (draft/approved/gated) |
+| "requirements status --all" | List all roles with artifact counts, traceability status, and package status |
+
+**Quick start:**
+```bash
+# Generate a full requirements package for a role
+create requirements for super-admin
+
+# Generate only the traceability matrix
+create requirements for super-admin --traceability
+
+# Generate only the implementation roadmap
+create requirements for super-admin --roadmap
+
+# Update a role incrementally
+create requirements for super-admin --delta
+
+# Validate an existing package
+validate requirements for super-admin
+
+# List all role package statuses
+requirements status --all
+```
 
 **Rule:** Before producing any artifact, read the role definition (Section 1), the
 deliverable templates (Section 3), and the agent-knowledge lens for that artifact
 (Section 2). If the task touches PHI, HIPAA, or system integrations, consult the
 cross-cutting section (Section 7) first.
+
+**Delta mode (`--delta`)**: When a role's requirements change incrementally,
+use `--delta` to produce only the changed artifacts and a `DELTA.md` diff
+document. See Section 5, Step 12 for delta mode behavior.
 
 ---
 
@@ -216,9 +248,9 @@ declare success without concrete evidence.
 
 ---
 
-## Section 3: Deliverables Framework — Six Artifact Types
+## Section 3: Deliverables Framework — Seven Artifact Types
 
-Every requirements package produces six artifacts in the order below. Write each
+Every requirements package produces seven artifacts in the order below. Write each
 as its own file under `docs/requirements/<role-slug>/`:
 
 | # | Artifact | File | Contents |
@@ -229,9 +261,13 @@ as its own file under `docs/requirements/<role-slug>/`:
 | 04 | UI/UX Requirements | `04-ui-ux-requirements.md` | Layout, components, states, tokens, a11y, responsive, interaction spec |
 | 05 | Metrics & SLAs | `05-metrics-slas.md` | Quantifiable KPIs and service-level agreements with targets and measurement method |
 | 06 | Acceptance Criteria | `06-acceptance-criteria.md` | Verifiable acceptance criteria matrix mapped to FR/NF IDs, validator-gated |
+| 07 | Traceability Matrix | `07-traceability.md` | Cross-artifact and cross-role dependency graph, FR→AC traceability, integration contract map |
+| 08 | Implementation Roadmap | `08-implementation-roadmap.md` | Dependency-ordered implementation plan with status (done/partial/missing) per artifact |
 
-Plus a package header: `docs/requirements/<role-slug>/README.md` with role summary,
-artifact index, and cross-role dependencies.
+Plus package metadata files in `docs/requirements/<role-slug>/`:
+- `README.md` — role summary, artifact index, cross-role dependencies, version, status
+- `CHANGELOG.md` — dated changelog following Keep a Changelog format
+- `DELTA.md` — produced only in delta mode; lists incremental changes
 
 ---
 
@@ -361,9 +397,189 @@ sequenceDiagram
 - (explicitly list what is NOT covered, per validator's critical mindset)
 ```
 
----
+### Artifact 07 — Traceability Matrix
 
-## Section 5: Pipeline Workflow
+```markdown
+# Traceability Matrix — <Role Name> (RXX)
+
+## FR/NFR → AC Traceability
+
+| FR/NFR ID | Covered by AC | AC IDs | Status |
+|-----------|---------------|--------|--------|
+| FR-RXX-01 | Yes | AC-RXX-01, AC-RXX-03 | Covered |
+| FR-RXX-02 | No | — | Gap — no AC yet |
+| NFR-RXX-01 | Yes | AC-RXX-30 | Covered |
+
+## Cross-Artifact Dependencies
+
+| Source Artifact | Target Artifact | Dependency |
+|-----------------|-----------------|------------|
+| 01 User Requirements | 03 User Stories | Each US maps to ≥1 FR |
+| 01 User Requirements | 06 Acceptance Criteria | Each FR/NFR has ≥1 AC |
+| 02 Workflow Maps | 03 User Stories | Each workflow step with user decision → US |
+| 03 User Stories | 04 UI/UX Requirements | Each US component → state spec |
+| 04 UI/UX Requirements | 06 Acceptance Criteria | Each state → validator gate |
+| 05 Metrics & SLAs | 06 Acceptance Criteria | Each metric target → measurable AC |
+
+## Cross-Role Dependencies
+
+| Role | Dependency Type | Target Role | Contract |
+|------|----------------|-------------|----------|
+| R01 Super Admin | Provisions tenant | R02 Tenant Admin | Tenant config + credentials |
+| R12 Staff Radiologist | Consumes worklist | R06 Technologist | Exam status updates |
+| R18 Teleradiologist | Remote reading | R12 Staff Radiologist | Report sign-off handoff |
+
+## Integration Contracts (R15–R17)
+
+| Integration | Direction | Protocol | Failure Semantics |
+|-------------|-----------|----------|-------------------|
+| External RIS (R15) | R15 → R01/R02 | HL7 ORM/ORU, FHIR ServiceRequest | Retry 3x → dead-letter → manual reconciliation |
+| External EMR (R16) | R16 → R01/R02 | HL7 ADT/ORM/ORU, FHIR Patient | Async backfill, no blocking |
+| External PACS (R17) | R17 ↔ R01/R02 | DICOM C-FIND/C-MOVE/C-STORE | Query timeout 30s, retrieve retry 2x |
+```
+
+## Excluded Scope / Out of Scope
+- (explicitly list what is NOT covered, per validator's critical mindset)
+```
+
+### Delta Document (DELTA.md) — Incremental Updates
+
+```markdown
+# Delta — <Role Name> (RXX) — <YYYY-MM-DD>
+
+## Summary
+
+- **Trigger**: <PR/issue number or stakeholder request>
+- **Version change**: 1.X.Y → 1.X+1.Y (MAJOR/MINOR/PATCH)
+- **Stakeholder**: <name, role>
+
+## Added Requirements
+
+| ID | Requirement | Priority | Rationale |
+|----|-------------|----------|-----------|
+| FR-RXX-NN | ... | Must/Should/Could | Why this is needed now |
+
+## Changed Requirements
+
+| ID | Field Changed | Old Value | New Value | Rationale |
+|----|---------------|-----------|-----------|-----------|
+| FR-RXX-NN | Priority | Must | Should | <reason> |
+| FR-RXX-NN | Target | ≤ 5s | ≤ 3s | <reason> |
+
+## Removed Requirements
+
+| ID | Requirement | Rationale for Removal |
+|----|-------------|-----------------------|
+| FR-RXX-NN | ... | <reason> |
+
+## Impact on Existing Artifacts
+
+| Artifact | Changed? | Summary |
+|----------|----------|---------|
+| 01 User Requirements | Yes | Added FR-RXX-NN |
+| 03 User Stories | Yes | New US for FR-RXX-NN |
+| 06 Acceptance Criteria | Yes | New AC for FR-RXX-NN |
+| 07 Traceability Matrix | Yes | New row for FR-RXX-NN |
+```
+
+### CHANGELOG.md Template
+
+```markdown
+# Changelog — <Role Name> (RXX)
+
+All notable changes to this requirements package follow
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
+
+## [Unreleased]
+
+## [1.1.0] — 2026-08-02
+### Added
+- FR-RXX-NN: <requirement description>
+- US-RXX-NN: <user story title>
+### Changed
+- FR-RXX-NN: <what changed and why>
+### Deprecated
+- FR-RXX-NN: <reason>
+
+## [1.0.0] — 2026-08-01
+### Added
+- Initial requirements package for <role>
+```
+
+### Artifact 08 — Implementation Roadmap
+
+```markdown
+# Implementation Roadmap — <Role Name> (RXX)
+
+## Artifact Status Overview
+
+| # | Artifact | File | Status | Notes |
+|---|----------|------|--------|-------|
+| 01 | User Requirements | `01-user-requirements.md` | done/partial/missing | |
+| 02 | Workflow Maps | `02-workflow-maps.md` | done/partial/missing | |
+| 03 | User Stories | `03-user-stories.md` | done/partial/missing | |
+| 04 | UI/UX Requirements | `04-ui-ux-requirements.md` | done/partial/missing | |
+| 05 | Metrics & SLAs | `05-metrics-slas.md` | done/partial/missing | |
+| 06 | Acceptance Criteria | `06-acceptance-criteria.md` | done/partial/missing | |
+| 07 | Traceability Matrix | `07-traceability.md` | done/partial/missing | |
+| 08 | Implementation Roadmap | `08-implementation-roadmap.md` | done/partial/missing | |
+
+## FR/NFR Implementation Status
+
+### Implemented (Passing ACs)
+
+| FR/NFR ID | Summary | AC Coverage | Effort |
+|-----------|---------|-------------|--------|
+| FR-RXX-01 | ... | AC-RXX-01, 02 | S (1-3d) |
+
+### Partially Implemented (GATED / Partial)
+
+| FR/NFR ID | Summary | Blocking Dependency | AC | Effort |
+|-----------|---------|---------------------|----|--------|
+| FR-RXX-NN | ... | Backend endpoint X does not exist | AC-RXX-NN | M (4-10d) |
+
+### Missing (Not Started)
+
+| FR/NFR ID | Summary | Reason | AC | Effort |
+|-----------|---------|--------|----|--------|
+| FR-RXX-NN | ... | Backlog / not yet scoped | — | L (11+d) |
+
+## Effort Estimation Key
+
+| Size | Days | Criteria |
+|------|------|----------|
+| S (Small) | 1–3 | Single endpoint or UI component; no cross-team dependency |
+| M (Medium) | 4–10 | Multi-step feature; requires backend + frontend coordination |
+| L (Large) | 11+ | Cross-cutting feature; requires integration contract or new infrastructure |
+
+## Dependency-Ordered Implementation Plan
+
+### Phase 1: Foundation (already done)
+- Artifacts 01–06 complete; NFRs implemented and passing
+
+### Phase 2: Unblock GATED requirements (next priority)
+1. **[Blocking dependency]** — required for [FR/NFR ID] / [AC ID]
+   - Owner: [team]
+   - Blocks: [AC IDs]
+   - Effort: [S/M/L]
+   - Once done, re-run validator gate on [AC ID]
+
+### Phase 3: Traceability and roadmap maintenance
+3. **Artifact 07 traceability matrix** — partial; verify all cross-role dependencies
+4. **Artifact 08 roadmap** — partial; update each sprint as FR/NFR status changes
+
+## Blocking Dependencies
+
+| Blocking Dependency | Blocks | AC | Impact |
+|---------------------|--------|----|--------|
+| [Dependency] | [FR/NFR] | [AC] | [Impact] |
+
+## Next Steps (highest priority)
+
+1. **[Action]** — unblocks [AC/FR]; [Effort] effort
+2. **[Action]** — unblocks [AC/FR]; [Effort] effort
+3. **[Action]** — update roadmap each sprint as FR/NFR status changes
+```
 
 Execute in order for each role (or cross-role pass):
 
@@ -388,19 +604,50 @@ Execute in order for each role (or cross-role pass):
 8. **Validator gate (Section 6.4)**: run the skeptical verification pass over the
    whole package; record verdicts per artifact.
 9. **Write outputs** to `docs/requirements/<role-slug>/` + `README.md` index.
+10. **Stakeholder review loop**: present the package to the role's primary
+    stakeholder (e.g., R01 → super admin, R12 → staff radiologist). Record
+    feedback as issues in `docs/requirements/<role-slug>/feedback.md` with
+    each item linked to the artifact and section it affects.
+11. **Refine**: for each feedback item, update the relevant artifact(s),
+    re-run the quality gates (Section 6), and update the validator gate
+    verdict in artifact 06. Iterate until all feedback is resolved or
+    explicitly deferred with rationale.
+12. **Finalize**: bump the package version (Section 8), commit the
+     `CHANGELOG.md` entry, and mark the package as `approved` in the
+     README. A package in `draft` status must not be referenced by sprint
+     planning or implementation documents.
+13. **Artifact 08 — Implementation Roadmap**: produce a dependency-ordered
+     implementation plan that shows what is already implemented, what is
+     partial, and what is missing for each artifact. The roadmap is
+     generated from the traceability matrix (artifact 07) and cross-role
+     dependencies. See artifact 08 template in Section 3 for format.
 
 **Cross-role pass (feature-driven)**: identify roles touching the feature, produce
 the shared workflow map, then per-role artifacts; list integration dependencies
 (R15/R16/R17 contracts, R18 remote access, R03/R05 reporting consumers).
+
+**Delta mode (`--delta`)**: when a role's requirements change incrementally
+(e.g., new FR added, priority changed, measurement target adjusted), run the
+pipeline with `--delta` to produce only the changed artifacts and a
+`CHANGELOG.md` entry. The delta mode:
+- Reads the existing package in `docs/requirements/<role-slug>/`
+- Compares against the current state of the role registry (Section 1)
+- Produces a diff document at `docs/requirements/<role-slug>/DELTA.md`
+  listing added/changed/removed requirements with rationale
+- Updates only the affected artifacts (not the full package)
+- Re-runs the quality gates against the delta only
+- Requires explicit stakeholder sign-off on the delta before merging
 
 ---
 
 ## Section 6: Quality Gates
 
 ### 6.1 Completeness Gate
-- [ ] All 6 artifacts exist with IDs in the FR/NFR/US/AC conventions
+- [ ] All 7 artifacts exist with IDs in the FR/NFR/US/AC/M conventions
 - [ ] Every FR has at least one AC; every AC links to an FR/NFR
 - [ ] All 4 states (loading/empty/error/success) specified for each data screen
+- [ ] Traceability matrix (07) covers every FR/NFR with no gaps
+- [ ] Cross-role dependencies listed in README match the traceability matrix
 
 ### 6.2 Feasibility Gate (frontend-developer lens)
 - [ ] Performance targets are quantified (LCP/INP/CLS, staleness tolerance)
@@ -426,6 +673,101 @@ that claims a UI outcome:
 
 Verdict format: **"From the visual evidence/verification, I observe ... — goal
 achieved / partially achieved / not achieved"** with specific measurements.
+
+### 6.5 Automated Validation
+
+The following automated checks should be run against every package before
+it is marked complete. These are not replacements for the manual gates above
+but catch regressions and inconsistencies early.
+
+#### 6.5.1 ID Consistency Check
+- [ ] Every `FR-`, `NFR-`, `US-`, `AC-`, and `M-` ID uses the correct role prefix (e.g., `R01` for super-admin)
+- [ ] IDs are zero-padded to two digits within each artifact (FR-R01-01, not FR-R01-1)
+- [ ] Every AC links to at least one FR or NFR; every FR has at least one AC
+- [ ] No duplicate IDs within an artifact
+
+#### 6.5.2 Traceability Check
+- [ ] Every FR/NFR appears in the traceability matrix (artifact 07)
+- [ ] Every US links to at least one FR
+- [ ] Every AC links to at least one FR or NFR
+- [ ] Cross-role dependencies listed in README match the traceability matrix
+
+#### 6.5.3 Quantification Check
+- [ ] Every performance requirement has a numeric target and measurement method
+- [ ] Every SLA has a target, frequency, and owner
+- [ ] No requirement uses "fast", "responsive", "user-friendly", or "scalable" without a quantified target
+- [ ] Every data screen specifies all 4 states (loading/empty/error/success)
+
+#### 6.5.4 Verifiability Check
+- [ ] Every AC is stated in observable terms (not "implemented in code")
+- [ ] Every AC specifies a verification method (automated test, visual evidence, synthetic probe, E2E)
+- [ ] No AC is satisfiable by code presence alone
+- [ ] Gated ACs (blocked on backend/frontend work) are explicitly marked with `GATED` and the blocking dependency
+
+#### 6.5.5 Script Integration
+- Run `scripts/validate-requirements.sh <role-slug>` to execute checks 6.5.1–6.5.4 automatically
+- The script reads `docs/requirements/<role-slug>/` and outputs a pass/fail report
+- Exit code 0 = all checks pass; exit code 1 = failures found with details
+- Integrate into CI: `pytest backend/tests/` and `scripts/validate-requirements.sh` as a pre-merge gate for any `docs/requirements/` changes
+
+### 6.6 Implementation Roadmap Gate (artifact 08)
+- [ ] Artifact 08 exists and covers all 7 artifacts (01–07) plus the package itself
+- [ ] Each artifact has a status: `done` (fully implemented), `partial` (some work done), or `missing` (not started)
+- [ ] Dependencies between artifacts are correctly ordered (e.g., artifact 01 must be done before 03; artifact 07 must be done before 08)
+- [ ] Cross-role dependencies are listed with their current status
+- [ ] The roadmap identifies blocking dependencies (e.g., "backend API for FR-R01-05 must be done before UI work on US-R01-12")
+- [ ] The roadmap includes estimated effort (small/medium/large) per artifact
+- [ ] The roadmap includes a "next steps" section with the 1–3 highest-priority actions to move from `missing` to `partial`
+- [ ] The roadmap is consistent with the traceability matrix (artifact 07) — no phantom dependencies
+
+---
+
+## Section 9: Document Discovery
+
+The skill dynamically discovers agent knowledge files and grounding documents at runtime. No hardcoded paths are used in the metadata or pipeline.
+
+### 9.1 Agent Knowledge Sources
+
+Agent source files are discovered by scanning the `frontend/docs/` directory for `.md` files. Each file becomes a knowledge lens for the pipeline. The discovery rules are:
+
+1. Scan `frontend/docs/*.md` for all markdown files
+2. Each file's basename (without extension) becomes the agent identifier (e.g., `frontend-developer`, `ui-ux-designer`, `ui-visual-validator`)
+3. The file's content is ingested as the knowledge base for that agent
+4. If a file is not present, the corresponding agent lens is skipped with a warning
+
+### 9.2 Grounding Documents
+
+Grounding documents are discovered by scanning the `docs/` directory (excluding `docs/requirements/`) for markdown files. The discovery rules are:
+
+1. Scan `docs/*.md` and `docs/**/*.md` for all markdown files
+2. Exclude `docs/requirements/` (those are output artifacts, not input documents)
+3. Exclude `docs/decisions/` (ADR documents are referenced separately)
+4. Each discovered file is available as a grounding document for the pipeline
+5. The pipeline reads grounding documents when profiling roles (Section 5, Step 1) and when generating cross-role dependencies
+
+### 9.3 Discovery Output
+
+The discovery process produces a manifest at the start of each pipeline run:
+
+```markdown
+## Document Discovery Manifest
+
+### Agent Sources Discovered
+- `frontend/docs/frontend-developer.md` → frontend-developer lens
+- `frontend/docs/ui-ux-designer.md` → ui-ux-designer lens
+- `frontend/docs/ui-visual-validator.md` → ui-visual-validator lens
+
+### Grounding Documents Discovered
+- `docs/PRD-v3.md`
+- `docs/User-Stories.md`
+- `docs/UX-Functionality.md`
+- `docs/SPRINT_ARTIFACT.md`
+
+### Missing Expected Sources
+- (none, or list expected files not found)
+```
+
+The manifest is written to the pipeline log and used to validate that all expected knowledge sources are available before the pipeline begins.
 
 ---
 
@@ -466,9 +808,33 @@ achieved / partially achieved / not achieved"** with specific measurements.
   `biomedical-engineer`, `nursing`, `staff-radiologist`, `resident`,
   `referring-clinician`, `external-ris`, `external-emr`, `external-pacs`,
   `teleradiologist`, `hospital-staff`.
-- **README.md** per role: summary, artifact index, dependencies, open questions.
+- **README.md** per role: summary, artifact index, cross-role dependencies,
+  open questions, version (SemVer), status (`draft` | `approved`),
+  changelog reference, and date of last update.
 - **IDs**: FR/NFR/US/AC/M prefixed by role ID (`R01`–`R19`), zero-padded per artifact.
 - **Mermaid** for all workflow maps (sequenceDiagram for user flows,
   flowchart for decision/exception paths, sequenceDiagram for system integrations).
 - **No vague language**: replace "fast", "responsive", "user-friendly" with
-  quantified targets and observable outcomes.
+   quantified targets and observable outcomes.
+- **Version tracking**: every package has a `version` field in its README
+   following SemVer (`MAJOR.MINOR.PATCH`). Increment:
+   - MAJOR: breaking changes to requirements or API contracts
+   - MINOR: new requirements added, existing requirements refined
+   - PATCH: clarifications, typo fixes, measurement target adjustments
+- **Changelog**: each package includes a `CHANGELOG.md` with dated entries
+   linking to the triggering PR/issue. Format:
+   ```markdown
+   ## [1.1.0] — 2026-08-02
+   ### Added
+   - FR-R12-09: Peer review workflow for structured reports
+   ### Changed
+   - FR-R12-04: Updated report turnaround target from 24h to 12h for STAT
+   ### Deprecated
+   - FR-R12-03: Legacy free-text reporting (superseded by structured reporting)
+   ```
+- **Diff-friendly output**: all artifacts use deterministic ordering (IDs
+   ascending, tables sorted by ID) so that `git diff` produces meaningful
+   line-level changes between versions. No reordering of existing rows.
+- **Package header version**: the README header includes `version` and
+   `Generated` date, e.g.: `Generated by the pacs-requirements-architect
+   skill (v1.1.0) on 2026-08-02.`

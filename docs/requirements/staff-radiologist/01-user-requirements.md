@@ -35,6 +35,15 @@
 | NFR-R12-09 | Concurrent sessions | 50 concurrent reading sessions (existing requirement) | Load test |
 | NFR-R12-10 | Report save reliability | Autosave ≤ 10s cadence; no lost drafts on connection drop | Integration test |
 
+## Codebase Status (verified 2026-08-03)
+
+**Implemented**: viewer + tools, multi-series navigation, annotations (client sync;
+persistence endpoint to confirm), metadata/change history, patient context, share
+links, audit. **GATED**: structured reporting (FR-R12-09), critical-findings
+escalation (FR-R12-10), attending-review queue (FR-R12-12), dedicated priors endpoint
+(FR-R12-06), peer review — no reporting backend exists (largest gap). See artifacts
+04/07/08.
+
 ## Assumptions & Constraints
 
 - **Reading is desktop-only**: viewer is not responsive to mobile; worklist may be usable on tablet.

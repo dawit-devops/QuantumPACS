@@ -1,5 +1,37 @@
 # UI/UX Requirements — Radiology Service Director (R03)
 
+## Role-Based Routing & Navigation (Presentation Layer)
+
+RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gated
+`Sidebar.tsx` items). Verified against `frontend/src/`.
+
+### Routes Accessible (codebase reality)
+
+| Route | Screen | Access rule |
+|-------|--------|-------------|
+| `/` | Files / study search (read) | Any authenticated user |
+| `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
+| `/account` | Account | Any authenticated user |
+| `/patients/:id`, `/files/:id` | Patient page, viewer | `PATIENT_READ` / `FILE_READ` |
+| `/analytics/*`, `/reports/*` | **Not accessible** | No analytics/report endpoints or routes exist — GATED |
+
+### Navigation Gating (Sidebar.tsx)
+
+| Menu item | Visible when |
+|-----------|--------------|
+| Files / Metrics / Account / Notifications | Always (authenticated) |
+| Admin submenu | Only if granted admin `*_READ` perms (service director typically read-only) |
+
+### Functionality Gating
+
+- Today the service director can only view `GET /metrics` + `/dashboard/metrics`;
+  KPI/capacity/protocol-compliance/SLA dashboards, report builder, exports, and
+  dashboard-access audit are **not implemented** — aspirational FRs marked `GATED`
+  (artifacts 01/07/08) with new endpoints + `ANALYTICS_*` / `REPORT_*` permissions
+  flagged to backend.
+- Aggregate dashboards must be read-only; no study-level PHI without audit
+  justification.
+
 **Version**: 1.0.0 (v3.0 scope)
 **Status**: Final
 **Date**: 2026-08-02

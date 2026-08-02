@@ -50,6 +50,14 @@
 
 ---
 
+## Codebase Status (verified 2026-08-03)
+
+**GATED**: All FR-R05-NN QA requirements are aspirational v3.0 — no `/qa/*` routes,
+`qa_*` tables, `qa_team` role, or `QA_*` permission slugs exist in the codebase.
+QA reviewers today can only view studies in the Files browser + viewer (read-only).
+Requires new backend QA module + permissions flagged to backend. See artifacts
+04/07/08 for the verified presentation-layer mapping.
+
 ## Assumptions & Constraints
 
 | # | Assumption / Constraint | Impact |

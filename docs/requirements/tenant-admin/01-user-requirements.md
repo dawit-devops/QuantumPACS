@@ -18,7 +18,7 @@
 | FR-R02-12 | The system SHALL allow the tenant admin to view tenant-scoped metrics (platform + integration dashboards). | Must | `GET /metrics`, `GET /dashboard/metrics` (tenant-scoped) |
 | FR-R02-13 | The system SHALL allow the tenant admin to receive tenant notifications (replica failure, integration outage) with unread badge. | Should | `GET /notifications`, `GET /notifications/unread-count` |
 | FR-R02-14 | The system SHALL NOT expose global/super-admin items (other tenants, global replicas, global RBAC) to the tenant admin UI. | Must | Permission-driven menu (component-specs.md pattern) |
-| FR-R02-15 | The system SHALL allow the tenant admin to view tenant storage usage against the provisioned quota. | Should | GAP: usage dashboard endpoint needed |
+| FR-R02-15 | The system SHALL allow the tenant admin to view tenant storage usage against the provisioned quota. | Should | `GET /tenants/{id}/stats` exists (TenantStatsHandler, storage + quota); UI usage dashboard partial |
 | FR-R02-16 | The system SHALL log every R02 mutation to the tenant audit log with actor, action, resource, timestamp, request_id. | Must | `AuditLog.log_event` with tenant context |
 
 ## Non-Functional Requirements

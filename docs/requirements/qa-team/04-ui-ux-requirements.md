@@ -1,5 +1,36 @@
 # UI/UX Requirements — Radiology & Imaging Service QI/QA Team (R05)
 
+## Role-Based Routing & Navigation (Presentation Layer)
+
+RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gated
+`Sidebar.tsx` items). Verified against `frontend/src/`.
+
+### Routes Accessible (codebase reality)
+
+| Route | Screen | Access rule |
+|-------|--------|-------------|
+| `/` | Files / study search (read) | Any authenticated user |
+| `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
+| `/account` | Account | Any authenticated user |
+| `/patients/:id`, `/files/:id` | Patient page, viewer (QA review uses viewer) | `PATIENT_READ` / `FILE_READ` |
+| `/qa/*` | **Not accessible** | No QA routes/endpoints exist — GATED |
+
+### Navigation Gating (Sidebar.tsx)
+
+| Menu item | Visible when |
+|-----------|--------------|
+| Files / Metrics / Account / Notifications | Always (authenticated) |
+| Admin submenu | Only if granted admin `*_READ` perms |
+
+### Functionality Gating
+
+- **None of the QA-specific screens exist**: QA review queue/form, protocol registry,
+  QA scores, corrective-action inbox, incident/retake logging, peer review. All are
+  aspirational FRs marked `GATED` (artifacts 01/07/08) with `QA_READ`/`QA_WRITE`/
+  `PROTOCOL_MANAGE` permissions + endpoints flagged to backend.
+- QA reviewers today can only view studies in the Files browser + viewer; a
+  `qa_team` built-in role does not exist yet.
+
 **Version**: 1.0.0 (v3.0 scope)
 **Status**: Final
 **Date**: 2026-08-02

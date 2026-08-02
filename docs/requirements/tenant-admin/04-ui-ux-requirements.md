@@ -1,5 +1,43 @@
 # UI/UX Requirements — Hospital IT / Tenant Admin (R02)
 
+## Role-Based Routing & Navigation (Presentation Layer)
+
+RBAC drives the presentation layer: `hasPermission()` + `RequirePermission` gate UI
+elements; `Sidebar.tsx` renders items only when the tenant admin holds the matching
+permission; the backend rejects cross-tenant access with 403. The tenant admin is a
+**tenant-scoped subset of R01**: global items (provision tenant, global config) never
+render and are rejected server-side. Verified against `frontend/src/`.
+
+### Routes Accessible (codebase reality)
+
+| Route | Screen | Access rule |
+|-------|--------|-------------|
+| `/` | Files / study search | Any authenticated user |
+| `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
+| `/account` | Account | Any authenticated user |
+| `/users`, `/roles`, `/replicas`, `/routing`, `/service-keys`, `/logs`, `/worklist`, `/hl7`, `/dicomweb` | Tenant-scoped admin | Matching `*_READ` permission (no `TENANT_ADMIN` provisioning) |
+| `/fhir/*`, `/integrations` | Integration admin | `SYSTEM_ADMIN` (tenant-scoped) |
+| `/files/:id`, `/patients/:id` | Viewer, patient page | `FILE_READ` / `PATIENT_READ` |
+| `/tenants` | **Not accessible** | R01-only (provisioning) — item not rendered |
+
+### Navigation Gating (Sidebar.tsx)
+
+Same gating table as R01 but the **Tenants** item is hidden for this role (no
+`TENANT_ADMIN`), and tenant-scoped rows must never leak other tenants' data.
+
+| Menu item | Visible when |
+|-----------|--------------|
+| Admin submenu | `user.admin` OR any admin `*_READ` permission |
+| Users / Roles / Replicas / Routing / Service Keys / Logs / Worklist / HL7 / DICOMweb | Matching `*_READ` |
+| FHIR / Integrations | `SYSTEM_ADMIN` |
+
+### Functionality Gating
+
+- Cross-tenant actions must be impossible in the UI **and** rejected by backend (403).
+- Aspirational v3.0 FRs with no backend yet are kept but marked `GATED` (see
+  artifacts 01/07/08): tenant-scoped quota/usage dashboard, department/modality
+  registry, backup/restore.
+
 Design-system conformance: tokens from `docs/design-tokens.json` (Ant Design v6,
 `frontend/src/common/theme.ts`); components from `docs/component-specs.md`. R02 shares
 screens/patterns with R01 (same component families) but with tenant-scoped content and

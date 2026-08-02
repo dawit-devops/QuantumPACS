@@ -30,6 +30,8 @@ Role {
   created_at: datetime
   updated_at: datetime
 }
+
+> **Code-verified (Aug 2026)**: the frontend currently reads `built_in` (not `is_builtin`), plus `name`, `slug`, `description`, `permissions`, `user_count`, `id`. The UI fully locks the role whose slug is `super_admin` (name, slug, description, and permissions all disabled).
 ```
 
 ### 34 Permission Slugs — 13 Resource Domains
@@ -67,6 +69,7 @@ Role {
 - Built-in role **description can be changed**
 - Built-in role **permission set can be modified** (except `admin`)
 - The `admin` role's permission set is immutable
+- The frontend additionally fully locks the role with slug `super_admin` (name, slug, description, permissions all disabled)
 
 ## UI Behavior Notes
 
@@ -98,6 +101,8 @@ Role {
 ## Uncertainties
 
 - [ ] When role permissions change, are all users with that role immediately affected?
+- [ ] Field names: the UI reads `built_in` and `user_count` — confirm the API uses those exact shapes (earlier notes here mention `is_builtin`).
+- [ ] Can built-in roles other than `super_admin` have their name/slug edited? The UI currently permits it (only `super_admin` is fully locked).
 - [ ] Can I change the name of a built-in role or just the description?
 - [ ] How do I know which users have a given role?
 - [ ] Is there a way to test a role's effective permissions before applying?

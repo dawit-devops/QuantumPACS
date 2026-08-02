@@ -1,9 +1,24 @@
 # R03 — Radiology & Imaging Service Director Requirements Package
 
-**Version**: 1.0.0 (v3.0 scope)
-**Status**: Final
-**Date**: 2026-08-02
-**Author**: pacs-requirements-architect skill pipeline
+| Field | Value |
+|-------|-------|
+| **Version** | 1.2.0 |
+| **Status** | approved |
+| **Generated** | 2026-08-03 |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
+
+---
+
+## Codebase Alignment (verified 2026-08-03)
+
+**Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
+Navigation". Today the service director can only view `/metrics` + `/dashboard/metrics`
+(read-only) plus Files. **All KPI/capacity/protocol/SLA dashboards, report builder,
+exports, and dashboard-access audit are GATED** — no analytics endpoints exist.
+
+**Implemented**: Metrics dashboard (platform). **GATED**: FR-R03-01..05, FR-R03-10,
+FR-R03-12, FR-R03-14, FR-R03-15 + all v3.1 items (needs `ANALYTICS_*`/`REPORT_*`
+permissions + endpoints flagged to backend).
 
 ---
 
@@ -33,6 +48,8 @@
 | 04 | `04-ui-ux-requirements.md` | Screen inventory, component state matrix, design token references (existing + proposed), A11y, responsive | **Complete** |
 | 05 | `05-metrics-slas.md` | Quantified KPIs (M-R03-NN) with targets, measurement methods, frequency, owners; SLA tiers | **Complete** |
 | 06 | `06-acceptance-criteria.md` | Validator-gated AC matrix mapped to FR/NFR IDs; verification methods; out-of-scope | **Complete (v3.0 Must ACs)** |
+| 07 | `07-traceability.md` | FR/NFR → AC traceability, cross-artifact dependencies, cross-role dependencies, integration contracts | **Complete** |
+| 08 | `08-implementation-roadmap.md` | Dependency-ordered implementation plan with status (done/partial/missing) per artifact | **Complete** |
 
 ---
 
@@ -122,7 +139,7 @@ Add to `PERMISSION_GROUPS['Analytics']` and new `service_director` built-in role
 
 ## Quality Gate Checklist
 
-- [x] All 6 artifacts exist with correct ID prefixes (FR-R03, NFR-R03, US-R03, AC-R03, M-R03)
+- [x] All 8 files exist with correct ID prefixes (FR-R03, NFR-R03, US-R03, AC-R03, M-R03)
 - [x] Every FR has ≥1 AC; every AC links to FR/NFR
 - [x] All 4 states (loading/empty/error/success) specified per data widget
 - [x] Performance targets quantified (LCP ≤2.5s, freshness ≤5min, export ≤30s/60s)

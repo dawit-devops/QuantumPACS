@@ -1,5 +1,38 @@
 # UI/UX Requirements — Staff Radiologist (R12)
 
+## Role-Based Routing & Navigation (Presentation Layer)
+
+RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gated
+`Sidebar.tsx` items). Verified against `frontend/src/`.
+
+### Routes Accessible (codebase reality)
+
+| Route | Screen | Access rule |
+|-------|--------|-------------|
+| `/` | Files / study search | Any authenticated user |
+| `/files/:id` | Viewer (Detail) — Image/Data/Share/Changes/Admin tabs | `FILE_READ`; Admin tab only with `USER_ADMIN` |
+| `/patients/:id` | Patient page | `PATIENT_READ` |
+| `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
+| `/account` | Account | Any authenticated user |
+| `/view/:key` | Share-link viewer (read-only, Image tab only) | `tempKey` (no auth) |
+| `/reporting/*`, resident-review, peer-review | **Not accessible** | No reporting/review routes or endpoints exist — GATED |
+
+### Navigation Gating (Sidebar.tsx)
+
+| Menu item | Visible when |
+|-----------|--------------|
+| Files / Metrics / Account / Notifications | Always (authenticated) |
+| Worklist (under Admin) | `WORKLIST_READ` |
+
+### Functionality Gating
+
+- **Implemented**: viewer + tools, multi-series navigation, annotations (client
+  sync; persistence endpoint to confirm), study metadata + change history, patient
+  context, share links, audit.
+- **Not implemented** (aspirational FRs marked `GATED` in 01/07/08): structured
+  reporting (create/sign), critical-findings escalation, resident attending-review
+  queue, peer-review inbox, dedicated priors endpoint.
+
 Design-system conformance: tokens from `docs/design-tokens.json`; components from
 `docs/component-specs.md`. The viewer is a specialized surface (Cornerstone3D) —
 apply design-system tokens to chrome (toolbars, panels, worklist), and clinical

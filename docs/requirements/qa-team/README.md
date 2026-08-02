@@ -1,9 +1,25 @@
 # R05 — Radiology & Imaging Service QI/QA Team Requirements Package
 
-**Version**: 1.0.0 (v3.0 scope)
-**Status**: Final
-**Date**: 2026-08-02
-**Author**: pacs-requirements-architect skill pipeline
+| Field | Value |
+|-------|-------|
+| **Version** | 1.2.0 |
+| **Status** | draft |
+| **Generated** | 2026-08-03 |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
+
+---
+
+## Codebase Alignment (verified 2026-08-03)
+
+**Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
+Navigation". **None of the QA-specific screens exist** in the codebase — no `/qa/*`
+routes, no `qa_*` tables, no `qa_team` built-in role, no `QA_*` permission slugs.
+QA reviewers today can only view studies in the Files browser + viewer (read-only).
+
+**Implemented**: shared Files/viewer (study browsing for QA review). **GATED**
+(kept as v3.0 spec): FR-R05-01..08, FR-R05-10..13 — all QA queue/review/protocol/
+incident/corrective-action/peer-review features; requires backend QA module
+(endpoints + 5 tables) and `QA_READ`/`QA_WRITE`/`PROTOCOL_MANAGE` permissions.
 
 ---
 
@@ -33,6 +49,8 @@
 | 04 | `04-ui-ux-requirements.md` | Screen inventory (6 screens), component state matrix, design token references (existing + 4 proposed), A11y, responsive | **Complete** |
 | 05 | `05-metrics-slas.md` | Quantified KPIs (M-R05-NN) with targets, measurement methods, frequency, owners; SLA tiers | **Complete (14 KPIs)** |
 | 06 | `06-acceptance-criteria.md` | Validator-gated AC matrix mapped to FR/NFR IDs; verification methods; out-of-scope | **Complete (~95 v3.0 ACs)** |
+| 07 | `07-traceability.md` | FR/NFR → AC traceability, cross-artifact dependencies, cross-role dependencies, integration contracts | **Complete** |
+| 08 | `08-implementation-roadmap.md` | Dependency-ordered implementation plan with status (done/partial/missing) per artifact | **Complete** |
 
 ---
 
@@ -240,7 +258,7 @@ CREATE INDEX idx_peer_reviews_discrepancy ON peer_reviews(discrepancy_level) WHE
 
 ## Quality Gate Checklist
 
-- [x] All 7 files exist with correct ID prefixes (FR-R05, NFR-R05, US-R05, AC-R05, M-R05)
+- [x] All 8 files exist with correct ID prefixes (FR-R05, NFR-R05, US-R05, AC-R05, M-R05)
 - [x] Every FR has ≥1 AC; every AC links to FR/NFR
 - [x] All 4 states (loading/empty/error/success) specified per form/table
 - [x] Performance targets quantified (LCP ≤2s, submit ≤500ms, queue ≤1min)

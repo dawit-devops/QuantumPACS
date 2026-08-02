@@ -18,10 +18,13 @@ The Detail/Viewer page at `/files/{id}` is the core diagnostic interface. Used p
 - Current series total image count and position
 - Patient name, ID for overlay
 - Study description, series number for context
+- The full patient → study → series → file path for the file being viewed, including sibling studies/series/files so the breadcrumb dropdowns can jump between them
+- A thumbnail image per file in the current series (parallel loads, individually tolerant to failure)
 
 **Actions**:
 - Load and render DICOM images in Cornerstone3D viewport
 - Navigate between instances in a series (scroll, arrow keys, thumbnail click)
+- Jump between patients/studies/series/files via the breadcrumb dropdowns
 - Switch tools: Pan, Zoom, WW/WL, Length, Angle, Arrow, Rectangle ROI, Ellipse ROI, Eraser
 - Apply viewer controls: Rotate 90°, Flip H/V, Invert
 - Save annotations → persist to server
@@ -56,8 +59,9 @@ The Detail/Viewer page at `/files/{id}` is the core diagnostic interface. Used p
 - Paginated (20 items per page currently)
 
 **Actions**:
-- Browse/search through DICOM tags
-- Edit specific tags (if FILE_WRITE permission)
+- Browse/search through DICOM tags (client-side filter by tag prefix)
+
+> Read-only key/value table — inline tag editing was removed (Sprint 3, Q-C1); tag edits happen through a separate tag API, not this table.
 
 **States to handle**:
 - Loading: spinner
@@ -88,8 +92,9 @@ The Detail/Viewer page at `/files/{id}` is the core diagnostic interface. Used p
 
 **Business rules affecting UI**:
 - Share key = 64-char hex string
-- Duration configurable at creation
+- Duration configurable at creation (UI offers 1–8760 hours)
 - Expired links return 401
+- Existing-links list shows created time, expiry, key/hash, and active status; revoke removes the link immediately
 - Share-key mode: viewer-only (Image tab only, no other tabs, no download, no sidebar)
 - Requires FILE_WRITE to create shares
 
@@ -99,7 +104,7 @@ The Detail/Viewer page at `/files/{id}` is the core diagnostic interface. Used p
 
 **Data I need to display**:
 - Chronological list of events for this file
-- Each event: timestamp (UTC), user who performed it, event type, description
+- Each event: timestamp (epoch seconds, rendered in UTC), username, event type
 - Event types: read, download, annotations changed, tag edits
 - Paginated list
 
@@ -140,6 +145,7 @@ The Detail/Viewer page at `/files/{id}` is the core diagnostic interface. Used p
 ## Uncertainties
 
 - [ ] Does the WADO-RS endpoint support progressive/lossy image loading (low-res first)?
+- [ ] Thumbnails are fetched per file with no auth token in the URL (relying on the same-site session cookie) — confirm they are only reachable by authenticated viewers.
 - [ ] Are share links per-file or per-study? Current UI shows per-file but comment suggests per-study.
 - [ ] Should I support saving partial annotations or only full tools_state replacement?
 - [ ] For multi-frame DICOM, is each frame a separate file or is it one file with multiple frames?
