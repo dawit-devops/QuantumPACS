@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router";
 import { AuthProvider } from "../auth/AuthContext";
@@ -30,16 +30,6 @@ vi.mock("react-chartjs-2", () => ({
   Bar: () => <div data-testid="mock-bar-chart">Bar Chart</div>,
   Line: () => <div data-testid="mock-line-chart">Line Chart</div>,
 }));
-
-function renderWithAuth(ui: React.ReactElement) {
-  return renderWithApp(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
-  );
-}
 
 const mockData = {
   totals: {

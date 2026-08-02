@@ -1,6 +1,9 @@
 import React from "react";
 import { App } from "antd";
 import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { AuthProvider } from "../auth/AuthContext";
+import { ThemeProvider } from "../common/ThemeProvider";
 
 // antd v6 removed the static-message fallback for App.useApp(), so every
 // render of a component that toasts must sit under <App> or the holder
@@ -15,4 +18,20 @@ export const renderWithApp = (ui: React.ReactElement) => {
     ...result,
     rerender: (next: React.ReactElement) => result.rerender(<App>{next}</App>),
   };
+};
+
+// (T-L1) Shared wrapper for the standard ThemeProvider + AuthProvider +
+// MemoryRouter stack that used to be copy-pasted into every suite.
+// initialEntries lets suites start on a specific route (FilesQido, Sidebar).
+export const renderWithAuth = (
+  ui: React.ReactElement,
+  { initialEntries }: { initialEntries?: string[] } = {},
+) => {
+  return renderWithApp(
+    <ThemeProvider>
+      <AuthProvider>
+        <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
+      </AuthProvider>
+    </ThemeProvider>,
+  );
 };

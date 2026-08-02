@@ -98,7 +98,7 @@ Legend: ✅ done (merged PR) · 🔲 planned
 
 ---
 
-## Sprint 6: P2/P3 Backlog Sweep (ongoing) — IN PROGRESS (A-5..P-M11 committed)
+## Sprint 6: P2/P3 Backlog Sweep (ongoing) — IN PROGRESS (A-5..P-M11, T-*, D-M5/D-M9..M11 committed)
 
 ~4-5 days, highest-value rows first; remaining L-items fold in as time permits.
 
@@ -111,8 +111,8 @@ Legend: ✅ done (merged PR) · 🔲 planned
 | P-M2 / P-M3 / P-M4 | Logs unbounded DOM; Files duplicate mount fetch + stale-closure pagination; QIDO unbounded | `src/logs/`, `src/files/`, `src/detail/` | Virtualize; fix fetch/pagination; cap QIDO results | ✅ |
 | P-M5 / P-M6 / P-M8 / P-M11 | ThumbnailStrip eager 200-GET; column configs per render; batch ops N-concurrent; Hl7Dashboard 4 endpoints on mount | `src/detail/ThumbnailStrip.tsx`, `src/common/`, `src/files/` | Lazy thumbs; memoized configs; concurrency cap; coalesced loads | ✅ |
 | Q-6..Q-21 | Worklist 676 LOC / double filtering; `let`×186; hooks.ts near-dead; `catch {}`×14; `request()` undefined; parseParams no decode; batch false success | `src/worklist/Worklist.tsx`, `src/hooks.ts`, `src/**` | Code-quality batch, strongest by LOC-to-value | ✅ |
-| T-M1..T-M4 / T-L1..L4 | useFetch untested; NotificationBell error paths; permission-gating contract; empty/denied/error UI; selector/duplication/phantom-fetch/matchMedia fixes | `src/test/` | Test gaps for refactored components | 🔲 |
-| D-M5 / D-M9..M11 | Config divergence; alerting/backup timer; backup_db.sh wrong ports | `scripts/*`, `docs/ops-guide.md` | Config templates; timer unit; port defaults | 🔲 |
+| T-M1..T-M4 / T-L1..L4 | useFetch untested; NotificationBell error paths; permission-gating contract; empty/denied/error UI; selector/duplication/phantom-fetch/matchMedia fixes | `src/test/` | Test gaps for refactored components | ✅ |
+| D-M5 / D-M9..M11 | Config divergence; alerting/backup timer; backup_db.sh wrong ports | `scripts/*`, `docs/ops-guide.md` | Config templates; timer unit; port defaults | ✅ |
 | D-M1..M4 / D-H1..D-H4 | docs: why-comments in 92/105 files; README inaccuracies; `docs/version-3 plans/` stale; no changelog; CLAUDE.md/ADR-006 drift; IMPLEMENTATION_PLAN-v3 stale; ADRs (WS/share-link/token-storage) | `docs/`, `README.md`, `CLAUDE.md` | Doc refresh + ADRs + why-comments on 3 most complex files | 🔲 |
 | L-* | All low-priority rows (code A-10..17, security L1-7, perf L1-4, testing L1-4, docs L1-2, best-practices L1-9, CI/CD L1-6) | `src/**`, `scripts/*`, `docs/*` | Backlog queue; fold into sprints opportunistically | 🔲 |
 

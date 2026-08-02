@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -82,16 +82,6 @@ describe("Users", () => {
     mockResetPassword.mockResolvedValue({ password: "newpass" });
   });
 
-  function renderWithAuth(ui: React.ReactElement) {
-    return renderWithApp(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
-
   it("renders Role column header", async () => {
     renderWithAuth(<Users />);
 
@@ -125,5 +115,41 @@ describe("Users", () => {
     await user.click(option!);
 
     expect(mockAssignRole).toHaveBeenCalledWith(1, 3);
+  });
+
+  it("renders an error state when listUsers fails (T-M4)", async () => {
+    mockListUsers.mockRejectedValue(new Error("backend unreachable"));
+    renderWithAuth(<Users />);
+
+    expect(await screen.findByText(/backend unreachable/)).toBeInTheDocument();
+  });
+
+  it("renders an empty state when there are no users (T-M4)", async () => {
+    mockListUsers.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      per_page: 20,
+      total_pages: 0,
+    });
+    renderWithAuth(<Users />);
+
+    expect(await screen.findByText(/No data/)).toBeInTheDocument();
+  });
+
+  it("surfaces a message when role assignment fails (T-M4)", async () => {
+    const user = userEvent.setup();
+    mockAssignRole.mockRejectedValue(new Error("denied"));
+    renderWithAuth(<Users />);
+    await screen.findByText("Technologist");
+
+    const selects = screen.getAllByRole("combobox");
+    await user.click(selects[0]);
+    const option = screen
+      .getAllByText("Radiologist")
+      .find((el) => el.closest(".ant-select-item-option"));
+    await user.click(option!);
+
+    expect(await screen.findByText(/denied/)).toBeInTheDocument();
   });
 });

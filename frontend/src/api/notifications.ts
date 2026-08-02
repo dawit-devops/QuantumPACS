@@ -1,13 +1,15 @@
 import { request } from "./client";
 
+// Matches backend/db/notifications.py: notifications are stored and
+// returned with event_type/title/body/link — not a generic type/message pair.
 export interface Notification {
-  id: number;
-  type: string;
-  title?: string;
-  message?: string;
+  id: string;
+  event_type: string;
+  title: string;
+  body?: string;
+  link?: string;
   read: boolean;
   created_at?: string;
-  data?: Record<string, unknown>;
 }
 
 export const getUnreadCount = (): Promise<number> =>

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import { beforeEach } from "vitest";
 
 const noop = () => {};
 const originalWarn = console.warn;
@@ -11,6 +12,13 @@ console.warn = (msg: unknown, ...args: unknown[]) => {
     return;
   originalWarn(msg, ...args);
 };
+
+// (T-L1) Tests must not leak state between tests: auth tokens, tenant
+// selection and the session tempKey all live in storage.
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 if (typeof globalThis.localStorage === "undefined") {
   const store: Record<string, string> = {};
@@ -32,19 +40,55 @@ if (typeof globalThis.localStorage === "undefined") {
   };
 }
 
-const _origMatchMedia = window.matchMedia;
+// (T-L1) Honest matchMedia: evaluate min/max-width against the real
+// window.innerWidth instead of hardcoding which queries match. antd's
+// useBreakpoint derives `lg` from these results (base.tsx, Sidebar.tsx).
+// Widths may be fractional ("screen and (max-width: 991.98px)" from
+// antd's Sider), so the number group allows decimals.
 window.matchMedia = function matchMedia(query: string): MediaQueryList {
-  const isDesktop = query.includes("min-width: 992");
-  return {
+  const width = window.innerWidth;
+  const minMatch = query.match(/min-width:\s*(\d+(?:\.\d+)?)px/);
+  const maxMatch = query.match(/max-width:\s*(\d+(?:\.\d+)?)px/);
+  let matches = true;
+  if (minMatch) matches = matches && width >= Number(minMatch[1]);
+  if (maxMatch) matches = matches && width <= Number(maxMatch[1]);
+  const listeners = new Set<(e: MediaQueryListEvent) => void>();
+  const mql: MediaQueryList = {
     media: query,
-    matches: isDesktop,
+    matches,
     onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => isDesktop,
+    addListener: (cb) => {
+      if (typeof cb === "function") {
+        listeners.add(cb as (e: MediaQueryListEvent) => void);
+      }
+    },
+    removeListener: (cb) => {
+      if (typeof cb === "function") {
+        listeners.delete(cb as (e: MediaQueryListEvent) => void);
+      }
+    },
+    addEventListener: (
+      _type: string,
+      cb: EventListenerOrEventListenerObject | null,
+    ) => {
+      if (typeof cb === "function") {
+        listeners.add(cb as (e: MediaQueryListEvent) => void);
+      }
+    },
+    removeEventListener: (
+      _type: string,
+      cb: EventListenerOrEventListenerObject | null,
+    ) => {
+      if (typeof cb === "function") {
+        listeners.delete(cb as (e: MediaQueryListEvent) => void);
+      }
+    },
+    dispatchEvent: (e: Event) => {
+      listeners.forEach((l) => l(e as MediaQueryListEvent));
+      return true;
+    },
   };
+  return mql;
 };
 
 class ResizeObserverMock {
@@ -54,15 +98,14 @@ class ResizeObserverMock {
 }
 (globalThis as any).ResizeObserver = ResizeObserverMock;
 
-(globalThis as any).fetch =
-  (globalThis as any).fetch ||
-  function fetch() {
-    return Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({}),
-    });
-  };
+// (T-L1) Fail loudly instead of silently succeeding: a phantom 200 makes
+// unmocked fetch calls look like successful API responses. Suites that
+// exercise request() stub fetch explicitly (helpers.test.ts, dicomweb.test.ts).
+(globalThis as any).fetch = () => {
+  throw new Error(
+    "fetch called without a stub — mock the api module or vi.stubGlobal('fetch', ...) in this test",
+  );
+};
 
 if (typeof globalThis.requestAnimationFrame === "undefined") {
   globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {

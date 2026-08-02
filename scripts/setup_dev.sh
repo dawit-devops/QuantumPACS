@@ -99,7 +99,7 @@ if [ ! -f "$ENV_FILE" ]; then
 db_host: 127.0.0.1
 db_port: $CONTAINER_PORT
 db_user: quantumpacs
-db_password: pa55w0rd
+db_password: ${POSTGRES_PASSWORD:-pa55w0rd}
 db_database: quantumpacs
 redis_host: localhost
 redis_port: 6379
@@ -214,7 +214,7 @@ echo -e "${BOLD}=== Setup Complete ===${NC}"
 echo ""
 echo "  Backend:  http://localhost:8080 (status: $STATUS)"
 echo "  Frontend: http://localhost:5173 (HTTP $FRONTEND_CODE)"
-echo "  DB:       postgresql://quantumpacs:pa55w0rd@127.0.0.1:$CONTAINER_PORT/quantumpacs"
+echo "  DB:       postgresql://quantumpacs:${POSTGRES_PASSWORD:-pa55w0rd}@127.0.0.1:$CONTAINER_PORT/quantumpacs"
 echo "  Redis:    localhost:6379"
 echo ""
 echo "  Health endpoints:"

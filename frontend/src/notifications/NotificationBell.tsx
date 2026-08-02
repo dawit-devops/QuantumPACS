@@ -25,6 +25,7 @@ import {
   markAllRead as markAllReadApi,
   deleteNotification,
   clearNotifications,
+  type Notification,
 } from "../api/notifications";
 import * as ws from "../ws";
 
@@ -45,7 +46,7 @@ function NotificationBell() {
   const { message } = App.useApp();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
-  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const navigate = useNavigate();
@@ -137,7 +138,7 @@ function NotificationBell() {
     }
   };
 
-  const handleClick = (n: any) => {
+  const handleClick = (n: Notification) => {
     if (!n.read) markRead(n.id);
     // (M4) The link arrives from the server — refuse anything that is not a
     // same-origin path so a compromised/buggy payload cannot navigate the SPA
@@ -190,7 +191,7 @@ function NotificationBell() {
           ) : (
             <List
               dataSource={notifs}
-              renderItem={(n: any) => (
+              renderItem={(n: Notification) => (
                 <List.Item
                   style={{
                     cursor: n.link ? "pointer" : "default",

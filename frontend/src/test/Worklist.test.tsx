@@ -6,7 +6,7 @@ import {
   waitFor,
   fireEvent,
 } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -132,16 +132,6 @@ describe("Worklist", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
-
-  function renderWithAuth(ui: React.ReactElement) {
-    return renderWithApp(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
 
   it("renders table with worklist entries from API", async () => {
     renderWithAuth(<Worklist />);
@@ -285,5 +275,38 @@ describe("Worklist", () => {
       },
       { timeout: 10000 },
     );
+  });
+
+  it("renders an error state when the list request fails (T-M4)", async () => {
+    mockListWorklist.mockRejectedValue(new Error("worklist down"));
+    renderWithAuth(<Worklist />);
+
+    expect(await screen.findByText(/worklist down/)).toBeInTheDocument();
+  });
+
+  it("renders an empty state when there are no entries (T-M4)", async () => {
+    mockListWorklist.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      per_page: 20,
+    });
+    renderWithAuth(<Worklist />);
+
+    expect(await screen.findByText(/No worklist entries/)).toBeInTheDocument();
+  });
+
+  it("shows an error message when cancel fails (T-M4)", async () => {
+    mockDeleteWorklistEntry.mockRejectedValue(new Error("delete denied"));
+    renderWithAuth(<Worklist />);
+    await waitForTable();
+
+    const mockSpans = document.querySelectorAll(".mock-popconfirm");
+    const cancelSpan = Array.from(mockSpans).find((s) =>
+      s.getAttribute("data-title")?.includes("Cancel"),
+    );
+    fireEvent.click(cancelSpan!);
+
+    expect(await screen.findByText(/delete denied/)).toBeInTheDocument();
   });
 });

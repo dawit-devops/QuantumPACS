@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { renderWithApp } from "./renderWithApp";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -36,16 +36,6 @@ vi.mock("../helpers", () => ({
   startRefreshTimer: () => {},
   stopRefreshTimer: () => {},
 }));
-
-function renderWithAuth(ui: React.ReactElement) {
-  return renderWithApp(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/"]}>{ui}</MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
-  );
-}
 
 describe("Sidebar", () => {
   beforeEach(() => {
