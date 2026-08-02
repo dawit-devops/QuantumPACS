@@ -115,7 +115,7 @@ function LoginForm(props: any) {
       const msg =
         error.status === 429
           ? "Too many login attempts. Please wait before trying again."
-          : error.error || error;
+          : error.message || error;
       message.error(msg);
       setTimeout(() => {
         const btn = document.querySelector(

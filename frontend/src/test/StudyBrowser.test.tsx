@@ -73,7 +73,7 @@ describe("StudyBrowser", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText("500")).toBeInTheDocument();
+        expect(screen.getByText("Server error")).toBeInTheDocument();
       },
       // request() retries GETs with exponential backoff (1s+2s+4s)
       { timeout: 12000 },

@@ -277,9 +277,12 @@ class FhirAdminTestHandler(HTTPEndpoint):
             })
         except Exception as e:
             elapsed = round((time.monotonic() - start) * 1000)
+            # httpx errors embed URLs/connection internals — bound the text so
+            # diagnostic payloads never carry unbounded exception content.
+            detail = str(e) or type(e).__name__
             return ok({
                 'reachable': False,
                 'status_code': 0,
                 'response_time_ms': elapsed,
-                'error': str(e),
+                'error': detail[:200],
             })

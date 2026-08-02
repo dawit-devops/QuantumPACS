@@ -5,7 +5,7 @@ import pytest
 
 from api.response import (
     ok, created, no_content, not_found,
-    validation_error, server_error, unauthorized, forbidden,
+    validation_error, server_error, unauthorized, forbidden, api_error,
 )
 
 
@@ -125,3 +125,38 @@ class TestResponseHelpers:
         body = resp.body.decode('utf-8')
         assert ',:' not in body
         assert ':' in body
+
+
+class TestApiError:
+    def test_object_envelope(self):
+        resp = api_error('VALIDATION_ERROR', 'Bad input', status=422)
+        assert resp.status_code == 422
+        body = json.loads(resp.body)
+        assert body == {
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Bad input',
+            }
+        }
+
+    def test_details_included(self):
+        resp = api_error('VALIDATION_ERROR', 'Bad input', details={'field': 'email'})
+        body = json.loads(resp.body)
+        assert body['error']['details'] == {'field': 'email'}
+
+    def test_no_details_when_none(self):
+        resp = api_error('AUTH_FAILED', 'Nope', status=401)
+        assert 'details' not in json.loads(resp.body)['error']
+
+    def test_request_id_on_5xx(self):
+        resp = api_error('SERVER_ERROR', 'Boom', status=500)
+        error = json.loads(resp.body)['error']
+        assert len(error['request_id']) == 8
+
+    def test_no_request_id_below_500(self):
+        resp = api_error('BAD_REQUEST', 'Nope', status=400)
+        assert 'request_id' not in json.loads(resp.body)['error']
+
+    def test_default_status_400(self):
+        resp = api_error('BAD_REQUEST', 'Nope')
+        assert resp.status_code == 400
