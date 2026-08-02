@@ -1,10 +1,6 @@
 import { API_URL } from "./config";
 
-export {
-  request,
-  handleResponse,
-  fetchWithRetry,
-} from "./api/client";
+export { request, handleResponse, fetchWithRetry } from "./api/client";
 export type { RequestOptions } from "./api/client";
 export {
   getAccessToken,
@@ -64,3 +60,27 @@ export const subscribe = (event: string, listener: EventListener): void => {
 export const isAdmin = (): boolean => {
   return localStorage.getItem("admin") === "true";
 };
+
+// (P-M8) Map a list through an async fn with at most `limit` in-flight
+// calls. Batch UI operations (bulk cancel, bulk performed, ...) would
+// otherwise fire N concurrent HTTP requests, hammering the server.
+export async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const i = next;
+      next += 1;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  );
+  return results;
+}

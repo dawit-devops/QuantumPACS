@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { LOADING_DELAY, API_URL } from "../config";
-import { fetchWithRetry, handleResponse, ApiError, RequestOptions } from "./client";
+import {
+  fetchWithRetry,
+  handleResponse,
+  ApiError,
+  RequestOptions,
+} from "./client";
 import { getAccessToken, tryRefreshToken } from "./session";
 import { navigate } from "../navigator";
 
@@ -59,9 +64,7 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
       finish();
     } catch (error: any) {
       const is401 =
-        error instanceof ApiError
-          ? error.status === 401
-          : error?.error === 401;
+        error instanceof ApiError ? error.status === 401 : error?.error === 401;
       if (is401) {
         const refreshed = await tryRefreshToken();
         if (refreshed) {

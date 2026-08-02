@@ -165,11 +165,9 @@ export const request = async <T = any>(
     return (await exec()) as T;
   } catch (error: any) {
     const is401 =
-      error instanceof ApiError
-        ? error.status === 401
-        : error?.error === 401;
+      error instanceof ApiError ? error.status === 401 : error?.error === 401;
     if (is401) {
-      const tempKey = localStorage.getItem("tempKey");
+      const tempKey = sessionStorage.getItem("tempKey");
       if (tempKey) {
         sessionStorage.setItem("shareKeyError", "expired");
       }

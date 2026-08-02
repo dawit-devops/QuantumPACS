@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { App,
+import {
+  App,
   Badge,
   Drawer,
   List,
@@ -25,6 +26,7 @@ import {
   deleteNotification,
   clearNotifications,
 } from "../api/notifications";
+import * as ws from "../ws";
 
 const { Text } = Typography;
 
@@ -70,8 +72,17 @@ function NotificationBell() {
 
   useEffect(() => {
     fetchUnread();
+    // (P-M1) The backend pushes a {'type': 'notifications'} event over the WS
+    // channel when a notification is created, so the badge refreshes
+    // immediately. The poll stays as a fallback for when the socket is down
+    // (e.g. behind a proxy that drops long-lived connections).
+    const onWsEvent = (data: any) => {
+      if (data?.type === "notifications") fetchUnread();
+    };
+    ws.addEventListener(onWsEvent);
     intervalRef.current = setInterval(fetchUnread, 30000);
     return () => {
+      ws.removeEventListener(onWsEvent);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
@@ -128,7 +139,10 @@ function NotificationBell() {
 
   const handleClick = (n: any) => {
     if (!n.read) markRead(n.id);
-    if (n.link) {
+    // (M4) The link arrives from the server — refuse anything that is not a
+    // same-origin path so a compromised/buggy payload cannot navigate the SPA
+    // to an external origin or a javascript: URL.
+    if (n.link && typeof n.link === "string" && /^\/(?!\/)/.test(n.link)) {
       setOpen(false);
       navigate(n.link);
     }

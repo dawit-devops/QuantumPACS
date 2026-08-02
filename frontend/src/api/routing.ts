@@ -24,8 +24,7 @@ export interface RoutingPage {
 
 export const listRoutingRules = (
   params: Record<string, string> = {},
-): Promise<RoutingPage> =>
-  request<RoutingPage>("routing", { query: params });
+): Promise<RoutingPage> => request<RoutingPage>("routing", { query: params });
 
 export const createRoutingRule = (
   data: Record<string, unknown>,

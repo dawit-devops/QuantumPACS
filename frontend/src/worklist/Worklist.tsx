@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Button,
@@ -24,6 +25,7 @@ import {
   TableOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import { mapLimit } from "../helpers";
 import {
   listWorklist,
   listStationAes,
@@ -200,7 +202,7 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleEdit = (entry: any) => {
+  const handleEdit = useCallback((entry: any) => {
     setEditingEntry(entry);
     form.setFieldsValue({
       ...entry,
@@ -213,7 +215,7 @@ function Worklist() {
         : null,
     });
     setVisible(true);
-  };
+  }, []);
 
   const handleUpdate = () => {
     form
@@ -260,7 +262,7 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleCancel = (id: string) => {
+  const handleCancel = useCallback((id: string) => {
     deleteWorklistEntry(id)
       .then(() => {
         fetch();
@@ -269,9 +271,9 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
-  const handleMarkPerformed = (id: string) => {
+  const handleMarkPerformed = useCallback((id: string) => {
     markWorklistPerformed(id)
       .then(() => {
         message.success("Marked as performed");
@@ -281,19 +283,18 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
   const handleBatchCancel = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
     // Track failures individually so a fully-failed batch reports failure
-    // instead of a false success (Q-17).
-    Promise.all(
-      ids.map((id) =>
-        deleteWorklistEntry(id as number).then(
-          () => true,
-          () => false,
-        ),
+    // instead of a false success (Q-17). Runs at most 4 concurrent requests
+    // so a large selection cannot fan out hundreds of calls (P-M8).
+    mapLimit(ids, 4, (id) =>
+      deleteWorklistEntry(id as number).then(
+        () => true,
+        () => false,
       ),
     ).then((results) => {
       setBatchLoading(false);
@@ -301,7 +302,9 @@ function Worklist() {
       const failed = ids.length - ok;
       setSelectedRowKeys(ids.filter((_, i) => !results[i]));
       if (failed > 0) {
-        message.error(`Cancelled ${ok}/${ids.length} entries (${failed} failed)`);
+        message.error(
+          `Cancelled ${ok}/${ids.length} entries (${failed} failed)`,
+        );
       } else {
         message.success(`Cancelled ${ok} entries`);
       }
@@ -312,12 +315,10 @@ function Worklist() {
   const handleBatchPerformed = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
-    Promise.all(
-      ids.map((id) =>
-        markWorklistPerformed(id as number).then(
-          () => true,
-          () => false,
-        ),
+    mapLimit(ids, 4, (id) =>
+      markWorklistPerformed(id as number).then(
+        () => true,
+        () => false,
       ),
     ).then((results) => {
       setBatchLoading(false);
@@ -325,7 +326,9 @@ function Worklist() {
       const failed = ids.length - ok;
       setSelectedRowKeys(ids.filter((_, i) => !results[i]));
       if (failed > 0) {
-        message.error(`Marked ${ok}/${ids.length} performed (${failed} failed)`);
+        message.error(
+          `Marked ${ok}/${ids.length} performed (${failed} failed)`,
+        );
       } else {
         message.success(`Marked ${ok} entries as performed`);
       }
@@ -355,117 +358,122 @@ function Worklist() {
   // The server already filters by the active status tab (query.status), so
   // data is exactly the current view — no client-side re-filter (Q-7).
 
-  const columns: any[] = [
-    {
-      title: "Patient Name",
-      dataIndex: "patient_name",
-      width: "14%",
-      render: (v: string) => v || "-",
-    },
-    { title: "Patient ID", dataIndex: "patient_id", width: "8%" },
-    { title: "Accession #", dataIndex: "accession_number", width: "9%" },
-    {
-      title: "Proc ID",
-      dataIndex: "requested_procedure_id",
-      width: "7%",
-      render: (v: string) => v || "-",
-    },
-    { title: "Modality", dataIndex: "modality", width: "6%" },
-    {
-      title: "Scheduled Date",
-      dataIndex: "scheduled_date",
-      width: "9%",
-      render: (d: string) => d || "-",
-    },
-    {
-      title: "Station AE",
-      dataIndex: "station_ae_title",
-      width: "10%",
-      render: (v: string) => (v ? <Tag style={{ margin: 0 }}>{v}</Tag> : "-"),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      width: "7%",
-      render: (s: string) =>
-        s ? <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag> : null,
-    },
-    {
-      title: "Study UID",
-      dataIndex: "study_uid",
-      width: "10%",
-      render: (v: string) =>
-        v ? (
-          <Tag style={{ margin: 0, fontFamily: "monospace", fontSize: 11 }}>
-            {v.slice(0, 20)}…
-          </Tag>
-        ) : (
-          "-"
-        ),
-    },
-    {
-      title: "Performed",
-      dataIndex: "performed_at",
-      width: "9%",
-      render: (v: string) => (v ? new Date(v).toLocaleString() : "-"),
-    },
-    {
-      title: "Action",
-      key: "action",
-      width: "11%",
-      render: (_: any, record: any) => (
-        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Tooltip title="Edit">
-            <EditOutlined
-              onClick={() => handleEdit(record)}
-              style={{ cursor: "pointer", fontSize: 16 }}
-            />
-          </Tooltip>
-          {record.status === "scheduled" && (
-            <>
-              <Popconfirm
-                title="Mark as performed?"
-                onConfirm={() => handleMarkPerformed(record.id)}
-              >
-                <Tooltip title="Mark performed">
-                  <CheckCircleOutlined
-                    style={{
-                      cursor: "pointer",
-                      color: "#16a34a",
-                      fontSize: 16,
-                    }}
-                  />
-                </Tooltip>
-              </Popconfirm>
-              <Popconfirm
-                title="Cancel this entry?"
-                onConfirm={() => handleCancel(record.id)}
-              >
-                <Tooltip title="Cancel">
-                  <CloseCircleOutlined
-                    style={{
-                      cursor: "pointer",
-                      color: "#dc2626",
-                      fontSize: 16,
-                    }}
-                  />
-                </Tooltip>
-              </Popconfirm>
-            </>
-          )}
-          {record.status === "performed" && (
-            <Tooltip
-              title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
-            >
-              <CheckCircleOutlined
-                style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+  // (P-M6) Columns are stable across renders — memoize so the Table doesn't
+  // re-render its full cell set on every state change (e.g. each keystroke).
+  const columns: any[] = useMemo(
+    () => [
+      {
+        title: "Patient Name",
+        dataIndex: "patient_name",
+        width: "14%",
+        render: (v: string) => v || "-",
+      },
+      { title: "Patient ID", dataIndex: "patient_id", width: "8%" },
+      { title: "Accession #", dataIndex: "accession_number", width: "9%" },
+      {
+        title: "Proc ID",
+        dataIndex: "requested_procedure_id",
+        width: "7%",
+        render: (v: string) => v || "-",
+      },
+      { title: "Modality", dataIndex: "modality", width: "6%" },
+      {
+        title: "Scheduled Date",
+        dataIndex: "scheduled_date",
+        width: "9%",
+        render: (d: string) => d || "-",
+      },
+      {
+        title: "Station AE",
+        dataIndex: "station_ae_title",
+        width: "10%",
+        render: (v: string) => (v ? <Tag style={{ margin: 0 }}>{v}</Tag> : "-"),
+      },
+      {
+        title: "Status",
+        dataIndex: "status",
+        width: "7%",
+        render: (s: string) =>
+          s ? <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag> : null,
+      },
+      {
+        title: "Study UID",
+        dataIndex: "study_uid",
+        width: "10%",
+        render: (v: string) =>
+          v ? (
+            <Tag style={{ margin: 0, fontFamily: "monospace", fontSize: 11 }}>
+              {v.slice(0, 20)}…
+            </Tag>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        title: "Performed",
+        dataIndex: "performed_at",
+        width: "9%",
+        render: (v: string) => (v ? new Date(v).toLocaleString() : "-"),
+      },
+      {
+        title: "Action",
+        key: "action",
+        width: "11%",
+        render: (_: any, record: any) => (
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Tooltip title="Edit">
+              <EditOutlined
+                onClick={() => handleEdit(record)}
+                style={{ cursor: "pointer", fontSize: 16 }}
               />
             </Tooltip>
-          )}
-        </span>
-      ),
-    },
-  ];
+            {record.status === "scheduled" && (
+              <>
+                <Popconfirm
+                  title="Mark as performed?"
+                  onConfirm={() => handleMarkPerformed(record.id)}
+                >
+                  <Tooltip title="Mark performed">
+                    <CheckCircleOutlined
+                      style={{
+                        cursor: "pointer",
+                        color: "#16a34a",
+                        fontSize: 16,
+                      }}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+                <Popconfirm
+                  title="Cancel this entry?"
+                  onConfirm={() => handleCancel(record.id)}
+                >
+                  <Tooltip title="Cancel">
+                    <CloseCircleOutlined
+                      style={{
+                        cursor: "pointer",
+                        color: "#dc2626",
+                        fontSize: 16,
+                      }}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+              </>
+            )}
+            {record.status === "performed" && (
+              <Tooltip
+                title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
+              >
+                <CheckCircleOutlined
+                  style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+                />
+              </Tooltip>
+            )}
+          </span>
+        ),
+      },
+    ],
+    [handleEdit, handleCancel, handleMarkPerformed],
+  );
 
   const rowSelection = {
     selectedRowKeys,
@@ -488,9 +496,7 @@ function Worklist() {
           clip: "rect(0,0,0,0)",
         }}
       >
-        {loading
-          ? "Loading worklist"
-          : `${data.length} worklist entries`}
+        {loading ? "Loading worklist" : `${data.length} worklist entries`}
       </div>
 
       <div className="worklist-toolbar">

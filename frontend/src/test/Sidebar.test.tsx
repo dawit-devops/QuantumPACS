@@ -126,7 +126,7 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("access_token", "a");
     localStorage.setItem("refresh_token", "r");
-    localStorage.setItem("tempKey", "share-temp");
+    sessionStorage.setItem("tempKey", "share-temp");
     renderWithAuth(<Sidebar />);
 
     await user.click(screen.getByText("Logout"));
@@ -135,6 +135,6 @@ describe("Sidebar", () => {
     expect(localStorage.getItem("userId")).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
-    expect(localStorage.getItem("tempKey")).toBeNull();
+    expect(sessionStorage.getItem("tempKey")).toBeNull();
   });
 });

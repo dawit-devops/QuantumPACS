@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Button, Modal, Form, Input, Select, message, App, InputNumber } from "antd";
+import {
+  Button,
+  Modal,
+  Form,
+  Input,
+  Select,
+  message,
+  App,
+  InputNumber,
+} from "antd";
 import { createReplica } from "../api/replicas";
 
 const Option = Select.Option;

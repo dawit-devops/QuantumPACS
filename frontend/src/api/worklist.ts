@@ -32,8 +32,7 @@ export interface StationAe {
 
 export const listWorklist = (
   query: Record<string, string>,
-): Promise<WorklistPage> =>
-  request<WorklistPage>("worklist", { query });
+): Promise<WorklistPage> => request<WorklistPage>("worklist", { query });
 
 export const listStationAes = (): Promise<StationAe[]> =>
   request<StationAe[]>("worklist/station-aes", { method: "GET" });

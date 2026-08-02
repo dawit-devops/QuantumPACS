@@ -129,7 +129,9 @@ describe("CornerstoneElement", () => {
   });
 
   it("renders viewport element", () => {
-    const { container } = renderWithApp(<CornerstoneElement {...defaultProps} />);
+    const { container } = renderWithApp(
+      <CornerstoneElement {...defaultProps} />,
+    );
     const viewportEl = container.querySelector(".viewportElement");
     expect(viewportEl).toBeInTheDocument();
   });
@@ -168,7 +170,9 @@ describe("CornerstoneElement", () => {
   it("uses wadoRsImage when provided instead of fallback image", () => {
     const wadoRsUrl =
       "wadors:https://pacs.example.com/dicomweb/studies/1.2.3/series/4.5.6/instances/7.8.9";
-    renderWithApp(<CornerstoneElement {...defaultProps} wadoRsImage={wadoRsUrl} />);
+    renderWithApp(
+      <CornerstoneElement {...defaultProps} wadoRsImage={wadoRsUrl} />,
+    );
     expect(screen.getByText(/Zoom/)).toBeInTheDocument();
   });
 
@@ -215,7 +219,9 @@ describe("CornerstoneElement", () => {
 
   it("swaps the stack and purges the image cache when the image changes", async () => {
     const { cache } = await import("@cornerstonejs/core");
-    const { rerender } = renderWithApp(<CornerstoneElement {...defaultProps} />);
+    const { rerender } = renderWithApp(
+      <CornerstoneElement {...defaultProps} />,
+    );
     await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
 
     const newUrl = "wadors:https://pacs.example.com/dicomweb/new/instance";

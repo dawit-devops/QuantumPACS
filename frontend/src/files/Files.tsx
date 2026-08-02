@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import Highlighter from "react-highlight-words";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Input,
@@ -29,6 +30,10 @@ const Content = Layout.Content;
 // columns render from string keys, so the row type is a string map.
 export type FileRow = Record<string, string>;
 
+// (P-M4) Hard ceiling on QIDO results rendered in the table; prevents an
+// unbounded study list from ballooning the DOM.
+const QIDO_RESULT_CAP = 100;
+
 const Search = Input.Search;
 
 function encodeUrl(obj: Record<string, unknown>) {
@@ -37,7 +42,13 @@ function encodeUrl(obj: Record<string, unknown>) {
 
 function decodeUrl(url: string): Record<string, unknown> {
   if (!url.length) return {};
-  return JSON.parse(decodeURIComponent(url.slice(1)));
+  try {
+    return JSON.parse(decodeURIComponent(url.slice(1)));
+  } catch {
+    // A truncated or hand-edited search string must not crash the browser
+    // (M2) — fall back to an empty search instead.
+    return {};
+  }
 }
 
 const initialAdvancedFields = [
@@ -157,8 +168,11 @@ function Files() {
   const fetchQidoResults = (
     qidoParams: Record<string, string>,
   ): Promise<FileRow[]> => {
-    return qidoSearch(qidoParams).then((results) =>
-      dicomJsonToFlat(results),
+    // (P-M4) Explicit limit: the backend caps at 100 by default, but passing
+    // it keeps the frontend contract stable if that default ever changes.
+    const capped = { ...qidoParams, limit: String(QIDO_RESULT_CAP) };
+    return qidoSearch(capped).then((results) =>
+      dicomJsonToFlat(results).slice(0, QIDO_RESULT_CAP),
     );
   };
 
@@ -191,8 +205,11 @@ function Files() {
           setLoading(false);
           if (results.length > 0) {
             setData(results);
-            setPagination(
-              Object.assign({}, pagination, { total: results.length }),
+            // Functional update: `pagination` in this closure may be stale
+            // (P-M3) — merging total into the latest state avoids resurrecting
+            // an old page after a race between search and page change.
+            setPagination((prev) =>
+              Object.assign({}, prev, { total: results.length }),
             );
             return;
           }
@@ -214,13 +231,9 @@ function Files() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
-  useEffect(() => {
-    setPagination(
-      Object.assign({}, pagination, { pageSize: PAGINATION.limit }),
-    );
-    fetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [PAGINATION.limit]);
+  // No second mount effect for PAGINATION.limit — it is a module constant,
+  // so a separate effect would fire once on mount and duplicate the first
+  // search request (P-M3).
 
   const fallbackToV2 = (searchObj: Record<string, unknown>) => {
     searchFiles(searchObj)
@@ -229,7 +242,7 @@ function Files() {
         // ES fallback rows are loosely-typed docs; the table only reads the
         // flat string keys shared with the QIDO path.
         setData(data.data as FileRow[]);
-        setPagination(Object.assign({}, pagination, { total: data.total }));
+        setPagination((prev) => Object.assign({}, prev, { total: data.total }));
       })
       .catch((e: any) => {
         setLoading(false);
@@ -363,12 +376,18 @@ function Files() {
     setSearchText("");
   };
 
-  const onAdvancedSearchChangeLabel = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const onAdvancedSearchChangeLabel = (
+    i: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     advancedFields[i][0] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
 
-  const onAdvancedSearchChange = (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const onAdvancedSearchChange = (
+    i: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     advancedFields[i][1] = e.target.value;
     setAdvancedFields([...advancedFields]);
   };
@@ -459,7 +478,9 @@ function Files() {
   const rowSelection = {
     onChange: (selectedRowKeys: React.Key[]) => {
       setSelected(
-        selectedRowKeys.map((k) => data.find((r) => r.id === String(k))).filter(Boolean) as FileRow[],
+        selectedRowKeys
+          .map((k) => data.find((r) => r.id === String(k)))
+          .filter(Boolean) as FileRow[],
       );
     },
     getCheckboxProps: (record: FileRow) => ({

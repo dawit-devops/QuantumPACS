@@ -6,7 +6,8 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { App,
+import {
+  App,
   Layout,
   Table,
   Tag,
@@ -124,6 +125,10 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 
 const ALL_EVENT_TYPES = Object.values(EVENT_GROUPS).flat();
 
+// (P-M2) Ceiling on rendered rows while live-streaming: without it every
+// 5s poll prepends up to 200 rows and the table DOM grows without bound.
+const MAX_STREAMED_ROWS = 500;
+
 function Logs() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Audit Logs");
@@ -224,7 +229,7 @@ function Logs() {
         ? tableRef.current.scrollTop < 100
         : true;
       if (isAtTop) {
-        setData((prev) => [...newItems, ...prev]);
+        setData((prev) => [...newItems, ...prev].slice(0, MAX_STREAMED_ROWS));
         setNewEventIds((prev) => {
           const next = new Set(prev);
           ids.forEach((id: number) => next.add(id));

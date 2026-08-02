@@ -117,13 +117,12 @@ function Hl7Dashboard() {
   }, [offset, msgFilter, statusFilter, patientFilter, facilityFilter]);
 
   useEffect(() => {
-    if (metricsLoading === false && !metrics) fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (configLoading === false && !config) fetchConfig();
-    if (statusLoading === false && !status) fetchStatus();
+    // (P-M11) Coalesce the three mount-only fetches into one effect so the
+    // browser fires them together rather than on three separate effect
+    // passes; each still updates its own state independently on failure.
+    fetchMetrics();
+    fetchConfig();
+    fetchStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

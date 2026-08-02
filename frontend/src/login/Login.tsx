@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
 import { listLoginProviders } from "../api/auth";
-import { App,
+import {
+  App,
   Form,
   Input,
   Button,
@@ -62,6 +63,7 @@ function LoginForm(props: any) {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Login");
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch("login");
@@ -104,8 +106,12 @@ function LoginForm(props: any) {
       },
       data.refresh_token,
     );
-    navigate("/");
-  }, [data]);
+    // A-7: ProtectedRoute records the pre-login URL in location.state.from so
+    // users land back where they were headed instead of always the root.
+    const from = (location.state as { from?: { pathname?: string } } | null)
+      ?.from?.pathname;
+    navigate(from || "/");
+  }, [data, location.state]);
 
   const errorRef = React.useRef<HTMLDivElement>(null);
 

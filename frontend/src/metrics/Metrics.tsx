@@ -6,7 +6,8 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { App,
+import {
+  App,
   Layout,
   Card,
   Col,
@@ -143,10 +144,7 @@ function Metrics() {
   const fetchMetrics = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      getDashboardMetrics(timeRange),
-      getHealth(),
-    ])
+    Promise.all([getDashboardMetrics(timeRange), getHealth()])
       .then(([metricsResp, healthResp]) => {
         setData(metricsResp);
         setHealth(healthResp);

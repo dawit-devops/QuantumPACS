@@ -49,7 +49,7 @@ describe("Account", () => {
     localStorage.setItem("username", "alice");
     localStorage.setItem("admin", "true");
     localStorage.setItem("role", "admin");
-    localStorage.setItem("tempKey", "test-key");
+    sessionStorage.setItem("tempKey", "test-key");
   });
 
   it("renders within MemoryRouter", () => {

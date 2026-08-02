@@ -103,8 +103,7 @@ function Sidebar() {
     setCollapsed(collapsed);
   };
 
-  const handleLogout = async (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleLogout = async () => {
     try {
       await logout();
     } catch {}
@@ -321,11 +320,9 @@ function Sidebar() {
             </span>
           </span>
         </Menu.Item>
-        <Menu.Item key="logout">
-          <Link to="/logout" onClick={handleLogout}>
-            <LogoutOutlined />
-            <span className="nav-text">Logout</span>
-          </Link>
+        <Menu.Item key="logout" onClick={handleLogout}>
+          <LogoutOutlined />
+          <span className="nav-text">Logout</span>
         </Menu.Item>
       </Menu>
     </div>

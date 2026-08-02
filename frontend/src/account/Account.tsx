@@ -2,7 +2,8 @@ import { useDocumentTitle } from "../hooks";
 import React, { useEffect, useState } from "react";
 import { getProfile, updateProfile, changePassword } from "../api/account";
 import withSidebar from "../common/base";
-import { App,
+import {
+  App,
   Form,
   Input,
   Button,

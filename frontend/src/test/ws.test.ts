@@ -81,7 +81,7 @@ describe("ws client", () => {
     expect(requestMock).toHaveBeenCalledWith("ws_token");
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0].url).toBe(
-      "wss://pacs.example.com/ws?token=abc123",
+      "wss://pacs.example.com/api/ws?token=abc123",
     );
   });
 
@@ -99,7 +99,7 @@ describe("ws client", () => {
     await Promise.resolve();
 
     const socket = FakeWebSocket.instances[0];
-    expect(socket.url).toBe("ws://pacs.local:8080/ws?token=t1");
+    expect(socket.url).toBe("ws://pacs.local:8080/api/ws?token=t1");
     wsHttp.disconnect();
   });
 
