@@ -1,0 +1,11 @@
+node_modules
+dist
+test-results
+playwright-report
+src/test
+docs
+*.md
+.git
+Dockerfile
+.dockerignore
+playwright.config.ts

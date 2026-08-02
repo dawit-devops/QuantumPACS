@@ -62,22 +62,22 @@ Legend: ✅ done (merged PR) · 🔲 planned
 
 ---
 
-## Sprint 4: CI/CD Truth (P1/P2, medium) — PLANNED
+## Sprint 4: CI/CD Truth (P1/P2, medium) — DONE
 
 ~2-3 days. Fixes the pipeline/ops contradictions so CI reflects reality.
 
 | # | Issue | File(s) | Fix | Status |
 |---|-------|---------|-----|--------|
-| D-H1 | Node 3-way version skew (CI 20 / Docker 22 float / dev 24) | `.github/workflows/ci.yml`, `frontend/Dockerfile` | `.nvmrc` at 22; CI uses it; Docker pinned digest | 🔲 |
-| D-H3 | Playwright E2E (11 specs) never runs in CI | `.github/workflows/ci.yml`, `frontend/e2e/` | New `e2e` job (build → serve → playwright) | 🔲 |
-| D-H4 | App images built then discarded; compose has no app services | `docker-compose.yaml`, `.github/workflows/ci.yml` | Compose app services + registry tags; nginx `backend:8080` proxy target exists | 🔲 |
-| D-H5 | systemd units untracked; dev.sh swallows failures | `systemd/*.service`, `scripts/dev.sh` | Units + install script in repo; dev.sh errors on missing units | 🔲 |
-| D-M1 | npm audit continue-on-error | `.github/workflows/ci.yml` | Fail on high/critical advisories | 🔲 |
-| D-M2 | No caching / concurrency / path filters | `.github/workflows/ci.yml` | Setup-node cache, concurrency group, path filters | 🔲 |
-| D-M3 / D-M4 | Trivy superficial + `@master`; nginx root, no HEALTHCHECKs | `.github/workflows/ci.yml`, `frontend/Dockerfile` | Pin Trivy action version, deeper scan scope; non-root nginx + healthchecks | 🔲 |
-| D-M6 / D-M8 | Hardcoded `pa55w0rd` in compose/scripts; repo-visible dev secret | `docker-compose.yaml`, `scripts/*`, `backend/config.local.yaml` | Env-var driven secrets, dev secret out of repo | 🔲 |
-| D-M7 | No frontend `.dockerignore` | `frontend/.dockerignore` | Exclude node_modules/dist/tests | 🔲 |
-| D-M12 / D-M13 | dev/prod runtime divergence; no rollback story | `scripts/dev.sh`, `docs/ops-guide.md` | Parity docs; rollback procedure | 🔲 |
+| D-H1 | Node 3-way version skew (CI 20 / Docker 22 float / dev 24) | `.github/workflows/ci.yml`, `frontend/Dockerfile` | `.nvmrc` at 22; CI uses it; Docker pinned digest | ✅ |
+| D-H3 | Playwright E2E (11 specs) never runs in CI | `.github/workflows/ci.yml`, `frontend/e2e/` | New `e2e` job (build → serve → playwright) | ✅ |
+| D-H4 | App images built then discarded; compose has no app services | `docker-compose.yaml`, `.github/workflows/ci.yml` | Compose app services + registry tags; nginx `backend:8080` proxy target exists | ✅ |
+| D-H5 | systemd units untracked; dev.sh swallows failures | `systemd/*.service`, `scripts/dev.sh` | Units + install script in repo; dev.sh errors on missing units | ✅ |
+| D-M1 | npm audit continue-on-error | `.github/workflows/ci.yml` | Fail on high/critical advisories | ✅ |
+| D-M2 | No caching / concurrency / path filters | `.github/workflows/ci.yml` | Setup-node cache, concurrency group, path filters | ✅ |
+| D-M3 / D-M4 | Trivy superficial + `@master`; nginx root, no HEALTHCHECKs | `.github/workflows/ci.yml`, `frontend/Dockerfile` | Pin Trivy action version, deeper scan scope; non-root nginx + healthchecks | ✅ |
+| D-M6 / D-M8 | Hardcoded `pa55w0rd` in compose/scripts; repo-visible dev secret | `docker-compose.yaml`, `scripts/*`, `backend/config.local.yaml` | Env-var driven secrets, dev secret out of repo | ✅ |
+| D-M7 | No frontend `.dockerignore` | `frontend/.dockerignore` | Exclude node_modules/dist/tests | ✅ |
+| D-M12 / D-M13 | dev/prod runtime divergence; no rollback story | `scripts/dev.sh`, `docs/ops-guide.md` | Parity docs; rollback procedure | ✅ |
 
 ---
 
