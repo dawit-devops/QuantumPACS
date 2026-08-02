@@ -30,8 +30,8 @@ QuantumPACS replaces traditional vendor-locked imaging systems with an open, mod
 | Frontend Components | 38 |
  | Architecture Decision Records | 22 |
  | Backend Tests | 103 (pytest) |
- | Frontend Tests | 200+ (Vitest) |
- | E2E Tests | 30 (Playwright) |
+ | Frontend Tests | 246 (Vitest) |
+ | E2E Tests | 45 across 11 specs (Playwright) |
  | DB Migrations | 31 (Alembic) |
 
 ## Getting Started
@@ -47,10 +47,31 @@ QuantumPACS replaces traditional vendor-locked imaging systems with an open, mod
 ```bash
 git clone https://github.com/dawit-devops/QuantumPACS.git
 cd quantumpacs
-docker compose up -d
+cp .env.example .env      # optional: override POSTGRES_PASSWORD / SECRET
+docker compose up -d      # full stack: postgres, redis, elasticsearch, backend, frontend
+docker compose ps         # wait until backend is healthy
 ```
 
-Open `http://localhost` — default credentials: `admin` / `pa55w0rd`
+- Frontend: <http://localhost:5173> (nginx, proxies `/api` to the backend)
+- Backend API: <http://localhost:8080> — health: `curl http://localhost:8080/api/health`
+- Credentials: the initial superadmin login is `admin` with the password from
+  `SUPERADMIN_PASS` (default `pa55w0rd` — override in any non-dev deployment).
+  The **database** password is separate: `manage db init` generates a random
+  one (capture it from the output); with Docker it comes from
+  `POSTGRES_PASSWORD` in `.env`.
+
+### Development Workflow (recommended)
+
+The permanent dev environment runs as systemd user services backed by a
+PostgreSQL Docker container:
+
+```bash
+bash scripts/dev.sh start     # starts backend (:8080) + frontend (:5173)
+bash scripts/dev.sh status
+bash scripts/dev.sh logs      # tail backend logs
+bash scripts/dev.sh logs-fe   # tail frontend logs
+bash scripts/setup_dev.sh     # first-time setup: config, venv, ports, schema
+```
 
 ### Manual Setup
 
@@ -77,7 +98,7 @@ npm run dev          # development server with HMR (http://localhost:5173)
 npm run build        # production build to dist/
 ```
 
-Serve `dist/` via Caddy/Nginx, or copy to `backend/static/` with `QUANTUMPACS_DOCKER=true`.
+Serve `dist/` via the nginx image (`frontend/Dockerfile`), or copy to `backend/static/` with `QUANTUMPACS_DOCKER=true`.
 
 ## Repository Structure
 
@@ -103,7 +124,7 @@ quantumpacs/
 │       ├── detail/               # Cornerstone3D DICOM viewer
 │       ├── files/                # File management + search
 │       ├── login/                # Authentication
-│   ├── test/                 # 200+ Vitest tests
+│   ├── src/test/                 # 246 Vitest tests
 │       └── ...
 ├── docs/
 │   ├── decisions/                # 22 Architecture Decision Records (ADRs)
@@ -118,19 +139,19 @@ quantumpacs/
 │   └── SECURITY_AUDIT.md         # Security audit
 ├── docker/                       # Docker build files
 │   └── postgres/                 # Custom PostgreSQL 16 image
-├── docker-compose.yaml           # Service orchestration
-├── Dockerfile                    # Multi-stage production image
-├── Caddyfile                     # Caddy reverse proxy + security headers
-└── .github/workflows/            # CI pipelines (backend, frontend, security)
+├── docker-compose.yaml           # Service orchestration (postgres/redis/es/backend/frontend)
+├── deploy/systemd/               # Backup timer + failure-notify units
+├── nginx.conf                    # Frontend proxy + security headers (in frontend/)
+└── .github/workflows/            # CI pipelines (lint, tests, build, docker-smoke)
 ```
 
 ## Architecture
 
 ```
 ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│  Browser      │────▶│  Caddy (reverse  │────▶│  PostgreSQL   │
-│  (React SPA   │     │   proxy + CSP)   │     │  + LISTEN/    │
-│   + Viewer)   │◀────│   :80 → :8080   │◀────│  NOTIFY      │
+│  Browser      │────▶│  nginx (frontend│────▶│  PostgreSQL   │
+│  (React SPA   │     │   image: proxy  │     │  + LISTEN/    │
+│   + Viewer)   │◀────│   + CSP) :5173 │◀────│  NOTIFY      │
 └──────────────┘     └────────┬─────────┘     └──────────────┘
                               │
                      ┌────────▼─────────┐
@@ -233,16 +254,16 @@ Security audit completed ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)):
 
 - **Backend:** Python 3.12+, Starlette 0.35+, asyncpg, PyPika, Alembic, Pydantic v2, PyJWT, pydicom, pynetdicom
 - **Frontend:** React 19, TypeScript, Vite, Ant Design 6, Cornerstone3D 5, dicom-parser
-- **Database:** PostgreSQL 16, Elasticsearch 8 (optional)
-- **Infrastructure:** Docker multi-stage, Caddy, GitHub Actions CI
+- **Database:** PostgreSQL 16, Elasticsearch 9 (optional)
+- **Infrastructure:** Docker compose, nginx (frontend image), GitHub Actions CI
 
 ## Testing
 
 | Suite | Command | Count |
 |-------|---------|-------|
 | Backend unit | `cd backend && python -m pytest` | 103 tests |
-| Frontend unit | `cd frontend && npx vitest run` | 200+ tests |
-| E2E (Playwright) | `cd frontend && npx playwright test` | 30 tests |
+| Frontend unit | `cd frontend && npx vitest run` | 246 tests |
+| E2E (Playwright) | `cd frontend && npx playwright test` | 45 tests (11 specs) |
 | TypeScript | `cd frontend && npx tsc --noEmit` | 0 errors |
 
 ## Commands
