@@ -200,7 +200,12 @@ function ReportEditor() {
   if (error && !exam) {
     return (
       <Content style={{ padding: 24 }}>
-        <Alert type="error" message="Failed to load exam" description={error} showIcon />
+        <Alert
+          type="error"
+          message="Failed to load exam"
+          description={error}
+          showIcon
+        />
         <Button style={{ marginTop: 12 }} onClick={() => navigate("/reading")}>
           Back to worklist
         </Button>
@@ -221,11 +226,19 @@ function ReportEditor() {
         </Button>
         <div className="report-header-title">
           <h2>
-            <FileTextOutlined /> Report — {exam.accession_number || exam.id.slice(0, 8)}
-            <Tag color={PRIORITY_COLORS[exam.priority]} className={exam.priority === "stat" ? "report-stat-tag" : ""}>
+            <FileTextOutlined /> Report —{" "}
+            {exam.accession_number || exam.id.slice(0, 8)}
+            <Tag
+              color={PRIORITY_COLORS[exam.priority]}
+              className={exam.priority === "stat" ? "report-stat-tag" : ""}
+            >
               {(exam.priority || "routine").toUpperCase()}
             </Tag>
-            <Tag color={isFinal ? "green" : status === "preliminary" ? "purple" : "gold"}>
+            <Tag
+              color={
+                isFinal ? "green" : status === "preliminary" ? "purple" : "gold"
+              }
+            >
               {status.toUpperCase()}
             </Tag>
           </h2>
@@ -276,12 +289,16 @@ function ReportEditor() {
           <Descriptions.Item label="DOB">
             {exam.patient_birth_date || "—"}
           </Descriptions.Item>
-          <Descriptions.Item label="Sex">{exam.patient_sex || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Sex">
+            {exam.patient_sex || "—"}
+          </Descriptions.Item>
           <Descriptions.Item label="Accession">
             {exam.accession_number || "—"}
           </Descriptions.Item>
           <Descriptions.Item label="Completed">
-            {exam.completed_at ? new Date(exam.completed_at).toLocaleString() : "—"}
+            {exam.completed_at
+              ? new Date(exam.completed_at).toLocaleString()
+              : "—"}
           </Descriptions.Item>
         </Descriptions>
       </Card>
@@ -309,15 +326,18 @@ function ReportEditor() {
                 placeholder="Apply a template"
                 style={{ width: 260 }}
                 onChange={applyTemplate}
-                options={templates.map((t) => ({ value: t.name, label: t.name }))}
+                options={templates.map((t) => ({
+                  value: t.name,
+                  label: t.name,
+                }))}
                 showSearch
                 optionFilterProp="label"
               />
             }
           >
             <span className="report-template-hint">
-              Templates seed the findings and impression sections — always review
-              and tailor the text before signing.
+              Templates seed the findings and impression sections — always
+              review and tailor the text before signing.
             </span>
           </Card>
 
@@ -372,7 +392,9 @@ function ReportEditor() {
             <Button
               onClick={() => {
                 setStatus("preliminary");
-                saveDraft(true).then(() => message.success("Marked preliminary"));
+                saveDraft(true).then(() =>
+                  message.success("Marked preliminary"),
+                );
               }}
               disabled={isFinal}
             >
@@ -397,7 +419,7 @@ function ReportEditor() {
         onOk={signReport}
         okText="Sign & Finalize"
         okButtonProps={{ loading: signing, disabled: !impression.trim() }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Alert
           type="info"
@@ -406,7 +428,8 @@ function ReportEditor() {
           message="Signing makes this report FINAL and records you as the signing radiologist."
         />
         <p>
-          Impression preview: <em>{impression || "(empty — required to sign)"}</em>
+          Impression preview:{" "}
+          <em>{impression || "(empty — required to sign)"}</em>
         </p>
       </Modal>
     </Content>

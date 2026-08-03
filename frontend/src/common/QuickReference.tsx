@@ -113,7 +113,7 @@ export function QuickReference({ open, onClose }: QuickReferenceProps) {
       footer={null}
       width={600}
       centered
-      destroyOnClose
+      destroyOnHidden
     >
       <Tabs
         items={[

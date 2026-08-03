@@ -8,7 +8,7 @@ import { init } from "./ws";
 import { setNavigator } from "./navigator";
 import { ThemeProvider, useTheme } from "./common/ThemeProvider";
 import { lightTheme, darkTheme } from "./common/theme";
-import { AuthProvider } from "./auth/AuthContext";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ErrorBoundary } from "./common/ErrorBoundary";
 import { renderEmpty } from "./common/EmptyState";
 import { OnboardingTour } from "./common/OnboardingTour";
@@ -64,6 +64,16 @@ function NavigatorSetter() {
   return null;
 }
 
+function WsEffect() {
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    // init() skips itself while unauthenticated; re-running on auth change
+    // (re)connects the socket right after login instead of only on mount.
+    init();
+  }, [isAuthenticated]);
+  return null;
+}
+
 function ThemedApp() {
   const { isDark } = useTheme();
   const params = new URLSearchParams(window.location.search);
@@ -76,9 +86,6 @@ function ThemedApp() {
       sessionStorage.setItem("tempKey", tempKey);
     }
   }, [tempKey]);
-  useEffect(() => {
-    init();
-  }, []);
 
   return (
     <ConfigProvider
@@ -88,6 +95,7 @@ function ThemedApp() {
       <AntdApp>
         <BrowserRouter>
           <AuthProvider>
+            <WsEffect />
             <NavigatorSetter />
             <ErrorBoundary>
               <Suspense

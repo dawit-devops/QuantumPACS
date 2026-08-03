@@ -64,12 +64,14 @@ describe("ws client", () => {
     requestMock.mockReset();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.useFakeTimers();
+    localStorage.setItem("access_token", "test-token");
   });
 
   afterEach(() => {
     ws.disconnect();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    localStorage.clear();
   });
 
   it("requests a short-lived ws token and opens a wss connection", async () => {

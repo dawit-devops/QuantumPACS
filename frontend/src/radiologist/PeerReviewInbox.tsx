@@ -1,6 +1,18 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
-import { Layout, Table, Tag, Button, Alert, Spin, Modal, Form, Select, Input, message } from "antd";
+import {
+  Layout,
+  Table,
+  Tag,
+  Button,
+  Alert,
+  Spin,
+  Modal,
+  Form,
+  Select,
+  Input,
+  message,
+} from "antd";
 import { AuditOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
@@ -103,7 +115,8 @@ function PeerReviewInbox() {
     {
       title: "Patient",
       key: "patient",
-      render: (_: unknown, r: any) => r.exam?.patient_name || r.exam?.patient_id || "—",
+      render: (_: unknown, r: any) =>
+        r.exam?.patient_name || r.exam?.patient_id || "—",
     },
     {
       title: "Modality",
@@ -116,7 +129,9 @@ function PeerReviewInbox() {
       dataIndex: "status",
       key: "status",
       width: 120,
-      render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
+      render: (s: string) => (
+        <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>
+      ),
     },
     {
       title: "Discrepancy",
@@ -199,7 +214,7 @@ function PeerReviewInbox() {
         onCancel={() => setReview(null)}
         width={720}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         {reviewLoading && (
           <div className="pr-loading">
@@ -211,15 +226,20 @@ function PeerReviewInbox() {
           <div className="pr-review-body">
             <h3>
               {review.exam?.patient_name || review.exam?.patient_id} ·{" "}
-              {review.exam?.modality} · {review.exam?.accession_number || "no accession"}
+              {review.exam?.modality} ·{" "}
+              {review.exam?.accession_number || "no accession"}
             </h3>
             <div className="pr-review-section">
               <b>Original Findings</b>
-              <pre className="pr-review-text">{review.report?.findings || "—"}</pre>
+              <pre className="pr-review-text">
+                {review.report?.findings || "—"}
+              </pre>
             </div>
             <div className="pr-review-section">
               <b>Original Impression</b>
-              <pre className="pr-review-text">{review.report?.impression || "—"}</pre>
+              <pre className="pr-review-text">
+                {review.report?.impression || "—"}
+              </pre>
             </div>
             {review.status === "completed" ? (
               <Alert
@@ -248,7 +268,7 @@ function PeerReviewInbox() {
         onOk={submitReview}
         okText="Submit"
         okButtonProps={{ loading: submitting }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={submitForm} layout="vertical">
           <Form.Item
@@ -265,7 +285,10 @@ function PeerReviewInbox() {
             />
           </Form.Item>
           <Form.Item name="comment" label="Comment (optional)">
-            <Input.TextArea rows={4} placeholder="Feedback for the reading radiologist…" />
+            <Input.TextArea
+              rows={4}
+              placeholder="Feedback for the reading radiologist…"
+            />
           </Form.Item>
         </Form>
       </Modal>

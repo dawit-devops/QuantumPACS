@@ -51,7 +51,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 // Modality-specific acquisition workflows (FR-R06-10). These drive the
 // sequence list shown in the acquisition panel.
-const MODALITY_WORKFLOWS: Record<string, { name: string; sequences: string[] }> = {
+const MODALITY_WORKFLOWS: Record<
+  string,
+  { name: string; sequences: string[] }
+> = {
   CT: {
     name: "CT workflow",
     sequences: ["Localizer", "Contrast (if ordered)", "Diagnostic series"],
@@ -88,7 +91,10 @@ const INCIDENT_TYPES = [
 
 const SAFETY_CHECK_ITEMS = [
   { check_item: "No known contrast allergies", key: "allergies" },
-  { check_item: "Not pregnant (or documented radiation risk accepted)", key: "pregnancy" },
+  {
+    check_item: "Not pregnant (or documented radiation risk accepted)",
+    key: "pregnancy",
+  },
   { check_item: "Creatinine/recent lab values reviewed", key: "renal" },
 ];
 
@@ -159,17 +165,20 @@ function ExamConsole() {
     [exam?.modality],
   );
 
-  const doRequest = useCallback(async (url: string, data: any, okMsg: string) => {
-    try {
-      await request(url, { data });
-      message.success(okMsg);
-      await fetchExam();
-      return true;
-    } catch (e: any) {
-      message.error(e.message || "Request failed");
-      return false;
-    }
-  }, [fetchExam]);
+  const doRequest = useCallback(
+    async (url: string, data: any, okMsg: string) => {
+      try {
+        await request(url, { data });
+        message.success(okMsg);
+        await fetchExam();
+        return true;
+      } catch (e: any) {
+        message.error(e.message || "Request failed");
+        return false;
+      }
+    },
+    [fetchExam],
+  );
 
   const confirmIdentity = async () => {
     const ok = await doRequest(
@@ -196,15 +205,18 @@ function ExamConsole() {
       exam?.modality === "CT"
         ? { kvp: 120, mas: 210, dlp: 520, ctdivol: 12.5 }
         : exam?.modality === "MR"
-        ? { kvp: 0, mas: 0, dlp: 0, ctdivol: 0, exposure_time: 3200 }
-        : exam?.modality === "PET"
-        ? { kvp: 140, mas: 120, dlp: 0, ctdivol: 0, exposure_time: 1800 }
-        : { kvp: 75, mas: 8, dlp: 0, ctdivol: 0, exposure_time: 40 };
+          ? { kvp: 0, mas: 0, dlp: 0, ctdivol: 0, exposure_time: 3200 }
+          : exam?.modality === "PET"
+            ? { kvp: 140, mas: 120, dlp: 0, ctdivol: 0, exposure_time: 1800 }
+            : { kvp: 75, mas: 8, dlp: 0, ctdivol: 0, exposure_time: 40 };
     try {
       const res = await request(`exams/${id}/acquisitions`, {
         data: {
           series_number: seriesNumber,
-          description: workflow?.sequences[Math.min(seriesNumber - 1, (workflow?.sequences.length || 1) - 1)] || `Series ${seriesNumber}`,
+          description:
+            workflow?.sequences[
+              Math.min(seriesNumber - 1, (workflow?.sequences.length || 1) - 1)
+            ] || `Series ${seriesNumber}`,
           ...dose,
         },
       });
@@ -217,7 +229,11 @@ function ExamConsole() {
     }
   };
 
-  const decideAcquisition = async (acqId: string, decision: "accept" | "reject", reason = "") => {
+  const decideAcquisition = async (
+    acqId: string,
+    decision: "accept" | "reject",
+    reason = "",
+  ) => {
     const ok = await doRequest(
       `exams/${id}/acquisitions/${acqId}/${decision}`,
       { reason },
@@ -263,7 +279,11 @@ function ExamConsole() {
     } catch {
       return; // validation errors shown inline
     }
-    const ok = await doRequest(`exams/${id}/incidents`, values, "Incident logged");
+    const ok = await doRequest(
+      `exams/${id}/incidents`,
+      values,
+      "Incident logged",
+    );
     if (ok) {
       setIncidentOpen(false);
       incidentForm.resetFields();
@@ -314,7 +334,12 @@ function ExamConsole() {
   if (error && !exam) {
     return (
       <Content style={{ padding: 24 }}>
-        <Alert type="error" message="Failed to load exam" description={error} showIcon />
+        <Alert
+          type="error"
+          message="Failed to load exam"
+          description={error}
+          showIcon
+        />
         <Button style={{ marginTop: 12 }} onClick={() => navigate("/exams")}>
           Back to worklist
         </Button>
@@ -327,13 +352,22 @@ function ExamConsole() {
   const dose = exam.dose || {};
   const doseLevel = exam.dose_level || "ok";
   const acquisitions = exam.acquisitions || [];
-  const rejectedCount = acquisitions.filter((a: any) => a.status === "rejected").length;
+  const rejectedCount = acquisitions.filter(
+    (a: any) => a.status === "rejected",
+  ).length;
   const isComplete = exam.status === "completed";
-  const identityDone = !!exam.identity_confirmed_at || exam.status === "in_progress";
+  const identityDone =
+    !!exam.identity_confirmed_at || exam.status === "in_progress";
   const protocolStarted = !!exam.protocol_name;
 
   const stepIndex =
-    exam.status === "completed" ? 4 : identityDone ? (protocolStarted ? 2 : 1) : 0;
+    exam.status === "completed"
+      ? 4
+      : identityDone
+        ? protocolStarted
+          ? 2
+          : 1
+        : 0;
 
   return (
     <Content style={{ padding: 24 }} role="main" id="main-content">
@@ -344,7 +378,10 @@ function ExamConsole() {
         <div className="exam-header-title">
           <h2>
             Exam {exam.accession_number || exam.id.slice(0, 8)}
-            <Tag color={PRIORITY_COLORS[exam.priority]} className={exam.priority === "stat" ? "stat-tag" : ""}>
+            <Tag
+              color={PRIORITY_COLORS[exam.priority]}
+              className={exam.priority === "stat" ? "stat-tag" : ""}
+            >
               {(exam.priority || "routine").toUpperCase()}
             </Tag>
             <Tag color={STATUS_COLORS[exam.status]}>{exam.status}</Tag>
@@ -411,7 +448,9 @@ function ExamConsole() {
           <Descriptions.Item label="DOB">
             {exam.patient_birth_date || "—"}
           </Descriptions.Item>
-          <Descriptions.Item label="Sex">{exam.patient_sex || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Sex">
+            {exam.patient_sex || "—"}
+          </Descriptions.Item>
           <Descriptions.Item label="Accession">
             {exam.accession_number || "—"}
           </Descriptions.Item>
@@ -438,7 +477,9 @@ function ExamConsole() {
               {exam.protocol_name}
             </Descriptions.Item>
             <Descriptions.Item label="Workflow (FR-R06-10)">
-              {workflow ? `${workflow.name}: ${workflow.sequences.join(" → ")}` : "—"}
+              {workflow
+                ? `${workflow.name}: ${workflow.sequences.join(" → ")}`
+                : "—"}
             </Descriptions.Item>
           </Descriptions>
         ) : (
@@ -486,7 +527,9 @@ function ExamConsole() {
         ) : (
           <div className="exam-acq">
             <div className="exam-acq-preview">
-              <SimulatedPreview label={`Series ${Math.max(1, seriesNumber - (pendingPreviews.length ? 1 : 0))} preview`} />
+              <SimulatedPreview
+                label={`Series ${Math.max(1, seriesNumber - (pendingPreviews.length ? 1 : 0))} preview`}
+              />
             </div>
             <div className="exam-acq-queue">
               <h4>QA Queue ({pendingPreviews.length} pending)</h4>
@@ -500,14 +543,23 @@ function ExamConsole() {
                   <div>
                     <b>{acq.description || "Series"}</b>
                     <span className="exam-acq-item-meta">
-                      DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp {acq.kvp || 0}
+                      DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp{" "}
+                      {acq.kvp || 0}
                     </span>
                   </div>
                   <Space>
-                    <Button size="small" type="primary" onClick={() => decideAcquisition(acq.id, "accept")}>
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() => decideAcquisition(acq.id, "accept")}
+                    >
                       Accept
                     </Button>
-                    <Button size="small" danger onClick={() => setRejectOpen(acq.id)}>
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() => setRejectOpen(acq.id)}
+                    >
                       Reject
                     </Button>
                   </Space>
@@ -541,9 +593,22 @@ function ExamConsole() {
           {exam.benchmark_dlp ? (
             <div className="exam-dose-benchmark">
               <Progress
-                percent={Math.min(100, Math.round((Number(dose.total_dlp || 0) / exam.benchmark_dlp) * 100))}
-                status={doseLevel === "danger" ? "exception" : doseLevel === "warning" ? "active" : "normal"}
-                format={(p) => `${p}% of ACR benchmark (${exam.benchmark_dlp} mGy·cm)`}
+                percent={Math.min(
+                  100,
+                  Math.round(
+                    (Number(dose.total_dlp || 0) / exam.benchmark_dlp) * 100,
+                  ),
+                )}
+                status={
+                  doseLevel === "danger"
+                    ? "exception"
+                    : doseLevel === "warning"
+                      ? "active"
+                      : "normal"
+                }
+                format={(p) =>
+                  `${p}% of ACR benchmark (${exam.benchmark_dlp} mGy·cm)`
+                }
               />
             </div>
           ) : (
@@ -561,7 +626,10 @@ function ExamConsole() {
         style={{ marginTop: 16 }}
         extra={
           !isComplete && !(exam.safety_checks || []).length ? (
-            <Button onClick={recordSafetyChecks} icon={<SafetyCertificateOutlined />}>
+            <Button
+              onClick={recordSafetyChecks}
+              icon={<SafetyCertificateOutlined />}
+            >
               Record Safety Checks
             </Button>
           ) : undefined
@@ -640,7 +708,7 @@ function ExamConsole() {
         onCancel={() => setIncidentOpen(false)}
         onOk={submitIncident}
         okText="Log Incident"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={incidentForm} layout="vertical">
           <Form.Item
@@ -650,7 +718,10 @@ function ExamConsole() {
           >
             <Select
               placeholder="Select type"
-              options={INCIDENT_TYPES.map((t) => ({ value: t, label: t.replace(/_/g, " ") }))}
+              options={INCIDENT_TYPES.map((t) => ({
+                value: t,
+                label: t.replace(/_/g, " "),
+              }))}
             />
           </Form.Item>
           <Form.Item
@@ -660,7 +731,10 @@ function ExamConsole() {
             initialValue="medium"
           >
             <Select
-              options={["low", "medium", "high", "critical"].map((s) => ({ value: s, label: s }))}
+              options={["low", "medium", "high", "critical"].map((s) => ({
+                value: s,
+                label: s,
+              }))}
             />
           </Form.Item>
           <Form.Item
@@ -668,7 +742,10 @@ function ExamConsole() {
             label="Description"
             rules={[{ required: true, message: "Describe the incident" }]}
           >
-            <Input.TextArea rows={3} placeholder="e.g. patient moved during scan" />
+            <Input.TextArea
+              rows={3}
+              placeholder="e.g. patient moved during scan"
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -681,7 +758,7 @@ function ExamConsole() {
         onOk={submitOverride}
         okText="Confirm Override"
         okButtonProps={{ danger: true }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Alert
           type="warning"
@@ -694,11 +771,17 @@ function ExamConsole() {
             name="justification"
             label="Justification (required)"
             rules={[
-              { required: true, message: "Justification is required for protocol override" },
+              {
+                required: true,
+                message: "Justification is required for protocol override",
+              },
               { min: 10, message: "Provide at least 10 characters" },
             ]}
           >
-            <Input.TextArea rows={3} placeholder="e.g. Trauma — reducing sequence count" />
+            <Input.TextArea
+              rows={3}
+              placeholder="e.g. Trauma — reducing sequence count"
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -711,7 +794,7 @@ function ExamConsole() {
         onOk={submitReject}
         okText="Reject Image"
         okButtonProps={{ danger: true }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={rejectForm} layout="vertical">
           <Form.Item
