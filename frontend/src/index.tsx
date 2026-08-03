@@ -29,6 +29,7 @@ const ShareView = React.lazy(() => import("./detail/ShareView"));
 const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
+const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -145,6 +146,14 @@ function ThemedApp() {
                   element={
                     <PermissionRoute permission="WORKLIST_READ">
                       <Worklist />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/schedule-board"
+                  element={
+                    <PermissionRoute permission="WORKLIST_READ">
+                      <ScheduleBoard />
                     </PermissionRoute>
                   }
                 />

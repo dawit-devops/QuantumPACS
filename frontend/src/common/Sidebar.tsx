@@ -23,6 +23,7 @@ import {
   MessageOutlined,
   CloudServerOutlined,
   ApiOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -228,6 +229,14 @@ function Sidebar() {
                 <Link to="/worklist">
                   <FileSearchOutlined />
                   <span className="nav-text">Worklist</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("WORKLIST_READ") && (
+              <Menu.Item key="schedule-board">
+                <Link to="/schedule-board">
+                  <CalendarOutlined />
+                  <span className="nav-text">Schedule</span>
                 </Link>
               </Menu.Item>
             )}

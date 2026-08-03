@@ -11,6 +11,7 @@ const ADMIN_ROUTES = [
   '/tenants',
   '/logs',
   '/worklist',
+  '/schedule-board',
   '/service-keys',
   '/routing',
   '/fhir/config',
