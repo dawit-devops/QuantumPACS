@@ -45,6 +45,20 @@ import {
   invertViewport,
   zoomViewport,
 } from "./viewer/camera";
+import {
+  layoutLabel,
+  parseLayoutKey,
+  readCurrentWL,
+} from "./viewer/presets";
+import type {
+  LayoutConfig,
+  ReadingPreset,
+  WindowLevelConfig,
+} from "./viewer/presets";
+import { useReadingPresets } from "./viewer/useReadingPresets";
+import type { ReadingPresetsApi } from "./viewer/useReadingPresets";
+import { ReadingPresetsPanel } from "./viewer/ReadingPresetsPanel";
+import { CompanionViewportGrid } from "./viewer/CompanionViewportGrid";
 import { useAnnotationSync } from "./viewer/useAnnotationSync";
 import ThumbnailStrip from "./ThumbnailStrip";
 import { MobileToolbar } from "./MobileToolbar";
@@ -104,6 +118,8 @@ interface CEProps {
   onAnnotationsChange?: (annotations: any[]) => void;
   focusAnnotationUID?: string | null;
   isMobile?: boolean;
+  /** Enables the FR-R12-15 reading-presets panel + layout grid for REPORT_READ holders. */
+  enableReadingPresets?: boolean;
   [key: string]: any;
 }
 
@@ -146,6 +162,64 @@ export default function CornerstoneElement(props: CEProps) {
     if (!re) return null;
     return re.getViewport(viewportIdRef.current) as StackViewport | null;
   }, []);
+
+  // Reading presets (FR-R12-15): per-modality W/L + layout presets. Only
+  // enabled for REPORT_READ holders (radiologists) to avoid idle 403 calls.
+  const modality = props.file?.modality || "";
+  const presets = useReadingPresets({
+    modality: props.enableReadingPresets ? modality : "",
+    getViewport,
+  });
+  const presetsRef = useRef(presets);
+  useEffect(() => {
+    presetsRef.current = presets;
+  }, [presets]);
+
+  const readCurrentWl = useCallback((): WindowLevelConfig => {
+    const vp = getViewport();
+    if (!vp) return { window_center: 0, window_width: 0 };
+    return readCurrentWL(vp);
+  }, [getViewport]);
+
+  const cycleWlPreset = useCallback(() => {
+    const api = presetsRef.current;
+    if (!api || api.wlPresets.length === 0) return;
+    // -1 (no active preset) wraps to 0, so the first press applies preset 0.
+    const idx = api.wlPresets.findIndex((p) => p.id === api.activeWl?.id);
+    const next = api.wlPresets[(idx + 1) % api.wlPresets.length];
+    api.applyWl(next);
+  }, []);
+
+  const cycleLayout = useCallback(() => {
+    const api = presetsRef.current;
+    if (!api) return;
+    const keys = ["1x1", "1x2", "2x2"];
+    const cur = api.activeLayout
+      ? layoutLabel(api.activeLayout.config as any)
+      : "1x1";
+    const nextKey = keys[(keys.indexOf(cur) + 1) % keys.length];
+    const existing = api.layoutPresets.find(
+      (p) => layoutLabel(p.config as any) === nextKey,
+    );
+    if (existing) {
+      api.applyLayout(existing);
+      return;
+    }
+    api.applyLayout({
+      id: `std-${nextKey}`,
+      preset_type: "layout",
+      modality,
+      name: nextKey,
+      config: parseLayoutKey(nextKey),
+      is_default: false,
+      created_at: "",
+      updated_at: "",
+    } as any);
+  }, [modality]);
+
+  const layout =
+    (presets.activeLayout?.config as LayoutConfig) || { rows: 1, cols: 1 };
+  const cellCount = layout.rows * layout.cols;
 
   const updateViewportInfo = useCallback(() => {
     const vp = getViewport();
@@ -327,6 +401,16 @@ export default function CornerstoneElement(props: CEProps) {
           e.preventDefault();
           invert();
           break;
+        case "p":
+        case "P":
+          e.preventDefault();
+          cycleWlPreset();
+          break;
+        case "l":
+        case "L":
+          e.preventDefault();
+          cycleLayout();
+          break;
         case "s":
         case "S":
           e.preventDefault();
@@ -372,6 +456,8 @@ export default function CornerstoneElement(props: CEProps) {
       hflip,
       vflip,
       invert,
+      cycleWlPreset,
+      cycleLayout,
       persistToolsState,
       clearToolState,
       toggleFullscreen,
@@ -455,6 +541,9 @@ export default function CornerstoneElement(props: CEProps) {
           if (vp && (vp as any).voiRange) {
             restoreToolState(fileRef.current.tools_state);
             emitAnnotations();
+            // AC-R12-26: auto-apply the per-modality default W/L preset once
+            // the viewport is ready and before the radiologist interacts.
+            presetsRef.current.applyAutoDefault();
           } else {
             setTimeout(checkReady, 100);
           }
@@ -558,6 +647,101 @@ export default function CornerstoneElement(props: CEProps) {
     e.stopPropagation();
     fn();
   };
+
+  // The primary viewport (with its W/L readout and loading/error overlays).
+  // Kept as one cell so multi-viewport layouts (FR-R12-15) can tile it.
+  const primaryCell = (
+    <div className="ce-primary-cell" style={{ position: "relative" }}>
+      <div
+        className="viewportElement"
+        ref={elementRef}
+        role="application"
+        aria-label="DICOM image viewport"
+        tabIndex={0}
+      >
+        <div style={bottomLeftStyle}>Zoom: {zoom}</div>
+        <div style={bottomRightStyle}>
+          WW/WC: {ww} / {wc}
+        </div>
+      </div>
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0,0,0,0)",
+        }}
+      >
+        {loading
+          ? "Loading image"
+          : `Zoom ${zoom.toFixed(1)}, Window ${ww} Level ${wc}`}
+      </div>
+      {viewportError ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.8)",
+            color: "#ef4444",
+            zIndex: 5,
+            fontSize: 14,
+            flexDirection: "column",
+            gap: 12,
+          }}
+          role="alert"
+          aria-label={viewportError}
+        >
+          <CloseCircleOutlined style={{ fontSize: 32 }} />
+          <div>{viewportError}</div>
+        </div>
+      ) : (
+        loading && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.7)",
+              color: "#fff",
+              zIndex: 5,
+              fontSize: 14,
+            }}
+            role="status"
+            aria-label="Loading image"
+          >
+            <div style={{ textAlign: "center" }}>
+              <div style={{ marginBottom: 8 }}>Loading image...</div>
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  border: "2px solid #fff",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                  margin: "0 auto",
+                }}
+              />
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -712,96 +896,28 @@ export default function CornerstoneElement(props: CEProps) {
         currentFileId={file.id}
         onSelect={props.changeFile}
       />
-      <div style={{ position: "relative" }}>
+      {cellCount > 1 ? (
         <div
-          className="viewportElement"
-          ref={elementRef}
-          role="application"
-          aria-label="DICOM image viewport"
-          tabIndex={0}
-        >
-          <div style={bottomLeftStyle}>Zoom: {zoom}</div>
-          <div style={bottomRightStyle}>
-            WW/WC: {ww} / {wc}
-          </div>
-        </div>
-        <div
-          aria-live="polite"
-          aria-atomic="true"
+          className="ce-layout-grid"
           style={{
-            position: "absolute",
-            width: 1,
-            height: 1,
-            overflow: "hidden",
-            clip: "rect(0,0,0,0)",
+            display: "grid",
+            gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+            gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+            gap: 2,
+            flex: 1,
+            minHeight: 0,
           }}
         >
-          {loading
-            ? "Loading image"
-            : `Zoom ${zoom.toFixed(1)}, Window ${ww} Level ${wc}`}
+          {primaryCell}
+          <CompanionViewportGrid
+            layout={layout}
+            imageUrl={imageUrl}
+            primaryViewportId={viewportIdRef.current}
+          />
         </div>
-        {viewportError ? (
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.8)",
-              color: "#ef4444",
-              zIndex: 5,
-              fontSize: 14,
-              flexDirection: "column",
-              gap: 12,
-            }}
-            role="alert"
-            aria-label={viewportError}
-          >
-            <CloseCircleOutlined style={{ fontSize: 32 }} />
-            <div>{viewportError}</div>
-          </div>
-        ) : (
-          loading && (
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "rgba(0,0,0,0.7)",
-                color: "#fff",
-                zIndex: 5,
-                fontSize: 14,
-              }}
-              role="status"
-              aria-label="Loading image"
-            >
-              <div style={{ textAlign: "center" }}>
-                <div style={{ marginBottom: 8 }}>Loading image...</div>
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    border: "2px solid #fff",
-                    borderTopColor: "transparent",
-                    borderRadius: "50%",
-                    animation: "spin 0.8s linear infinite",
-                    margin: "0 auto",
-                  }}
-                />
-              </div>
-            </div>
-          )
-        )}
-      </div>
+      ) : (
+        primaryCell
+      )}
       {props.isMobile && (
         <MobileToolbar
           activeTool={activeTool}
@@ -848,6 +964,13 @@ export default function CornerstoneElement(props: CEProps) {
           ]}
         />
       </div>
+      {props.enableReadingPresets && (
+        <ReadingPresetsPanel
+          modality={modality}
+          presets={presets}
+          readCurrentWl={readCurrentWl}
+        />
+      )}
     </div>
   );
 }

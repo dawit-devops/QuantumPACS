@@ -19,6 +19,7 @@ _module_registry = [
     'db.routing_rule',
     'db.exams',
     'db.reports',
+    'db.reading_presets',
 ]
 
 _registered = False
@@ -54,6 +55,7 @@ def register_tables():
         ('db.reports', 'Reports'),
         ('db.reports', 'ReportTemplates'),
         ('db.reports', 'PeerReviews'),
+        ('db.reading_presets', 'ReadingPresets'),
     ]
     for mod_path, cls_name in _classes:
         mod = importlib.import_module(mod_path)

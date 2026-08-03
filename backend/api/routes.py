@@ -56,6 +56,7 @@ from api.reports import (
     ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
 )
+from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -182,6 +183,8 @@ _V1_ROUTES = [
     v2(Route('/peer-reviews', endpoint=PeerReviewsHandler)),
     v2(Route('/peer-reviews/{id}', endpoint=PeerReviewHandler)),
     v2(Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler)),
+    v2(Route('/reading-presets', endpoint=ReadingPresetsHandler)),
+    v2(Route('/reading-presets/{id}', endpoint=ReadingPresetHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),
