@@ -1,4 +1,5 @@
 import time
+from datetime import timedelta
 from urllib.parse import urljoin
 
 from starlette.endpoints import HTTPEndpoint
@@ -121,8 +122,8 @@ class FhirAdminMetricsHandler(HTTPEndpoint):
     @requires_permission(Permission.SYSTEM_ADMIN)
     async def get(self, request):
         period = request.query_params.get('period', '24h')
-        interval_map = {'1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days'}
-        interval = interval_map.get(period, '24 hours')
+        interval_map = {'1h': timedelta(hours=1), '24h': timedelta(hours=24), '7d': timedelta(days=7), '30d': timedelta(days=30)}
+        interval = interval_map.get(period, timedelta(hours=24))
 
         async with get_conn() as conn:
             volume = await conn.fetch("""
