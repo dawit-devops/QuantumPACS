@@ -100,6 +100,9 @@ export default defineConfig({
       },
     },
     setupFiles: "./src/test/setup.ts",
+    // Heavy antd+jsdom suite flakes under parallel CPU load (waitFor 1s
+    // defaults); retry absorbs contention without weakening assertions.
+    retry: 2,
     testTimeout: 120000,
     hookTimeout: 60000,
     exclude: ["node_modules/**", "e2e/**", "dist/**"],

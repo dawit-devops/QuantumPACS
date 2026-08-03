@@ -79,8 +79,8 @@ describe("CompanionViewportGrid", () => {
     await waitFor(() => {
       expect(engineMock.enableElement).toHaveBeenCalledTimes(3);
     });
-    const loaded = viewportInstances.filter(
-      (v) => v.id.startsWith("companion-"),
+    const loaded = viewportInstances.filter((v) =>
+      v.id.startsWith("companion-"),
     );
     expect(loaded.length).toBe(3);
   });

@@ -1,5 +1,11 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -71,7 +77,9 @@ describe("ReportEditor", () => {
   it("loads the exam and existing report", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       return Promise.resolve({ data: [] });
     });
@@ -87,7 +95,9 @@ describe("ReportEditor", () => {
   it("disables sign until an impression is entered", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       return Promise.resolve({ data: [] });
     });
@@ -121,7 +131,9 @@ describe("ReportEditor", () => {
     try {
       mockRequest.mockImplementation((url: string) => {
         if (url === "reports/e1") {
-          return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+          return Promise.resolve({
+            data: { exam: mockExam, report: mockReport },
+          });
         }
         return Promise.resolve({ data: [] });
       });
@@ -143,7 +155,8 @@ describe("ReportEditor", () => {
       });
 
       const saveCall = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "reports/e1" && c[1]?.data?.impression === "Normal head CT.",
+        (c: any) =>
+          c[0] === "reports/e1" && c[1]?.data?.impression === "Normal head CT.",
       );
       expect(saveCall).toBeDefined();
     } finally {
@@ -154,7 +167,9 @@ describe("ReportEditor", () => {
   it("signs the report and shows final status", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       if (url === "reports/templates") {
         return Promise.resolve({ data: [] });

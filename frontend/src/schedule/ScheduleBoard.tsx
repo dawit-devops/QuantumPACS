@@ -180,13 +180,16 @@ function ScheduleBoard() {
           Total <b>{stats.total}</b>
         </span>
         <span>
-          Scheduled <b style={{ color: "var(--color-primary)" }}>{stats.scheduled}</b>
+          Scheduled{" "}
+          <b style={{ color: "var(--color-primary)" }}>{stats.scheduled}</b>
         </span>
         <span>
-          Performed <b style={{ color: "var(--color-success)" }}>{stats.performed}</b>
+          Performed{" "}
+          <b style={{ color: "var(--color-success)" }}>{stats.performed}</b>
         </span>
         <span>
-          Cancelled <b style={{ color: "var(--color-error)" }}>{stats.cancelled}</b>
+          Cancelled{" "}
+          <b style={{ color: "var(--color-error)" }}>{stats.cancelled}</b>
         </span>
       </div>
 
@@ -225,7 +228,11 @@ function ScheduleBoard() {
               message="Showing the first 500 exams for this day — refine the date or use the worklist for more."
             />
           )}
-          <div className="schedule-board" role="grid" aria-label="Schedule board">
+          <div
+            className="schedule-board"
+            role="grid"
+            aria-label="Schedule board"
+          >
             <div className="schedule-grid">
               <div className="schedule-corner" role="columnheader">
                 Time / Modality
@@ -248,10 +255,10 @@ function ScheduleBoard() {
                   >
                     {si % 2 === 0 ? slot : ""}
                   </div>
-                {modalities.map((mod) => {
-                  const inSlot = entriesByModalitySlot[`${mod}|${si}`] || [];
-                  return (
-                    <div key={mod} className="schedule-cell">
+                  {modalities.map((mod) => {
+                    const inSlot = entriesByModalitySlot[`${mod}|${si}`] || [];
+                    return (
+                      <div key={mod} className="schedule-cell">
                         {inSlot.map((entry) => {
                           const st = statusLabel(entry.status);
                           return (

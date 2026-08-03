@@ -1,10 +1,5 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -66,7 +61,12 @@ const inProgressExam = {
   status: "in_progress",
   identity_confirmed_at: "2026-08-03T08:00:00Z",
   protocol_name: "CT Head (Routine)",
-  dose: { total_dlp: 520, total_ctdivol: 12.5, total_mas: 210, total_exposure: 0 },
+  dose: {
+    total_dlp: 520,
+    total_ctdivol: 12.5,
+    total_mas: 210,
+    total_exposure: 0,
+  },
   benchmark_dlp: 1300,
   dose_level: "ok",
 };
@@ -79,7 +79,12 @@ const mockProtocols = {
       is_default: true,
       sequences: [],
     },
-    { name: "CT Chest (Routine)", modality: "CT", is_default: false, sequences: [] },
+    {
+      name: "CT Chest (Routine)",
+      modality: "CT",
+      is_default: false,
+      sequences: [],
+    },
   ],
 };
 
@@ -98,10 +103,14 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
+      expect(
+        screen.getByText("Patient Identity Verification"),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText("John Doe")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Confirm Patient/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Confirm Patient/i }),
+    ).toBeInTheDocument();
   });
 
   it("confirms identity and moves to in-progress", async () => {
@@ -113,12 +122,15 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Confirm Patient/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Confirm Patient/i }),
+      ).toBeInTheDocument();
     });
 
     // Confirm identity writes via the API; the refetch returns in-progress.
     mockRequest.mockImplementation((url: string) => {
-      if (url === "exams/e1/identity-confirm") return Promise.resolve({ data: {} });
+      if (url === "exams/e1/identity-confirm")
+        return Promise.resolve({ data: {} });
       if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
       if (url === "protocols") return Promise.resolve(mockProtocols);
       return Promise.resolve({ data: [] });
@@ -162,7 +174,12 @@ describe("ExamConsole", () => {
         examState = {
           ...examState,
           acquisitions: [...examState.acquisitions, acq],
-          dose: { total_dlp: 1040, total_ctdivol: 25, total_mas: 420, total_exposure: 0 },
+          dose: {
+            total_dlp: 1040,
+            total_ctdivol: 25,
+            total_mas: 420,
+            total_exposure: 0,
+          },
         };
         return Promise.resolve({ data: acq });
       }
@@ -171,13 +188,17 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Acquire Image/i }),
+      ).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /Reject/i })).toBeInTheDocument();
     // The acquired image description appears in the QA queue.
@@ -190,27 +211,42 @@ describe("ExamConsole", () => {
       if (url === "exams/e1") return Promise.resolve({ data: examState });
       if (url === "protocols") return Promise.resolve(mockProtocols);
       if (url === "exams/e1/acquisitions") {
-        const acq = { id: "acq-1", series_number: 1, description: "Localizer", dlp: 520 };
-        examState = { ...examState, acquisitions: [...examState.acquisitions, acq] };
+        const acq = {
+          id: "acq-1",
+          series_number: 1,
+          description: "Localizer",
+          dlp: 520,
+        };
+        examState = {
+          ...examState,
+          acquisitions: [...examState.acquisitions, acq],
+        };
         return Promise.resolve({ data: acq });
       }
-      if (url.includes("/accept")) return Promise.resolve({ data: { status: "accepted" } });
+      if (url.includes("/accept"))
+        return Promise.resolve({ data: { status: "accepted" } });
       return Promise.resolve({ data: [] });
     });
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Acquire Image/i }),
+      ).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Accept/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /Accept/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Accept/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -223,18 +259,26 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Emergency Override/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Emergency Override/i }),
+      ).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: /Emergency Override/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Emergency Override/i }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("Emergency Protocol Override")).toBeInTheDocument();
+      expect(
+        screen.getByText("Emergency Protocol Override"),
+      ).toBeInTheDocument();
     });
     // Submit without justification — validation should block the API call.
     fireEvent.click(screen.getByRole("button", { name: /Confirm Override/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Justification is required/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Justification is required/i),
+      ).toBeInTheDocument();
     });
   });
 
@@ -242,13 +286,16 @@ describe("ExamConsole", () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
       if (url === "protocols") return Promise.resolve(mockProtocols);
-      if (url === "exams/e1/incidents") return Promise.resolve({ data: { id: "inc-1" } });
+      if (url === "exams/e1/incidents")
+        return Promise.resolve({ data: { id: "inc-1" } });
       return Promise.resolve({ data: [] });
     });
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Log Incident/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Log Incident/i }),
+      ).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Log Incident/i }));
 
@@ -274,7 +321,11 @@ describe("ExamConsole", () => {
   });
 
   it("shows completion state for a completed exam", async () => {
-    const completed = { ...inProgressExam, status: "completed", completed_at: "2026-08-03T10:00:00Z" };
+    const completed = {
+      ...inProgressExam,
+      status: "completed",
+      completed_at: "2026-08-03T10:00:00Z",
+    };
     mockRequest.mockImplementation((url: string) => {
       if (url === "exams/e1") return Promise.resolve({ data: completed });
       if (url === "protocols") return Promise.resolve(mockProtocols);
@@ -283,7 +334,9 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText(/Exam completed and handed off/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Exam completed and handed off/i),
+      ).toBeInTheDocument();
     });
   });
 });

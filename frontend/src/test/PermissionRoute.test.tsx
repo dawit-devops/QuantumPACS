@@ -49,7 +49,10 @@ describe("PermissionRoute", () => {
       <MemoryRouter initialEntries={["/users"]}>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<div data-testid="files-page">Files</div>} />
+            <Route
+              path="/"
+              element={<div data-testid="files-page">Files</div>}
+            />
             <Route
               path="/users"
               element={
@@ -77,7 +80,10 @@ describe("PermissionRoute", () => {
       <MemoryRouter initialEntries={["/users"]}>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<div data-testid="files-page">Files</div>} />
+            <Route
+              path="/"
+              element={<div data-testid="files-page">Files</div>}
+            />
             <Route
               path="/users"
               element={

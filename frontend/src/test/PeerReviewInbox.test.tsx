@@ -1,5 +1,11 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -150,12 +156,12 @@ describe("PeerReviewInbox", () => {
       target: { value: "Agree with findings." },
     });
 
-    const dialog = screen.getAllByRole("dialog").find((d) =>
-      within(d as HTMLElement).queryByText("Discrepancy level"),
-    ) as HTMLElement;
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /^submit$/i }),
-    );
+    const dialog = screen
+      .getAllByRole("dialog")
+      .find((d) =>
+        within(d as HTMLElement).queryByText("Discrepancy level"),
+      ) as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: /^submit$/i }));
 
     await waitFor(() => {
       const submitCall = mockRequest.mock.calls.find(
@@ -171,7 +177,9 @@ describe("PeerReviewInbox", () => {
     renderInbox();
 
     await waitFor(() => {
-      expect(screen.getByText(/No peer reviews assigned to you yet/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No peer reviews assigned to you yet/i),
+      ).toBeInTheDocument();
     });
   });
 
@@ -180,7 +188,9 @@ describe("PeerReviewInbox", () => {
     renderInbox();
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to load peer reviews")).toBeInTheDocument();
+      expect(
+        screen.getByText("Failed to load peer reviews"),
+      ).toBeInTheDocument();
     });
   });
 });

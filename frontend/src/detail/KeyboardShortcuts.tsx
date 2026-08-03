@@ -22,7 +22,11 @@ const SHORTCUTS: ShortcutEntry[] = [
   { key: "F", action: "Toggle fullscreen", group: "Viewer Controls" },
   { key: "Esc", action: "Exit fullscreen", group: "Viewer Controls" },
   { key: "P", action: "Cycle saved W/L presets", group: "Reading Presets" },
-  { key: "L", action: "Cycle layout grid (1×1 / 1×2 / 2×2)", group: "Reading Presets" },
+  {
+    key: "L",
+    action: "Cycle layout grid (1×1 / 1×2 / 2×2)",
+    group: "Reading Presets",
+  },
   { key: "S", action: "Save annotations", group: "Annotations" },
   { key: "C", action: "Clear all annotations", group: "Annotations" },
   { key: "← / →", action: "Previous / Next file", group: "Navigation" },

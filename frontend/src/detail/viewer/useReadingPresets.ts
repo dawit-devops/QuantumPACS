@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StackViewport } from "@cornerstonejs/core";
-import type {
-  LayoutConfig,
-  ReadingPreset,
-  WindowLevelConfig,
-} from "./presets";
+import type { LayoutConfig, ReadingPreset, WindowLevelConfig } from "./presets";
 import {
   applyWindowLevel,
   deletePreset,
@@ -152,14 +148,11 @@ export function useReadingPresets({
     [reload],
   );
 
-  const remove = useCallback(
-    async (id: string) => {
-      await deletePreset(id);
-      setWlPresets((p) => p.filter((x) => x.id !== id));
-      setLayoutPresets((p) => p.filter((x) => x.id !== id));
-    },
-    [],
-  );
+  const remove = useCallback(async (id: string) => {
+    await deletePreset(id);
+    setWlPresets((p) => p.filter((x) => x.id !== id));
+    setLayoutPresets((p) => p.filter((x) => x.id !== id));
+  }, []);
 
   const applyLayout = useCallback((preset: ReadingPreset) => {
     setActiveLayout(preset);

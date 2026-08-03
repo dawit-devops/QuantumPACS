@@ -45,11 +45,7 @@ import {
   invertViewport,
   zoomViewport,
 } from "./viewer/camera";
-import {
-  layoutLabel,
-  parseLayoutKey,
-  readCurrentWL,
-} from "./viewer/presets";
+import { layoutLabel, parseLayoutKey, readCurrentWL } from "./viewer/presets";
 import type {
   LayoutConfig,
   ReadingPreset,
@@ -217,8 +213,10 @@ export default function CornerstoneElement(props: CEProps) {
     } as any);
   }, [modality]);
 
-  const layout =
-    (presets.activeLayout?.config as LayoutConfig) || { rows: 1, cols: 1 };
+  const layout = (presets.activeLayout?.config as LayoutConfig) || {
+    rows: 1,
+    cols: 1,
+  };
   const cellCount = layout.rows * layout.cols;
 
   const updateViewportInfo = useCallback(() => {

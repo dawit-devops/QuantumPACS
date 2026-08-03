@@ -4,7 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReadingPresetsPanel } from "../detail/viewer/ReadingPresetsPanel";
 import type { ReadingPresetsApi } from "../detail/viewer/useReadingPresets";
 
-function makeApi(overrides: Partial<ReadingPresetsApi> = {}): ReadingPresetsApi {
+function makeApi(
+  overrides: Partial<ReadingPresetsApi> = {},
+): ReadingPresetsApi {
   return {
     wlPresets: [],
     layoutPresets: [],
@@ -75,7 +77,11 @@ describe("ReadingPresetsPanel", () => {
       window_width: 2000,
     }));
     render(
-      <ReadingPresetsPanel modality="CT" presets={api} readCurrentWl={readCurrentWl} />,
+      <ReadingPresetsPanel
+        modality="CT"
+        presets={api}
+        readCurrentWl={readCurrentWl}
+      />,
     );
     fireEvent.change(screen.getByLabelText("New window/level preset name"), {
       target: { value: "My Bone" },
@@ -167,8 +173,6 @@ describe("ReadingPresetsPanel", () => {
         readCurrentWl={() => ({ window_center: 40, window_width: 80 })}
       />,
     );
-    expect(
-      screen.getByText(/No saved W\/L presets/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No saved W\/L presets/)).toBeInTheDocument();
   });
 });

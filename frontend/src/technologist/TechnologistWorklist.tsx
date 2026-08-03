@@ -76,14 +76,16 @@ function TechnologistWorklist() {
       key: "priority",
       width: 90,
       sorter: (a: any, b: any) => {
-        const rank = (p: string) =>
-          p === "stat" ? 0 : p === "urgent" ? 1 : 2;
+        const rank = (p: string) => (p === "stat" ? 0 : p === "urgent" ? 1 : 2);
         return rank(a.priority) - rank(b.priority);
       },
       defaultSortOrder: "ascend" as const,
       render: (p: string) =>
         p ? (
-          <Tag color={PRIORITY_COLORS[p]} className={p === "stat" ? "stat-tag" : ""}>
+          <Tag
+            color={PRIORITY_COLORS[p]}
+            className={p === "stat" ? "stat-tag" : ""}
+          >
             {PRIORITY_LABEL[p]}
           </Tag>
         ) : (
@@ -100,8 +102,7 @@ function TechnologistWorklist() {
     {
       title: "Patient",
       key: "patient",
-      render: (_: unknown, r: any) =>
-        r.patient_name || r.patient_id || "—",
+      render: (_: unknown, r: any) => r.patient_name || r.patient_id || "—",
     },
     { title: "Modality", dataIndex: "modality", key: "modality", width: 90 },
     { title: "Protocol", dataIndex: "protocol_name", key: "protocol_name" },
@@ -154,10 +155,12 @@ function TechnologistWorklist() {
           style={{ width: 150 }}
           value={statusFilter}
           onChange={setStatusFilter}
-          options={["ready", "in_progress", "completed", "cancelled"].map((s) => ({
-            value: s,
-            label: s,
-          }))}
+          options={["ready", "in_progress", "completed", "cancelled"].map(
+            (s) => ({
+              value: s,
+              label: s,
+            }),
+          )}
         />
         <Select
           allowClear
@@ -165,7 +168,18 @@ function TechnologistWorklist() {
           style={{ width: 150 }}
           value={modalityFilter}
           onChange={setModalityFilter}
-          options={[...new Set([...modalities, "CT", "MR", "PET", "DX", "US", "MG", "FL"])]
+          options={[
+            ...new Set([
+              ...modalities,
+              "CT",
+              "MR",
+              "PET",
+              "DX",
+              "US",
+              "MG",
+              "FL",
+            ]),
+          ]
             .filter(Boolean)
             .map((m) => ({ value: m, label: m }))}
         />
@@ -203,7 +217,10 @@ function TechnologistWorklist() {
             onDoubleClick: () => navigate(`/exams/${r.id}`),
           })}
           scroll={{ x: 800 }}
-          locale={{ emptyText: "No exams assigned. New assignments appear here automatically." }}
+          locale={{
+            emptyText:
+              "No exams assigned. New assignments appear here automatically.",
+          }}
         />
       )}
     </Content>

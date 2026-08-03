@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware

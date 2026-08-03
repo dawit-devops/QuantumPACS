@@ -26,7 +26,12 @@ function seededRandom(seed: number) {
  * Cornerstone3D viewport fed by a real acquisition stream is the documented
  * GATED upgrade path.
  */
-function SimulatedPreview({ width = 420, height = 420, label, quality = "good" }: Props) {
+function SimulatedPreview({
+  width = 420,
+  height = 420,
+  label,
+  quality = "good",
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [wl, setWl] = useState({ window: 300, level: 50 });
 
@@ -51,7 +56,15 @@ function SimulatedPreview({ width = 420, height = 420, label, quality = "good" }
     ctx.fill();
     ctx.fillStyle = "#6a6a6a";
     ctx.beginPath();
-    ctx.ellipse(0, height * 0.05, width * 0.1, height * 0.26, 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      0,
+      height * 0.05,
+      width * 0.1,
+      height * 0.26,
+      0,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.fillStyle = "#9a9a9a";
     ctx.beginPath();
@@ -62,7 +75,8 @@ function SimulatedPreview({ width = 420, height = 420, label, quality = "good" }
     // Noise (tissue texture). RNG is deterministic so screenshots are stable.
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
-    const noiseAmp = quality === "noisy" ? 46 : quality === "artifact" ? 30 : 14;
+    const noiseAmp =
+      quality === "noisy" ? 46 : quality === "artifact" ? 30 : 14;
     for (let i = 0; i < data.length; i += 4) {
       const n = (rng() - 0.5) * 2 * noiseAmp;
       data[i] = Math.max(0, Math.min(255, data[i] + n));
@@ -108,7 +122,9 @@ function SimulatedPreview({ width = 420, height = 420, label, quality = "good" }
           max={900}
           step={20}
           value={wl.window}
-          onChange={(e) => setWl((p) => ({ ...p, window: Number(e.target.value) }))}
+          onChange={(e) =>
+            setWl((p) => ({ ...p, window: Number(e.target.value) }))
+          }
         />
         <label htmlFor="sim-level">Level: {wl.level}</label>
         <input
@@ -118,7 +134,9 @@ function SimulatedPreview({ width = 420, height = 420, label, quality = "good" }
           max={200}
           step={10}
           value={wl.level}
-          onChange={(e) => setWl((p) => ({ ...p, level: Number(e.target.value) }))}
+          onChange={(e) =>
+            setWl((p) => ({ ...p, level: Number(e.target.value) }))
+          }
         />
       </div>
     </div>

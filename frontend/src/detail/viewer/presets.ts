@@ -75,7 +75,9 @@ export async function listPresets(opts?: {
   return Array.isArray(res?.data) ? res.data : [];
 }
 
-export async function savePreset(payload: SavePresetPayload): Promise<ReadingPreset> {
+export async function savePreset(
+  payload: SavePresetPayload,
+): Promise<ReadingPreset> {
   const res: any = await request("reading-presets", {
     method: "POST",
     data: payload,

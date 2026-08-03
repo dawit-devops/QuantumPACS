@@ -100,7 +100,8 @@ describe("TechnologistWorklist", () => {
     fireEvent.click(await screen.findByTitle("completed"));
 
     await waitFor(() => {
-      const lastCall = mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
       expect(lastCall[0]).toBe("exams");
       expect(lastCall[1].query.status).toBe("completed");
     });

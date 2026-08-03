@@ -1,6 +1,16 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
-import { Layout, Table, Tag, Button, Select, Input, Alert, Spin, Badge } from "antd";
+import {
+  Layout,
+  Table,
+  Tag,
+  Button,
+  Select,
+  Input,
+  Alert,
+  Spin,
+  Badge,
+} from "antd";
 import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
@@ -75,7 +85,10 @@ function ReadingWorklist() {
       width: 90,
       defaultSortOrder: "ascend" as const,
       render: (p: string) => (
-        <Tag color={PRIORITY_COLORS[p]} className={p === "stat" ? "reading-stat-tag" : ""}>
+        <Tag
+          color={PRIORITY_COLORS[p]}
+          className={p === "stat" ? "reading-stat-tag" : ""}
+        >
           {PRIORITY_LABEL[p] || "Routine"}
         </Tag>
       ),
@@ -102,7 +115,11 @@ function ReadingWorklist() {
       render: (s: string) => (
         <Badge
           status={s === "none" ? "processing" : "warning"}
-          text={<Tag color={REPORT_STATUS_COLORS[s] || "default"}>{s || "none"}</Tag>}
+          text={
+            <Tag color={REPORT_STATUS_COLORS[s] || "default"}>
+              {s || "none"}
+            </Tag>
+          }
         />
       ),
     },
@@ -124,7 +141,9 @@ function ReadingWorklist() {
           ghost
           onClick={() => navigate(`/reading/${r.exam_id}`)}
         >
-          {r.report_status && r.report_status !== "none" ? "Continue" : "Read Study"}
+          {r.report_status && r.report_status !== "none"
+            ? "Continue"
+            : "Read Study"}
         </Button>
       ),
     },
@@ -153,7 +172,10 @@ function ReadingWorklist() {
           style={{ width: 150 }}
           value={statusFilter}
           onChange={setStatusFilter}
-          options={["draft", "preliminary"].map((s) => ({ value: s, label: s }))}
+          options={["draft", "preliminary"].map((s) => ({
+            value: s,
+            label: s,
+          }))}
         />
         <Select
           allowClear
@@ -161,7 +183,18 @@ function ReadingWorklist() {
           style={{ width: 150 }}
           value={modalityFilter}
           onChange={setModalityFilter}
-          options={[...new Set([...modalities, "CT", "MR", "PET", "DX", "US", "MG", "FL"])]
+          options={[
+            ...new Set([
+              ...modalities,
+              "CT",
+              "MR",
+              "PET",
+              "DX",
+              "US",
+              "MG",
+              "FL",
+            ]),
+          ]
             .filter(Boolean)
             .map((m) => ({ value: m, label: m }))}
         />
@@ -200,7 +233,8 @@ function ReadingWorklist() {
           })}
           scroll={{ x: 900 }}
           locale={{
-            emptyText: "No studies awaiting interpretation. Completed exams appear here.",
+            emptyText:
+              "No studies awaiting interpretation. Completed exams appear here.",
           }}
         />
       )}

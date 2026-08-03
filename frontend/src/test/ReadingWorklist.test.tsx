@@ -103,7 +103,9 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText(/No studies awaiting interpretation/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No studies awaiting interpretation/i),
+      ).toBeInTheDocument();
     });
   });
 
@@ -112,7 +114,9 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to load reading worklist")).toBeInTheDocument();
+      expect(
+        screen.getByText("Failed to load reading worklist"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -129,7 +133,8 @@ describe("ReadingWorklist", () => {
     fireEvent.click(await screen.findByTitle("CT"));
 
     await waitFor(() => {
-      const lastCall = mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
       expect(lastCall[0]).toBe("reports/reading-list");
       expect(lastCall[1].query.modality).toBe("CT");
     });

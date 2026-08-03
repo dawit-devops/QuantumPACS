@@ -113,7 +113,9 @@ export function ReadingPresetsPanel({
               <div className="rp-preset-list">
                 {presets.wlPresets.map((p) => (
                   <div className="rp-preset-row" key={p.id}>
-                    <Tooltip title={p.is_default ? "Default" : "Set as default"}>
+                    <Tooltip
+                      title={p.is_default ? "Default" : "Set as default"}
+                    >
                       <Button
                         type="text"
                         size="small"
@@ -129,7 +131,9 @@ export function ReadingPresetsPanel({
                     >
                       {p.name}
                     </span>
-                    <Tag className="rp-wl">{formatWl(p.config as WindowLevelConfig)}</Tag>
+                    <Tag className="rp-wl">
+                      {formatWl(p.config as WindowLevelConfig)}
+                    </Tag>
                     <Button
                       type="primary"
                       size="small"
@@ -257,11 +261,15 @@ export function ReadingPresetsPanel({
                 <div className="rp-preset-list rp-layout-list">
                   {presets.layoutPresets.map((p) => (
                     <div className="rp-preset-row" key={p.id}>
-                      <Tooltip title={p.is_default ? "Default" : "Set as default"}>
+                      <Tooltip
+                        title={p.is_default ? "Default" : "Set as default"}
+                      >
                         <Button
                           type="text"
                           size="small"
-                          className={p.is_default ? "rp-star active" : "rp-star"}
+                          className={
+                            p.is_default ? "rp-star active" : "rp-star"
+                          }
                           aria-label={`Make ${p.name} default`}
                           icon={<StarOutlined />}
                           onClick={() => presets.setDefault(p.id, "layout")}

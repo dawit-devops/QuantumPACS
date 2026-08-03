@@ -114,7 +114,8 @@
   border-left: 3px solid var(--color-primary);
   background: var(--bg-surface);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--easing-standard),
+  transition:
+    background var(--duration-fast) var(--easing-standard),
     box-shadow var(--duration-fast) var(--easing-standard);
 }
 

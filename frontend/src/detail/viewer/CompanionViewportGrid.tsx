@@ -101,8 +101,7 @@ export function CompanionViewportGrid({
       const re = getRenderingEngine(ENGINE_ID);
       if (!re) return;
       const primary = re.getViewport(primaryViewportId) as
-        | StackViewport
-        | undefined;
+        StackViewport | undefined;
       if (!primary) return;
       const props: any = {
         voiRange: (primary as any).voiRange,
