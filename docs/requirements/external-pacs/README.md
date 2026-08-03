@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.1.1 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Interface surface**: API-only (no web UI). See artifact 04 — "System Interface
 Surface": DICOMweb QIDO-RS/WADO-RS, WADO-URI, file upload (C-STORE-equivalent),
@@ -16,6 +16,11 @@ bulk download, routing rules all exist.
 **Implemented**: QIDO-RS/WADO-RS study→series→instance drill-down, WADO-URI, upload,
 bulk download, routing. **GATED**: C-MOVE retrieve workflow, archive synchronization
 UI, migration/backfill tooling — flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: merge touched exam/QA/report routes only —
+DICOMweb QIDO/STOW/WADO (`/dicomweb/studies*`, `/wado`), DICOM C-STORE
+(`backend/dcm/server.py`), routing (`/routing`), and worklist endpoints are
+unchanged. No requirement statuses changed.
 
 ## Role Summary
 

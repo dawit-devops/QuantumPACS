@@ -2,21 +2,27 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.1 |
+| **Version** | 1.2.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified post-merge 4d136e0)
 
 **Presentation layer**: tenant-scoped role-based subset of R01. See artifact 04
 — "Role-Based Routing & Navigation": the Tenants/provisioning item is R01-only and
 never renders; every other admin item is permission-gated in `Sidebar.tsx`; backend
-rejects cross-tenant access (403).
+rejects cross-tenant access (403). Since the v3-dev merge (`4d136e0`),
+`PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`) enforces these gates at
+the URL boundary (deep links redirect to `/` without the permission); new built-in
+roles (`technologist`, `radiologist`, `qa_team`) and permission groups (`Exams`,
+`Reports`, `Peer Review`, `QA`) appear in the `/roles` catalog this role manages —
+none affect R02 FRs.
 
 **Implemented**: tenant-scoped users/roles/worklist/routing/service-keys/replicas/
 logs/metrics/HL7/FHIR/DICOMweb admin + notifications; tenant storage usage via
-`GET /tenants/{id}/stats`. **GATED**: dedicated usage/quota dashboard UI,
+`GET /tenants/{id}/stats`. **GATED**: dedicated usage/quota dashboard UI (FR-R02-15
+partial — endpoint exists, UI GATED),
 department/modality registry, backup/restore.
 
 ## Role Summary

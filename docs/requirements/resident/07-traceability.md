@@ -27,17 +27,23 @@
 
 ## GATED Requirements (codebase reality, verified 2026-08-03)
 
-No resident-specific functionality exists in the codebase (no role distinction from
-R12 today). All supervised-reading FRs are aspirational v3.0 spec — ACs exist in
-artifact 06 but are **GATED** on new backend work (supervised worklist, draft report,
-attending sign-off, teaching files/de-identification, feedback dashboard — 6+ new
-endpoints flagged to backend, depends on R12 reporting):
+No resident-specific functionality exists (no `resident` role distinction from R12
+today). Merge 4d136e0 shipped the shared R12 stack residents build on — reading
+worklist, draft report editor with autosave, report templates, peer review,
+reading presets, notifications. The supervised-reading FRs remain **GATED** on new
+backend work (attending assignment/guidance, draft submit/approve/return,
+teaching-file de-identification, feedback aggregates, consult routing):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R13-06 (partial) | Partial — study/patient list infrastructure exists (Files browser) | No resident exam-log view |
-| FR-R13-01..05, FR-R13-07..10 | GATED | No supervised-reading endpoints or routes |
-| NFR-R13-01..10 | GATED | Blocked on the FRs above |
+| FR-R13-01 (supervised worklist) | Partial | Reading worklist exists (`/reports/reading-list`); attending-assignment data + supervised status columns + WebSocket auto-refresh GATED |
+| FR-R13-02 (attending guidance) | Partial | Shared viewer exists; attending-guidance panel/channel GATED |
+| FR-R13-03 (draft report) | Partial | Draft editor + autosave shipped via shared R12 (`GET/PUT /reports/{exam_id}`); submit-to-attending, DRAFT badge, completeness indicator GATED |
+| FR-R13-04 (attending review/co-sign) | GATED | No resident-draft co-sign workflow; `/peer-reviews*` covers final signed reports only (partial overlap) |
+| FR-R13-06 (exam list) | Partial | Study/patient list infra exists (Files browser); exam-log filters/CSV export/metrics GATED |
+| FR-R13-05, 07..10 | GATED | No teaching-file/de-identification, feedback, consult, learning, or conference-export endpoints |
+| NFR-R13-02 (draft autosave latency) | Covered | Autosave loop shipped; timing target measurable against shared draft editor |
+| NFR-R13-01, 03..10 | GATED | Blocked on the FRs above |
 
 ## Cross-Artifact Dependencies
 

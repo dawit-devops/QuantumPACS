@@ -47,7 +47,8 @@
 
 ### Dependencies
 - FR-R13-03, NFR-R13-02, NFR-R13-10
-- API: `POST /api/v2/reports/draft`, `PUT /api/v2/reports/draft/{id}`, `POST /api/v2/reports/draft/{id}/submit`
+- **Shipped (shared R12, 2026-08-03)**: draft creation + autosave via `GET/PUT /api/v2/reports/{exam_id}` (`ReportEditor.tsx`)
+- **GATED**: `POST /api/v2/reports/draft/{id}/submit`, attending badge/completeness indicator
 
 ---
 

@@ -13,7 +13,8 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 | `/worklist` | Modality worklist (CRUD, calendar, batch ops) | `WORKLIST_READ` (admin submenu item) |
 | `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
 | `/account` | Account | Any authenticated user |
-| `/schedule-board`, `/staffing`, `/utilization` | **Not accessible** | No routes/endpoints exist — GATED |
+| `/schedule-board` | Schedule board (modality × 30-min slots grid, prev/next day, entry drawer) | `WORKLIST_READ` — frontend view over `GET /worklist?date_from&date_to` (per_page 500); **no dedicated `/schedule/*` backend** |
+| `/staffing`, `/utilization`, `/handoff` | **Not accessible** | No routes/endpoints exist — GATED |
 
 ### Navigation Gating (Sidebar.tsx)
 
@@ -26,9 +27,12 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 
 - The existing `Worklist.tsx` covers entries, calendar view, batch mark-performed/
   cancel, search, date-range + station filters — **implemented**.
-- Schedule board, exam assignment, staffing rosters, utilization, shift handoff
-  report are **not implemented** — aspirational FRs marked `GATED` (artifacts
-  01/07/08).
+- `ScheduleBoard.tsx` (route `/schedule-board`) renders the modality × time-slot
+  board over the worklist API (statuses scheduled/performed/cancelled, entry
+  drawer, prev/next day nav) — **implemented (FR-R04-01)**.
+- Exam assignment (drag/move, no persistence), staffing rosters, utilization,
+  conflict detection, and shift handoff report are **not implemented** —
+  aspirational FRs marked `GATED` (artifacts 01/07/08); no `/schedule/*` backend.
 
 ## Screens & Navigation
 

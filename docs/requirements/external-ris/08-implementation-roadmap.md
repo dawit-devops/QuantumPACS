@@ -36,7 +36,7 @@
 | FR/NFR ID | Summary | Reason | AC | Effort |
 |-----------|---------|--------|----|--------|
 | FR-R15-02 | Scheduling sync | Depends on R04 schedule board | AC-R15-02 | M |
-| FR-R15-03 | Outbound status updates | Not wired to exam status events | AC-R15-03 | M |
+| FR-R15-03 | Outbound status updates | Internal status change exists (`/exams/{id}/complete` → exam completed, worklist `performed`, re-verified post-merge 4d136e0); outbound HL7 ORM/ORU delivery to RIS not wired | AC-R15-03 | M |
 | FR-R15-04 | Report delivery (ORU) | Blocked on R12 reporting endpoints | AC-R15-04 | L |
 | FR-R15-05 | MWL C-FIND | SCP exists (dicom-mwl-scp); result cap to verify | AC-R15-05 | S |
 

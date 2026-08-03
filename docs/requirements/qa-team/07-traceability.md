@@ -13,33 +13,43 @@
 | FR-R05-07 | Yes | AC-R05-65, AC-R05-66, AC-R05-67, AC-R05-68, AC-R05-69, AC-R05-70, AC-R05-71 | Covered |
 | FR-R05-08 | Yes | AC-R05-72, AC-R05-73, AC-R05-74, AC-R05-75, AC-R05-76, AC-R05-77, AC-R05-78, AC-R05-79 | Covered |
 | FR-R05-09 | Yes | AC-R05-80, AC-R05-81, AC-R05-82, AC-R05-83, AC-R05-84, AC-R05-85, AC-R05-86, AC-R05-87 | Covered |
-| FR-R05-10 | No | — | Gap — no AC yet |
-| FR-R05-11 | Yes | AC-R05-151 | Covered |
-| FR-R05-12 | Yes | AC-R05-152 | Covered |
-| FR-R05-13 | No | — | Gap — no AC yet |
-| NFR-R05-01 | No | — | Gap — no AC yet |
-| NFR-R05-02 | No | — | Gap — no AC yet |
-| NFR-R05-03 | No | — | Gap — no AC yet |
-| NFR-R05-04 | No | — | Gap — no AC yet |
-| NFR-R05-05 | No | — | Gap — no AC yet |
-| NFR-R05-06 | No | — | Gap — no AC yet |
-| NFR-R05-07 | No | — | Gap — no AC yet |
-| NFR-R05-08 | No | — | Gap — no AC yet |
-| NFR-R05-09 | No | — | Gap — no AC yet |
-| NFR-R05-10 | No | — | Gap — no AC yet |
+| FR-R05-10 | Yes | AC-R05-153 | Covered — implemented |
+| FR-R05-11 | Yes | AC-R05-151 | Covered (GATED — v3.1) |
+| FR-R05-12 | Yes | AC-R05-152 | Covered (GATED — v3.1) |
+| FR-R05-13 | No | — | Gap — no AC yet (GATED — v3.2) |
+| NFR-R05-01 | Yes | AC-R05-88..93 | Covered |
+| NFR-R05-02 | Yes | AC-R05-94..97 | Covered |
+| NFR-R05-03 | Yes | AC-R05-98..103 | Covered |
+| NFR-R05-04 | Yes | AC-R05-104..108 | Covered |
+| NFR-R05-05 | Yes | AC-R05-109..119 | Covered |
+| NFR-R05-06 | Yes | AC-R05-120..124 | Covered |
+| NFR-R05-07 | Yes | AC-R05-125..130 | Covered |
+| NFR-R05-08 | Yes | AC-R05-131..136 | Covered |
+| NFR-R05-09 | Yes | AC-R05-137..140 | Covered |
+| NFR-R05-10 | Yes | AC-R05-141..150 | Covered |
 
-## GATED Requirements (codebase reality, verified 2026-08-03)
+## Implementation Status (codebase reality, verified 2026-08-03)
 
-None of the QA-specific features exist in the codebase (no `/qa/*` routes, no
-`qa_*` tables, no `qa_team` role). All QA FRs are aspirational v3.0 spec — ACs exist
-in artifact 06 but are **GATED** on new backend work (QA module: queue/review/
-protocols/incidents/corrective-actions endpoints + 5 tables + `QA_*` permission
-slugs flagged to backend):
+The QA module is implemented end-to-end (backend `api/qa.py`, routes in
+`routes.py`; frontend `frontend/src/qa/`). FR-R05-01..07 and FR-R05-10 map to
+shipped endpoints; FR-R05-08/09/11/12/13 remain GATED (v3.1/v3.2 scope):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R05-01..09, FR-R05-11..13 | GATED | No QA endpoints, tables, or permissions |
-| NFR-R05-01..10 | GATED | Blocked on the FRs above |
+| FR-R05-01 (QA review queue) | Covered — implemented | `GET /qa/queue` (`QAQueue.tsx`, `/qa/queue`) |
+| FR-R05-02 (QA review workflow) | Covered — implemented | `GET/PUT /qa/reviews/{exam_id}`, `POST /qa/reviews` (`QAReviewForm.tsx`) |
+| FR-R05-03 (protocol registry CRUD) | Covered — implemented | `GET/POST /qa/protocols`, `GET/PUT/DELETE /qa/protocols/{id}` (`ProtocolRegistry.tsx`); also `/protocols` for exam console |
+| FR-R05-04 (QA score persistence) | Covered — implemented | `qa_scores` write via review submit (`/qa/reviews` PUT/POST) |
+| FR-R05-05 (corrective action inbox) | Covered — implemented | `GET/POST /qa/corrective-actions`, `POST /qa/corrective-actions/{id}/resolve` (`CorrectiveActions.tsx`) |
+| FR-R05-06 (incident/retake logging) | Covered — implemented | `GET/POST /qa/incidents`, `POST /qa/incidents/{id}/resolve` (`Incidents.tsx`) |
+| FR-R05-07 (RBAC QA role) | Covered — implemented | `qa_team` built-in role in `permissions.py` (`QA_READ`/`QA_WRITE`/`PROTOCOL_MANAGE`/`PEER_REVIEW_*`/`DICOMWEB_READ`/`METRICS_READ`) |
+| FR-R05-08 (automated dose validation) | GATED | No rules engine or dose-baseline job (v3.1) |
+| FR-R05-09 (DICOM tag validation rules) | GATED | No DICOM tag parser/rules engine (v3.1) |
+| FR-R05-10 (peer review workflow) | Covered — implemented | `GET /qa/reviewers`, `POST /peer-reviews`, `POST /peer-reviews/{id}/submit`; R12 PeerReviewInbox |
+| FR-R05-11 (ACR phantom QA) | GATED | No phantom scheduling/analysis (v3.1) |
+| FR-R05-12 (regulatory reporting) | GATED | No reporting engine (v3.1) |
+| FR-R05-13 (AI-assisted QA) | GATED | No AI inference integration (v3.2) |
+| NFR-R05-* tied to implemented FRs | Covered | FR-R05-01..07, 10 above |
 
 ## Cross-Artifact Dependencies
 

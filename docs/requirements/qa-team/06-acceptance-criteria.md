@@ -170,6 +170,17 @@ This document defines the acceptance criteria for the QI/QA Team requirements pa
 | AC-R05-150 | NFR-R05-10 | No known CVEs in critical dependencies | Dependency scan |
 | AC-R05-151 | FR-R05-11 | ACR phantom QA: schedule phantom scans, auto-analyze against thresholds, flag failures, track compliance | Manual + E2E |
 | AC-R05-152 | FR-R05-12 | Regulatory reporting: export compliance reports (MQSA, ACR, state-specific), CSV/PDF/XML formats | Manual + E2E |
+| AC-R05-153 | FR-R05-10 | Peer review workflow: QA lead lists radiologists (`GET /qa/reviewers`), assigns a peer review (`POST /peer-reviews`), R12 submits findings (`POST /peer-reviews/{id}/submit`), discrepancy tracked; `qa_team` role has `PEER_REVIEW_READ`/`PEER_REVIEW_WRITE` | Backend test + E2E |
+
+### Implementation Status (verified 2026-08-03)
+
+QA module is implemented end-to-end (backend `api/qa.py` + routes in `routes.py`;
+frontend `frontend/src/qa/`). AC-R05-01..71 (queue/review/protocols/scores/
+incidents/corrective actions/RBAC) and AC-R05-153 (peer review) are verifiable
+today via backend tests + E2E/visual evidence. AC-R05-72..79 (automated dose
+validation, FR-R05-08) and AC-R05-80..87 (DICOM tag validation, FR-R05-09) remain
+**GATED** — no rules engine or tag parser. AC-R05-151/152 (phantom QA, regulatory
+reporting) remain GATED (v3.1).
 
 ---
 

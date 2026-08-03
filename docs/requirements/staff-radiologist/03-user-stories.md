@@ -98,10 +98,10 @@ performance-budgeted per the frontend-developer lens.
 - **Given** another radiologist edits concurrently, **when** a conflict occurs, **then** a clear overwrite/merge choice is presented.
 - **Accessibility**: editors have labelled fields; status changes announced.
 - **Performance**: report panel load ≤ 2s; autosave invisible to interaction.
-- **GATED**: no reporting API exists — backend required.
+- **Implemented (2026-08-03)**: `GET/PUT /reports/{exam_id}` (draft → preliminary → final), `POST /reports/{exam_id}/sign`, `GET /reports/templates` — `ReportEditor.tsx` (autosave ≤ 10s cadence, template picker, sign modal with impression requirement).
 
 ### Dependencies
-- **GAP: `GET/PUT /api/v2/reports/{study_uid}`, `POST .../sign`, templates API**
+- `GET/PUT /api/v2/reports/{exam_id}`, `POST /api/v2/reports/{exam_id}/sign`, `GET /api/v2/reports/templates`
 
 ---
 
@@ -129,10 +129,10 @@ performance-budgeted per the frontend-developer lens.
 - **Given** a resident submits a draft, **when** the worklist refreshes, **then** it shows "awaiting attending review" with the resident's name.
 - **Given** I open the draft, **when** I review, **then** the resident's annotations/report are intact and editable.
 - **Given** I approve, **when** I sign, **then** the review completes, is audit-logged (draft → reviewed → signed), and status updates.
-- **GATED**: reporting API.
+- **Partial (2026-08-03)**: peer-review workflow (`/peer-reviews*`, `PeerReviewInbox.tsx`) covers assigned review of **final signed reports** with discrepancy-level + comment; the resident-draft attending-review queue remains GATED.
 
 ### Dependencies
-- R13 workflow; reporting API
+- R13 workflow; resident-draft review queue (GATED) — peer review slice shipped: `/api/v2/peer-reviews`, `/api/v2/peer-reviews/{id}/submit`
 
 ---
 
@@ -193,6 +193,7 @@ performance-budgeted per the frontend-developer lens.
 - **Given** presets exist, **when** I open a study, **then** the saved preset applies before I touch controls.
 - **Given** I edit a preset, **when** saved, **then** it persists for future sessions.
 - **Performance**: preset application adds ≤ 100ms to study open.
+- **Implemented (2026-08-03)**: `/reading-presets` + `/reading-presets/{id}` CRUD (per-user window_level + layout presets per modality) — `ReadingPresetsPanel.tsx`, `useReadingPresets.ts`, `presets.ts`.
 
 ### Dependencies
-- Viewer state; preset persistence (GAP: endpoint or localStorage — confirm)
+- `GET/POST /api/v2/reading-presets`, `GET/PUT/DELETE /api/v2/reading-presets/{id}`; viewer state in `CornerstoneElement.tsx`

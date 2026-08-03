@@ -39,6 +39,12 @@ webhooks. **GATED**: full MWL/MPPS lifecycle, report delivery push (depends on R
 reporting), dead-letter + manual reconciliation UI, message retry policies. See
 artifacts 04/07/08.
 
+**Re-verified 2026-08-03 (post-merge 4d136e0)**: `/exams` + `/exams/{id}/complete`
+record the internal status transition (exam completed, worklist entry `performed`)
+with in-app radiologist notification — no outbound HL7 ORM/ORU status message to the
+RIS, so FR-R15-03 remains GATED. MWL C-FIND SCP (`backend/dcm/server.py`,
+ModalityWorklistInformationFind) re-confirmed.
+
 ## Assumptions & Constraints
 
 - A1: HL7 v2.5 MLLP is the transport; ORM^O01 inbound, ORM/ORU outbound.

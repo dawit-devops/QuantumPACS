@@ -38,11 +38,16 @@
 
 ## Codebase Status (verified 2026-08-03)
 
-**Implemented**: study browser, viewer (image QA), worklist (`/worklist*`).
-**GATED**: FR-R06-01..10 acquisition workflow (patient verification, protocol
-selection, acquisition/dose, safety checks, completion, incidents, override) — no
-`/exams/*` endpoints or `EXAM_*` permissions exist; flagged to backend. See artifacts
-04/07/08 for the verified presentation-layer mapping.
+**Implemented**: R06 exam lifecycle shipped end-to-end — `TechnologistWorklist.tsx`
+(30s auto-refresh, `/worklist`), `ExamConsole.tsx` (`/exams`, `/exams/:id`:
+identity-confirm, protocol, acquisitions + accept/reject/retake decision, dose,
+safety-checks, complete, incidents, overrides; `/protocols`), `SimulatedPreview.tsx`.
+Backend `backend/api/exams.py` + tables `exams`, `acquisitions`, `safety_checks`,
+`incidents`, `protocol_overrides`, `protocols`; permissions `EXAM_READ`/`EXAM_WRITE`/
+`WORKLIST_READ`/`WORKLIST_WRITE` + `technologist` built-in role. FR-R06-01..10 map to
+shipped endpoints (see artifact 07). **GATED** (kept as v3.0/v3.1 spec):
+FR-R06-11 AI-assisted image QA (v3.2), FR-R06-12 automated dose optimization,
+FR-R06-13 RIS-driven protocol selection (no HL7 ORM integration).
 
 ## Assumptions & Constraints
 

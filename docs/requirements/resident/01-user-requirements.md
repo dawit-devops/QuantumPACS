@@ -10,10 +10,10 @@
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-R13-01 | **Supervised Reading Worklist**: Display a filtered, paginated worklist of studies assigned to the resident for supervised reading. Columns: Accession, Patient (initials), Modality, Protocol, Priority, Assigned Attending, Status (pending/in_review/completed). Auto-refresh every 30s via WebSocket. STAT studies highlighted with red left border. | Must | Extends existing worklist with attending assignment and supervision status |
-| FR-R13-02 | **Study Interpretation with Attending Guidance**: Allow the resident to open a study for interpretation with the assigned attending's preliminary notes and suggested areas of focus displayed. Provide a split-screen view: resident's findings panel on left, attending guidance on right. Resident can toggle attending guidance visibility. | Must | New `SupervisedViewer` component; attending guidance from R12 |
-| FR-R13-03 | **Draft Report Creation**: Enable resident to create a draft report with structured findings, impression, and recommendations sections. Draft report is marked with "DRAFT — Awaiting Attending Review" badge. Auto-save every 10s (optimistic update). Word count and completeness indicator for each section. | Must | New `DraftReportEditor` component; feeds attending review queue |
-| FR-R13-04 | **Attending Review and Sign-Off Workflow**: When resident submits draft report, assigned attending (R12) receives notification and can: (1) review findings side-by-side with resident's draft, (2) add comments/amendments inline, (3) approve and co-sign, (4) return for revision with specific feedback. Resident receives notification with attending feedback. | Must | Cross-role R13↔R12; notification via WebSocket |
+| FR-R13-01 | **Supervised Reading Worklist**: Display a filtered, paginated worklist of studies assigned to the resident for supervised reading. Columns: Accession, Patient (initials), Modality, Protocol, Priority, Assigned Attending, Status (pending/in_review/completed). Auto-refresh every 30s via WebSocket. STAT studies highlighted with red left border. | Must | Partial: shared reading worklist exists (`GET /reports/reading-list`); attending-assignment column, WebSocket auto-refresh, supervision status GATED |
+| FR-R13-02 | **Study Interpretation with Attending Guidance**: Allow the resident to open a study for interpretation with the assigned attending's preliminary notes and suggested areas of focus displayed. Provide a split-screen view: resident's findings panel on left, attending guidance on right. Resident can toggle attending guidance visibility. | Must | Partial: shared viewer exists (same as R12); attending-guidance panel/channel GATED (new `SupervisedViewer` component) |
+| FR-R13-03 | **Draft Report Creation**: Enable resident to create a draft report with structured findings, impression, and recommendations sections. Draft report is marked with "DRAFT — Awaiting Attending Review" badge. Auto-save every 10s (optimistic update). Word count and completeness indicator for each section. | Must | Partial: draft editor + autosave shipped via shared R12 reporting (`GET/PUT /reports/{exam_id}`, `ReportEditor.tsx`); attending-review badge, completeness/word-count indicator, submit-to-attending GATED |
+| FR-R13-04 | **Attending Review and Sign-Off Workflow**: When resident submits draft report, assigned attending (R12) receives notification and can: (1) review findings side-by-side with resident's draft, (2) add comments/amendments inline, (3) approve and co-sign, (4) return for revision with specific feedback. Resident receives notification with attending feedback. | Must | GATED — no resident-draft co-sign workflow; `/peer-reviews*` covers review of final signed reports only (partial overlap) |
 | FR-R13-05 | **Teaching File Capture**: Allow resident to capture a teaching case from any study they've interpreted. Teaching file entry includes: de-identified images (selected key images), resident's findings, attending's feedback, diagnosis, differential diagnosis, key learning points, and tags (anatomy, pathology, modality). Resident can submit for attending approval before adding to teaching library. | Must | New `TeachingFileCapture` component; de-identification required |
 | FR-R13-06 | **Exam List Management**: Display a personal exam log for the resident showing all studies interpreted, with filters: date range, modality, body part, diagnosis, attending, and review status. Export to CSV for portfolio/educational requirements. Include metrics: interpretation time, draft-to-final turnaround, attending revision rate. | Must | Personal portfolio; exports for residency program requirements |
 | FR-R13-07 | **Performance Feedback Dashboard**: Display resident-specific metrics: number of studies interpreted by modality/body part, average interpretation time, attending agreement rate (percentage of drafts approved without major changes), common feedback themes, and progress toward rotation milestones. Attending can add private notes/feedback per study. | Should | Educational analytics; feeds residency program evaluation |
@@ -38,18 +38,25 @@
 
 ## Codebase Status (verified 2026-08-03)
 
-**GATED**: All FR-R13-NN resident/supervised-reading requirements are aspirational
-v3.0 — no resident-specific functionality exists (no role distinction from R12
-today); no supervised worklist, draft-report, attending-sign-off, teaching-file,
-feedback, consult, or case-conference endpoints exist. Requires 6+ new endpoints
-flagged to backend; depends on R12 reporting. See artifacts 04/07/08.
+**No resident-specific functionality exists** (no role distinction from R12 today;
+no `resident` built-in role). Merge 4d136e0 shipped the shared R12 stack the
+resident will build on: reading worklist (`/reports/reading-list`), draft report
+editor with autosave (`GET/PUT /reports/{exam_id}`), report templates
+(`/reports/templates`), peer review (`/peer-reviews*`), reading presets
+(`/reading-presets*`), notifications (`exam.completed` + `/ws`). **GATED**:
+attending-assignment data (FR-R13-01), attending-guidance panel (FR-R13-02),
+attending-review/co-sign workflow (FR-R13-04 — peer review covers final signed
+reports only), teaching files + de-identification (FR-R13-05), exam-log filters/
+CSV/metrics (FR-R13-06), feedback dashboard (FR-R13-07), on-call consult
+(FR-R13-08), protocol learning (FR-R13-09), case-conference export (FR-R13-10).
+See artifacts 04/07/08.
 
 ## Assumptions & Constraints
 
 | # | Assumption / Constraint | Impact |
 |---|-------------------------|--------|
 | A1 | PHI: Patient initials and MRN last 4 digits shown on worklist; full PHI in study detail per HIPAA minimum necessary; teaching files MUST be fully de-identified | FR-R13-01, FR-R13-05 |
-| A2 | 6 new API endpoints required (flagged for `frontend-to-backend-requirements`) | FR-R13-02, FR-R13-04, FR-R13-05, FR-R13-07 |
+| A2 | Resident-specific endpoints required: attending-guidance channel, draft submit/approve/return, teaching files, feedback aggregates, consult routing (flagged for `frontend-to-backend-requirements`); shared draft editor already shipped via R12 | FR-R13-02, FR-R13-04, FR-R13-05, FR-R13-07 |
 | A3 | Attending review workflow requires R12 to have a dedicated "Resident Review Queue" in their worklist | FR-R13-04, cross-role R12 |
 | A4 | Teaching file de-identification must strip all PHI from images (burned-in annotations, DICOM tags) and metadata | FR-R13-05 |
 | A5 | Resident-attending assignment is configured per rotation by R04 coordinator; many-to-one (multiple residents per attending) | FR-R13-01, FR-R13-04 |

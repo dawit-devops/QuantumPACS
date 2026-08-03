@@ -3,6 +3,16 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.2.0] — 2026-08-03
+### Changed
+- FR-R04-01 (schedule board): GATED → Implemented — `ScheduleBoard.tsx` at `/schedule-board` (frontend view over worklist API) shipped with v3-dev merge 4d136e0
+- FR-R04-06 (worklist management): confirmed Implemented (`/worklist` CRUD + batch + calendar)
+- FR-R04-10 (calendar view): GATED → Implemented (partial) — worklist table/calendar toggle (`CalendarView.tsx`); week/month views remain GATED
+- Artifact 07 traceability: per-FR implementation statuses updated (Covered/GATED)
+- Artifact 08 roadmap: moved FR-R04-01/06/10 to Implemented (Passing ACs); blocking dependency narrowed to scheduling backend (FR-R04-02..05, 07..09)
+- README: Codebase Alignment rewritten with actual routes/pages/permissions
+- DELTA.md added documenting the alignment
+
 ## [1.1.0] — 2026-08-03
 ### Added
 - Artifact 04: Role-Based Routing & Navigation (Presentation Layer) section — worklist CRUD/calendar/batch implemented; scheduling board/staffing/utilization GATED

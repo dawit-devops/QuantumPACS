@@ -1,148 +1,118 @@
 # Implementation Roadmap — Radiology Technologist (R06)
 
 **Role ID**: R06
-**Generated**: 2026-08-02
-**Version**: 1.0.0
+**Generated**: 2026-08-03
+**Version**: 1.2.0
 
 ---
 
 ## Dependency Graph
 
 ```
-FR-R06-01 (Worklist)
-├── FR-R06-02 (Patient Verification) — depends on worklist exam selection
-├── FR-R06-03 (Protocol Selection) — depends on exam detail
-├── FR-R06-04 (Image Acquisition & QA) — depends on protocol start
-├── FR-R06-05 (Dose Documentation) — depends on acquisition data
-├── FR-R06-06 (Safety Checks) — depends on protocol/contrast flag
-├── FR-R06-07 (Exam Completion) — depends on all above
-├── FR-R06-08 (Incident Logging) — depends on QA reject workflow
-├── FR-R06-09 (Emergency Override) — depends on protocol panel
-└── FR-R06-10 (Modality Workflows) — depends on acquisition framework
+FR-R06-01 (Worklist) — IMPLEMENTED
+├── FR-R06-02 (Patient Verification) — IMPLEMENTED — depends on worklist exam selection
+├── FR-R06-03 (Protocol Selection) — IMPLEMENTED — depends on exam detail
+├── FR-R06-04 (Image Acquisition & QA) — IMPLEMENTED — depends on protocol start
+├── FR-R06-05 (Dose Documentation) — IMPLEMENTED — depends on acquisition data
+├── FR-R06-06 (Safety Checks) — IMPLEMENTED — depends on protocol/contrast flag
+├── FR-R06-07 (Exam Completion) — IMPLEMENTED — depends on all above
+├── FR-R06-08 (Incident Logging) — IMPLEMENTED — depends on QA reject workflow
+├── FR-R06-09 (Emergency Override) — IMPLEMENTED — depends on protocol panel
+└── FR-R06-10 (Modality Workflows) — IMPLEMENTED — depends on acquisition framework
 ```
+
+---
+
+## FR Implementation Status
+
+> **Codebase reality (verified 2026-08-03)**: the R06 exam lifecycle is shipped
+> end-to-end — backend `api/exams.py` (routes in `api/routes.py`:
+> `/exams`, `/exams/{id}`, `/identity-confirm`, `/protocol`, `/acquisitions`,
+> `/acquisitions/{aid}/{decision}`, `/dose`, `/safety-checks`, `/complete`,
+> `/incidents`, `/overrides`, `/protocols`), frontend `frontend/src/technologist/`
+> (`TechnologistWorklist.tsx` at `/exams`, `ExamConsole.tsx` at `/exams/:id`,
+> `SimulatedPreview.tsx`), tables in `backend/db/exams.py` (`exams`, `acquisitions`,
+> `safety_checks`, `incidents`, `protocol_overrides`, `protocols`), permissions
+> `EXAM_READ`/`EXAM_WRITE`/`WORKLIST_*` + `technologist` built-in role.
+
+### Implemented (Passing ACs)
+
+| FR/NFR ID | Summary | AC Coverage | Effort |
+|-----------|---------|-------------|--------|
+| FR-R06-01 | **Modality Worklist** — `TechnologistWorklist.tsx` at `/exams`; 30s auto-refresh, STAT highlighting; data via `GET /worklist?modality=` | AC-R06-01-01..05 | M |
+| FR-R06-02 | **Patient Identity Verification** — `POST /exams/{id}/identity-confirm` (spec name `confirm-patient`) | AC-R06-02-01..05 | S |
+| FR-R06-03 | **Exam Protocol Selection** — `GET /exams/{id}/protocol`, `GET /protocols?modality=`; ExamConsole protocol panel with parameter review | AC-R06-03-01..04 | M |
+| FR-R06-04 | **Image Acquisition and QA** — `POST /exams/{id}/acquisitions`; `POST /exams/{id}/acquisitions/{aid}/{decision}` (accept/reject/retake); `SimulatedPreview.tsx` | AC-R06-04-01..05 | M |
+| FR-R06-05 | **Dose Documentation** — `GET/POST /exams/{id}/dose` (DLP, CTDIvol per acquisition) | AC-R06-05-01..05 | M |
+| FR-R06-06 | **Patient Safety Checks** — `POST /exams/{id}/safety-checks`; `safety_checks` table (checked_at, flags) | AC-R06-06-01..05 | S |
+| FR-R06-07 | **Exam Completion and Handoff** — `POST /exams/{id}/complete`; status push via LISTEN/NOTIFY to R12/R04 worklists | AC-R06-07-01..04 | M |
+| FR-R06-08 | **Retake/Incident Logging** — `GET/POST /exams/{id}/incidents`; `incidents` table | AC-R06-08-01..04 | S |
+| FR-R06-09 | **Emergency Protocol Override** — `POST /exams/{id}/overrides`; `protocol_overrides` table with justification + audit | AC-R06-09-01..04 | S |
+| FR-R06-10 | **Modality-Specific Workflows** — `MODALITY_WORKFLOWS` in ExamConsole (CT/MR/PET/US); per-modality protocol presets | AC-R06-10-01..06 | M |
+| NFR-R06-01..10 | Perf/responsiveness/contrast/capacity ACs tied to implemented screens | AC-R06-* | — |
+
+**Remaining GATED** (kept as v3.0/v3.1 spec): FR-R06-11 AI-assisted image QA
+(v3.2 — no AI inference integration), FR-R06-12 automated dose optimization
+suggestions (no dose-baseline job), FR-R06-13 RIS-driven automated protocol
+selection (no HL7 ORM integration).
 
 ---
 
 ## Implementation Phases
 
 ### Phase 1: Core Worklist and Exam Preparation (MVP)
-**Status**: Missing — no implementation started
-**Dependencies**: None
+**Status**: ✅ Implemented (FR-R06-01, 02, 03)
 
-| Artifact | What's Lacking | What's Done |
-|----------|---------------|-------------|
-| 01 User Requirements | FR-R06-01, FR-R06-02, FR-R06-03 | — |
-| 02 Workflow Maps | W1, W2 | — |
-| 03 User Stories | US-R06-01, US-R06-02, US-R06-03 | — |
-| 04 UI/UX | S-R06-01, S-R06-02 | — |
-| 05 Metrics | M-R06-01, M-R06-06 | — |
-| 06 ACs | AC-R06-01, AC-R06-02, AC-R06-03 | — |
-| 07 Traceability | All FR→AC mappings | — |
-| 08 Roadmap | This document | ✅ |
+**Shipped APIs** (names differ from original spec — confirmed):
+1. `GET /api/v2/worklist?modality=` — technologist worklist (spec: `/api/v2/worklists/technologist`)
+2. `GET /api/v2/exams/{id}` — exam detail with patient + protocol
+3. `POST /api/v2/exams/{id}/identity-confirm` — patient identity confirmation (spec: `confirm-patient`)
+4. `GET /api/v2/exams/{id}/protocol` — protocol parameters
+5. `POST /api/v2/exams/{id}/acquisitions` — start/record acquisition (spec: `start-acquisition`)
 
-**Key APIs needed**:
-1. `GET /api/v2/worklists/technologist` — fetch technologist worklist
-2. `GET /api/v2/exams/{id}` — fetch exam detail with patient + protocol
-3. `POST /api/v2/exams/{id}/confirm-patient` — confirm patient identity
-4. `GET /api/v2/exams/{id}/protocol` — fetch protocol parameters
-5. `POST /api/v2/exams/{id}/start-acquisition` — start image acquisition
-
-**Frontend components needed**:
-1. `TechnologistWorklist` — extends existing worklist with modality filtering
-2. `ExamDetailPanel` — patient demographics + protocol + confirm button
-3. `ProtocolPanel` — protocol parameters display + start button
-4. `AcquisitionView` — Cornerstone3D viewer with QA overlay
-
-**Estimated effort**: Large (3-4 sprints)
+**Frontend components shipped**: `TechnologistWorklist.tsx` (worklist with modality
+filter + 30s auto-refresh + STAT highlighting), `ExamConsole.tsx` (exam detail:
+demographics, protocol panel, confirm button), `SimulatedPreview.tsx` (preview pane;
+real modality capture remains on modality console).
 
 ---
 
 ### Phase 2: Image QA and Dose Tracking
-**Status**: Missing — depends on Phase 1
-**Dependencies**: Phase 1 complete
+**Status**: ✅ Implemented (FR-R06-04, 05)
 
-| Artifact | What's Lacking | What's Done |
-|----------|---------------|-------------|
-| 01 User Requirements | FR-R06-04, FR-R06-05 | — |
-| 02 Workflow Maps | W2 (QA portion) | — |
-| 03 User Stories | US-R06-04, US-R06-05 | — |
-| 04 UI/UX | S-R06-03, S-R06-04 | — |
-| 05 Metrics | M-R06-02, M-R06-04, M-R06-05, M-R06-07, M-R06-09 | — |
-| 06 ACs | AC-R06-04, AC-R06-05 | — |
-| 07 Traceability | FR-R06-04, FR-R06-05 mappings | — |
+**Shipped APIs**:
+1. `POST /api/v2/exams/{id}/acquisitions/{acquisition_id}/{decision}` — accept/reject/retake (spec: separate `acquire`/`reject`)
+2. `GET/POST /api/v2/exams/{id}/dose` — dose + cumulative tracking (spec: `dose-baseline` GET + `dose-log` POST)
 
-**Key APIs needed**:
-1. `POST /api/v2/exams/{id}/acquire` — record image acquisition with dose
-2. `POST /api/v2/exams/{id}/reject` — flag image as rejected
-3. `GET /api/v2/exams/{id}/dose-baseline` — fetch cumulative dose + ACR benchmark
-4. `POST /api/v2/exams/{id}/dose-log` — log dose parameters
-
-**Frontend components needed**:
-1. `QAOverlay` — real-time image quality indicators on Cornerstone3D viewer
-2. `RejectModal` — reject reason dropdown + description textarea
-3. `DosePanel` — live dose tracking with cumulative total and benchmark comparison
-4. `AcceptButton` / `RejectButton` — keyboard shortcuts (A/R) for QA
-
-**Estimated effort**: Medium (2 sprints)
+**Frontend components shipped**: acquisition decision buttons in `ExamConsole.tsx`,
+dose display (DLP/CTDIvol). **Note**: `QAOverlay`/`DosePanel` live-indicator
+components from the original spec remain partially aspirational — the console
+renders dose values server-side via `SimulatedPreview.tsx`; real-time SNR/artifact
+flags are GATED (FR-R06-11).
 
 ---
 
 ### Phase 3: Safety Checks, Completion, and Incident Logging
-**Status**: Missing — depends on Phase 2
-**Dependencies**: Phase 2 complete
+**Status**: ✅ Implemented (FR-R06-06, 07, 08)
 
-| Artifact | What's Lacking | What's Done |
-|----------|---------------|-------------|
-| 01 User Requirements | FR-R06-06, FR-R06-07, FR-R06-08 | — |
-| 02 Workflow Maps | W3, W4, W5 | — |
-| 03 User Stories | US-R06-06, US-R06-07, US-R06-08 | — |
-| 04 UI/UX | S-R06-05, S-R06-06, S-R06-07 | — |
-| 05 Metrics | M-R06-03, M-R06-08, M-R06-10 | — |
-| 06 ACs | AC-R06-06, AC-R06-07, AC-R06-08 | — |
-| 07 Traceability | FR-R06-06, FR-R06-07, FR-R06-08 mappings | — |
+**Shipped APIs**:
+1. `POST /api/v2/exams/{id}/safety-checks` — safety check confirmation
+2. `POST /api/v2/exams/{id}/complete` — exam complete, push, notify radiologist
+3. `GET/POST /api/v2/exams/{id}/incidents` — incident logging
+4. `POST /api/v2/exams/{id}/overrides` — emergency protocol override
 
-**Key APIs needed**:
-1. `POST /api/v2/exams/{id}/safety-check` — record safety check confirmation
-2. `POST /api/v2/exams/{id}/complete` — mark exam complete, push to PACS, notify radiologist
-3. `POST /api/v2/exams/{id}/incident` — log incident with severity
-4. `POST /api/v2/exams/{id}/override-protocol` — emergency protocol override
-
-**Frontend components needed**:
-1. `SafetyCheckModal` — allergy/pregnancy safety check before contrast
-2. `CompletionPanel` — exam completion summary with dose data and sequence compliance
-3. `IncidentLogModal` — incident type dropdown + severity selector + description
-4. `OverrideModal` — emergency protocol override with justification
-
-**Estimated effort**: Medium (2 sprints)
+**Frontend**: safety/complete/incident/override actions in `ExamConsole.tsx`.
 
 ---
 
 ### Phase 4: Modality-Specific Workflows and Emergency Override
-**Status**: Missing — depends on Phase 3
-**Dependencies**: Phase 3 complete
+**Status**: ✅ Implemented (FR-R06-09, 10)
 
-| Artifact | What's Lacking | What's Done |
-|----------|---------------|-------------|
-| 01 User Requirements | FR-R06-09, FR-R06-10 | — |
-| 02 Workflow Maps | W2 (acquisition portion) | — |
-| 03 User Stories | US-R06-09, US-R06-10 | — |
-| 04 UI/UX | S-R06-03 (modality-specific views) | — |
-| 05 Metrics | M-R06-02, M-R06-04 | — |
-| 06 ACs | AC-R06-09, AC-R06-10 | — |
-| 07 Traceability | FR-R06-09, FR-R06-10 mappings | — |
-
-**Key APIs needed**:
-1. `GET /api/v2/exams/{id}/protocol` — returns modality-specific workflow template
-2. `POST /api/v2/exams/{id}/override-protocol` — emergency protocol override
-
-**Frontend components needed**:
-1. `CTWorkflow` — CT-specific acquisition sequence (localizer → contrast → diagnostic)
-2. `MRIWorkflow` — MRI-specific acquisition sequence with collapsible parameter sections
-3. `PETWorkflow` — PET-specific workflow with dose calibration and uptake timer
-4. `UltrasoundWorkflow` — real-time capture with annotation and freeze/measure tools
-5. `MammographyWorkflow` — CC/MLO view workflows with compression monitoring
-
-**Estimated effort**: Medium (2 sprints)
+**Shipped**: `POST /api/v2/exams/{id}/overrides` (emergency override with
+justification + audit trail), `MODALITY_WORKFLOWS` (CT/MR/PET/US) + per-modality
+protocol presets in ExamConsole. **Note**: `MammographyWorkflow` (CC/MLO with
+compression monitoring) and ultrasound freeze/measure tools are GATED — see R07
+FR-R07-10 for mammography specifics.
 
 ---
 
@@ -163,13 +133,12 @@ FR-R06-01 (Worklist)
 
 | Blocking Dependency | Blocks | AC | Impact |
 |---------------------|--------|----|--------|
-| Backend `/exams/*` endpoints + `EXAM_*` permission slugs (not in `permissions.py`) | FR-R06-01..10 | AC-R06 acquisition ACs | Entire acquisition workflow GATED until backend exists |
-| `protocols` / `image_acquisitions` schema (not in DB) | FR-R06-03..05 | AC-R06 protocol/dose ACs | Protocol + dose features cannot ship without schema |
+| AI inference integration | FR-R06-11 | AC-R06 AI ACs (v3.2) | AI-assisted image QA — v3.2 backlog |
+| Dose-baseline job (DRL thresholds) | FR-R06-12 | — | Automated dose optimization suggestions — v3.1 backlog |
+| HL7 ORM integration (R15) | FR-R06-13 | — | RIS-driven protocol selection — v3.1 backlog |
 
 ## Next Steps
 
-1. Delegate API contract design to `frontend-to-backend-requirements` skill
-2. Delegate RESTful resource design to `rest-api-design` skill
-3. Prioritize Phase 1 user stories (US-R06-01, 02, 03, 04, 05) for MVP
-4. Schedule stakeholder review with R06 radiology technologists
-5. Conduct usability testing with 2-3 radiology technologists before full implementation
+1. Update roadmap each sprint as FR/NFR status changes
+2. Validate remaining ACs against the shipped exam console (backend tests + E2E in `frontend/src/test/ExamConsole.test.tsx`)
+3. Plan v3.1 backlog: FR-R06-12 dose optimization, FR-R06-13 RIS protocol selection

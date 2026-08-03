@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.2.0 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -10,13 +10,22 @@
 ## Codebase Alignment (verified 2026-08-03)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
-Navigation". **No resident-specific functionality exists** — no role distinction
-between resident and staff radiologist today; residents use the shared Files/Viewer.
+Navigation". **No resident-specific functionality exists** — no `resident` built-in
+role; residents use the shared radiologist surfaces.
 
-**GATED**: all supervised-reading features — FR-R13-01..10 (supervised worklist,
-draft reports, attending review/sign-off, teaching files + de-identification, exam
-log, feedback dashboard, on-call consult, protocol learning, case-conference export).
-6+ new endpoints flagged to backend; depends on R12 reporting.
+**Shared R12 stack (merge 4d136e0) now available as the resident foundation**:
+reading worklist (`GET /reports/reading-list`), draft report editor with autosave
+(`GET/PUT /reports/{exam_id}`, `ReportEditor.tsx`), report templates
+(`GET /reports/templates`), peer review (`/peer-reviews*`, `PeerReviewInbox.tsx`),
+reading presets (`/reading-presets*`), notifications (`exam.completed` + `/ws`).
+**GATED**: attending-assignment data + supervised worklist columns (FR-R13-01),
+attending-guidance panel (FR-R13-02), "DRAFT — Awaiting Attending Review"
+badge/completeness indicator + submit-to-attending (FR-R13-03 slice),
+attending review/co-sign workflow (FR-R13-04 — peer review covers final signed
+reports only), teaching files + de-identification (FR-R13-05), exam-log
+filters/CSV/metrics (FR-R13-06), feedback dashboard (FR-R13-07), on-call consult
+(FR-R13-08), protocol learning (FR-R13-09), case-conference export (FR-R13-10).
+5+ new endpoints flagged to backend; no longer blocked on R12 reporting itself.
 
 ## Role Summary
 
@@ -53,8 +62,8 @@ R14/R19 until co-sign); de-identification mandatory for teaching files.
 
 ## Flagged Gaps (backend — must be raised before sprint commitment)
 
-- Draft report + attending review/sign-off endpoints do not exist (shared R12 reporting gap — largest blocker).
-- Resident worklist requires attending-assignment data + WebSocket push.
+- **Attending review/co-sign endpoints** (submit/approve/return queue) do not exist — shared draft editor shipped via R12 reporting; peer review (`/peer-reviews*`) covers final signed reports only (largest blocker).
+- Supervised worklist requires attending-assignment data + supervised-status columns.
 - Teaching-file de-identification service does not exist.
 - On-call consult routing and feedback-dashboard aggregates are not wired.
 - Protocol learning annotations and case-conference export are new.

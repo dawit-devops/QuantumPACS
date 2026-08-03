@@ -52,10 +52,21 @@
 
 ## Codebase Status (verified 2026-08-03)
 
-**GATED**: All FR-R05-NN QA requirements are aspirational v3.0 — no `/qa/*` routes,
-`qa_*` tables, `qa_team` role, or `QA_*` permission slugs exist in the codebase.
-QA reviewers today can only view studies in the Files browser + viewer (read-only).
-Requires new backend QA module + permissions flagged to backend. See artifacts
+**Implemented**: QA module shipped end-to-end — queue (`GET /qa/queue`), review
+workflow (`GET/PUT /qa/reviews/{exam_id}`, `POST /qa/reviews`), protocol registry
+(`GET/POST /qa/protocols`, `GET/PUT/DELETE /qa/protocols/{id}`), incidents
+(`GET/POST /qa/incidents`, `POST /qa/incidents/{id}/resolve`), corrective actions
+(`GET/POST /qa/corrective-actions`, `POST /qa/corrective-actions/{id}/resolve`),
+QA dashboard (`GET /qa/dashboard`), reviewers list (`GET /qa/reviewers`), plus
+`/peer-reviews` assignment/submit for FR-R05-10. Frontend pages:
+`frontend/src/qa/{QAQueue,QAReviewForm,ProtocolRegistry,Incidents,CorrectiveActions}.tsx`,
+routes `/qa/queue`, `/qa/review/:examId`, `/qa/protocols`, `/qa/incidents`,
+`/qa/actions`. Built-in role `qa_team` exists with `QA_READ`, `QA_WRITE`,
+`PROTOCOL_MANAGE`, `PEER_REVIEW_*`, `DICOMWEB_READ`, `METRICS_READ`.
+
+**GATED** (kept as v3.0/v3.1 spec): FR-R05-08 automated dose validation (no rules
+engine), FR-R05-09 DICOM tag validation (no tag parser), FR-R05-11 ACR phantom QA,
+FR-R05-12 regulatory reporting, FR-R05-13 AI-assisted QA (v3.2). See artifacts
 04/07/08 for the verified presentation-layer mapping.
 
 ## Assumptions & Constraints

@@ -14,7 +14,8 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 | `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
 | `/account` | Account | Any authenticated user |
 | `/files/:id`, `/patients/:id` | Viewer (acquisition QA via viewer), patient page | `FILE_READ` / `PATIENT_READ` |
-| `/acquisition/*`, `/exams/*` | **Not accessible** | No exam routes/endpoints exist — GATED |
+| `/exams` | Technologist worklist (`TechnologistWorklist.tsx`, 30s auto-refresh) | `EXAM_READ` |
+| `/exams/:id` | Exam console (`ExamConsole.tsx` — identity confirm, protocol, acquisitions, dose, safety checks, complete, incidents, override) | `EXAM_READ` |
 
 ### Navigation Gating (Sidebar.tsx)
 
@@ -22,14 +23,17 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 |-----------|--------------|
 | Files / Metrics / Account / Notifications | Always (authenticated) |
 | Worklist (under Admin) | `WORKLIST_READ` |
+| Exams (R06 console) | `EXAM_READ` |
 
 ### Functionality Gating
 
-- Existing: study browser, viewer (image QA / reject via tools), worklist.
-- **Not implemented** (aspirational FRs marked `GATED` in 01/07/08): patient
-  identity verification flow, protocol selection, acquisition recording, dose
-  documentation, safety checks, exam completion handoff, incident/retake logging,
-  emergency override. Requires `EXAM_*` permissions + endpoints flagged to backend.
+- Existing: study browser, viewer (image QA / reject via tools), worklist,
+  `/exams` exam console (FR-R06-01..10 implemented — identity-confirm, protocol,
+  acquisition decisions accept/reject/retake, dose, safety-checks, complete,
+  incidents, overrides).
+- **Not implemented** (aspirational FRs marked `GATED` in 01/07/08): AI-assisted
+  image QA (FR-R06-11, v3.2), automated dose optimization suggestions (FR-R06-12),
+  RIS-driven automated protocol selection (FR-R06-13, no HL7 ORM integration).
 
 ## Screens & Navigation
 

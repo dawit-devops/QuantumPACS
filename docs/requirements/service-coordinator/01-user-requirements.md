@@ -39,10 +39,14 @@
 ## Codebase Status (verified 2026-08-03)
 
 **Implemented**: worklist CRUD, calendar view, batch mark-performed/cancel, search,
-date-range + station filters (`/worklist*`). **GATED**: FR-R04 schedule board, exam
-assignment, stat/priority triage automation, resource utilization, staffing
-rosters, shift handoff report — no scheduling-board endpoints or routes exist;
-flagged to backend. See artifacts 04/07/08.
+date-range + station filters (`/worklist*`); schedule board as a frontend view over
+the worklist API (`/schedule-board`, `ScheduleBoard.tsx` — modality × 30-min grid,
+statuses scheduled/performed/cancelled, entry drawer, prev/next day) covering
+FR-R04-01 (board rendering; drag-and-drop rescheduling not implemented).
+**GATED**: exam assignment/drag-move (no `/schedule/assign` or move endpoints),
+stat/priority triage automation, resource utilization, staffing rosters, conflict
+detection, shift handoff report — no scheduling-board endpoints exist; flagged to
+backend. See artifacts 04/07/08.
 
 ## Assumptions & Constraints
 

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.0 |
+| **Version** | 1.3.0 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -12,14 +12,33 @@
 ## Codebase Alignment (verified 2026-08-03)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
-Navigation". **None of the QA-specific screens exist** in the codebase — no `/qa/*`
-routes, no `qa_*` tables, no `qa_team` built-in role, no `QA_*` permission slugs.
-QA reviewers today can only view studies in the Files browser + viewer (read-only).
+Navigation". The R05 QA module is **implemented end-to-end** (shipped with v3-dev
+merge 4d136e0).
 
-**Implemented**: shared Files/viewer (study browsing for QA review). **GATED**
-(kept as v3.0 spec): FR-R05-01..08, FR-R05-10..13 — all QA queue/review/protocol/
-incident/corrective-action/peer-review features; requires backend QA module
-(endpoints + 5 tables) and `QA_READ`/`QA_WRITE`/`PROTOCOL_MANAGE` permissions.
+**Backend** (`backend/api/qa.py`, routes in `backend/api/routes.py`):
+- `/qa/queue` (GET) — QA review queue
+- `/qa/reviews/{exam_id}` (GET/PUT), `/qa/reviews` (POST) — review workflow + score persistence
+- `/qa/protocols` (GET/POST), `/qa/protocols/{id}` (GET/PUT/DELETE) — protocol registry
+- `/qa/incidents` (GET/POST), `/qa/incidents/{id}/resolve` (POST) — incident/retake logging
+- `/qa/corrective-actions` (GET/POST), `/qa/corrective-actions/{id}/resolve` (POST) — corrective-action inbox
+- `/qa/dashboard` (GET), `/qa/reviewers` (GET) — QA dashboard + radiologist picker
+- `/peer-reviews` (POST), `/peer-reviews/{id}/submit` (POST) — peer-review assignment/submission (FR-R05-10)
+
+**Permissions** (`backend/api/permissions.py`): `QA_READ`, `QA_WRITE`,
+`PROTOCOL_MANAGE`, `PEER_REVIEW_READ`, `PEER_REVIEW_WRITE`; built-in role `qa_team`
+(FILE_READ, PATIENT_READ, STUDY_READ, EXAM_READ, QA_*, PROTOCOL_MANAGE,
+PEER_REVIEW_*, DICOMWEB_READ, METRICS_READ).
+
+**Frontend** (`frontend/src/qa/`): `QAQueue.tsx`, `QAReviewForm.tsx`,
+`ProtocolRegistry.tsx`, `Incidents.tsx`, `CorrectiveActions.tsx` at routes
+`/qa/queue`, `/qa/review/:examId`, `/qa/protocols`, `/qa/incidents`, `/qa/actions`
+(gated by `QA_READ`).
+
+**Implemented**: FR-R05-01..07, FR-R05-10 (see traceability for endpoint mapping).
+**GATED** (kept as v3.0/v3.1 spec): FR-R05-08 automated dose validation, FR-R05-09
+DICOM tag validation, FR-R05-11 ACR phantom QA, FR-R05-12 regulatory reporting,
+FR-R05-13 AI-assisted QA (v3.2) — no rules engine, tag parser, phantom analysis,
+reporting engine, or AI integration exists.
 
 ---
 
@@ -90,6 +109,12 @@ incident/corrective-action/peer-review features; requires backend QA module
 
 ## New API Endpoints Required (v3.0)
 
+> **Status 2026-08-03**: all endpoints below are **shipped** (see Codebase
+> Alignment). Only the peer-review shape differs: `/api/v2/qa/review/{study_uid}`
+> is implemented as `/api/v2/qa/reviews/{exam_id}` (GET/PUT) + `/qa/reviews` (POST),
+> and peer review assignment/submission is `/api/v2/peer-reviews` (POST) +
+> `/api/v2/peer-reviews/{id}/submit` (POST).
+
 | Endpoint | Method | Purpose | Permission |
 |----------|--------|---------|------------|
 | `/api/v2/qa/queue` | GET | QA review queue (filtered, paginated) | `QA_READ` |
@@ -107,30 +132,41 @@ incident/corrective-action/peer-review features; requires backend QA module
 
 ## New Permission Slugs Required
 
+> **Status 2026-08-03**: shipped in `backend/api/permissions.py` — `QA_READ`,
+> `QA_WRITE`, `PROTOCOL_MANAGE` (plus `PEER_REVIEW_READ`/`PEER_REVIEW_WRITE`) and
+> the `qa_team` built-in role:
+
 ```python
-# In backend/api/permissions.py
+# backend/api/permissions.py
 QA_READ = 'QA_READ'
 QA_WRITE = 'QA_WRITE'
 PROTOCOL_MANAGE = 'PROTOCOL_MANAGE'
 
-# Add to PERMISSION_GROUPS
-PERMISSION_GROUPS['QA'] = [
-    'QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE'
-]
+# PERMISSION_GROUPS['QA'] = ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE']
 
-# New built-in role
+# Built-in role
 BUILT_IN_ROLES['qa_team'] = [
-    Permission.FILE_READ.value,      # View studies
-    Permission.STUDY_READ.value,     # View study metadata
-    'QA_READ',
-    'QA_WRITE',
-    'PROTOCOL_MANAGE',
+    Permission.FILE_READ.value,
+    Permission.PATIENT_READ.value,
+    Permission.STUDY_READ.value,
+    Permission.EXAM_READ.value,
+    Permission.QA_READ.value,
+    Permission.QA_WRITE.value,
+    Permission.PROTOCOL_MANAGE.value,
+    Permission.PEER_REVIEW_READ.value,
+    Permission.PEER_REVIEW_WRITE.value,
+    Permission.DICOMWEB_READ.value,
+    Permission.METRICS_READ.value,
 ]
 ```
 
 ---
 
 ## Database Schema Extensions (5 New Tables)
+
+> **Status 2026-08-03**: schema shipped via Alembic migration — `protocols`,
+> `qa_scores`, `qa_queue`, `incidents`, `corrective_actions`, `peer_reviews`
+> exist in the database (DDL below is the shipped reference).
 
 ### From R03 (Already Specified, Created with R05 Migration)
 

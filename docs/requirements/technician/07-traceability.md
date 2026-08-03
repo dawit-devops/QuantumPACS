@@ -25,17 +25,29 @@
 | NFR-R07-09 | Yes | AC-R07-01-05 | Covered |
 | NFR-R07-10 | Yes | AC-R07-03-01 | Covered |
 
-## GATED Requirements (codebase reality, verified 2026-08-03)
+## Implementation Status (codebase reality, verified 2026-08-03)
 
-Study browser/viewer/worklist are implemented. Acquisition-workflow FRs (incl.
-fluoroscopy and mammography) are aspirational v3.0 spec — ACs exist in artifact 06
-but are **GATED** on new backend work (`/exams/*` endpoints + `EXAM_*` permissions
-flagged to backend):
+The shared exam lifecycle is implemented end-to-end (backend `api/exams.py`,
+routes in `routes.py`; frontend `frontend/src/technologist/` — `TechnologistWorklist.tsx`
+at `/exams`, `ExamConsole.tsx` at `/exams/:id`). Technicians share this lifecycle
+with R06 (no dedicated technician UI):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R07-01..10 (acquisition incl. fluoro/mammo) | GATED | No exam/acquisition endpoints or routes |
-| NFR-R07-* tied to GATED FRs | GATED | Blocked on the FRs above |
+| FR-R07-01 (modality worklist) | Covered — implemented | `GET /worklist?modality=` + `TechnologistWorklist.tsx` (30s auto-refresh) |
+| FR-R07-02 (patient identity verification) | Covered — implemented | `POST /exams/{id}/identity-confirm` |
+| FR-R07-03 (exam protocol selection) | Covered — implemented | `GET /exams/{id}/protocol`, `GET /protocols?modality=` |
+| FR-R07-04 (image acquisition and QA) | Covered — implemented | `POST /exams/{id}/acquisitions`, `POST /exams/{id}/acquisitions/{aid}/{decision}` (accept/reject/retake) — covers DR/CR |
+| FR-R07-05 (dose documentation) | Covered — implemented | `GET/POST /exams/{id}/dose` (DLP, CTDIvol per acquisition) |
+| FR-R07-06 (patient safety checks) | Covered — implemented | `POST /exams/{id}/safety-checks`; `safety_checks` table |
+| FR-R07-07 (exam completion and handoff) | Covered — implemented | `POST /exams/{id}/complete`; worklist status push via LISTEN/NOTIFY |
+| FR-R07-08 (retake/incident logging) | Covered — implemented | `GET/POST /exams/{id}/incidents`; `incidents` table |
+| FR-R07-09 (fluoroscopy-specific workflow) | GATED | No `dap` column in `acquisitions`; no `/fluoroscopy-*` endpoints (live/spot/cine) |
+| FR-R07-10 (mammography-specific workflow) | GATED | No `agd` column in `acquisitions`; no mammo-specific endpoints (CC/MLO, compression monitoring) |
+| NFR-R07-* tied to implemented FRs | Covered | FR-R07-01..08 above |
+
+**Remaining GATED** (v3.1/v3.2 scope): FR-R07-11 AI-assisted image QA, FR-R07-12
+automated dose optimization, FR-R07-13 RIS-driven protocol selection.
 
 ## Cross-Artifact Dependencies
 

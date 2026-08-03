@@ -4,7 +4,7 @@
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-R12-01 | The system SHALL present the radiologist a reading worklist of studies assigned/available for interpretation, sorted by priority (STAT first) with modality, patient, exam, and time info. | Must | `GET /worklist` (WORKLIST_READ) |
+| FR-R12-01 | The system SHALL present the radiologist a reading worklist of studies assigned/available for interpretation, sorted by priority (STAT first) with modality, patient, exam, and time info. | Must | `GET /reports/reading-list` (REPORT_READ), fed by exam handoff (R06) |
 | FR-R12-02 | The system SHALL allow the radiologist to open a study in the viewer from the worklist or study browser, rendering series/instances via DICOMweb. | Must | `GET /dicomweb/studies/{uid}` chain, `Detail.tsx` |
 | FR-R12-03 | The system SHALL provide full viewer toolset: pan, zoom, window/level, and measurements (length, rectangle ROI, ellipse ROI, angle, arrow) with keyboard shortcuts (keys 1–7/E). | Must | `KeyboardShortcuts.tsx`, `viewer/tools.ts` |
 | FR-R12-04 | The system SHALL support multi-series navigation via thumbnail strip with keyboard navigation (arrow keys, page up/down). | Must | `ThumbnailStrip.tsx` |
@@ -12,13 +12,13 @@
 | FR-R12-06 | The system SHALL allow the radiologist to view priors for the same patient with one action (dedicated priors list/load). | Should | GAP: confirm priors endpoint |
 | FR-R12-07 | The system SHALL allow the radiologist to view study metadata, series details, and change history. | Must | `Detail.tsx`, `Changes.tsx`, `files/{id}/changes` |
 | FR-R12-08 | The system SHALL allow the radiologist to access patient context (demographics, previous exams). | Must | `patient/Patient.tsx`, `GET /patients/{id}` |
-| FR-R12-09 | The system SHALL provide structured reporting: create, edit, save, and sign reports (findings, impression, templates) — pending backend. | Must | GAP: no reporting endpoints |
+| FR-R12-09 | The system SHALL provide structured reporting: create, edit, save, and sign reports (findings, impression, templates). | Must | `GET/PUT /reports/{exam_id}` (draft → preliminary → final), `POST /reports/{exam_id}/sign`, `GET /reports/templates` |
 | FR-R12-10 | The system SHALL allow the radiologist to flag critical findings, triggering escalation/notification to the referring clinician. | Should | GAP: escalation endpoint + notification wiring |
 | FR-R12-11 | The system SHALL allow the radiologist to manage study state (claimed/reading/done) with read-state indicators visible to the department. | Should | Worklist state via `GET/PUT /worklist/{id}` |
-| FR-R12-12 | The system SHALL support the attending-review workflow: resident drafts → radiologist reviews, annotates, and signs. | Should | R13 dependency; reporting gap |
+| FR-R12-12 | The system SHALL support the attending-review workflow: resident drafts → radiologist reviews, annotates, and signs. | Should | Partial: `/peer-reviews*` covers review of final signed reports; resident-draft attending-review queue not built |
 | FR-R12-13 | The system SHALL allow sharing studies with colleagues (read-only or annotation) for consultation. | Should | `Share.tsx`, `/files/{id}/share` |
-| FR-R12-14 | The system SHALL surface notification of new studies / urgent studies (e.g., STAT arrivals) in the worklist. | Should | Notification bell pattern; backend event wiring |
-| FR-R12-15 | The system SHALL allow the radiologist to create and reuse keyboard-driven reading presets (window/level presets per modality, layout presets). | Could | Viewport preset feature |
+| FR-R12-14 | The system SHALL surface notification of new studies / urgent studies (e.g., STAT arrivals) in the worklist. | Should | `exam.completed` role notification + `/ws` push (NotificationBell) — implemented |
+| FR-R12-15 | The system SHALL allow the radiologist to create and reuse keyboard-driven reading presets (window/level presets per modality, layout presets). | Could | `/reading-presets` + `/reading-presets/{id}` CRUD (window_level + layout per modality) — implemented |
 
 ## Non-Functional Requirements
 
@@ -39,16 +39,21 @@
 
 **Implemented**: viewer + tools, multi-series navigation, annotations (client sync;
 persistence endpoint to confirm), metadata/change history, patient context, share
-links, audit. **GATED**: structured reporting (FR-R12-09), critical-findings
-escalation (FR-R12-10), attending-review queue (FR-R12-12), dedicated priors endpoint
-(FR-R12-06), peer review — no reporting backend exists (largest gap). See artifacts
-04/07/08.
+links, audit. **Reading worklist** (`GET /reports/reading-list`), **structured
+reporting** with templates/autosave/sign (`GET/PUT /reports/{exam_id}`,
+`POST /reports/{exam_id}/sign`, `GET /reports/templates`), **peer review**
+(`/peer-reviews*` — final signed reports), **reading presets**
+(`/reading-presets*`), and **study-arrival notifications** (`exam.completed` +
+WebSocket) shipped with merge 4d136e0. **GATED**: dedicated priors endpoint
+(FR-R12-06), critical-findings escalation (FR-R12-10), resident-draft
+attending-review queue (FR-R12-12 — peer review covers signed reports only). See
+artifacts 04/07/08.
 
 ## Assumptions & Constraints
 
 - **Reading is desktop-only**: viewer is not responsive to mobile; worklist may be usable on tablet.
 - **Performance is clinical-safety-critical**: NFR-R12-01/02/05 are hard budgets; image loading is the primary pain point.
-- **Reporting is gated**: FR-R12-09/10/12 depend on backend work (flag: structured reporting + escalation endpoints). Until then, package ships the viewer/worklist slices.
+- **Escalation and priors remain gated**: FR-R12-06 (priors endpoint) and FR-R12-10 (critical-findings escalation) still need backend work; the resident-draft attending-review queue (FR-R12-12) is only partially covered by the peer-review workflow.
 - **PHI**: full clinical access; audit logging of report actions required (R01/R02 audit patterns).
 - **Search**: ES down → search degrades; worklist and direct study open must still work.
 - **Annotations**: client-side sync exists; persistence backend must be confirmed before sprint commitment.

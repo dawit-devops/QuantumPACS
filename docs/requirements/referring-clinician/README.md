@@ -2,23 +2,33 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.0 |
+| **Version** | 1.2.1 |
 | **Status** | approved |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: share-link only. See artifact 04 — "Role-Based Routing &
 Navigation": the referring clinician accesses `/view/:key` (`tempKey` mode — Image
 tab only, no sidebar, no mutations); OAuth/SSO provider admin exists
-(`/oauth/providers`) but no clinician SSO portal.
+(`/oauth/providers`) but no clinician SSO portal. `PermissionRoute` now enforces
+role-based access at the URL boundary for authenticated routes (share-link access is
+independent of it).
 
 **Implemented**: share-link viewer (FR-R14-01/03), OAuth admin scaffolding
 (FR-R14-02 partial). **GATED**: report retrieval (FR-R14-04), study status
 (FR-R14-05), results notification (FR-R14-06), patient selector (FR-R14-07),
 follow-up requests (FR-R14-10), share-link self-service (FR-R14-11) — depends on R12
 reporting + notification backend.
+
+**Post-merge re-verification (4d136e0)**: `GET /reports/{exam_id}` now exists but
+requires REPORT_READ — held by the `radiologist` built-in role only; the `physician`
+built-in role (FILE_READ/PATIENT_READ/STUDY_READ/DICOMWEB_READ) does **not** have it,
+and the share-link path does not render reports (`ShareView` has no report tab).
+FR-R14-04 therefore remains GATED for the referring clinician. In-app notification
+bell with WS push exists, but `report.signed` notifications fan out to the `qa` role
+only, with no email service — FR-R14-06 remains GATED.
 
 ---
 

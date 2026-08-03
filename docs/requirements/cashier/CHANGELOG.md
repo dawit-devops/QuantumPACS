@@ -3,6 +3,11 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.1.2] — 2026-08-03
+### Changed
+- README: Codebase Alignment re-verified after v3-dev merge 4d136e0 — no billing endpoints added (`routes.py` unchanged for billing); built-in `cashier` role has PATIENT_READ/WRITE only; `PermissionRoute` enforces route-level access
+- No requirement statuses changed (all billing FRs remain GATED)
+
 ## [1.1.1] — 2026-08-03
 ### Fixed
 - Artifact 08: FR-R09-09 (read-only clinical context) corrected from "Implemented" to "Partially Implemented" — patient/study context exists; no billing context in billing flow (aligns 08 with 07's partial status)

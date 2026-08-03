@@ -2,20 +2,28 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.1.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation": hospital-staff accounts today have Files/patient read-only views or a
-share link.
+share link. `PermissionRoute` now enforces role-based access at the URL boundary —
+deep links to routes without the required permission redirect to `/` (Files).
 
 **Implemented**: view own-patient imaging/results via study browser or share link.
 **GATED**: limited-scope portal with order awareness + results notification — no
 portal routes/endpoints exist; flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: in-app notification bell with WS push
+exists, but `report.signed` notifications fan out to the `qa` role only — no
+care-team/report-finalize fan-out for hospital staff and no email service, so
+FR-R19-04 remains GATED. Reports are readable via `GET /reports/{exam_id}` only
+behind REPORT_READ (radiologist/admin roles) — no scoped hospital-staff access, so
+FR-R19-02 remains GATED. No other changes.
 
 ## Role Summary
 

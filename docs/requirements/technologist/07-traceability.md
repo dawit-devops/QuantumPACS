@@ -25,16 +25,30 @@
 | NFR-R06-09 | Yes | AC-R06-01-05 | Covered |
 | NFR-R06-10 | Yes | AC-R06-03-01 | Covered |
 
-## GATED Requirements (codebase reality, verified 2026-08-03)
+## Implementation Status (codebase reality, verified 2026-08-03)
 
-Study browser/viewer/worklist are implemented. Acquisition-workflow FRs are
-aspirational v3.0 spec — ACs exist in artifact 06 but are **GATED** on new backend
-work (`/exams/*` endpoints + `EXAM_*` permissions flagged to backend):
+The R06 exam lifecycle is implemented end-to-end (backend `api/exams.py`, routes
+in `routes.py`; frontend `frontend/src/technologist/` — `TechnologistWorklist.tsx`
+at `/exams`, `ExamConsole.tsx` at `/exams/:id`, `SimulatedPreview.tsx`):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R06-01..10 (acquisition workflow) | GATED | No exam/acquisition endpoints or routes |
-| NFR-R06-* tied to GATED FRs | GATED | Blocked on the FRs above |
+| FR-R06-01 (modality worklist) | Covered — implemented | `GET /worklist?modality=` + `TechnologistWorklist.tsx` (30s auto-refresh) |
+| FR-R06-02 (patient identity verification) | Covered — implemented | `POST /exams/{id}/identity-confirm` |
+| FR-R06-03 (exam protocol selection) | Covered — implemented | `GET /exams/{id}/protocol`, `GET /protocols?modality=`; ExamConsole protocol panel |
+| FR-R06-04 (image acquisition and QA) | Covered — implemented | `POST /exams/{id}/acquisitions`, `POST /exams/{id}/acquisitions/{aid}/{decision}` (accept/reject/retake); SimulatedPreview |
+| FR-R06-05 (dose documentation) | Covered — implemented | `GET/POST /exams/{id}/dose` (DLP, CTDIvol per acquisition) |
+| FR-R06-06 (patient safety checks) | Covered — implemented | `POST /exams/{id}/safety-checks`; `safety_checks` table |
+| FR-R06-07 (exam completion and handoff) | Covered — implemented | `POST /exams/{id}/complete`; worklist status updates via LISTEN/NOTIFY |
+| FR-R06-08 (retake/incident logging) | Covered — implemented | `GET/POST /exams/{id}/incidents`; `incidents` table |
+| FR-R06-09 (emergency protocol override) | Covered — implemented | `POST /exams/{id}/overrides`; `protocol_overrides` table (justification + audit) |
+| FR-R06-10 (modality-specific workflows) | Covered — implemented | `MODALITY_WORKFLOWS` in ExamConsole (CT/MR/PET/US); protocol presets per modality |
+| NFR-R06-* tied to implemented FRs | Covered | FR-R06-01..10 above |
+
+**Remaining GATED** (kept as v3.0/v3.1 spec): FR-R06-11 AI-assisted image QA
+(v3.2 — no AI integration), FR-R06-12 automated dose optimization suggestions
+(no dose-baseline job), FR-R06-13 RIS-driven automated protocol selection
+(no HL7 ORM integration).
 
 ## Cross-Artifact Dependencies
 

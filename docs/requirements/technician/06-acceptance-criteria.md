@@ -1,8 +1,22 @@
 # Acceptance Criteria — Radiology Technician (R07)
 
 **Role ID**: R07
-**Generated**: 2026-08-02
-**Version**: 1.0.0
+**Generated**: 2026-08-03
+**Version**: 1.2.0
+
+---
+
+### Implementation Status (verified 2026-08-03)
+
+FR-R07-01..08 map to the shipped shared exam lifecycle (backend `api/exams.py`,
+routes in `routes.py`; frontend `frontend/src/technologist/` at `/exams` +
+`/exams/:id`): worklist (AC-R07-01), identity-confirm (02), protocol (03),
+acquisitions accept/reject/retake (04), dose (05), safety-checks (06), complete
+(07), incidents (08). Verification is possible today via backend tests + E2E +
+visual evidence. AC-R07-09 (fluoroscopy — live/spot/cine/DAP) and AC-R07-10
+(mammography — CC/MLO/compression/AGD) remain **GATED**: no `dap`/`agd` columns in
+the `acquisitions` schema and no fluoro/mammo-specific endpoints exist. AC-R07-11/12/13
+(AI QA, dose optimization, RIS protocol selection) are v3.1/v3.2 scope.
 
 ---
 

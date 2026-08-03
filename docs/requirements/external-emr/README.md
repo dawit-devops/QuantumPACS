@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.1.1 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Interface surface**: API-only (no web UI). See artifact 04 — "System Interface
 Surface": HL7 ADT receiver, FHIR Patient read/search, ImagingStudy +
@@ -16,6 +16,13 @@ DocumentReference scaffolding, webhook delivery all exist.
 **Implemented**: HL7 ADT inbound, FHIR Patient read/search, webhook push.
 **GATED**: report backfill job, results-status workflow, async demographics sync with
 conflict resolution — flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: no new EMR-facing surface. FHIR
+Patient/ImagingStudy/DocumentReference routes and HL7 ADT receiver unchanged; exam
+status now exists internally (`/exams/{id}/complete` → worklist `performed`) but is
+**not** exposed to the EMR as FHIR resource status or ORU — FR-R16-05 (results
+status) remains GATED. Report backfill (FR-R16-04) still blocked on R12 reporting
+delivery.
 
 ## Role Summary
 

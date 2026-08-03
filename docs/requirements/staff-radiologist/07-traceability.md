@@ -12,10 +12,10 @@
 | FR-R12-06 | Yes | AC-R12-12, AC-R12-13 | Covered |
 | FR-R12-07 | Yes | AC-R12-14 | Covered |
 | FR-R12-08 | No | — | Gap — no AC yet |
-| FR-R12-09 | Yes | AC-R12-15, AC-R12-20, AC-R12-21 | Covered |
+| FR-R12-09 | Yes | AC-R12-15, AC-R12-20, AC-R12-21, AC-R12-30 | Covered |
 | FR-R12-10 | Yes | AC-R12-16, AC-R12-17 | Covered |
 | FR-R12-11 | Yes | AC-R12-18 | Covered |
-| FR-R12-12 | Yes | AC-R12-22 | Covered |
+| FR-R12-12 | Yes | AC-R12-22, AC-R12-31 | Covered |
 | FR-R12-13 | Yes | AC-R12-19 | Covered |
 | FR-R12-14 | Yes | AC-R12-27 | Covered |
 | FR-R12-15 | Yes | AC-R12-26 | Covered |
@@ -32,17 +32,16 @@
 
 ## GATED Requirements (codebase reality, verified 2026-08-03)
 
-Viewer/annotation/share/audit/patient features are implemented. Reporting FRs are
-aspirational v3.0 spec — ACs exist in artifact 06 but are **GATED** on new backend
-work (no reporting endpoints; depends on R12 reporting module):
+Viewer/annotation/share/audit/patient features, the reading worklist, structured
+reporting (draft → preliminary → final + sign + templates), peer review, reading
+presets, and study-arrival notifications are implemented (merge 4d136e0). The
+remaining FRs below are **GATED** on new backend work:
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R12-09 (structured reporting) | GATED | No reporting endpoints |
-| FR-R12-10 (critical findings escalation) | GATED | No escalation endpoint |
-| FR-R12-12 (attending review) | GATED | R13 dependency + reporting |
-| FR-R12-06 (priors endpoint) | GATED | Confirm priors API |
-| NFR-R12-10 (report save reliability) | GATED | Blocked on reporting |
+| FR-R12-10 (critical findings escalation) | GATED | No escalation endpoint (report sign currently notifies QA role only) |
+| FR-R12-12 (attending review) | Partial | `/peer-reviews*` covers final signed reports; resident-draft attending-review queue not built |
+| FR-R12-06 (priors endpoint) | GATED | Confirm priors API (currently study search + browser) |
 
 ## Cross-Artifact Dependencies
 

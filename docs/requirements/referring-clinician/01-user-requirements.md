@@ -64,6 +64,12 @@ placement, exam-status tracking, report retrieval (depends on R12 reporting), re
 notification, follow-up requests, share self-service — no clinician portal routes
 or endpoints exist; flagged to backend. See artifacts 04/07/08.
 
+**Re-verified 2026-08-03 (post-merge 4d136e0)**: `GET /reports/{exam_id}` now exists
+behind REPORT_READ (radiologist role only — the `physician` built-in role and
+share-link access do not hold it), so report retrieval remains GATED for this role.
+In-app notification bell with WS push exists but is not routed to referring
+clinicians (and no email service) — results notification remains GATED.
+
 ## Assumptions & Constraints
 
 - Share links are the primary access mechanism for external referring clinicians; SSO is optional and configured per tenant by R01/R02.

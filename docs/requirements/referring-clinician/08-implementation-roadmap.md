@@ -34,7 +34,7 @@
 
 | FR/NFR ID | Summary | Blocking Dependency | AC | Effort |
 |-----------|---------|---------------------|----|--------|
-| FR-R14-04 | **Report retrieval** (structured + narrative report display) | No reporting endpoints (shared R12 gap) | AC-R14-22..27 | L |
+| FR-R14-04 | **Report retrieval** (structured + narrative report display) | `GET /reports/{exam_id}` exists behind REPORT_READ (radiologist only; not physician/share-link — re-verified post-merge 4d136e0); clinician-accessible report view still missing | AC-R14-22..27 | L |
 | FR-R14-05 | **Study status tracking** (scheduled/in-progress/complete) | No clinician-facing status API | AC-R14-28..34 | M |
 | FR-R14-06 | **Results notification** (email + in-app) | No notification routing to clinicians; email service | AC-R14-35..41 | M |
 | FR-R14-07 | **Patient selector / search** for clinician | No clinician-scoped search portal | AC-R14-42..49 | L |

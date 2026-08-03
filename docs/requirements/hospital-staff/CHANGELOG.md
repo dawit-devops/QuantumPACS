@@ -3,6 +3,11 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.1.2] — 2026-08-03
+### Changed
+- README: Codebase Alignment re-verified after v3-dev merge 4d136e0 — in-app bell/WS-push notification infra exists but `report.signed` fans out to `qa` role only (FR-R19-04 stays GATED); `GET /reports/{exam_id}` is REPORT_READ-only (FR-R19-02 stays GATED); `PermissionRoute` enforces route-level access
+- No requirement statuses changed
+
 ## [1.1.1] — 2026-08-03
 ### Fixed
 - Artifact 08: FR-R19-05 (read-only viewer) and FR-R19-09 (access audit) corrected from "Implemented" to "Partially Implemented" — shared infra exists; role-scoped portal scope not wired (aligns 08 with 07's partial status)

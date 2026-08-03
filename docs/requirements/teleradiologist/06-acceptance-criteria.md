@@ -19,7 +19,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-01: Remote STAT Worklist Priority Grouping
+## AC-R18-01: Remote STAT Worklist Priority Grouping — PARTIAL (priority grouping verifiable via `ReadingWorklist.tsx`; WS freshness banner/audio alerts GATED)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -33,7 +33,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-02: Preliminary Report Creation & Autosave
+## AC-R18-02: Preliminary Report Creation & Autosave — PARTIAL (preliminary badge + status verifiable via `ReportEditor.tsx`; offline IndexedDB backup GATED)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -47,7 +47,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-03: Critical Findings Escalation & Notification
+## AC-R18-03: Critical Findings Escalation & Notification — GATED (no escalation endpoint; sign notifies QA role only)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -61,7 +61,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-04: Multi-Site Tenant Switching & JWT Token Exchange
+## AC-R18-04: Multi-Site Tenant Switching & JWT Token Exchange — PARTIAL (SSO + tenant switch verifiable; per-site card dashboard GATED)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -75,7 +75,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-05: Remote Study Image Loading & Prefetch Optimization
+## AC-R18-05: Remote Study Image Loading & Prefetch Optimization — PARTIAL (first-image + keyboard verifiable; prefetch/offline-package banner GATED)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -90,7 +90,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-06: Session Timeout & Re-Authentication
+## AC-R18-06: Session Timeout & Re-Authentication — GATED (no idle-timeout modal; token expiry only)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -103,7 +103,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-07: Voice Dictation Integration & Offline Capabilities
+## AC-R18-07: Voice Dictation Integration & Offline Capabilities — GATED (no dictation plugin, no offline packages)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -117,7 +117,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-08: Consultation & Second Opinion Workflow
+## AC-R18-08: Consultation & Second Opinion Workflow — GATED (no consult endpoints; peer review is QA-style on signed reports)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -128,7 +128,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-09: Mobile Viewer for Urgent Consultations
+## AC-R18-09: Mobile Viewer for Urgent Consultations — GATED (PWA exists; no telerad-specific mobile UI)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -139,7 +139,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-10: Prior Studies Comparison & Reading Enhancements
+## AC-R18-10: Prior Studies Comparison & Reading Enhancements — PARTIAL (layout presets verifiable via `/reading-presets*`; priors/allergy/scenario templates GATED)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -153,7 +153,7 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 
 ---
 
-## AC-R18-11: Turnaround Time Tracking & Secure Messaging
+## AC-R18-11: Turnaround Time Tracking & Secure Messaging — GATED (no per-study TAT UI, no clinician messaging)
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
@@ -181,7 +181,7 @@ The following are explicitly **NOT** covered by these acceptance criteria and ar
 ### Out of Scope — Clinical
 1. **State medical license verification** — Policy enforcement outside PACS scope
 2. **Teleradiology contract management** — Business operations outside PACS
-3. **Peer review workflow** — Separate from preliminary review (future enhancement)
+3. **Peer review workflow** — Separate from preliminary review (shipped 2026-08-03 as QA-style review of final signed reports via `/peer-reviews*`, shared with R05)
 4. **Teaching file capture** — R13 resident feature, not R18 teleradiologist priority
 
 ### Out of Scope — Operational
@@ -201,7 +201,7 @@ The following are explicitly **NOT** covered by these acceptance criteria and ar
 
 | Artifact | Completeness | Feasibility | Usability | Validator |
 |----------|--------------|-------------|-----------|-----------|
-| 01-user-requirements.md | ✅ All FR/NFR with IDs | ✅ Performance quantified | ✅ Error/empty states specified | ✅ 7 new APIs flagged |
+| 01-user-requirements.md | ✅ All FR/NFR with IDs | ✅ Performance quantified | ✅ Error/empty states specified | ✅ APIs mapped to shipped v2 endpoints vs 7 flagged |
 | 02-workflow-maps.md | ✅ 5 workflows with Mermaid | ✅ All states (loading/error/success) | ✅ Friction points flagged | ✅ Integration touchpoints mapped |
 | 03-user-stories.md | ✅ 12 stories with Given/When/Then | ✅ Dependencies listed | ✅ A11y + performance ACs | ✅ 4-phase priority order |
 | 04-ui-ux-requirements.md | ✅ 10 screens, all 6 states per component | ✅ Tokens referenced | ✅ Keyboard nav specified | ✅ Contrast ratios measured |
@@ -210,15 +210,15 @@ The following are explicitly **NOT** covered by these acceptance criteria and ar
 
 **Overall Verdict**: From the visual evidence, structured requirements, and measurable acceptance criteria, I observe the R18 Teleradiologist requirements package — **Goal ACHIEVED** with the following conditions:
 
-1. **7 new API endpoints required** (flagged in FR-R18 requirements) — must be designed and implemented before R18 workflows functional.
-2. **WebSocket real-time sync** — critical path for worklist updates, requires backend LISTEN/NOTIFY integration.
-3. **Offline package generation** — requires background job queue (Celery/Redis) and encryption key management.
-4. **Critical finding escalation** — requires third-party integration (Twilio/PagerDuty) plugin architecture.
-5. **Multi-site JWT token exchange** — requires multi-tenant authentication architecture per v3.0 OAuth/SSO roadmap.
+1. **Shipped (2026-08-03, merge 4d136e0)**: SSO/OAuth/OIDC + tenant switching, preliminary→final reporting (draft → preliminary → final + sign), reading worklist, peer review, reading presets, viewer parity — the formerly-flagged reporting/SSO API work now exists.
+2. **7 new API endpoints still required** (flagged in FR-R18 requirements): teleradiology worklist (site/assignment filters), critical-findings escalation, offline packages, consultations, prefetch, multi-site dashboard aggregates — must be designed and implemented before the telerad-specific workflows are functional.
+3. **WebSocket real-time sync** — `/ws` endpoint shipped; teleradiology-specific worklist channels require LISTEN/NOTIFY extension.
+4. **Offline package generation** — requires background job queue (Celery/Redis) and encryption key management.
+5. **Critical finding escalation** — requires third-party integration (Twilio/PagerDuty) plugin architecture.
 
 **Next Steps**:
-1. Delegate API contract design to `frontend-to-backend-requirements` skill
+1. Delegate API contract design to `frontend-to-backend-requirements` skill (escalation, offline packages, consultations, prefetch)
 2. Delegate RESTful resource design to `rest-api-design` skill
-3. Schedule stakeholder review of open questions (7 questions flagged in README.md)
-4. Prioritize Phase 1 user stories (US-R18-01, 02, 03, 04, 05, 08) for MVP
+3. Schedule stakeholder review of open questions (4 still open in README.md; 3 resolved 2026-08-03)
+4. Prioritize Phase 1 user stories (US-R18-01, 02, 03, 04, 05, 08) — reporting/SSO slices now unblocked
 5. Conduct usability testing with 2-3 teleradiologists before full implementation

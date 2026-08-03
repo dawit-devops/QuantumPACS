@@ -3,6 +3,16 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.2.0] — 2026-08-03
+### Changed
+- FR-R06-01..10: GATED → Implemented — R06 exam lifecycle shipped end-to-end (backend `api/exams.py`, frontend `frontend/src/technologist/`)
+- Artifact 04: route table updated — `/exams` + `/exams/:id` accessible (`EXAM_READ`); gating split implemented vs GATED (FR-R06-11/12/13)
+- Artifact 07: GATED section replaced with per-FR Implementation Status + endpoint mapping (`identity-confirm`, acquisitions decision, dose, safety-checks, complete, incidents, overrides)
+- Artifact 08: roadmap rewritten — Implemented (Passing ACs) table, phases marked implemented, shipped API names corrected (`identity-confirm` vs `confirm-patient`, `acquisitions/{aid}/{decision}`, `worklist` vs `worklists/technologist`), blocking deps narrowed
+- Artifact 06: implementation status note added
+- README: Codebase Alignment rewritten; endpoint/permission/schema sections annotated shipped (`acquisitions` table name)
+- DELTA.md added documenting the alignment
+
 ## [1.1.0] — 2026-08-03
 ### Added
 - Artifact 04: Role-Based Routing & Navigation (Presentation Layer) section — study browser/viewer/worklist implemented; acquisition workflow GATED

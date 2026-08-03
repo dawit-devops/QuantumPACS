@@ -38,9 +38,9 @@ notifications, patient selector, follow-up, share self-service flagged to backen
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R14-04 (report retrieval) | GATED | No reporting endpoints (R12 gap) |
+| FR-R14-04 (report retrieval) | GATED | `GET /reports/{exam_id}` exists (post-merge 4d136e0) behind REPORT_READ — radiologist role only; physician role and share-link access lack it; ShareView renders no report |
 | FR-R14-05 (study status) | GATED | No clinician status API |
-| FR-R14-06 (results notification) | GATED | No email/notification routing |
+| FR-R14-06 (results notification) | GATED | In-app bell + WS push exist, but no routing to referring clinicians and no email service |
 | FR-R14-07..12 (selector, detail, mobile portal, follow-up, share mgmt, alerts) | GATED | No clinician portal shell |
 
 ## Cross-Artifact Dependencies

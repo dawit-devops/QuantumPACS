@@ -38,11 +38,17 @@
 
 ## Codebase Status (verified 2026-08-03)
 
-**Implemented**: study browser, viewer (image QC), worklist (`/worklist*`).
-**GATED**: FR-R07-01..10 acquisition workflow incl. fluoroscopy (live/spot/cine/DAP)
-and mammography (CC/MLO, compression, AGD) — no `/exams/*` endpoints or `EXAM_*`
-permissions exist; flagged to backend. See artifacts 04/07/08 for the verified
-presentation-layer mapping.
+**Implemented**: FR-R07-01..08 via the shared exam lifecycle — `TechnologistWorklist`
+at `/exams`, `ExamConsole` at `/exams/:id` (identity-confirm, protocol,
+acquisitions + accept/reject/retake, dose, safety-checks, complete, incidents,
+overrides), backend `backend/api/exams.py` + tables `exams`, `acquisitions`,
+`safety_checks`, `incidents`, `protocol_overrides`, `protocols`; permissions
+`EXAM_READ`/`EXAM_WRITE`/`WORKLIST_*` (no dedicated `technician` role — covered by
+`technologist` grants). **GATED** (kept as v3.0 spec): FR-R07-09 fluoroscopy-specific
+workflow (live/spot/cine/DAP) and FR-R07-10 mammography-specific workflow
+(CC/MLO/compression/AGD) — no `dap`/`agd` columns in `acquisitions`, no
+`/fluoroscopy-*` or mammo-specific endpoints. See artifacts 04/07/08 for the
+verified presentation-layer mapping.
 
 ## Assumptions & Constraints
 

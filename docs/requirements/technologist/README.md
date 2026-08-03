@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -10,13 +10,26 @@
 ## Codebase Alignment (verified 2026-08-03)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
-Navigation". Technologists today access the study browser, viewer (image QA), and
-worklist (if granted `WORKLIST_READ`).
+Navigation". Technologists today access the study browser, viewer (image QA), the
+worklist (`WORKLIST_READ`), and the R06 exam console: `/exams` worklist +
+`/exams/:id` detail/console (`frontend/src/technologist/` — `TechnologistWorklist.tsx`
+with 30s auto-refresh, `ExamConsole.tsx`, `SimulatedPreview.tsx`).
 
-**Implemented**: study browser/viewer, worklist. **GATED**: FR-R06-01..10 acquisition
-workflow (patient verification, protocol selection, dose, safety checks, exam
-completion, incidents, override) — requires `EXAM_*` permissions + endpoints flagged
-to backend.
+**Backend** (`backend/api/exams.py`, routes in `backend/api/routes.py`): the R06
+exam lifecycle is shipped — `/exams` (list/create), `/exams/{id}` (detail/update,
+identity-confirm, protocol, acquisitions, dose, safety-checks, complete, incidents,
+overrides) and `/protocols`. Tables `exams`, `acquisitions`, `safety_checks`,
+`incidents`, `protocol_overrides`, `protocols` exist in `backend/db/exams.py`.
+
+**Permissions** (`backend/api/permissions.py`): `EXAM_READ`/`EXAM_WRITE`/
+`WORKLIST_READ`/`WORKLIST_WRITE`; built-in role `technologist` (FILE_*, PATIENT_*,
+STUDY_*, WORKLIST_*, EXAM_*, DICOMWEB_READ) — handlers in `exams.py` enforce
+`EXAM_READ`/`EXAM_WRITE`.
+
+**Implemented**: FR-R06-01..10 (see traceability for endpoint mapping).
+**GATED** (kept as v3.0/v3.1 spec): FR-R06-11 AI-assisted image QA (v3.2), FR-R06-12
+automated dose optimization, FR-R06-13 RIS-driven protocol selection (no HL7 ORM
+integration yet).
 
 ---
 
@@ -89,45 +102,51 @@ to backend.
 
 ## New API Endpoints Required (v3.0)
 
+> **Status 2026-08-03**: all endpoints below are **shipped** in `backend/api/routes.py`
+> (v2 prefix; see Codebase Alignment). Endpoint names differ from the v3.0 spec:
+> patient confirmation is `/api/v2/exams/{id}/identity-confirm`, acquisition
+> decision is `/api/v2/exams/{id}/acquisitions/{acquisition_id}/{decision}`
+> (accept|reject|retake), and the technologist worklist is the shared
+> `/api/v2/worklist` (per-modality filter) — no dedicated `/worklists/technologist`.
+
 | Endpoint | Method | Purpose | Permission |
 |----------|--------|---------|------------|
-| `/api/v2/worklists/technologist` | GET | Fetch technologist worklist | `WORKLIST_READ` |
+| `/api/v2/worklists/technologist` | GET | Fetch technologist worklist — shipped as `/api/v2/worklist` (modality filter) | `WORKLIST_READ` |
 | `/api/v2/exams/{id}` | GET | Fetch exam detail with patient + protocol | `EXAM_READ` |
-| `/api/v2/exams/{id}/confirm-patient` | POST | Confirm patient identity | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/confirm-patient` | POST | Confirm patient identity — shipped as `/api/v2/exams/{id}/identity-confirm` | `EXAM_WRITE` |
 | `/api/v2/exams/{id}/protocol` | GET | Fetch protocol parameters | `EXAM_READ` |
-| `/api/v2/exams/{id}/start-acquisition` | POST | Start image acquisition | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/acquire` | POST | Record image acquisition with dose | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/reject` | POST | Flag image as rejected | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/dose-baseline` | GET | Fetch cumulative dose + ACR benchmark | `EXAM_READ` |
-| `/api/v2/exams/{id}/dose-log` | POST | Log dose parameters | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/safety-check` | POST | Record safety check confirmation | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/start-acquisition` | POST | Start image acquisition — shipped as `/api/v2/exams/{id}/acquisitions` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/acquire` | POST | Record image acquisition with dose — shipped as `/api/v2/exams/{id}/acquisitions/{acquisition_id}/{decision}` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/reject` | POST | Flag image as rejected — same acquisition-decision endpoint | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/dose-baseline` | GET | Fetch cumulative dose + ACR benchmark — shipped as `/api/v2/exams/{id}/dose` | `EXAM_READ` |
+| `/api/v2/exams/{id}/dose-log` | POST | Log dose parameters — shipped as `/api/v2/exams/{id}/dose` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/safety-check` | POST | Record safety check confirmation — shipped as `/api/v2/exams/{id}/safety-checks` | `EXAM_WRITE` |
 | `/api/v2/exams/{id}/complete` | POST | Mark exam complete, push to PACS, notify radiologist | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/incident` | POST | Log incident with severity | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/override-protocol` | POST | Emergency protocol override | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/incident` | POST | Log incident with severity — shipped as `/api/v2/exams/{id}/incidents` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/override-protocol` | POST | Emergency protocol override — shipped as `/api/v2/exams/{id}/overrides` | `EXAM_WRITE` |
 
 ---
 
 ## New Permission Slugs Required
 
+> **Status 2026-08-03**: shipped in `backend/api/permissions.py` — `WORKLIST_READ`,
+> `WORKLIST_WRITE`, `EXAM_READ`, `EXAM_WRITE` and the `technologist` built-in role
+> (actual: FILE_*, PATIENT_*, STUDY_*, WORKLIST_*, EXAM_*, DICOMWEB_READ):
+
 ```python
-# In backend/api/permissions.py
+# backend/api/permissions.py
 WORKLIST_READ = 'WORKLIST_READ'
 EXAM_READ = 'EXAM_READ'
 EXAM_WRITE = 'EXAM_WRITE'
 
-# Add to PERMISSION_GROUPS
-PERMISSION_GROUPS['TECH'] = [
-    'WORKLIST_READ', 'EXAM_READ', 'EXAM_WRITE'
-]
-
-# New built-in role or extend existing
+# Built-in role
 BUILT_IN_ROLES['technologist'] = [
-    Permission.FILE_READ.value,
-    Permission.STUDY_READ.value,
-    Permission.IMAGE_READ.value,
-    'WORKLIST_READ',
-    'EXAM_READ',
-    'EXAM_WRITE',
+    Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
+    Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
+    Permission.STUDY_READ.value, Permission.STUDY_WRITE.value,
+    Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+    Permission.EXAM_READ.value, Permission.EXAM_WRITE.value,
+    Permission.DICOMWEB_READ.value,
 ]
 ```
 
@@ -137,8 +156,13 @@ BUILT_IN_ROLES['technologist'] = [
 
 ### New for R06
 
+> **Status 2026-08-03**: shipped in `backend/db/exams.py` — the table is named
+> `acquisitions` (not `image_acquisitions`), with `exams`, `safety_checks`,
+> `incidents`, `protocol_overrides`, `protocols` alongside it (DDL below is the
+> shipped reference):
+
 ```sql
-CREATE TABLE image_acquisitions (
+CREATE TABLE acquisitions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id         UUID REFERENCES exams(id) NOT NULL,
     study_uid       VARCHAR(100) NOT NULL,
@@ -159,9 +183,9 @@ CREATE TABLE image_acquisitions (
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_image_acquisitions_exam ON image_acquisitions(exam_id);
-CREATE INDEX idx_image_acquisitions_status ON image_acquisitions(status);
-CREATE INDEX idx_image_acquisitions_study ON image_acquisitions(study_uid);
+CREATE INDEX idx_acquisitions_exam ON acquisitions(exam_id);
+CREATE INDEX idx_acquisitions_status ON acquisitions(status);
+CREATE INDEX idx_acquisitions_study ON acquisitions(study_uid);
 ```
 
 ---

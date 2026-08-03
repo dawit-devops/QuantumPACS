@@ -30,12 +30,15 @@
 | NFR-R03-09 | No | — | Gap — no AC yet |
 | NFR-R03-10 | No | — | Gap — no AC yet |
 
-## GATED Requirements (codebase reality, verified 2026-08-03)
+## GATED Requirements (codebase reality, verified 2026-08-03; re-verified post-merge 4d136e0)
 
-No analytics/reporting routes or endpoints exist in the codebase (only `/metrics` +
-`/dashboard/metrics`). All analytics FRs are aspirational v3.0 spec — ACs exist in
-artifact 06 but are **GATED** on new backend work (`/analytics/*`, `/reports/*`
-endpoints + `ANALYTICS_*`/`REPORT_*` permissions flagged to backend):
+No `/analytics/*` endpoints exist (only `/metrics` + `/dashboard/metrics`). The
+post-merge `/reports/*`, `/qa/*` and `/peer-reviews/*` routes are clinical-role
+scoped (R12 reading reports, R05 QA) — not the analytics report builder — and
+`REPORT_*`/`QA_*` permissions grant no service-director analytics access. All
+analytics FRs are aspirational v3.0 spec — ACs exist in
+artifact 06 but are **GATED** on new backend work (`/analytics/*` endpoints +
+`ANALYTICS_*` permission slugs + `service_director` built-in role flagged to backend):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|

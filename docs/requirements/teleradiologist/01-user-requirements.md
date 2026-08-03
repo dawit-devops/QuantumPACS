@@ -10,14 +10,14 @@
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-R18-01 | As a teleradiologist, the system SHALL provide a dedicated remote worklist filtered by site, priority (STAT/urgent/routine), and assignment status | Must | See W1 workflow |
+| FR-R18-01 | As a teleradiologist, the system SHALL provide a dedicated remote worklist filtered by site, priority (STAT/urgent/routine), and assignment status | Must | Partial: reading worklist shipped (`GET /reports/reading-list` — priority-sorted, status/modality/search filters); site filter + assignment filter GATED |
 | FR-R18-02 | The system SHALL display worklist freshness indicator showing last sync timestamp and connection status | Must | Real-time confidence for remote readers |
-| FR-R18-03 | The system SHALL support secure remote access via SSO (OAuth/OIDC) with multi-site tenant switching | Must | v3.0 OAuth per PRD-v3.md U-v3.5 |
-| FR-R18-04 | The system SHALL provide full DICOM viewer functionality identical to on-site radiologist (R12) access | Must | Feature parity: MPR, MIP, 3D, hanging protocols |
-| FR-R18-05 | The system SHALL load first image of a study (500-instance CT) in ≤ 2.5s over WAN (10 Mbps connection) | Must | Performance target for remote reading |
+| FR-R18-03 | The system SHALL support secure remote access via SSO (OAuth/OIDC) with multi-site tenant switching | Must | Implemented: `/oauth/login`, `/oauth/callback`, `/oauth/token`, `/oauth/providers`, `/.well-known/openid-configuration`; tenant switcher (`TenantSelector.tsx` + `/tenants*`) |
+| FR-R18-04 | The system SHALL provide full DICOM viewer functionality identical to on-site radiologist (R12) access | Must | Implemented: same viewer as R12 (`frontend/src/detail/*`, Cornerstone3D, DICOMweb QIDO/WADO); parity by shared surface (MPR/MIP/3D not built for either role) |
+| FR-R18-05 | The system SHALL load first image of a study (500-instance CT) in ≤ 2.5s over WAN (10 Mbps connection) | Must | Implemented (capability): DICOMweb viewer shipped; WAN-budget verification against 10 Mbps throttle pending |
 | FR-R18-06 | The system SHALL prefetch next 3 worklist studies in background while current study is being read | Should | Reduces wait time between studies |
-| FR-R18-07 | The system SHALL allow preliminary report creation with explicit "Preliminary" state flag | Must | Distinct from final reports |
-| FR-R18-08 | The system SHALL allow teleradiologist to escalate preliminary report to final if credentialed for that site | Should | Workflow flexibility for credentialed readers |
+| FR-R18-07 | The system SHALL allow preliminary report creation with explicit "Preliminary" state flag | Must | Implemented: draft → preliminary → final state machine (`GET/PUT /reports/{exam_id}`), preliminary badge + flow in `ReportEditor.tsx` |
+| FR-R18-08 | The system SHALL allow teleradiologist to escalate preliminary report to final if credentialed for that site | Should | Implemented (core): `POST /reports/{exam_id}/sign` (REPORT_SIGN permission) finalizes; per-site credential check not enforced |
 | FR-R18-09 | The system SHALL provide critical findings notification workflow with escalation checklist | Must | ACR guideline: critical findings ≤ 15min |
 | FR-R18-10 | The system SHALL log critical finding timestamp and clinician notification method (phone/page/secure message) | Must | Medico-legal documentation |
 | FR-R18-11 | The system SHALL provide consultation request/response workflow with study link and messaging | Should | Second opinion workflow |
@@ -31,9 +31,9 @@
 | FR-R18-19 | The system SHALL track and display turnaround time per study (from assignment to preliminary report) | Must | R05 QA metrics |
 | FR-R18-20 | The system SHALL alert teleradiologist when assigned STAT study exceeds 20min without report initiation | Must | Proactive escalation |
 | FR-R18-21 | The system SHALL provide secure messaging to referring clinician for result notification | Should | Alternative to phone notification |
-| FR-R18-22 | The system SHALL support multi-monitor layout profiles (2-monitor, 3-monitor, laptop single-screen) | Must | Home office ergonomics |
+| FR-R18-22 | The system SHALL support multi-monitor layout profiles (2-monitor, 3-monitor, laptop single-screen) | Must | Partial: layout presets (1x1/1x2/2x2) per modality via `/reading-presets` (preset_type=layout); 3-monitor profiles GATED |
 | FR-R18-23 | The system SHALL display patient allergy/contrast reaction warnings prominently in viewer | Must | Patient safety |
-| FR-R18-24 | The system SHALL provide hanging protocol templates optimized for common remote reading scenarios (chest CT, trauma pan-scan, neuro stroke) | Should | Reading efficiency |
+| FR-R18-24 | The system SHALL provide hanging protocol templates optimized for common remote reading scenarios (chest CT, trauma pan-scan, neuro stroke) | Should | Partial: W/L + layout presets per modality shipped (`/reading-presets*`, `STANDARD_WL` incl. Brain/Stroke/Bone/Lung/Mediastinum); scenario-based template set GATED |
 
 ## Non-Functional Requirements
 
@@ -75,10 +75,21 @@
 
 ## Codebase Status (verified 2026-08-03)
 
-**Implemented**: remote viewer, annotations, shares (same as R12). **GATED**:
-FR-R18 offline/edge packages, preliminary→final routing, second-opinion consult
-queue, secure remote access config, structured reporting (shared R12 gap) — flagged
-to backend. See artifacts 04/07/08.
+**Implemented** (shared with R12, merge 4d136e0): remote viewer + tools +
+annotations + shares (same as R12); reading worklist (`GET /reports/reading-list`);
+structured reporting with preliminary state and sign-off (`GET/PUT
+/reports/{exam_id}` draft → preliminary → final, `POST /reports/{exam_id}/sign`,
+`GET /reports/templates`); peer review (`/peer-reviews*`); reading presets
+(`/reading-presets*` — window_level + layout per modality); notifications
+(`exam.completed` + `/ws` WebSocket + NotificationBell); **SSO/OAuth/OIDC**
+(`/oauth/login`, `/oauth/callback`, `/oauth/token`, `/oauth/providers`,
+`/.well-known/openid-configuration`) with tenant switching (`TenantSelector.tsx`,
+`/tenants*`). **GATED**: offline/edge packages (FR-R18-13/14), critical-findings
+escalation (FR-R18-09/10), multi-site dashboard (FR-R18-15), consultation queue
+(FR-R18-11/16), voice dictation (FR-R18-12), mobile viewer (FR-R18-17), priors
+comparison endpoint (FR-R18-18), turnaround display (FR-R18-19), STAT>20min alert
+(FR-R18-20), secure messaging (FR-R18-21), allergy warnings (FR-R18-23), prefetch
+(FR-R18-06), freshness indicator (FR-R18-02). See artifacts 04/07/08.
 
 ## Assumptions & Constraints
 
@@ -114,20 +125,23 @@ to backend. See artifacts 04/07/08.
 
 ## API Dependency Analysis
 
-### Existing APIs (v2.0)
-- ✅ `GET /api/studies` — Worklist retrieval
-- ✅ `GET /api/studies/{id}` — Study metadata
-- ✅ `GET /api/studies/{id}/viewer` — Viewer launch
-- ✅ `POST /api/reports` — Report creation
-- ✅ `PUT /api/reports/{id}` — Report update
-- ⚠️ `GET /api/reports/{id}` — Report retrieval (needs preliminary/final state field)
+### Existing APIs (verified 2026-08-03 — all under /api/v2)
+- ✅ `GET /reports/reading-list` — Reading worklist (priority-sorted, status/modality/search filters; REPORT_READ)
+- ✅ `GET /reports/{exam_id}` / `PUT /reports/{exam_id}` — Report draft/edit (draft → preliminary → final; REPORT_WRITE)
+- ✅ `POST /reports/{exam_id}/sign` — Sign final report (REPORT_SIGN; impression required; audit-logged; QA notified)
+- ✅ `GET /reports/templates` — Report template library (per-modality findings/impression templates)
+- ✅ `/peer-reviews/reviewers`, `/peer-reviews`, `/peer-reviews/{id}`, `/peer-reviews/{id}/submit` — peer review of final signed reports
+- ✅ `/reading-presets`, `/reading-presets/{id}` — per-user window_level + layout presets per modality
+- ✅ `/oauth/login`, `/oauth/callback`, `/oauth/token`, `/oauth/providers`, `/.well-known/openid-configuration` — SSO/OIDC
+- ✅ `/ws` + `/ws_token` — WebSocket real-time notifications; `/notifications*` — bell/unread/read-all
+- ✅ `/dicomweb/studies*`, `/wado` — QIDO/WADO; `/files*`, `/files/{id}/share`; `/patients/{id}`; `/exams*`; `/worklist*`; `/tenants*`
 
-### New APIs Required (flag for v3.0)
+### New APIs Required (flag for v3.0 — still GATED)
 - ❌ `GET /api/v2/worklists/teleradiology` — Remote worklist with site/priority/assignment filters
   - Query params: `site`, `priority`, `status`, `assignee`, `modality`, `date_range`
   - Response: paginated study list with turnaround time, assignment timestamp, critical flag
   - Real-time: WebSocket `/ws/worklists/teleradiology` for live updates
-- ❌ `POST /api/v2/reports/{id}/finalize` — Transition preliminary → final
+- ❌ `POST /api/v2/reports/{id}/finalize` — Transition preliminary → final (currently only via sign endpoint)
   - Body: `{ "final": true, "finalized_by": "user_id", "finalized_at": "timestamp" }`
   - Response: updated report with state change audit
 - ❌ `POST /api/v2/critical-findings` — Critical finding notification
@@ -136,7 +150,7 @@ to backend. See artifacts 04/07/08.
 - ❌ `GET /api/v2/studies/{id}/offline-package` — Downloadable offline study bundle
   - Response: encrypted ZIP with DICOM files, viewer HTML, decryption key
   - Size limit: 2GB per package
-- ❌ `GET /api/v2/users/me/sites` — Multi-site access list for tenant-switching
+- ❌ `GET /api/v2/users/me/sites` — Multi-site access list for tenant-switching (tenant list exists via `/tenants`; per-site worklist counts not exposed)
   - Response: `[{ "tenant_id", "site_name", "worklist_count", "stat_count" }]`
 - ❌ `POST /api/v2/consultations` — Consultation request/response
   - Body: `{ "study_id", "requesting_user", "question", "priority" }`
@@ -146,7 +160,7 @@ to backend. See artifacts 04/07/08.
   - Response: prefetch job queued
 
 ### Backend Feasibility Notes
-- **Real-time worklist sync**: Requires WebSocket endpoint + PostgreSQL LISTEN/NOTIFY (existing `notify_event()` trigger can be extended)
+- **Real-time worklist sync**: WebSocket (`/ws` + `/ws_token`) and `notify_event()` trigger shipped (2026-08-03); extend for teleradiology-specific worklist channels
 - **Offline packages**: Requires background job queue (Celery/Redis) for ZIP generation; DICOM decompression for offline viewer
 - **Critical findings escalation**: Requires integration with hospital notification system (Twilio API for SMS, PagerDuty for paging) — plugin architecture
 - **Multi-site tenant-switching**: Requires per-tenant JWT token exchange; frontend tenant context state management

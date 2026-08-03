@@ -3,6 +3,12 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.2.2] — 2026-08-03
+### Changed
+- Re-verified against post-merge codebase (4d136e0): no new endpoints affect R02 FRs; FR-R02-15 remains partial (endpoint exists, usage dashboard UI GATED)
+- Role-based access now enforced at route level via `PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`) — confirms tenant-scoped gating at the URL boundary
+- New built-in roles (`technologist`, `radiologist`, `qa_team`) and permission groups (`Exams`, `Reports`, `Peer Review`, `QA`) visible in `/roles` catalog
+
 ## [1.2.1] — 2026-08-03
 ### Fixed
 - Artifact 08: FR-R02-15 (tenant storage usage) corrected from "Implemented" to "Partially Implemented" — `GET /tenants/{id}/stats` exists; usage/quota dashboard UI GATED (aligns 08 with 07's partial status)

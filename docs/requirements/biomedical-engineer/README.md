@@ -2,21 +2,28 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.1.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation". Biomedical-engineer accounts today have only Files/metrics read-only
-views.
+views. `PermissionRoute` now enforces role-based access at the URL boundary — deep
+links to routes without the required permission redirect to `/` (Files).
 
 **GATED**: all equipment features — equipment inventory, PM schedules, QC testing,
 downtime tracking, maintenance tickets, vendor contracts, fault alerting. No
 equipment routes or endpoints exist; requires new backend module + permissions
 flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: merge shipped exam-dosing
+(`/exams/{id}/dose`, EXAM_WRITE) as part of the technologist workflow — R10 has **no
+dose-related FRs** (no FR covers exam dose records), so this does not partially
+cover any R10 requirement. No equipment/PM/QC/downtime endpoints exist;
+FR-R10-01..09 remain GATED, FR-R10-10 partial status unchanged.
 
 ## Role Summary
 

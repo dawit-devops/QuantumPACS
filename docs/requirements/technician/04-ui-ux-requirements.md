@@ -14,7 +14,9 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 | `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
 | `/account` | Account | Any authenticated user |
 | `/files/:id`, `/patients/:id` | Viewer (acquisition QA via viewer), patient page | `FILE_READ` / `PATIENT_READ` |
-| `/acquisition/*`, `/exams/*`, fluoroscopy/mammo flows | **Not accessible** | No exam routes/endpoints exist — GATED |
+| `/exams` | Exam console worklist (shared with R06 — `TechnologistWorklist.tsx`) | `EXAM_READ` |
+| `/exams/:id` | Exam console (`ExamConsole.tsx` — identity confirm, protocol, acquisitions, dose, safety checks, complete, incidents, override) | `EXAM_READ` |
+| Fluoroscopy / mammography flows | **Not accessible** | No fluoro/mammo-specific screens — GATED (FR-R07-09/10) |
 
 ### Navigation Gating (Sidebar.tsx)
 
@@ -22,14 +24,19 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 |-----------|--------------|
 | Files / Metrics / Account / Notifications | Always (authenticated) |
 | Worklist (under Admin) | `WORKLIST_READ` |
+| Exams (R06/R07 console) | `EXAM_READ` |
 
 ### Functionality Gating
 
-- Existing: study browser, viewer, worklist (same as R06).
-- **Not implemented** (aspirational FRs marked `GATED` in 01/07/08): DR/CR
-  acquisition, fluoroscopy (live/spot/cine/DAP), mammography (CC/MLO, compression,
-  AGD), retakes, exam completion. Requires `EXAM_*` permissions + endpoints flagged
-  to backend.
+- Existing: study browser, viewer, worklist, shared exam console (FR-R07-01..08
+  implemented — DR/CR acquisition via the generic acquisitions decision workflow;
+  identity-confirm, dose, safety-checks, complete, incidents, overrides).
+- **Not implemented** (aspirational FRs marked `GATED` in 01/07/08):
+  FR-R07-09 fluoroscopy-specific workflow (live mode, spot/cine, DAP tracking —
+  no `dap` column, no `/fluoroscopy-*` endpoints) and FR-R07-10 mammography-specific
+  workflow (CC/MLO, compression monitoring, AGD — no `agd` column, no
+  mammo-specific endpoints). FR-R07-11/12/13 (AI QA, dose optimization, RIS
+  protocol selection) are v3.1/v3.2 scope.
 
 ## Screens & Navigation
 

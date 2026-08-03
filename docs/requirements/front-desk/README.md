@@ -2,20 +2,30 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.1.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation". Front-desk accounts today have only the Files/patient read-only views.
+`PermissionRoute` now enforces role-based access at the URL boundary — deep links to
+routes without the required permission redirect to `/` (Files).
 
 **GATED**: all registration/scheduling features — FR-R08-01..10 (patient
 registration, duplicate detection, order intake, appointment scheduling, check-in,
 consent, insurance, label printing, queue board). No registration/scheduling routes
 or endpoints exist; requires new backend module + permissions flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: worklist CRUD/calendar/create-entry
+frontends exist (`/worklist`, `/schedule-board`, `CalendarView`, `CreateEntry`), but
+`/schedule-board` is an R04 worklist-derived read view (WORKLIST_READ) — not an
+appointment-scheduling API; no registration, check-in, consent, or insurance
+endpoints exist. HL7 `POST /hl7` remains **inbound-only** — no outbound ADT sender,
+so FR-R08-02's demographics-sync trigger stays GATED. FR-R08-01/02 remain
+Partial/GATED as recorded in artifacts 07/08.
 
 ## Role Summary
 

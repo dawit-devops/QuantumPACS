@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -10,12 +10,29 @@
 ## Codebase Alignment (verified 2026-08-03)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
-Navigation". Technicians today access the study browser, viewer (image QC), and
-worklist (if granted `WORKLIST_READ`).
+Navigation". Technicians access the study browser, viewer (image QC), the worklist
+(`WORKLIST_READ`), and the shared exam console (`/exams` + `/exams/:id` — the same
+lifecycle as R06; no separate technician UI).
 
-**Implemented**: study browser/viewer, worklist. **GATED**: FR-R07 acquisition
-workflow incl. fluoroscopy (live/spot/cine/DAP) and mammography (CC/MLO, compression,
-AGD) — requires `EXAM_*` permissions + endpoints flagged to backend.
+**Backend** (`backend/api/exams.py`, routes in `backend/api/routes.py`): the shared
+exam lifecycle is shipped — `/exams` (list/create), `/exams/{id}` (detail/update,
+identity-confirm, protocol, acquisitions + accept/reject/retake decision, dose,
+safety-checks, complete, incidents, overrides) and `/protocols`. Tables `exams`,
+`acquisitions`, `safety_checks`, `incidents`, `protocol_overrides`, `protocols`
+exist in `backend/db/exams.py`.
+
+**Permissions** (`backend/api/permissions.py`): `EXAM_READ`/`EXAM_WRITE`/
+`WORKLIST_READ`/`WORKLIST_WRITE`; the `technologist` built-in role grants these
+(there is no dedicated `technician` role — technicians are covered by the same
+grants).
+
+**Implemented**: FR-R07-01..08 (shared exam lifecycle — see traceability for
+endpoint mapping). **GATED** (kept as v3.0 spec): FR-R07-09 fluoroscopy-specific
+workflow (live mode, spot/cine, DAP tracking — no `dap` field in `acquisitions`
+schema, no `/fluoroscopy-*` endpoints) and FR-R07-10 mammography-specific workflow
+(CC/MLO, compression monitoring, AGD — no `agd` field, no mammo-specific endpoints).
+Also GATED (v3.1/v3.2): FR-R07-11 AI-assisted image QA, FR-R07-12 dose
+optimization, FR-R07-13 RIS protocol selection.
 
 ---
 
@@ -89,48 +106,56 @@ AGD) — requires `EXAM_*` permissions + endpoints flagged to backend.
 
 ## New API Endpoints Required (v3.0)
 
+> **Status 2026-08-03**: FR-R07-01..08 endpoints are **shipped** in
+> `backend/api/routes.py` (v2 prefix; see Codebase Alignment) via the shared exam
+> lifecycle. Patient confirmation is `/api/v2/exams/{id}/identity-confirm`,
+> acquisition decision is `/api/v2/exams/{id}/acquisitions/{acquisition_id}/{decision}`,
+> and the technician worklist is the shared `/api/v2/worklist` (modality filter) —
+> no dedicated `/worklists/technician`. FR-R07-09 fluoroscopy endpoints
+> (`/fluoroscopy-start`, `/spot-capture`, `/cine-start`, `/cine-stop`) are **NOT
+> shipped** — no fluoroscopy-specific endpoints exist.
+
 | Endpoint | Method | Purpose | Permission |
 |----------|--------|---------|------------|
-| `/api/v2/worklists/technician` | GET | Fetch technician worklist | `WORKLIST_READ` |
+| `/api/v2/worklists/technician` | GET | Fetch technician worklist — shipped as `/api/v2/worklist` (modality filter) | `WORKLIST_READ` |
 | `/api/v2/exams/{id}` | GET | Fetch exam detail with patient + protocol | `EXAM_READ` |
-| `/api/v2/exams/{id}/confirm-patient` | POST | Confirm patient identity | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/confirm-patient` | POST | Confirm patient identity — shipped as `/api/v2/exams/{id}/identity-confirm` | `EXAM_WRITE` |
 | `/api/v2/exams/{id}/protocol` | GET | Fetch protocol parameters | `EXAM_READ` |
-| `/api/v2/exams/{id}/start-acquisition` | POST | Start image acquisition | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/acquire` | POST | Record image acquisition with dose | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/reject` | POST | Flag image as rejected | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/dose-baseline` | GET | Fetch cumulative dose + ACR benchmark | `EXAM_READ` |
-| `/api/v2/exams/{id}/dose-log` | POST | Log dose parameters | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/safety-check` | POST | Record safety check confirmation | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/start-acquisition` | POST | Start image acquisition — shipped as `/api/v2/exams/{id}/acquisitions` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/acquire` | POST | Record image acquisition with dose — shipped as `/api/v2/exams/{id}/acquisitions/{acquisition_id}/{decision}` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/reject` | POST | Flag image as rejected — same acquisition-decision endpoint | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/dose-baseline` | GET | Fetch cumulative dose + ACR benchmark — shipped as `/api/v2/exams/{id}/dose` | `EXAM_READ` |
+| `/api/v2/exams/{id}/dose-log` | POST | Log dose parameters — shipped as `/api/v2/exams/{id}/dose` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/safety-check` | POST | Record safety check confirmation — shipped as `/api/v2/exams/{id}/safety-checks` | `EXAM_WRITE` |
 | `/api/v2/exams/{id}/complete` | POST | Mark exam complete, push to PACS, notify radiologist | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/incident` | POST | Log incident with severity | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/fluoroscopy-start` | POST | Start fluoroscopy live mode | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/spot-capture` | POST | Capture spot image | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/cine-start` | POST | Start cine recording | `EXAM_WRITE` |
-| `/api/v2/exams/{id}/cine-stop` | POST | Stop cine recording | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/incident` | POST | Log incident with severity — shipped as `/api/v2/exams/{id}/incidents` | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/fluoroscopy-start` | POST | Start fluoroscopy live mode — **NOT SHIPPED** (FR-R07-09 GATED) | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/spot-capture` | POST | Capture spot image — **NOT SHIPPED** (FR-R07-09 GATED) | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/cine-start` | POST | Start cine recording — **NOT SHIPPED** (FR-R07-09 GATED) | `EXAM_WRITE` |
+| `/api/v2/exams/{id}/cine-stop` | POST | Stop cine recording — **NOT SHIPPED** (FR-R07-09 GATED) | `EXAM_WRITE` |
 
 ---
 
 ## New Permission Slugs Required
 
+> **Status 2026-08-03**: shipped in `backend/api/permissions.py` — `WORKLIST_READ`,
+> `WORKLIST_WRITE`, `EXAM_READ`, `EXAM_WRITE` (there is no dedicated `technician`
+> built-in role; the `technologist` role carries these grants):
+
 ```python
-# In backend/api/permissions.py
+# backend/api/permissions.py
 WORKLIST_READ = 'WORKLIST_READ'
 EXAM_READ = 'EXAM_READ'
 EXAM_WRITE = 'EXAM_WRITE'
 
-# Add to PERMISSION_GROUPS
-PERMISSION_GROUPS['TECH'] = [
-    'WORKLIST_READ', 'EXAM_READ', 'EXAM_WRITE'
-]
-
-# New built-in role or extend existing
-BUILT_IN_ROLES['technician'] = [
-    Permission.FILE_READ.value,
-    Permission.STUDY_READ.value,
-    Permission.IMAGE_READ.value,
-    'WORKLIST_READ',
-    'EXAM_READ',
-    'EXAM_WRITE',
+# Built-in role (technician is covered by this role's grants)
+BUILT_IN_ROLES['technologist'] = [
+    Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
+    Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
+    Permission.STUDY_READ.value, Permission.STUDY_WRITE.value,
+    Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+    Permission.EXAM_READ.value, Permission.EXAM_WRITE.value,
+    Permission.DICOMWEB_READ.value,
 ]
 ```
 
@@ -140,8 +165,13 @@ BUILT_IN_ROLES['technician'] = [
 
 ### New for R07
 
+> **Status 2026-08-03**: shipped in `backend/db/exams.py` — the table is named
+> `acquisitions` (not `image_acquisitions`). The spec's `dap` (fluoroscopy) and
+> `agd` (mammography) columns are **NOT in the schema** — this is the blocking
+> dependency for FR-R07-09/10:
+
 ```sql
-CREATE TABLE image_acquisitions (
+CREATE TABLE acquisitions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exam_id         UUID REFERENCES exams(id) NOT NULL,
     study_uid       VARCHAR(100) NOT NULL,
@@ -152,8 +182,8 @@ CREATE TABLE image_acquisitions (
     mas             NUMERIC,
     exposure_time   NUMERIC,
     dlp             NUMERIC,
-    dap             NUMERIC,      -- Dose-Area Product for fluoroscopy
-    agd             NUMERIC,      -- Average Glandular Dose for mammography
+    -- dap             NUMERIC,      -- NOT SHIPPED — GATED (FR-R07-09)
+    -- agd             NUMERIC,      -- NOT SHIPPED — GATED (FR-R07-10)
     ctdiovol        NUMERIC,
     slice_thickness NUMERIC,
     status          VARCHAR(20) DEFAULT 'acquired', -- 'acquired', 'accepted', 'rejected'
@@ -164,9 +194,9 @@ CREATE TABLE image_acquisitions (
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_image_acquisitions_exam ON image_acquisitions(exam_id);
-CREATE INDEX idx_image_acquisitions_status ON image_acquisitions(status);
-CREATE INDEX idx_image_acquisitions_study ON image_acquisitions(study_uid);
+CREATE INDEX idx_acquisitions_exam ON acquisitions(exam_id);
+CREATE INDEX idx_acquisitions_status ON acquisitions(status);
+CREATE INDEX idx_acquisitions_study ON acquisitions(study_uid);
 ```
 
 ---

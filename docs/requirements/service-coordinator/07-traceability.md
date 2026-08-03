@@ -25,17 +25,28 @@
 | NFR-R04-09 | Yes | AC-R04-09-01, AC-R04-09-02 | Covered |
 | NFR-R04-10 | Yes | AC-R04-05-04 | Covered |
 
-## GATED Requirements (codebase reality, verified 2026-08-03)
+## Implementation Status (codebase reality, verified 2026-08-03)
 
-Worklist CRUD/calendar/batch is implemented (`/worklist*`). Schedule board, exam
-assignment, staffing rosters, utilization, and shift-handoff report FRs are
-aspirational v3.0 spec — ACs exist in artifact 06 but are **GATED** on new backend
-work (scheduling endpoints flagged to backend):
+Worklist CRUD/calendar/batch (`/worklist*`) is implemented, and the schedule board
+shipped as a **frontend view over the worklist API** (`/schedule-board`,
+`ScheduleBoard.tsx`, gated by `WORKLIST_READ`) — no dedicated `/schedule/*` backend
+exists. Exam assignment, staffing, utilization, conflict detection, and handoff
+report FRs remain aspirational v3.0 spec — ACs exist in artifact 06 but are
+**GATED** on new backend work (scheduling endpoints flagged to backend):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R04-01..05, FR-R04-07..10 (scheduling/staffing) | GATED | No scheduling-board endpoints or routes |
-| FR-R04-06 (worklist) | Implemented | `/worklist*` exists |
+| FR-R04-01 (schedule board) | Covered — implemented | `ScheduleBoard.tsx` at `/schedule-board` over `GET /worklist?date_from&date_to` (per_page 500); drag-and-drop rescheduling not implemented |
+| FR-R04-02 (exam assignment) | GATED | No `/schedule/assign` endpoint; no WebSocket push to technologist worklists |
+| FR-R04-03 (stat/priority triage) | GATED | No auto-promotion/sort logic on the board |
+| FR-R04-04 (utilization dashboard) | GATED | No utilization endpoints |
+| FR-R04-05 (staffing roster) | GATED | No roster endpoints; no `shift_assignments` table |
+| FR-R04-06 (worklist) | Covered — implemented | `/worklist` CRUD + batch + calendar (`Worklist.tsx`, `CalendarView.tsx`, `CreateEntry.tsx`) |
+| FR-R04-07 (override/reassign) | GATED | No bulk-reassign endpoint |
+| FR-R04-08 (conflict detection) | GATED | No conflict detection backend/algorithm |
+| FR-R04-09 (handoff report) | GATED | No report generation endpoint |
+| FR-R04-10 (calendar view) | Covered — partial | Worklist `table/calendar` toggle (`CalendarView.tsx`, status color-coded); week/month views + drill-down GATED |
+| NFR-R04-* tied to implemented FRs | Covered | FR-R04-01/06/10 above |
 | NFR-R04-* tied to GATED FRs | GATED | Blocked on the FRs above |
 
 ## Cross-Artifact Dependencies

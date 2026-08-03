@@ -15,59 +15,88 @@
 
 ## FR/NFR Implementation Status
 
-### Missing (Not Started)
+> **Codebase reality (verified 2026-08-03)**: merge 4d136e0 shipped the R12
+> reading/reporting stack shared by R18 — reading worklist (`/reports/reading-list`),
+> structured reporting (draft → preliminary → final + sign + templates), peer
+> review (`/peer-reviews*`), reading presets (`/reading-presets*`), notifications
+> (`exam.completed` + `/ws`), plus SSO/OAuth/OIDC (`/oauth/*`) and tenant
+> switching. Telerad-specific FRs (offline, escalation, consult, multi-site
+> dashboard, mobile, prefetch, messaging) remain GATED.
+
+### Implemented (Passing ACs)
+
+| FR/NFR ID | Summary | AC Coverage | Effort |
+|-----------|---------|-------------|--------|
+| FR-R18-03 | Secure remote access via SSO (OAuth/OIDC) + multi-site tenant switching — `/oauth/login`, `/oauth/callback`, `/oauth/token`, `/oauth/providers`, OIDC discovery; `TenantSelector.tsx` + `/tenants*` | AC-R18-04-01, 03, 04, 05 | M |
+| FR-R18-04 | Full DICOM viewer parity with R12 (shared `frontend/src/detail/*` surface, DICOMweb QIDO/WADO) | AC-R18-05-06 | M |
+| FR-R18-05 | First-image load ≤ 2.5s over WAN — capability shipped; 10 Mbps throttle verification pending | AC-R18-05-01, 05 | L |
+| FR-R18-07 | Preliminary report creation — draft → preliminary → final state machine + preliminary flow in `ReportEditor.tsx` | AC-R18-02-01, 02, 03, 04, 05 | L |
+| FR-R18-08 | Escalate preliminary → final via `POST /reports/{exam_id}/sign` (REPORT_SIGN); per-site credential check not enforced | (covered by report-sign tests) | M |
+| NFR-R18-03 | DICOM viewer first-image load (500-inst CT, WAN) — verifiable against shipped viewer | AC-R18-05-01 | L |
+| NFR-R18-04 | Viewer interaction responsiveness (INP ≤ 200ms) | AC-R18-05-06 | L |
+| NFR-R18-05 | Report autosave interval ≤ 10s — `ReportEditor.tsx` autosave loop | AC-R18-02-02 | M |
+| NFR-R18-11 | VPN/SSO authentication time ≤ 3s — OAuth flow shipped; timing verification pending | AC-R18-04-03 | M |
+
+### Partially Implemented (GATED / Partial)
+
+| FR/NFR ID | Summary | Blocking Dependency | AC | Effort |
+|-----------|---------|---------------------|----|--------|
+| FR-R18-01 | Remote worklist — `GET /reports/reading-list` is priority-sorted with status/modality/search filters; site filter + assignment filter not built | No site/assignment-filtered teleradiology worklist view | AC-R18-01-01, 02, 03 | M |
+| FR-R18-22 | Multi-monitor layout profiles — layout presets (1x1/1x2/2x2) per modality via `/reading-presets`; 3-monitor profiles not built | No 3-monitor profile config | AC-R18-10-03 | M |
+| FR-R18-24 | Hanging protocol templates — W/L + layout presets per modality shipped (`STANDARD_WL`: Brain/Stroke/Bone/Lung/Mediastinum); scenario template set (chest CT, trauma pan-scan) not built | No scenario-based template catalog | AC-R18-10-05 | M |
+
+### Missing (Not Started — GATED)
 
 | FR/NFR ID | Summary | Reason | AC | Effort |
 |-----------|---------|--------|----|--------|
-| FR-R18-01 | As a teleradiologist, the system SHALL provide a dedicated remote worklist filte | Not yet scoped | — | L |
-| FR-R18-02 | The system SHALL display worklist freshness indicator showing last sync timestam | Not yet scoped | — | L |
-| FR-R18-03 | The system SHALL support secure remote access via SSO (OAuth/OIDC) with multi-si | Not yet scoped | — | L |
-| FR-R18-04 | The system SHALL provide full DICOM viewer functionality identical to on-site ra | Not yet scoped | — | L |
-| FR-R18-05 | The system SHALL load first image of a study (500-instance CT) in ≤ 2.5s over WA | Not yet scoped | — | L |
-| FR-R18-06 | The system SHALL prefetch next 3 worklist studies in background while current st | Not yet scoped | — | L |
-| FR-R18-07 | The system SHALL allow preliminary report creation with explicit "Preliminary" s | Not yet scoped | — | L |
-| FR-R18-08 | The system SHALL allow teleradiologist to escalate preliminary report to final i | Not yet scoped | — | L |
-| FR-R18-09 | The system SHALL provide critical findings notification workflow with escalation | Not yet scoped | — | L |
-| FR-R18-10 | The system SHALL log critical finding timestamp and clinician notification metho | Not yet scoped | — | L |
-| FR-R18-11 | The system SHALL provide consultation request/response workflow with study link  | Not yet scoped | — | L |
-| FR-R18-12 | The system SHALL support voice dictation integration (Dragon Medical, Microsoft  | Not yet scoped | — | L |
-| FR-R18-13 | The system SHALL provide offline study package download for studies assigned to  | Not yet scoped | — | L |
-| FR-R18-14 | The system SHALL sync offline report drafts when connectivity is restored | Not yet scoped | — | L |
-| FR-R18-15 | The system SHALL display multi-site dashboard showing worklist counts and turnar | Not yet scoped | — | L |
-| FR-R18-16 | The system SHALL allow teleradiologist to mark study as "Consulted" when providi | Not yet scoped | — | L |
-| FR-R18-17 | The system SHALL provide mobile viewer for urgent consultations with limited dia | Not yet scoped | — | L |
-| FR-R18-18 | The system SHALL display prior studies comparison in side-by-side layout with sy | Not yet scoped | — | L |
-| FR-R18-19 | The system SHALL track and display turnaround time per study (from assignment to | Not yet scoped | — | L |
-| FR-R18-20 | The system SHALL alert teleradiologist when assigned STAT study exceeds 20min wi | Not yet scoped | — | L |
-| FR-R18-21 | The system SHALL provide secure messaging to referring clinician for result noti | Not yet scoped | — | L |
-| FR-R18-22 | The system SHALL support multi-monitor layout profiles (2-monitor, 3-monitor, la | Not yet scoped | — | L |
-| FR-R18-23 | The system SHALL display patient allergy/contrast reaction warnings prominently  | Not yet scoped | — | L |
-| FR-R18-24 | The system SHALL provide hanging protocol templates optimized for common remote  | Not yet scoped | — | L |
-| NFR-R18-01 | Remote worklist load time | Not yet scoped | — | L |
-| NFR-R18-02 | Worklist real-time sync staleness | Not yet scoped | — | L |
-| NFR-R18-03 | DICOM viewer first-image load (500-inst CT, WAN) | Not yet scoped | — | L |
-| NFR-R18-04 | DICOM viewer interaction responsiveness (pan/zoom/scroll) | Not yet scoped | — | L |
-| NFR-R18-05 | Report autosave interval | Not yet scoped | — | L |
-| NFR-R18-06 | Offline study package generation | Not yet scoped | — | L |
-| NFR-R18-07 | Critical findings notification latency | Not yet scoped | — | L |
-| NFR-R18-08 | System availability for remote access | Not yet scoped | — | L |
-| NFR-R18-09 | Session timeout for inactive remote sessions | Not yet scoped | — | L |
-| NFR-R18-10 | Concurrent remote viewer sessions per teleradiologist | Not yet scoped | — | L |
-| NFR-R18-11 | VPN/SSO authentication time | Not yet scoped | — | L |
-| NFR-R18-12 | Audit log retention for remote access | Not yet scoped | — | L |
-| NFR-R18-13 | Bandwidth utilization for background prefetch | Not yet scoped | — | L |
-| NFR-R18-14 | Mobile viewer compatibility | Not yet scoped | — | L |
-| NFR-R18-15 | Keyboard accessibility for all worklist and viewer actions | Not yet scoped | — | L |
-| NFR-R18-16 | Screen reader support for non-viewer UI | Not yet scoped | — | L |
-| NFR-R18-17 | TLS version for remote access | Not yet scoped | — | L |
+| FR-R18-02 | Worklist freshness indicator | No freshness banner/polling UI | AC-R18-01-02, 05 | M |
+| FR-R18-06 | Prefetch next 3 worklist studies | No prefetch endpoint/algorithm | AC-R18-05-02, 03, 04 | L |
+| FR-R18-09 | Critical findings notification workflow | No escalation endpoint | AC-R18-03-01, 02, 03, 05 | L |
+| FR-R18-10 | Critical finding + notification-method logging | No escalation/audit pipeline | AC-R18-03-02, 04 | M |
+| FR-R18-11 | Consultation request/response | No consult endpoints (peer review is QA-style) | AC-R18-08-02 | L |
+| FR-R18-12 | Voice dictation integration | No dictation plugin | AC-R18-07-01, 02 | L |
+| FR-R18-13 | Offline study package download | No offline-package endpoints | AC-R18-07-03, 04 | L |
+| FR-R18-14 | Offline draft sync | No offline mode (IndexedDB queue) | AC-R18-07-05 | L |
+| FR-R18-15 | Multi-site dashboard | No per-site worklist-count dashboard | AC-R18-04-01, 02 | L |
+| FR-R18-16 | Mark study "Consulted" | No consulted-state workflow | AC-R18-08-01, 02 | M |
+| FR-R18-17 | Mobile viewer for urgent consultations | PWA exists; no telerad-specific mobile UI | AC-R18-09-01, 02 | L |
+| FR-R18-18 | Prior studies side-by-side comparison | No priors endpoint (same gap as R12 FR-R12-06) | AC-R18-10-01, 02 | M |
+| FR-R18-19 | Turnaround time per study | No per-study TAT metric in worklist | AC-R18-11-01, 02 | M |
+| FR-R18-20 | STAT >20min overdue alert | No overdue-STUDY alerting | AC-R18-01-04 | M |
+| FR-R18-21 | Secure messaging to referring clinician | Notifications exist; no clinician messaging | AC-R18-11-03, 04 | L |
+| FR-R18-23 | Allergy/contrast reaction warnings | No allergy data pipeline | AC-R18-10-04 | M |
+| NFR-R18-01 | Remote worklist load time | Blocked on FR-R18-01 site-filter work | — | L |
+| NFR-R18-02 | Worklist real-time sync staleness ≤ 5s | `/ws` shipped; telerad worklist channel not wired | AC-R18-01-02, 05 | M |
+| NFR-R18-06 | Offline study package generation | Blocked on FR-R18-13 | AC-R18-07-03 | L |
+| NFR-R18-07 | Critical findings notification latency | Blocked on FR-R18-09/10 | AC-R18-03-02, 03 | L |
+| NFR-R18-08 | System availability for remote access | Not yet scoped | AC-R18-04-02 | L |
+| NFR-R18-09 | Session timeout for inactive remote sessions | No idle-timeout modal (token expiry only) | AC-R18-06-01, 02, 03 | M |
+| NFR-R18-10 | Concurrent remote viewer sessions | Not yet scoped | — | L |
+| NFR-R18-12 | Audit log retention ≥ 7 years | Not yet scoped | — | L |
+| NFR-R18-13 | Bandwidth utilization for prefetch ≤ 30% | Blocked on FR-R18-06 | AC-R18-05-03 | L |
+| NFR-R18-14 | Mobile viewer compatibility | Blocked on FR-R18-17 | AC-R18-09-02 | L |
+| NFR-R18-15 | Keyboard accessibility | Viewer keyboard support exists; full-surface audit pending | AC-R18-05-06 | L |
+| NFR-R18-16 | Screen reader support | Not yet scoped | — | L |
+| NFR-R18-17 | TLS 1.3 only | TLS enforcement not verified | — | M |
 | NFR-R18-18 | Geographic latency tolerance | Not yet scoped | — | L |
 
 ## Blocking Dependencies
 
 | Blocking Dependency | Blocks | AC | Impact |
 |---------------------|--------|----|--------|
+| Critical-findings escalation endpoint + clinician-notification integration | FR-R18-09, 10, NFR-R18-07 | AC-R18-03-* | ACR 15-min critical-findings requirement cannot ship |
+| Offline package generation (encrypted ZIP + job queue) | FR-R18-13, 14, NFR-R18-06 | AC-R18-07-03, 04, 05 | Connectivity-failure mitigation unavailable |
+| Consultation workflow endpoints | FR-R18-11, 16 | AC-R18-08-* | Second-opinion workflow unavailable |
+| Site/assignment-filtered teleradiology worklist | FR-R18-01, NFR-R18-01 | AC-R18-01-01, 02, 03 | Remote worklist lacks site/assignment context |
+| Multi-site dashboard aggregates | FR-R18-15 | AC-R18-04-01, 02 | No per-site coverage visibility |
+| Background prefetch algorithm + endpoint | FR-R18-06, NFR-R18-13 | AC-R18-05-02, 03, 04 | Wait-time reduction between studies unavailable |
+| Priors endpoint (shared R12 gap) | FR-R18-18 | AC-R18-10-01, 02 | Prior-comparison workflow unavailable |
+| Voice dictation plugin | FR-R18-12 | AC-R18-07-01, 02 | Efficiency feature unavailable |
 
 ## Next Steps (highest priority)
 
-2. **Scope missing requirements** — 42 FR/NFRs not yet implemented
-3. **Update roadmap each sprint** as FR/NFR status changes
+1. **Raise critical-findings escalation with backend** — unblocks FR-R18-09/10; L effort
+2. **Confirm priors API decision (shared with R12)** — unblocks FR-R18-18; M effort
+3. **Scope offline-package generation** — unblocks FR-R18-13/14; L effort
+4. **Extend reading worklist with site/assignment filters** — unblocks FR-R18-01; M effort
+5. **Update roadmap each sprint** as FR/NFR status changes

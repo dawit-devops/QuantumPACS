@@ -4,27 +4,32 @@ All requirements packages organized by role. Each package follows the
 [pacs-requirements-architect skill](../../.opencode/skills/pacs-requirements-architect/SKILL.md)
 conventions.
 
-| Role | ID | Slug | Artifacts | Traceability | Roadmap | Status |
-|------|----|------|-----------|--------------|---------|--------|
-| Super Admin (PACS Admin) | R01 | super-admin | 8 | ✓ | ✓ | approved |
-| Hospital IT / Tenant Admin | R02 | tenant-admin | 8 | ✓ | ✓ | draft |
-| Radiology & Imaging Service Director | R03 | service-director | 8 | ✓ | ✓ | approved |
-| Radiology & Service Coordinator | R04 | service-coordinator | 8 | ✓ | ✓ | draft |
-| Radiology Services QI/QA Team | R05 | qa-team | 8 | ✓ | ✓ | approved |
-| Radiology Technologist | R06 | technologist | 8 | ✓ | ✓ | draft |
-| Radiology Technician | R07 | technician | 8 | ✓ | ✓ | draft |
-| Front Desk (Receptionist) | R08 | front-desk | 8 | ✓ | ✓ | draft |
-| Radiology Service Cashier | R09 | cashier | 8 | ✓ | ✓ | draft |
-| Biomedical Engineer | R10 | biomedical-engineer | 8 | ✓ | ✓ | draft |
-| Radiology Service Nursing Team | R11 | nursing | 8 | ✓ | ✓ | draft |
-| Staff Radiologist | R12 | staff-radiologist | 8 | ✓ | ✓ | draft |
-| Radiology Trainee/Resident | R13 | resident | 8 | ✓ | ✓ | draft |
-| Referring Clinician | R14 | referring-clinician | 8 | ✓ | ✓ | approved |
-| External RIS | R15 | external-ris | 8 | ✓ | ✓ | draft |
-| External EMR | R16 | external-emr | 8 | ✓ | ✓ | draft |
-| External PACS | R17 | external-pacs | 8 | ✓ | ✓ | draft |
-| Teleradiologist | R18 | teleradiologist | 8 | ✓ | ✓ | draft |
-| Other Hospital Staff | R19 | hospital-staff | 8 | ✓ | ✓ | draft |
+| Role | ID | Slug | Version | Artifacts | Traceability | Roadmap | Status |
+|------|----|------|---------|-----------|--------------|---------|--------|
+| Super Admin (PACS Admin) | R01 | super-admin | 1.2.1 | 8 | ✓ | ✓ | approved |
+| Hospital IT / Tenant Admin | R02 | tenant-admin | 1.2.2 | 8 | ✓ | ✓ | draft |
+| Radiology & Imaging Service Director | R03 | service-director | 1.2.1 | 8 | ✓ | ✓ | approved |
+| Radiology & Service Coordinator | R04 | service-coordinator | 1.2.0 | 8 | ✓ | ✓ | draft |
+| Radiology Services QI/QA Team | R05 | qa-team | 1.3.0 | 8 | ✓ | ✓ | approved |
+| Radiology Technologist | R06 | technologist | 1.2.0 | 8 | ✓ | ✓ | draft |
+| Radiology Technician | R07 | technician | 1.2.0 | 8 | ✓ | ✓ | draft |
+| Front Desk (Receptionist) | R08 | front-desk | 1.1.2 | 8 | ✓ | ✓ | draft |
+| Radiology Service Cashier | R09 | cashier | 1.1.2 | 8 | ✓ | ✓ | draft |
+| Biomedical Engineer | R10 | biomedical-engineer | 1.1.2 | 8 | ✓ | ✓ | draft |
+| Radiology Service Nursing Team | R11 | nursing | 1.1.2 | 8 | ✓ | ✓ | draft |
+| Staff Radiologist | R12 | staff-radiologist | 1.3.0 | 8 | ✓ | ✓ | draft |
+| Radiology Trainee/Resident | R13 | resident | 1.2.0 | 8 | ✓ | ✓ | draft |
+| Referring Clinician | R14 | referring-clinician | 1.2.1 | 8 | ✓ | ✓ | approved |
+| External RIS | R15 | external-ris | 1.1.1 | 8 | ✓ | ✓ | draft |
+| External EMR | R16 | external-emr | 1.1.1 | 8 | ✓ | ✓ | draft |
+| External PACS | R17 | external-pacs | 1.1.1 | 8 | ✓ | ✓ | draft |
+| Teleradiologist | R18 | teleradiologist | 1.3.0 | 8 | ✓ | ✓ | draft |
+| Other Hospital Staff | R19 | hospital-staff | 1.1.2 | 8 | ✓ | ✓ | draft |
+
+All packages re-verified 2026-08-03 against the post-merge codebase (merge
+`4d136e0`: R04 schedule board, R05 QI/QA module, R06/R07 exam lifecycle,
+R12/R13/R18 reading, reporting, peer review and reading presets). Each package
+contains a `DELTA.md` documenting the changes; see per-role `CHANGELOG.md`.
 
 ## Cross-Role Dependencies
 

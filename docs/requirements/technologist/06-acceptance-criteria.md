@@ -1,8 +1,22 @@
 # Acceptance Criteria — Radiology Technologist (R06)
 
 **Role ID**: R06
-**Generated**: 2026-08-02
-**Version**: 1.0.0
+**Generated**: 2026-08-03
+**Version**: 1.2.0
+
+---
+
+### Implementation Status (verified 2026-08-03)
+
+The R06 exam lifecycle is implemented end-to-end. AC-R06-01..10 map to shipped
+endpoints (`backend/api/exams.py`, routes in `routes.py`) and the exam console
+(`frontend/src/technologist/`, routes `/exams` + `/exams/:id`): worklist
+(AC-R06-01), identity-confirm (02), protocol (03), acquisitions accept/reject/
+retake (04), dose (05), safety-checks (06), complete (07), incidents (08),
+overrides (09), modality workflows (10). Verification is possible today via
+backend tests + E2E (`frontend/src/test/ExamConsole.test.tsx`) + visual evidence.
+Remaining GATED: FR-R06-11 AI-assisted QA (v3.2), FR-R06-12 dose optimization,
+FR-R06-13 RIS protocol selection — no ACs exist for these (v3.1/v3.2 scope).
 
 ---
 

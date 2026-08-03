@@ -13,23 +13,30 @@ RBAC drives the presentation layer (`hasPermission()` + `RequirePermission`, gat
 | `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
 | `/account` | Account | Any authenticated user |
 | `/patients/:id`, `/files/:id` | Patient page, viewer (QA review uses viewer) | `PATIENT_READ` / `FILE_READ` |
-| `/qa/*` | **Not accessible** | No QA routes/endpoints exist — GATED |
+| `/qa/queue` | QA review queue (`QAQueue.tsx`) | `QA_READ` |
+| `/qa/review/:examId` | QA review form (`QAReviewForm.tsx`) | `QA_READ` |
+| `/qa/protocols` | Protocol registry (`ProtocolRegistry.tsx`) | `QA_READ` |
+| `/qa/incidents` | Incident log (`Incidents.tsx`) | `QA_READ` |
+| `/qa/actions` | Corrective actions (`CorrectiveActions.tsx`) | `QA_READ` |
 
 ### Navigation Gating (Sidebar.tsx)
 
 | Menu item | Visible when |
 |-----------|--------------|
 | Files / Metrics / Account / Notifications | Always (authenticated) |
+| QA Queue / Protocols / Incidents / Corrective Actions | `QA_READ` |
 | Admin submenu | Only if granted admin `*_READ` perms |
 
 ### Functionality Gating
 
-- **None of the QA-specific screens exist**: QA review queue/form, protocol registry,
-  QA scores, corrective-action inbox, incident/retake logging, peer review. All are
-  aspirational FRs marked `GATED` (artifacts 01/07/08) with `QA_READ`/`QA_WRITE`/
-  `PROTOCOL_MANAGE` permissions + endpoints flagged to backend.
-- QA reviewers today can only view studies in the Files browser + viewer; a
-  `qa_team` built-in role does not exist yet.
+- **Implemented** (2026-08-03): QA review queue (`/qa/queue`), review workflow
+  (`/qa/reviews/{exam_id}` GET/PUT, `POST /qa/reviews`), protocol registry
+  (`/qa/protocols` + `/qa/protocols/{id}` CRUD), incident logging + resolve
+  (`/qa/incidents`), corrective-action inbox + resolve (`/qa/corrective-actions`),
+  QA dashboard + reviewers (`/qa/dashboard`, `/qa/reviewers`), `qa_team` built-in
+  role with `QA_*`/`PROTOCOL_MANAGE`/`PEER_REVIEW_*` permissions.
+- **GATED**: automated dose validation, DICOM tag validation rules, ACR phantom QA,
+  regulatory reporting, AI-assisted QA (v3.1/v3.2 scope).
 
 **Version**: 1.0.0 (v3.0 scope)
 **Status**: Final

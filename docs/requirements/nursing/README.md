@@ -2,20 +2,30 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.1.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation". Nursing accounts today have only Files/patient read-only views.
+`PermissionRoute` now enforces role-based access at the URL boundary — deep links to
+routes without the required permission redirect to `/` (Files).
 
 **GATED**: all nursing features — patient prep, IV/contrast administration,
 monitoring during exam, adverse-reaction response, vitals documentation. No nursing
 routes or endpoints exist; requires new backend module + permissions flagged to
 backend.
+
+**Post-merge re-verification (4d136e0)**: `/exams/{id}/safety-checks` exists but is a
+generic checklist recorder ({check_item, answer, notes}) in the technologist exam
+workflow, gated by EXAM_WRITE, with no allergy/pregnancy/renal screening structure,
+no contrast-administration gate, and no nursing role in the permission model. It
+does **not** genuinely match FR-R11-05 (allergy & safety verification) — FR-R11-05
+remains GATED. All other nursing FRs remain GATED; FR-R11-09 partial status
+unchanged.
 
 ## Role Summary
 

@@ -3,6 +3,12 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.2.1] — 2026-08-03
+### Changed
+- Re-verified against post-merge codebase (4d136e0): no `/analytics/*` endpoints added; FR-R03-01..15 remain GATED
+- Precision: post-merge `/reports/*`, `/qa/*`, `/peer-reviews/*` routes + `REPORT_*`/`QA_*` permissions are clinical-role scoped (R12/R05), NOT the analytics report builder; `service_director` built-in role still absent from `BUILT_IN_ROLES`
+- Role-based access now enforced at route level via `PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`) — relevant to FR-R03-15 (RBAC) implementation pattern once the role exists
+
 ## [1.2.0] — 2026-08-03
 ### Added
 - Artifact 04: Role-Based Routing & Navigation (Presentation Layer) section — metrics-only read access today; analytics/reporting GATED

@@ -2,12 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.1.1 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Interface surface**: API-only (no web UI). See artifact 04 — "System Interface
 Surface": worklist CRUD, HL7 receiver (`POST /hl7`), DICOMweb query, FHIR
@@ -16,6 +16,13 @@ ServiceRequest/DocumentReference scaffolding, webhook delivery all exist.
 **Implemented**: HL7 ORM/ORU inbound, worklist CRUD, DICOMweb query, webhook push.
 **GATED**: full MWL/MPPS lifecycle, report delivery push, dead-letter + manual
 reconciliation UI, message retry policies — flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: `/exams` and `/exams/{id}/complete`
+(EXAM_WRITE) now update the **internal** exam status and move the worklist entry to
+`performed`, notifying the radiologist role in-app — no outbound HL7 ORM/ORU message
+is sent to the external RIS. FR-R15-03 (status updates outbound) therefore remains
+GATED; the internal status-change half exists but the delivery contract does not.
+MWL C-FIND SCP (ModalityWorklistInformationFind) re-confirmed.
 
 ## Role Summary
 

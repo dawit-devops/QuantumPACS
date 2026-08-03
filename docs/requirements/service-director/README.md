@@ -2,23 +2,28 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.0 |
+| **Version** | 1.2.1 |
 | **Status** | approved |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
 ---
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation". Today the service director can only view `/metrics` + `/dashboard/metrics`
 (read-only) plus Files. **All KPI/capacity/protocol/SLA dashboards, report builder,
-exports, and dashboard-access audit are GATED** — no analytics endpoints exist.
+exports, and dashboard-access audit are GATED** — no `/analytics/*` endpoints exist.
+Since the v3-dev merge (`4d136e0`), `PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`)
+enforces role-based access at the URL boundary, and `REPORT_READ/WRITE/SIGN` +
+`service_director`-relevant slugs became visible in the catalog — but `REPORT_*` is
+reading-report scoped (R12), NOT the analytics report builder, and the
+`service_director` built-in role still does not exist in `BUILT_IN_ROLES`.
 
 **Implemented**: Metrics dashboard (platform). **GATED**: FR-R03-01..05, FR-R03-10,
-FR-R03-12, FR-R03-14, FR-R03-15 + all v3.1 items (needs `ANALYTICS_*`/`REPORT_*`
-permissions + endpoints flagged to backend).
+FR-R03-12, FR-R03-14, FR-R03-15 + all v3.1 items (needs `ANALYTICS_*` permission
+slugs + `service_director` built-in role + endpoints flagged to backend).
 
 ---
 

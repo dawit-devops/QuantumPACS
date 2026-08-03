@@ -3,6 +3,12 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.2.1] — 2026-08-03
+### Changed
+- Re-verified against post-merge codebase (4d136e0): no new admin endpoints affect R01 FRs; FR-R01-17/18 remain GATED
+- Role-based access now enforced at route level via `PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`) — positive confirmation of the presentation-layer claim
+- New built-in roles (`technologist`, `radiologist`, `qa_team`) and permission groups (`Exams`, `Reports`, `Peer Review`, `QA`) now visible in `/roles` permission catalog
+
 ## [1.2.0] — 2026-08-03
 ### Added
 - Artifact 04: Role-Based Routing & Navigation (Presentation Layer) section — verified route/sidebar/permission mapping from `frontend/src/auth/`, `Sidebar.tsx`, `index.tsx`

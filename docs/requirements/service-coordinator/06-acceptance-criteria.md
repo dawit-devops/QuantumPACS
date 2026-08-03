@@ -17,6 +17,14 @@ This matrix maps all functional and non-functional requirements to verifiable ac
 - **PM**: Performance Measurement (Lighthouse, k6, APM metrics)
 - **AL**: Audit Log (database query, log analysis)
 
+### Implementation Status (verified 2026-08-03)
+- **AC-R04-01** (schedule board) and **AC-R04-06** (worklist): implementable today —
+  board is a frontend view over the worklist API; verify via visual evidence /
+  component test (frontend-only, no `/schedule/*` backend).
+- **AC-R04-10** (calendar view): partially implementable — worklist table/calendar
+  toggle exists; week/month + drill-down criteria remain GATED.
+- **AC-R04-02..05, 07..09**: remain GATED on the scheduling backend.
+
 ---
 
 ## AC-R04-01: Schedule Board Rendering & Exam Scheduling

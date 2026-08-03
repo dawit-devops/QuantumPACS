@@ -2,19 +2,27 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.1 |
+| **Version** | 1.1.2 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified 2026-08-03 post-merge 4d136e0)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
 Navigation". Cashier accounts today have only the Files/patient read-only views.
+`PermissionRoute` now enforces role-based access at the URL boundary — deep links to
+routes without the required permission redirect to `/` (Files).
 
 **GATED**: all billing features — payment collection, invoice/payment records,
 insurance claim status, receipts, cash reconciliation. No billing routes or endpoints
 exist; requires new backend module + permissions flagged to backend.
+
+**Post-merge re-verification (4d136e0)**: merge shipped exams/QA/reports routes and
+permissions only; `backend/api/routes.py` still has **no billing endpoints**, and the
+frontend has **no billing pages**. Built-in `cashier` role carries only
+PATIENT_READ/PATIENT_WRITE. FR-R09-01..08/10 remain GATED; FR-R09-09 partial status
+unchanged.
 
 ## Role Summary
 

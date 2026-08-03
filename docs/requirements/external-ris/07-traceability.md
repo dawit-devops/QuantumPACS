@@ -31,7 +31,8 @@ message-retry policies are **GATED** (new backend work flagged to backend):
 
 | FR/NFR ID | Status | Blocking Dependency |
 |-----------|--------|---------------------|
-| FR-R15 MWL/MPPS lifecycle | GATED | Full MPPS workflow not wired |
+| FR-R15 MWL/MPPS lifecycle | GATED | Full MPPS workflow not wired; MWL C-FIND SCP exists (dicom-mwl-scp) |
+| FR-R15-03 (outbound status) | GATED | `/exams/{id}/complete` updates internal status + worklist `performed` (post-merge 4d136e0) but sends no outbound HL7 ORM/ORU to the RIS |
 | FR-R15 report delivery push | GATED | Depends on R12 reporting |
 | FR-R15 reconciliation/retry | GATED | No dead-letter/retry policy UI |
 

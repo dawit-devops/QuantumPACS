@@ -2,20 +2,27 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.0 |
+| **Version** | 1.2.1 |
 | **Status** | approved |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
-## Codebase Alignment (verified 2026-08-03)
+## Codebase Alignment (verified 2026-08-03; re-verified post-merge 4d136e0)
 
 **Presentation layer**: fully role-based. See artifact 04
 (`04-ui-ux-requirements.md`) — "Role-Based Routing & Navigation" for the verified
 route/sidebar/permission mapping (`frontend/src/auth/`, `Sidebar.tsx`, `index.tsx`).
+Since the v3-dev merge (`4d136e0`), `PermissionRoute` (`frontend/src/auth/PermissionRoute.tsx`)
+enforces the same permission gates at the URL boundary (deep links redirect to `/`
+when the permission is missing) — strengthening the role-based claim; new built-in
+roles (`technologist`, `radiologist`, `qa_team`) and new permission groups (`Exams`,
+`Reports`, `Peer Review`, `QA` incl. `PROTOCOL_MANAGE`) now appear in the `/roles`
+permission catalog managed by this role.
 
 **Implemented**: all FR-R01-01..16, FR-R01-19/20 (admin CRUD, RBAC, integrations,
 logs, metrics, worklist). **GATED** (kept as v3.0 spec): FR-R01-17 (global health
-aggregate — no endpoint), FR-R01-18 (backup/restore — no implementation).
+aggregate — no endpoint; `/dashboard/health` does not exist), FR-R01-18
+(backup/restore — no API; only `scripts/backup_db.sh`).
 
 ## Role Summary
 

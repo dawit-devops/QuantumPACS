@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **Status** | draft |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -10,12 +10,24 @@
 ## Codebase Alignment (verified 2026-08-03)
 
 **Presentation layer**: role-based; see artifact 04 — "Role-Based Routing &
-Navigation": coordinators today use the Worklist (admin item, `WORKLIST_READ`) with
-calendar view, batch operations, search, date-range + station filters.
+Navigation". Coordinators use the Worklist (`WORKLIST_READ`) with calendar view,
+batch operations, search, date-range + station filters, and the **Schedule Board**
+(`/schedule-board`, `ScheduleBoard.tsx`) — a frontend view over the worklist API
+(`GET /worklist?date_from=..&date_to=..`, per_page 500) rendering a modality ×
+time-slot grid (08:00–18:00, 30-min slots, CT/MRI/PET/DX/MG/US/FL) with
+scheduled/performed/cancelled statuses, entry detail drawer, and prev/next day nav.
 
-**Implemented**: worklist CRUD/calendar/batch (FR-R04 worklist slice). **GATED**:
-schedule board, exam assignment, staffing rosters, utilization, shift handoff report
-— no routes/endpoints exist; flagged to backend.
+**Implemented** (2026-08-03): FR-R04-01 schedule board (board rendering; drag-and-drop
+rescheduling NOT implemented — no `/schedule/*` backend), FR-R04-06 worklist
+CRUD/calendar/batch (`/worklist*`), FR-R04-10 calendar view (partial — worklist
+table/calendar toggle, day grouping; week/month views GATED).
+
+**GATED** (no backend — flagged to backend): exam assignment/drag-move persistence
+(FR-R04-02), stat/priority triage automation (FR-R04-03), resource utilization
+dashboard (FR-R04-04), staffing roster management (FR-R04-05), exam override &
+bulk reassignment (FR-R04-07), schedule conflict detection (FR-R04-08), shift
+handoff report (FR-R04-09). All require new `/schedule/*` endpoints and
+`SCHEDULE_READ`/`SCHEDULE_WRITE` permission slugs (not in `permissions.py`).
 
 ---
 
@@ -86,6 +98,11 @@ schedule board, exam assignment, staffing rosters, utilization, shift handoff re
 ---
 
 ## New API Endpoints Required (v3.0)
+
+> **Status 2026-08-03**: none of the `/schedule/*` endpoints below exist. The
+> schedule board currently reads the worklist API (`GET /worklist?date_from&date_to&per_page=500`,
+> `WORKLIST_READ`). These endpoints remain the GATING dependency for FR-R04-02..05,
+> FR-R04-07..09.
 
 | Endpoint | Method | Purpose | Permission |
 |----------|--------|---------|------------|
