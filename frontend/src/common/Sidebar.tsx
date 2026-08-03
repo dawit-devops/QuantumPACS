@@ -24,6 +24,8 @@ import {
   CloudServerOutlined,
   ApiOutlined,
   CalendarOutlined,
+  FileDoneOutlined,
+  AuditOutlined,
 } from "@ant-design/icons";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -53,6 +55,9 @@ function getOpenKey(key: string) {
       "tenants",
       "logs",
       "worklist",
+      "exams",
+      "reading",
+      "peer-review",
       "service-keys",
       "routing",
       "fhir",
@@ -79,6 +84,9 @@ function hasAnyAdminPermission(
     "LOG_READ",
     "SERVICE_KEY_READ",
     "WORKLIST_READ",
+    "EXAM_READ",
+    "REPORT_READ",
+    "PEER_REVIEW_READ",
     "HL7_READ",
     "ROUTING_READ",
     "DICOMWEB_READ",
@@ -237,6 +245,30 @@ function Sidebar() {
                 <Link to="/schedule-board">
                   <CalendarOutlined />
                   <span className="nav-text">Schedule</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("EXAM_READ") && (
+              <Menu.Item key="exams">
+                <Link to="/exams">
+                  <MedicineBoxOutlined />
+                  <span className="nav-text">Exams</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("REPORT_READ") && (
+              <Menu.Item key="reading">
+                <Link to="/reading">
+                  <FileDoneOutlined />
+                  <span className="nav-text">Reading Worklist</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("PEER_REVIEW_READ") && (
+              <Menu.Item key="peer-review">
+                <Link to="/peer-review">
+                  <AuditOutlined />
+                  <span className="nav-text">Peer Review</span>
                 </Link>
               </Menu.Item>
             )}

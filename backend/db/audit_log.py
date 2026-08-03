@@ -1,7 +1,16 @@
 import json
 import uuid
 
+from datetime import date, datetime
 from log import request_id_var
+
+
+def _uuid_safe(obj):
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
 
 
 class AuditLog:
@@ -21,7 +30,7 @@ class AuditLog:
             'detail': details,
             'tenant': tenant,
             'request_id': request_id,
-        })
+        }, default=_uuid_safe)
 
         await self.conn.execute(
             'INSERT INTO logs (log, tenant, request_id, trace_id) VALUES ($1, $2, $3, $4)',

@@ -10,6 +10,8 @@ from starlette.responses import JSONResponse as _StarletteJSONResponse
 def _default(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
     raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
 
 

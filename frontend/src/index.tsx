@@ -30,6 +30,11 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const TechnologistWorklist = React.lazy(() => import("./technologist/TechnologistWorklist"));
+const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
+const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
+const ReportEditor = React.lazy(() => import("./radiologist/ReportEditor"));
+const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -154,6 +159,46 @@ function ThemedApp() {
                   element={
                     <PermissionRoute permission="WORKLIST_READ">
                       <ScheduleBoard />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/exams"
+                  element={
+                    <PermissionRoute permission="EXAM_READ">
+                      <TechnologistWorklist />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/exams/:id"
+                  element={
+                    <PermissionRoute permission="EXAM_READ">
+                      <ExamConsole />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/reading"
+                  element={
+                    <PermissionRoute permission="REPORT_READ">
+                      <ReadingWorklist />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/reading/:examId"
+                  element={
+                    <PermissionRoute permission="REPORT_READ">
+                      <ReportEditor />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/peer-review"
+                  element={
+                    <PermissionRoute permission="PEER_REVIEW_READ">
+                      <PeerReviewInbox />
                     </PermissionRoute>
                   }
                 />

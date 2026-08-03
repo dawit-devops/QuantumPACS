@@ -17,6 +17,8 @@ _module_registry = [
     'db.oauth_providers',
     'db.hl7_message',
     'db.routing_rule',
+    'db.exams',
+    'db.reports',
 ]
 
 _registered = False
@@ -43,6 +45,15 @@ def register_tables():
         ('db.hl7_message', 'Hl7Message'),
         ('db.hl7_message', 'Hl7ParseError'),
         ('db.routing_rule', 'RoutingRule'),
+        ('db.exams', 'Exams'),
+        ('db.exams', 'Acquisitions'),
+        ('db.exams', 'SafetyChecks'),
+        ('db.exams', 'Incidents'),
+        ('db.exams', 'ProtocolOverrides'),
+        ('db.exams', 'Protocols'),
+        ('db.reports', 'Reports'),
+        ('db.reports', 'ReportTemplates'),
+        ('db.reports', 'PeerReviews'),
     ]
     for mod_path, cls_name in _classes:
         mod = importlib.import_module(mod_path)
