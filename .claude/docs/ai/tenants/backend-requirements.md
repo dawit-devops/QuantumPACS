@@ -14,6 +14,7 @@
 | slug | string | URL-safe identifier, e.g. `memorial-west` |
 | domain | string \| null | Custom domain, e.g. `pacs.memorialwest.com` |
 | user_count | int | Number of active users in tenant |
+| study_count | int | Number of studies stored in tenant (shown on card) |
 | status | enum | provisioning / active / quarantined / decommissioned |
 | storage_used_bytes | bigint | Current storage consumed |
 | storage_quota_bytes | bigint | Maximum allowed storage |
@@ -93,3 +94,4 @@ Storage usage is updated by a periodic aggregation job (every 15 min) that sums 
 4. **Storage display**: Should the UI show absolute GB values (e.g. "342 GB / 1 TB") alongside the percentage bar, or percentage only?
 5. **Provisioning API**: Does the create endpoint return the initial admin credentials synchronously, or should it return a task ID for polling?
 6. **Domain uniqueness**: Is domain unique across all tenants or nullable-only? What about empty string vs null?
+7. **Provisioning refresh**: The current UI does **not** poll — a card can sit on "Provisioning…" until a manual reload. Should the UI poll, or will a push/signal arrive when provisioning completes?

@@ -23,6 +23,11 @@ import {
   MessageOutlined,
   CloudServerOutlined,
   ApiOutlined,
+  CalendarOutlined,
+  FileDoneOutlined,
+  AuditOutlined,
+  WarningOutlined,
+  CheckCircleOutlined,
 } from "@ant-design/icons";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -41,6 +46,16 @@ function getKey(loc: string) {
   if (loc === "/") return "files";
   const parts = loc.slice(1).split("/");
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
+  if (parts[0] === "qa") {
+    const qaMap: Record<string, string> = {
+      "qa-queue": "qa-queue",
+      "qa-protocols": "qa-protocols",
+      "qa-incidents": "qa-incidents",
+      "qa-actions": "qa-actions",
+    };
+    if (parts[1] === "review") return "qa-queue";
+    return qaMap[`qa-${parts[1]}`] || "qa-queue";
+  }
   return parts[0];
 }
 
@@ -53,6 +68,13 @@ function getOpenKey(key: string) {
       "tenants",
       "logs",
       "worklist",
+      "exams",
+      "reading",
+      "peer-review",
+      "qa-queue",
+      "qa-protocols",
+      "qa-incidents",
+      "qa-actions",
       "service-keys",
       "routing",
       "fhir",
@@ -79,7 +101,14 @@ function hasAnyAdminPermission(
     "LOG_READ",
     "SERVICE_KEY_READ",
     "WORKLIST_READ",
+    "EXAM_READ",
+    "REPORT_READ",
+    "PEER_REVIEW_READ",
+    "QA_READ",
     "HL7_READ",
+    "ROUTING_READ",
+    "DICOMWEB_READ",
+    "SYSTEM_ADMIN",
   ];
   return adminPermissions.some((p) => hasPermission(p));
 }
@@ -225,6 +254,70 @@ function Sidebar() {
                 <Link to="/worklist">
                   <FileSearchOutlined />
                   <span className="nav-text">Worklist</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("WORKLIST_READ") && (
+              <Menu.Item key="schedule-board">
+                <Link to="/schedule-board">
+                  <CalendarOutlined />
+                  <span className="nav-text">Schedule</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("EXAM_READ") && (
+              <Menu.Item key="exams">
+                <Link to="/exams">
+                  <MedicineBoxOutlined />
+                  <span className="nav-text">Exams</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("REPORT_READ") && (
+              <Menu.Item key="reading">
+                <Link to="/reading">
+                  <FileDoneOutlined />
+                  <span className="nav-text">Reading Worklist</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("PEER_REVIEW_READ") && (
+              <Menu.Item key="peer-review">
+                <Link to="/peer-review">
+                  <AuditOutlined />
+                  <span className="nav-text">Peer Review</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("QA_READ") && (
+              <Menu.Item key="qa-queue">
+                <Link to="/qa/queue">
+                  <SafetyCertificateOutlined />
+                  <span className="nav-text">QA Queue</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("QA_READ") && (
+              <Menu.Item key="qa-protocols">
+                <Link to="/qa/protocols">
+                  <BookOutlined />
+                  <span className="nav-text">Protocols</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("QA_READ") && (
+              <Menu.Item key="qa-incidents">
+                <Link to="/qa/incidents">
+                  <WarningOutlined />
+                  <span className="nav-text">Incidents</span>
+                </Link>
+              </Menu.Item>
+            )}
+            {hasPermission("QA_READ") && (
+              <Menu.Item key="qa-actions">
+                <Link to="/qa/actions">
+                  <CheckCircleOutlined />
+                  <span className="nav-text">Corrective Actions</span>
                 </Link>
               </Menu.Item>
             )}

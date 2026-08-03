@@ -1,5 +1,63 @@
 # UI/UX Requirements — Super Admin (R01)
 
+## Role-Based Routing & Navigation (Presentation Layer)
+
+RBAC drives the entire presentation layer: `AuthContext.hasPermission()` + the
+`RequirePermission` component gate every UI element, the sidebar (`Sidebar.tsx`)
+renders only menu items whose permission the user holds, and route guards
+(`ProtectedRoute`) enforce auth. Verified against `frontend/src/auth/`,
+`frontend/src/common/Sidebar.tsx`, `frontend/src/index.tsx`.
+
+### Routes Accessible (codebase reality)
+
+| Route | Screen | Access rule |
+|-------|--------|-------------|
+| `/` | Files / study search | Any authenticated user |
+| `/metrics` | Metrics dashboard | Any authenticated user (sidebar item) |
+| `/account` | Account | Any authenticated user |
+| `/tenants` | Tenant CRUD + provision | `TENANT_READ` (sidebar) |
+| `/users` | User lifecycle | `USER_READ` |
+| `/roles` | RBAC roles + permission catalog | `ROLE_READ` |
+| `/replicas` | Storage replicas | `REPLICA_READ` |
+| `/routing` | DICOM routing rules | `ROUTING_READ` |
+| `/service-keys` | API keys | `SERVICE_KEY_READ` |
+| `/logs` | Audit logs | `LOG_READ` |
+| `/worklist` | Modality worklist | `WORKLIST_READ` |
+| `/fhir/config`, `/fhir/monitoring`, `/fhir/docs` | FHIR admin | `SYSTEM_ADMIN` |
+| `/hl7` | HL7 admin | `HL7_READ` |
+| `/dicomweb` | DICOMweb station AEs | `DICOMWEB_READ` |
+| `/integrations` | Webhooks + OAuth providers | `SYSTEM_ADMIN` |
+| `/files/:id`, `/patients/:id` | Viewer, patient page | `FILE_READ` / `PATIENT_READ` |
+
+### Navigation Gating (Sidebar.tsx)
+
+| Menu item | Route | Visible when |
+|-----------|-------|--------------|
+| Files / Metrics / Account / Notifications | — | Always (authenticated) |
+| Admin submenu | — | `user.admin` OR any of `USER_READ`/`REPLICA_READ`/`TENANT_READ`/`ROLE_READ`/`LOG_READ`/`SERVICE_KEY_READ`/`WORKLIST_READ`/`HL7_READ` |
+| Tenants | `/tenants` | `TENANT_READ` |
+| Users | `/users` | `USER_READ` |
+| Roles | `/roles` | `ROLE_READ` |
+| Replicas | `/replicas` | `REPLICA_READ` |
+| Routing | `/routing` | `ROUTING_READ` |
+| Service Keys | `/service-keys` | `SERVICE_KEY_READ` |
+| Logs | `/logs` | `LOG_READ` |
+| Worklist | `/worklist` | `WORKLIST_READ` |
+| FHIR submenu | `/fhir/*` | `SYSTEM_ADMIN` |
+| HL7 | `/hl7` | `HL7_READ` |
+| DICOMweb | `/dicomweb` | `DICOMWEB_READ` |
+| Integrations | `/integrations` | `SYSTEM_ADMIN` |
+
+### Functionality Gating
+
+Every mutating action maps to a permission-gated API call (`@requires_permission`);
+unauthorized calls return 403. The `super_admin` built-in role is fully locked in the
+Roles UI (name/slug/description/permissions all disabled). Aspirational v3.0 FRs with
+no backend yet are kept but marked `GATED` (see artifacts 01/07/08):
+
+- `FR-R01-17` global health aggregate (no endpoint) — GATED
+- `FR-R01-18` backup/restore (no implementation) — GATED
+
 Design-system conformance: all colors, typography, spacing, and radius reference
 `docs/design-tokens.json` (Ant Design v6, `frontend/src/common/theme.ts`); components
 reference `docs/component-specs.md`. No one-off styling.

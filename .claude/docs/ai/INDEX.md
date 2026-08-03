@@ -15,6 +15,11 @@ QuantumPACS uses a persona-based requirements model. Each document describes wha
 | P5 | **Modalities** | Automated DICOM devices (CT, MR, XA) pushing/pulling studies via C-STORE, C-FIND |
 | P6 | **RIS** | External Radiology Information System exchanging orders and results |
 | P7 | **EMR** | External Electronic Medical Record system reading patient/imaging data |
+| P8 | **Front Desk** | Registration/scheduling receptionist — patient search, order intake, check-in, consent |
+| P9 | **Cashier** | Radiology billing/payments — invoices, receipts, claims, reconciliation (read-only clinical context) |
+| P10 | **Biomedical Engineer** | Equipment registry, PM/QC, downtime, tickets, vendor contracts (no PHI) |
+| P11 | **Nursing Team** | Bedside patient care — prep, vitals, contrast, adverse reactions, MAR, recovery |
+| P12 | **Other Hospital Staff** | Limited read-only imaging/results portal for non-radiology staff (ward-scoped) |
 
 ## Persona → Feature Mapping
 
@@ -93,6 +98,58 @@ QuantumPACS uses a persona-based requirements model. Each document describes wha
 |---|-----------|--------|-----------------|--------|
 | 25 | `existing-screens/` | Full inventory of all current QuantumPACS frontend screens with data contracts, API endpoints, and frontend expectations (583 lines). Reference for backend refactoring/API versioning. | All | **Draft** |
 
+### Role-Based Requirements
+
+Persona-based companions to the feature docs. Each role doc maps the role's workflows
+(from `docs/requirements/<role>/` packages) to frontend data needs — what screens the
+role uses, what data/actions they require, and the gaps that must be raised with backend.
+
+| # | Directory | Role | Covers | Status |
+|---|-----------|------|--------|--------|
+| 26 | `role-super-admin/` | R01 Super Admin | Tenants, users, roles, routing, service keys, integrations, replicas, logs, metrics, DICOMweb/FHIR/HL7 admin, notifications | **Draft** |
+| 27 | `role-tenant-admin/` | R02 Tenant Admin | Tenant-scoped subset of R01: users, roles, worklist, routing, keys, replicas, logs, metrics, integrations | **Draft** |
+| 28 | `role-service-director/` | R03 Service Director | KPI dashboard, capacity heatmap, protocol compliance, SLA tracking, drill-through, report builder, exports, access audit | **Draft** |
+| 29 | `role-service-coordinator/` | R04 Service Coordinator | Schedule board, exam assignment, STAT triage, utilization, staffing roster, conflicts, handoff report, calendar | **Draft** |
+| 30 | `role-qa-team/` | R05 QI/QA Team | QA review queue + form, protocol registry, QA scores, corrective actions, incidents, peer review | **Draft** |
+| 31 | `role-technologist/` | R06 Technologist | Modality worklist, patient verification, protocol, acquisition + QA, dose, safety checks, completion/handoff, incidents, override | **Draft** |
+| 32 | `role-technician/` | R07 Technician | Same operator flow as R06 + fluoroscopy (live/spot/cine/DAP) and mammography (CC/MLO, compression, AGD) workflows | **Draft** |
+| 33 | `role-staff-radiologist/` | R12 Staff Radiologist | Viewer, study browser, worklist, measurements, shares, audit, reporting (gap), resident review queue, peer review | **Draft** |
+| 34 | `role-resident/` | R13 Resident | Supervised worklist, split-screen interpretation, draft reports, attending review, teaching files, exam log, feedback | **Draft** |
+| 35 | `role-referring-clinician/` | R14 Referring Clinician | Read-only share-link viewer, report display via share, expiry handling, optional SSO | **Draft** |
+| 36 | `role-teleradiologist/` | R18 Teleradiologist | Remote worklist, prelim→final reports, critical findings escalation, offline packages, multi-site, consultations | **Draft** |
+| 37 | `role-front-desk/` | R08 Front Desk | Patient search + dedup, registration, order intake, scheduling, check-in, consent, insurance, queue board (all GATED) | **Draft** |
+| 38 | `role-cashier/` | R09 Cashier | Invoices/payments, receipts, claims status, reconciliation, refunds, quotes, read-only clinical context (all GATED) | **Draft** |
+| 39 | `role-biomedical-engineer/` | R10 Biomedical Engineer | Equipment registry, PM/QC, downtime, tickets, vendor contracts, alerts, uptime reporting (all GATED) | **Draft** |
+| 40 | `role-nursing/` | R11 Nursing | Nursing worklist, prep checklist, vitals, contrast, allergy/safety, adverse reactions, sedation, MAR, handoff (all GATED) | **Draft** |
+| 41 | `role-external-ris/` | R15 External RIS | HL7 ORM/ORU order exchange, DICOM MWL/MPPS, report delivery; partial — HL7/worklist/DICOMweb/FHIR scaffolding exists | **Draft** |
+| 42 | `role-external-emr/` | R16 External EMR | HL7 ADT demographics, FHIR Patient/DiagnosticReport, results status; partial — ADT/FHIR/Webhooks exist | **Draft** |
+| 43 | `role-external-pacs/` | R17 External PACS | DICOM C-STORE/C-FIND/C-MOVE, DICOMweb QIDO/WADO/STOW, routing/archive sync; partial — DICOMweb/upload/routing exist | **Draft** |
+| 44 | `role-hospital-staff/` | R19 Hospital Staff | Scoped patient lookup, read-only study/report view, order awareness, results notification (portal GATED) | **Draft** |
+
+> **Coverage note**: requirements packages exist for **all 19 roles** in
+> `docs/requirements/` (every role has full 8-artifact packages: 01–08 +
+> `README.md` + `CHANGELOG.md`). Role backend-requirements docs now exist for
+> **all 19 roles** (rows 26–44): the 11 originally-packaged roles plus the 8
+> newly-covered roles R08–R11 (front-desk, cashier, biomedical-engineer, nursing)
+> and R15–R17, R19 (external RIS/EMR/PACS, hospital staff).
+>
+> **Codebase alignment (revised 2026-08-03)**: every package's artifact 04 now
+> includes a **Role-Based Routing & Navigation (Presentation Layer)** section and
+> every README a **Codebase Alignment** section. These are grounded in
+> `role-presentation-layer.md` (verified against `frontend/src/` and
+> `backend/api/routes.py`): they list the routes/sidebar items the role can actually
+> reach today, the permission gates that control them, and mark aspirational v3.0
+> features **GATED** (kept in the spec, flagged to backend).
+>
+> Doc status is independent of package status: packages may be approved/final
+> (e.g., R01 approved, R03/R05/R14 final) while their role docs are new drafts.
+
+### Reference
+
+| # | Directory | Covers | Status |
+|---|-----------|--------|--------|
+| 45 | `role-presentation-layer.md` | Codebase ground truth for role-based UI routing, navigation gating (Sidebar.tsx permission map), frontend routes, backend API surface, and the 34-permission catalog — used to align all `docs/requirements/<role>/` packages with the actual codebase | **Verified 2026-08-03** |
+
 ## How to Use
 
 1. **Find your feature**: Browse the table above or the directory listing in `.claude/docs/ai/`. Each directory is named by feature area.
@@ -100,7 +157,8 @@ QuantumPACS uses a persona-based requirements model. Each document describes wha
 3. **Persona check**: The Persona→Feature mapping table shows which personas each feature serves. If you're changing shared behavior (e.g., search), check all linked docs.
 4. **Status awareness**: Documents marked **Draft** are still evolving. **Planned** documents are outlines for future features. **Final** documents are considered stable.
 5. **Cross-reference**: Some features are tightly coupled — e.g., `search/` + `study-list/` + `dicomweb/` (fallback). Check related directories for interface contracts.
-6. **Discuss uncertainties**: Each doc ends with a list of unresolved questions. When implementing, open a discussion with the frontend team to resolve these.
+6. **Role docs**: For persona-driven work, check `role-*/` docs (rows 26–44). They translate the `docs/requirements/<role>/` packages into frontend data needs and flag backend gaps (e.g., R12 reporting, R18 offline packages).
+7. **Discuss uncertainties**: Each doc ends with a list of unresolved questions. When implementing, open a discussion with the frontend team to resolve these.
 
 ## Status Legend
 

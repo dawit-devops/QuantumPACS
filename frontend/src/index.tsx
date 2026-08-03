@@ -8,12 +8,13 @@ import { init } from "./ws";
 import { setNavigator } from "./navigator";
 import { ThemeProvider, useTheme } from "./common/ThemeProvider";
 import { lightTheme, darkTheme } from "./common/theme";
-import { AuthProvider } from "./auth/AuthContext";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ErrorBoundary } from "./common/ErrorBoundary";
 import { renderEmpty } from "./common/EmptyState";
 import { OnboardingTour } from "./common/OnboardingTour";
 import { HelpButton } from "./common/HelpButton";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import PermissionRoute from "./auth/PermissionRoute";
 
 const Login = React.lazy(() => import("./login/Login"));
 const Account = React.lazy(() => import("./account/Account"));
@@ -28,6 +29,23 @@ const ShareView = React.lazy(() => import("./detail/ShareView"));
 const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
+const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const TechnologistWorklist = React.lazy(
+  () => import("./technologist/TechnologistWorklist"),
+);
+const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
+const ReadingWorklist = React.lazy(
+  () => import("./radiologist/ReadingWorklist"),
+);
+const ReportEditor = React.lazy(() => import("./radiologist/ReportEditor"));
+const PeerReviewInbox = React.lazy(
+  () => import("./radiologist/PeerReviewInbox"),
+);
+const QAQueue = React.lazy(() => import("./qa/QAQueue"));
+const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
+const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
+const Incidents = React.lazy(() => import("./qa/Incidents"));
+const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -46,6 +64,16 @@ function NavigatorSetter() {
   return null;
 }
 
+function WsEffect() {
+  const { isAuthenticated } = useAuth();
+  useEffect(() => {
+    // init() skips itself while unauthenticated; re-running on auth change
+    // (re)connects the socket right after login instead of only on mount.
+    init();
+  }, [isAuthenticated]);
+  return null;
+}
+
 function ThemedApp() {
   const { isDark } = useTheme();
   const params = new URLSearchParams(window.location.search);
@@ -58,9 +86,6 @@ function ThemedApp() {
       sessionStorage.setItem("tempKey", tempKey);
     }
   }, [tempKey]);
-  useEffect(() => {
-    init();
-  }, []);
 
   return (
     <ConfigProvider
@@ -70,6 +95,7 @@ function ThemedApp() {
       <AntdApp>
         <BrowserRouter>
           <AuthProvider>
+            <WsEffect />
             <NavigatorSetter />
             <ErrorBoundary>
               <Suspense
@@ -90,24 +116,207 @@ function ThemedApp() {
                   <Route path="/login" element={<Login />} />
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
-                    <Route path="/replicas" element={<Replicas />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/roles" element={<Roles />} />
-                    <Route path="/tenants" element={<Tenants />} />
+                    <Route
+                      path="/replicas"
+                      element={
+                        <PermissionRoute permission="REPLICA_READ">
+                          <Replicas />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/users"
+                      element={
+                        <PermissionRoute permission="USER_READ">
+                          <Users />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/roles"
+                      element={
+                        <PermissionRoute permission="ROLE_READ">
+                          <Roles />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/tenants"
+                      element={
+                        <PermissionRoute permission="TENANT_READ">
+                          <Tenants />
+                        </PermissionRoute>
+                      }
+                    />
                     <Route path="/metrics" element={<Metrics />} />
-                    <Route path="/logs" element={<Logs />} />
-                    <Route path="/worklist" element={<Worklist />} />
-                    <Route path="/service-keys" element={<ServiceKeys />} />
-                    <Route path="/routing" element={<RoutingRules />} />
-                    <Route path="/fhir/config" element={<FhirConfig />} />
+                    <Route
+                      path="/logs"
+                      element={
+                        <PermissionRoute permission="LOG_READ">
+                          <Logs />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/worklist"
+                      element={
+                        <PermissionRoute permission="WORKLIST_READ">
+                          <Worklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule-board"
+                      element={
+                        <PermissionRoute permission="WORKLIST_READ">
+                          <ScheduleBoard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/exams"
+                      element={
+                        <PermissionRoute permission="EXAM_READ">
+                          <TechnologistWorklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/exams/:id"
+                      element={
+                        <PermissionRoute permission="EXAM_READ">
+                          <ExamConsole />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/reading"
+                      element={
+                        <PermissionRoute permission="REPORT_READ">
+                          <ReadingWorklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/reading/:examId"
+                      element={
+                        <PermissionRoute permission="REPORT_READ">
+                          <ReportEditor />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/peer-review"
+                      element={
+                        <PermissionRoute permission="PEER_REVIEW_READ">
+                          <PeerReviewInbox />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/queue"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <QAQueue />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/review/:examId"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <QAReviewForm />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/protocols"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <ProtocolRegistry />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/incidents"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <Incidents />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/actions"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <CorrectiveActions />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/service-keys"
+                      element={
+                        <PermissionRoute permission="SERVICE_KEY_READ">
+                          <ServiceKeys />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/routing"
+                      element={
+                        <PermissionRoute permission="ROUTING_READ">
+                          <RoutingRules />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/fhir/config"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirConfig />
+                        </PermissionRoute>
+                      }
+                    />
                     <Route
                       path="/fhir/monitoring"
-                      element={<FhirMonitoring />}
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirMonitoring />
+                        </PermissionRoute>
+                      }
                     />
-                    <Route path="/fhir/docs" element={<FhirDocs />} />
-                    <Route path="/hl7" element={<Hl7Dashboard />} />
-                    <Route path="/dicomweb" element={<DicomWebAdmin />} />
-                    <Route path="/integrations" element={<Integrations />} />
+                    <Route
+                      path="/fhir/docs"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirDocs />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/hl7"
+                      element={
+                        <PermissionRoute permission="HL7_READ">
+                          <Hl7Dashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/dicomweb"
+                      element={
+                        <PermissionRoute permission="DICOMWEB_READ">
+                          <DicomWebAdmin />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/integrations"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <Integrations />
+                        </PermissionRoute>
+                      }
+                    />
                     <Route path="/patients/:id" element={<Patient />} />
                     <Route path="/files/:id" element={<Detail />} />
                     <Route path="/" element={<Files />} />

@@ -303,6 +303,7 @@ function Detail() {
                 onAnnotationsChange={handleAnnotationsChange}
                 focusAnnotationUID={focusAnnotationUID}
                 isMobile={isMobile}
+                enableReadingPresets={hasPermission("REPORT_READ")}
               />
             </Suspense>
           </div>

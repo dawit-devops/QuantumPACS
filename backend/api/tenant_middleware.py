@@ -1,7 +1,7 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from api.response import not_found
+from api.response import not_found, apply_cors_headers
 from db.conn import get_conn
 from db.tenants import Tenants, TenantConnectionPool
 
@@ -12,15 +12,20 @@ class TenantMiddleware(BaseHTTPMiddleware):
         if slug:
             user = request.user
             if user.is_authenticated and not user.can_access_tenant(slug):
-                return JSONResponse(
-                    {'error': 'Forbidden',
-                     'message': 'You do not have access to this tenant'},
-                    status_code=403,
+                # TenantMiddleware sits outside CORSMiddleware; error
+                # responses need explicit CORS headers or browsers block them.
+                return apply_cors_headers(
+                    request,
+                    JSONResponse(
+                        {'error': 'Forbidden',
+                         'message': 'You do not have access to this tenant'},
+                        status_code=403,
+                    ),
                 )
             async with get_conn() as conn:
                 info = await Tenants(conn).get_by_slug(slug)
             if not info:
-                return not_found(f'Tenant not found: {slug}')
+                return apply_cors_headers(request, not_found(f'Tenant not found: {slug}'))
             pool = await TenantConnectionPool.get(slug, info)
             request.state.tenant = info
             request.state.tenant_slug = slug

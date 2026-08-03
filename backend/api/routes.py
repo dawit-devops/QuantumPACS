@@ -22,7 +22,7 @@ from api.users import (
 from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
-from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
+from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
@@ -45,6 +45,23 @@ from api.hl7_admin import (
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
 from api.worklist import WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler
+from api.exams import (
+    ExamsHandler, ExamHandler, ExamIdentityHandler, ExamProtocolHandler,
+    ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
+    ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
+    ExamOverridesHandler, ProtocolsHandler,
+)
+from api.reports import (
+    ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
+    ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
+    PeerReviewHandler, PeerReviewSubmitHandler,
+)
+from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
+from api.qa import (
+    QAQueueHandler, QAReviewHandler, QAProtocolsHandler, QAProtocolHandler,
+    QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
+    QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
+)
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -121,6 +138,7 @@ _V1_ROUTES = [
     v2(Route('/api-keys', endpoint=ApiKeysHandler)),
     v2(Route('/api-keys/{id}', endpoint=ApiKeyHandler)),
     v2(Route('/oauth/providers', endpoint=OAuthProvidersHandler)),
+    v2(Route('/oauth/providers/public', endpoint=PublicOAuthProvidersHandler)),
     v2(Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler)),
     v2(Route('/dicomweb/studies', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado)),
@@ -151,6 +169,39 @@ _V1_ROUTES = [
     v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
     v2(Route('/worklist', endpoint=WorklistHandler)),
     v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
+    v2(Route('/exams', endpoint=ExamsHandler)),
+    v2(Route('/exams/{id}', endpoint=ExamHandler)),
+    v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),
+    v2(Route('/exams/{id}/protocol', endpoint=ExamProtocolHandler)),
+    v2(Route('/exams/{id}/acquisitions', endpoint=ExamAcquisitionsHandler)),
+    v2(Route('/exams/{id}/acquisitions/{aid}/{decision}', endpoint=ExamAcquisitionDecisionHandler)),
+    v2(Route('/exams/{id}/dose', endpoint=ExamDoseHandler)),
+    v2(Route('/exams/{id}/safety-checks', endpoint=ExamSafetyHandler)),
+    v2(Route('/exams/{id}/complete', endpoint=ExamCompleteHandler)),
+    v2(Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler)),
+    v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
+    v2(Route('/protocols', endpoint=ProtocolsHandler)),
+    v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
+    v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
+    v2(Route('/reports/{exam_id}', endpoint=ExamReportHandler)),
+    v2(Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler)),
+    v2(Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler)),
+    v2(Route('/peer-reviews', endpoint=PeerReviewsHandler)),
+    v2(Route('/peer-reviews/{id}', endpoint=PeerReviewHandler)),
+    v2(Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler)),
+    v2(Route('/reading-presets', endpoint=ReadingPresetsHandler)),
+    v2(Route('/reading-presets/{id}', endpoint=ReadingPresetHandler)),
+    v2(Route('/qa/queue', endpoint=QAQueueHandler)),
+    v2(Route('/qa/reviews/{exam_id}', endpoint=QAReviewHandler)),
+    v2(Route('/qa/reviews', endpoint=QAReviewHandler, methods=['POST'])),
+    v2(Route('/qa/protocols', endpoint=QAProtocolsHandler)),
+    v2(Route('/qa/protocols/{id}', endpoint=QAProtocolHandler)),
+    v2(Route('/qa/incidents', endpoint=QAIncidentsHandler)),
+    v2(Route('/qa/incidents/{id}/resolve', endpoint=QAIncidentHandler)),
+    v2(Route('/qa/corrective-actions', endpoint=QACorrectiveActionsHandler)),
+    v2(Route('/qa/corrective-actions/{id}/resolve', endpoint=QACorrectiveActionHandler)),
+    v2(Route('/qa/dashboard', endpoint=QADashboardHandler)),
+    v2(Route('/qa/reviewers', endpoint=QAReviewersHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),

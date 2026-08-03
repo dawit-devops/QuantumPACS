@@ -15,7 +15,9 @@ const assetsDir = join(
 );
 
 const MAX_CHUNK_GZIP = 1100 * 1024; // vendor-cornerstone is ~985 kB gzip
-const MAX_TOTAL_GZIP = 2.3 * 1024 * 1024; // baseline 2.26 MB incl. cornerstone computeWorker (~760 kB)
+// baseline 2.26 MB incl. cornerstone computeWorker (~760 kB); raised to 2.5
+// MB after R05 QA pages (QA queue/incidents/actions + antd icons) landed
+const MAX_TOTAL_GZIP = 2.5 * 1024 * 1024;
 const REQUIRED_CHUNKS = ["vendor-cornerstone", "vendor-chart"];
 
 let failed = false;

@@ -63,6 +63,10 @@ export async function tryRefreshToken(): Promise<boolean> {
     try {
       const resp = await fetch(`${API_URL}/auth/refresh`, {
         method: "POST",
+        // The refresh token lives in an HttpOnly cookie; in dev the API is
+        // cross-origin (5173 -> 8080) so the default same-origin credential
+        // mode would silently drop it and every refresh would 401.
+        credentials: "include",
         headers: new Headers({
           "Content-Type": "application/json",
           "X-CSRF-Token": "1",

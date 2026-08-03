@@ -46,7 +46,7 @@ User management page at `/users`. Used by PACS Admins to manage user accounts. L
 **Data I need to display**:
 - Username input (required)
 - Admin checkbox (optional, defaults to false)
-- Role dropdown (populated from roles list) — current code does NOT include this; may be a gap
+- Role dropdown (populated from roles list, optional)
 
 **Actions**:
 - Submit form with username + admin flag → server creates user, generates password
@@ -95,7 +95,9 @@ User management page at `/users`. Used by PACS Admins to manage user accounts. L
 - [ ] What happens when a deactivated user tries to log in?
 - [ ] Is there a minimum password strength requirement?
 - [ ] Should the CSV import support updating existing users or only creating new ones?
-- [ ] Does the create user form need a role selector? Current code only sends username + admin flag.
+- [ ] Role is now assignable at creation — should it remain optional or be required for non-admin users?
+- [ ] The list pagination contract is inconsistent across code paths: one fetcher expects a `meta` block (total/page/per_page/total_pages) with offset/limit paging, while the legacy screen guesses totals from the current page length. Which is canonical?
+- [ ] Inline role change is issued via different HTTP semantics in different code paths (one defaults to POST, another explicitly PUT) — the screen must use the backend's expected semantics.
 - [ ] What fields beyond username + admin can be set at creation (email, role, etc.)?
 
 ## Questions for Backend

@@ -31,6 +31,13 @@ class OAuthProviders(Table):
         data = await self.fetch(q)
         return [self.to_json(d) for d in data]
 
+    async def get_public(self):
+        """Enabled providers only — the anonymous list shown on the login
+        page for SSO buttons. to_json already strips client_secret."""
+        q = self.select('*').where(self.table.enabled.eq(True)).orderby(self.table.issuer)
+        data = await self.fetch(q)
+        return [self.to_json(d) for d in data]
+
     async def get(self, provider_id):
         q = self.select('*').where(self.table.id == provider_id)
         data = await self.fetchone(q)

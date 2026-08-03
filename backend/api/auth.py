@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import jwt as _jwt
 
-from api.response import unauthorized
+from api.response import unauthorized, apply_cors_headers
 from api.tokens import verify_token, is_blocked
 from api.ratelimit import RedisTokenBucket
 from config import config  # noqa: F401  (module attribute patched by tests)
@@ -144,10 +144,12 @@ class TokenAuth(AuthenticationBackend):
         '/api/auth/logout',
         '/api/oauth/login',
         '/api/oauth/callback',
+        '/api/oauth/providers/public',
         '/api/.well-known/openid-configuration',
         '/api/oauth/token',
         '/api/v2/oauth/login',
         '/api/v2/oauth/callback',
+        '/api/v2/oauth/providers/public',
         '/api/v2/.well-known/openid-configuration',
         '/api/v2/oauth/token',
         '/api/v2/auth/refresh',
@@ -266,4 +268,7 @@ class TokenAuth(AuthenticationBackend):
 
     @staticmethod
     def on_auth_error(request, exc):
-        return unauthorized(str(exc))
+        # AuthenticationMiddleware sits outside CORSMiddleware, so its error
+        # responses would reach the browser without CORS headers and get
+        # blocked as "Failed to fetch". Mirror the CORS headers explicitly.
+        return apply_cors_headers(request, unauthorized(str(exc)))

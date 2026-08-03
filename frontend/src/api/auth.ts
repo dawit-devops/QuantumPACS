@@ -11,5 +11,5 @@ export interface OauthProviderOption {
 
 export const listLoginProviders = (): Promise<OauthProviderOption[]> =>
   request<{ providers?: OauthProviderOption[]; data?: OauthProviderOption[] }>(
-    "oauth/providers",
+    "oauth/providers/public",
   ).then((res) => res?.providers ?? res?.data ?? []);

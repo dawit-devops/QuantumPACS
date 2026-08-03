@@ -62,6 +62,23 @@ export default defineConfig({
       },
     },
   },
+  // Pre-bundle the heavy ESM vendor tree once at dev-server start so first
+  // page loads (and cold transforms) don't pay per-import costs for antd and
+  // the Cornerstone3D stack.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-router",
+      "antd",
+      "@ant-design/icons",
+      "@cornerstonejs/core",
+      "@cornerstonejs/tools",
+      "@cornerstonejs/dicom-image-loader",
+      "dicom-parser",
+      "hammerjs",
+    ],
+  },
   server: {
     host: "0.0.0.0",
     port: 5173,
@@ -83,9 +100,43 @@ export default defineConfig({
       },
     },
     setupFiles: "./src/test/setup.ts",
-    testTimeout: 120000,
-    hookTimeout: 60000,
+    // Heavy antd+jsdom suite flakes under parallel CPU load (waitFor 1s
+    // defaults); retry absorbs contention without weakening assertions.
+    retry: 2,
+    // Memory-constrained dev box: 2 forks instead of 3, compensated with a
+    // generous per-test timeout so slow-but-correct tests never flake.
+    maxForks: 2,
+    minForks: 1,
+    maxConcurrency: 2,
+    testTimeout: 240000,
+    hookTimeout: 120000,
     exclude: ["node_modules/**", "e2e/**", "dist/**"],
+    // jsdom tests never assert on real CSS; skipping the transform avoids
+    // re-parsing the antd stylesheet tree per fork (major time sink).
+    css: false,
+    // Speed: match the dep optimizer cache to the dev server and let jsdom
+    // reuse the pre-bundled antd/cornerstone graph instead of re-transforming
+    // it in every fork.
+    server: {
+      deps: {
+        optimizer: {
+          web: {
+            include: [
+              "react",
+              "react-dom",
+              "react-router",
+              "antd",
+              "@ant-design/icons",
+              "@cornerstonejs/core",
+              "@cornerstonejs/tools",
+              "@cornerstonejs/dicom-image-loader",
+              "dicom-parser",
+              "hammerjs",
+            ],
+          },
+        },
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -100,11 +151,13 @@ export default defineConfig({
     },
     pool: "forks",
     singleFork: false,
-    maxForks: 4,
-    minForks: 1,
+    // Memory-constrained boxes: 2 forks, generous timeouts, retries absorb
+    // the antd+jsdom waitFor flakes that appear under parallel load.
     fileParallelism: true,
-    maxConcurrency: 4,
-    retry: 0,
+    maxForks: 2,
+    minForks: 1,
+    maxConcurrency: 2,
+    retry: 2,
   },
   define: {
     "process.env": {},

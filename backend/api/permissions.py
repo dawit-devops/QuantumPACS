@@ -28,6 +28,16 @@ class Permission(str, Enum):
     SERVICE_KEY_DELETE = 'SERVICE_KEY_DELETE'
     WORKLIST_READ = 'WORKLIST_READ'
     WORKLIST_WRITE = 'WORKLIST_WRITE'
+    EXAM_READ = 'EXAM_READ'
+    EXAM_WRITE = 'EXAM_WRITE'
+    REPORT_READ = 'REPORT_READ'
+    REPORT_WRITE = 'REPORT_WRITE'
+    REPORT_SIGN = 'REPORT_SIGN'
+    PEER_REVIEW_READ = 'PEER_REVIEW_READ'
+    PEER_REVIEW_WRITE = 'PEER_REVIEW_WRITE'
+    QA_READ = 'QA_READ'
+    QA_WRITE = 'QA_WRITE'
+    PROTOCOL_MANAGE = 'PROTOCOL_MANAGE'
     DICOMWEB_READ = 'DICOMWEB_READ'
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
     ROUTING_READ = 'ROUTING_READ'
@@ -49,6 +59,10 @@ PERMISSION_GROUPS = {
     'Roles': ['ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'],
     'Service Keys': ['SERVICE_KEY_READ', 'SERVICE_KEY_WRITE', 'SERVICE_KEY_DELETE'],
     'Worklist': ['WORKLIST_READ', 'WORKLIST_WRITE'],
+    'Exams': ['EXAM_READ', 'EXAM_WRITE'],
+    'Reports': ['REPORT_READ', 'REPORT_WRITE', 'REPORT_SIGN'],
+    'Peer Review': ['PEER_REVIEW_READ', 'PEER_REVIEW_WRITE'],
+    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE'],
     'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
     'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
     'Metrics': ['METRICS_READ'],
@@ -72,6 +86,9 @@ BUILT_IN_ROLES = {
         Permission.SERVICE_KEY_READ.value, Permission.SERVICE_KEY_WRITE.value,
         Permission.SERVICE_KEY_DELETE.value,
         Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+        Permission.EXAM_READ.value, Permission.EXAM_WRITE.value,
+        Permission.REPORT_READ.value, Permission.REPORT_WRITE.value, Permission.REPORT_SIGN.value,
+        Permission.PEER_REVIEW_READ.value, Permission.PEER_REVIEW_WRITE.value,
         Permission.DICOMWEB_READ.value, Permission.DICOMWEB_WRITE.value,
         Permission.ROUTING_READ.value, Permission.ROUTING_WRITE.value,
         Permission.METRICS_READ.value,
@@ -83,13 +100,33 @@ BUILT_IN_ROLES = {
         Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
         Permission.STUDY_READ.value, Permission.STUDY_WRITE.value,
         Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+        Permission.EXAM_READ.value, Permission.EXAM_WRITE.value,
         Permission.DICOMWEB_READ.value,
     ],
     'radiologist': [
         Permission.FILE_READ.value,
         Permission.PATIENT_READ.value,
         Permission.STUDY_READ.value,
+        Permission.EXAM_READ.value,
+        Permission.REPORT_READ.value,
+        Permission.REPORT_WRITE.value,
+        Permission.REPORT_SIGN.value,
+        Permission.PEER_REVIEW_READ.value,
+        Permission.PEER_REVIEW_WRITE.value,
         Permission.DICOMWEB_READ.value,
+    ],
+    'qa_team': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.STUDY_READ.value,
+        Permission.EXAM_READ.value,
+        Permission.QA_READ.value,
+        Permission.QA_WRITE.value,
+        Permission.PROTOCOL_MANAGE.value,
+        Permission.PEER_REVIEW_READ.value,
+        Permission.PEER_REVIEW_WRITE.value,
+        Permission.DICOMWEB_READ.value,
+        Permission.METRICS_READ.value,
     ],
     'physician': [
         Permission.FILE_READ.value,

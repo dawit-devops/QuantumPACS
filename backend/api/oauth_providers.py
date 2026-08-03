@@ -70,3 +70,14 @@ class OAuthProviderHandler(HTTPEndpoint):
                 return not_found('OAuth provider not found')
             await OAuthProviders(conn).delete(provider_id)
         return ok({})
+
+
+class PublicOAuthProvidersHandler(HTTPEndpoint):
+    """Anonymous GET for the login page's SSO buttons. Admitted by
+    TokenAuth._PUBLIC_PATHS; returns only enabled providers (to_json
+    strips client_secret)."""
+
+    async def get(self, request):
+        async with get_conn() as conn:
+            providers = await OAuthProviders(conn).get_public()
+        return ok({'data': providers})
