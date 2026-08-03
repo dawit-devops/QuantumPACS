@@ -3,6 +3,10 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [Unreleased]
+### Changed
+- Package status promoted from `draft` to `approved` — core feature set implemented and all validation gates pass.
+
 ## [1.3.0] — 2026-08-03
 ### Changed
 - FR-R12-09: GATED → Implemented (structured reporting shipped 2026-08-03 — `GET/PUT /reports/{exam_id}`, `POST /reports/{exam_id}/sign`, `GET /reports/templates`)

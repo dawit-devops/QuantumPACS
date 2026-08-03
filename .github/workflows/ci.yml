@@ -44,6 +44,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - run: cd frontend && npm ci && npx vitest run
+  requirements-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate requirements packages
+        run: |
+          for slug in super-admin tenant-admin service-director service-coordinator qa-team technologist technician front-desk cashier biomedical-engineer nursing staff-radiologist resident referring-clinician external-ris external-emr external-pacs teleradiologist hospital-staff; do
+            bash scripts/validate-requirements.sh "$slug" >/dev/null || { echo "FAILED: $slug"; exit 1; }
+          done
+          echo "All 19 requirements packages PASS"
   build-gate:
     runs-on: ubuntu-latest
     steps:

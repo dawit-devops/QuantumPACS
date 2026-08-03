@@ -11,19 +11,19 @@ conventions.
 | Radiology & Imaging Service Director | R03 | service-director | 1.2.1 | 8 | ✓ | ✓ | approved |
 | Radiology & Service Coordinator | R04 | service-coordinator | 1.2.0 | 8 | ✓ | ✓ | draft |
 | Radiology Services QI/QA Team | R05 | qa-team | 1.3.0 | 8 | ✓ | ✓ | approved |
-| Radiology Technologist | R06 | technologist | 1.2.0 | 8 | ✓ | ✓ | draft |
-| Radiology Technician | R07 | technician | 1.2.0 | 8 | ✓ | ✓ | draft |
+| Radiology Technologist | R06 | technologist | 1.2.0 | 8 | ✓ | ✓ | approved |
+| Radiology Technician | R07 | technician | 1.2.0 | 8 | ✓ | ✓ | approved |
 | Front Desk (Receptionist) | R08 | front-desk | 1.1.2 | 8 | ✓ | ✓ | draft |
 | Radiology Service Cashier | R09 | cashier | 1.1.2 | 8 | ✓ | ✓ | draft |
 | Biomedical Engineer | R10 | biomedical-engineer | 1.1.2 | 8 | ✓ | ✓ | draft |
 | Radiology Service Nursing Team | R11 | nursing | 1.1.2 | 8 | ✓ | ✓ | draft |
-| Staff Radiologist | R12 | staff-radiologist | 1.3.0 | 8 | ✓ | ✓ | draft |
+| Staff Radiologist | R12 | staff-radiologist | 1.3.0 | 8 | ✓ | ✓ | approved |
 | Radiology Trainee/Resident | R13 | resident | 1.2.0 | 8 | ✓ | ✓ | draft |
 | Referring Clinician | R14 | referring-clinician | 1.2.1 | 8 | ✓ | ✓ | approved |
 | External RIS | R15 | external-ris | 1.1.1 | 8 | ✓ | ✓ | draft |
 | External EMR | R16 | external-emr | 1.1.1 | 8 | ✓ | ✓ | draft |
 | External PACS | R17 | external-pacs | 1.1.1 | 8 | ✓ | ✓ | draft |
-| Teleradiologist | R18 | teleradiologist | 1.3.0 | 8 | ✓ | ✓ | draft |
+| Teleradiologist | R18 | teleradiologist | 1.3.0 | 8 | ✓ | ✓ | approved |
 | Other Hospital Staff | R19 | hospital-staff | 1.1.2 | 8 | ✓ | ✓ | draft |
 
 All packages re-verified 2026-08-03 against the post-merge codebase (merge

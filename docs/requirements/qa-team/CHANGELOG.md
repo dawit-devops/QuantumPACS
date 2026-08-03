@@ -3,6 +3,10 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [Unreleased]
+### Changed
+- Package status promoted from `draft` to `approved` — core feature set implemented and all validation gates pass.
+
 ## [1.3.0] — 2026-08-03
 ### Changed
 - FR-R05-01 (QA review queue): GATED → Implemented — `GET /qa/queue` + `QAQueue.tsx`

@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Version** | 1.3.0 |
-| **Status** | draft |
+| **Status** | approved |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 

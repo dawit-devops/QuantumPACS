@@ -3,6 +3,10 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [Unreleased]
+### Changed
+- Package status promoted from `draft` to `approved` — core feature set implemented and all validation gates pass.
+
 ## [1.2.0] — 2026-08-03
 ### Changed
 - FR-R06-01..10: GATED → Implemented — R06 exam lifecycle shipped end-to-end (backend `api/exams.py`, frontend `frontend/src/technologist/`)
