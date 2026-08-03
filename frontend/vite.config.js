@@ -151,13 +151,13 @@ export default defineConfig({
     },
     pool: "forks",
     singleFork: false,
-    // One worker per core: each fork re-transforms only its own test files;
-    // the vendor graph comes from the shared optimizer cache.
-    maxForks: 3,
-    minForks: 1,
+    // Memory-constrained boxes: 2 forks, generous timeouts, retries absorb
+    // the antd+jsdom waitFor flakes that appear under parallel load.
     fileParallelism: true,
-    maxConcurrency: 3,
-    retry: 0,
+    maxForks: 2,
+    minForks: 1,
+    maxConcurrency: 2,
+    retry: 2,
   },
   define: {
     "process.env": {},
