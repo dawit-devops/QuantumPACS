@@ -91,7 +91,7 @@ class Exams(Table):
 
     async def list_for_technologist(self, username, status=None, modality=None,
                                     priority=None, search=None):
-        from pypika import Order, Query as PypikaQuery, functions as fn
+        from pypika import Query as PypikaQuery
 
         conditions = [
             (self.table.assigned_technologist == username) |

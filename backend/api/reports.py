@@ -4,7 +4,6 @@ Covers FR-R12-01 (priority-sorted reading worklist fed by exam handoff),
 FR-R12-09 (structured reporting: draft/preliminary/final + sign-off) and the
 peer-review workflow shared with R05 (discrepancy-level QA of signed reports).
 """
-from datetime import datetime, timezone
 
 from starlette.endpoints import HTTPEndpoint
 

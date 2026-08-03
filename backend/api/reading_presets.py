@@ -9,7 +9,7 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, validation_error, forbidden
+from api.response import ok, created, not_found, forbidden
 from api.validate import parse_body
 from api.schemas.reading_presets import (
     SaveReadingPresetRequest, UpdateReadingPresetRequest,

@@ -215,8 +215,9 @@ class RefreshToken(HTTPEndpoint):
         # API-client compatibility (OAuth, external integrations).
         refresh_token = request.cookies.get('refresh_token')
         if not refresh_token:
-            body = await parse_body(RefreshTokenRequest, request)
-            refresh_token = body.refresh_token
+            if await request.body():
+                body = await parse_body(RefreshTokenRequest, request)
+                refresh_token = body.refresh_token
         if not refresh_token:
             return api_error('INVALID_TOKEN', 'Missing refresh token', status=401)
         try:

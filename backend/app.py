@@ -18,7 +18,7 @@ import api.auth as auth_module
 import api.telemetry as telemetry_module
 from api.auth import TokenAuth
 from api.routes import routes
-from api.response import server_error
+from api.response import server_error, apply_cors_headers
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
@@ -125,13 +125,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
 async def http_exception(request, exc):
     resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
-    return resp
+    return apply_cors_headers(request, resp)
 
 
 async def server_error_handler(request, exc):
     log.exception('Unhandled server error: %s %s', request.method, request.url.path)
     resp = server_error('Internal server error', status_code=500)
-    return resp
+    return apply_cors_headers(request, resp)
 
 
 @asynccontextmanager
