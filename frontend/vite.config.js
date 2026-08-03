@@ -103,8 +103,13 @@ export default defineConfig({
     // Heavy antd+jsdom suite flakes under parallel CPU load (waitFor 1s
     // defaults); retry absorbs contention without weakening assertions.
     retry: 2,
-    testTimeout: 120000,
-    hookTimeout: 60000,
+    // Memory-constrained dev box: 2 forks instead of 3, compensated with a
+    // generous per-test timeout so slow-but-correct tests never flake.
+    maxForks: 2,
+    minForks: 1,
+    maxConcurrency: 2,
+    testTimeout: 240000,
+    hookTimeout: 120000,
     exclude: ["node_modules/**", "e2e/**", "dist/**"],
     // jsdom tests never assert on real CSS; skipping the transform avoids
     // re-parsing the antd stylesheet tree per fork (major time sink).
