@@ -22,7 +22,7 @@ from api.users import (
 from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
-from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler
+from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
@@ -138,6 +138,7 @@ _V1_ROUTES = [
     v2(Route('/api-keys', endpoint=ApiKeysHandler)),
     v2(Route('/api-keys/{id}', endpoint=ApiKeyHandler)),
     v2(Route('/oauth/providers', endpoint=OAuthProvidersHandler)),
+    v2(Route('/oauth/providers/public', endpoint=PublicOAuthProvidersHandler)),
     v2(Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler)),
     v2(Route('/dicomweb/studies', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado)),
