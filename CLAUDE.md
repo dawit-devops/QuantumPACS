@@ -18,11 +18,11 @@ Production PACS (Picture Archiving and Communication System) for medical image m
 
 ### Frontend
 - **Build**: Vite with manual chunk splitting for react, antd, cornerstone
-- **UI**: Ant Design v5 components
+- **UI**: Ant Design v6 components
 - **DICOM viewer**: Cornerstone3D with cornerstone-wado-image-loader
 - **State**: Component-local state + React context (no Redux)
 - **Types**: Ambient declarations in `src/types.d.ts` for cornerstone, hammerjs, dicom-parser
-- **CSS**: CSS Modules for component styles
+- **CSS**: Plain CSS files per component (`*.css` side-by-side) — no CSS Modules
 
 ### Documentation
 - Architectural decisions go in `docs/decisions/ADR-NNN-title.md` — follow existing ADR format
@@ -56,10 +56,10 @@ Services managed via systemd user services — auto-start on boot:
 
 **Key fixes applied (Jul 2026):**
 - `app.py`: changed from `on_startup` parameter (removed in starlette 1.x) to lifespan pattern, then pinned starlette to `>=0.35.0,<0.36.0` for compatibility
-- `es/es.py`: prepends `http://` scheme + `:9200` port to bare hostnames for ES 8.x client compat
+- `es/es.py`: prepends `http://` scheme + `:9200` port to bare hostnames for the elasticsearch 9.x client compat
 - `db_init.py`: replaced `asyncio.get_event_loop()` with `asyncio.run()` for Python 3.14 compat
 - `config.local.yaml`: uses dedicated QuantumPACS postgres on port 5432
-- `docker-compose.yaml`: removed deprecated `version` key; uses custom `quantumpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image)
+- `docker-compose.yaml`: removed deprecated `version` key; uses custom `quantumpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image); full stack services (redis/backend/frontend) added — `docker compose up -d` is now a runnable prod-like runtime, smoke-tested in CI (`docker-smoke` job)
 - `frontend/vite.config.js`: set `host: '0.0.0.0'` for LAN access, port changed to 5173
 - Backend runs via `uvicorn app:app --host 0.0.0.0 --port 8080`
 - Frontend runs via `vite --host 0.0.0.0 --port 5173`
@@ -78,7 +78,7 @@ Services managed via systemd user services — auto-start on boot:
 
 ## Common Gotchas
 - `network_mode: host` in docker-compose — services bind directly to host ports
-- Elasticsearch 8 needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
+- Elasticsearch 9 (pinned 9.4.4 in docker-compose) needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
 - Database init (`./manage db init`) generates a random password — capture it from output
 - Token expiry defaults to 14 days — extend via `create_token(user, expire={'days': 30})`
 - CORS allows all origins — tighten before production deployment

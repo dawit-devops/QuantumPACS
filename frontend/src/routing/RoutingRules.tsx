@@ -1,9 +1,9 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
+  App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -15,27 +15,34 @@ import {
 } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listRoutingRules,
+  createRoutingRule,
+  updateRoutingRule,
+  deleteRoutingRule,
+  type RoutingRule,
+} from "../api/routing";
 import { PageState } from "../common/PageState";
 import { RuleConditionBuilder } from "./RuleConditionBuilder";
 
 const Content = Layout.Content;
 
 function RoutingRules() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Routing Rules");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [pagination, setPagination] = useState<any>({
+  const [data, setData] = useState<RoutingRule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<any>({
     current: 1,
     pageSize: 50,
     total: 0,
     pages: 0,
   });
-  let [visible, setVisible] = useState(false);
-  let [editingRule, setEditingRule] = useState<any | null>(null);
-  let [conditions, setConditions] = useState<Record<string, any>>({});
+  const [visible, setVisible] = useState(false);
+  const [editingRule, setEditingRule] = useState<RoutingRule | null>(null);
+  const [conditions, setConditions] = useState<Record<string, any>>({});
   const [form] = Form.useForm();
 
   const columns: any[] = [
@@ -106,8 +113,8 @@ function RoutingRules() {
   const fetch = (params: any) => {
     setLoading(true);
     setError(null);
-    request("routing", params)
-      .then((res: any) => {
+    listRoutingRules(params)
+      .then((res) => {
         setLoading(false);
         setData(Array.isArray(res.data) ? res.data : []);
         if (res.pagination) setPagination(res.pagination);
@@ -128,7 +135,7 @@ function RoutingRules() {
     form
       .validateFields()
       .then((values: any) => {
-        request("routing", { data: { ...values, conditions } })
+        createRoutingRule({ ...values, conditions })
           .then(() => {
             form.resetFields();
             setConditions({});
@@ -159,6 +166,7 @@ function RoutingRules() {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingRule) return;
         const data: any = {};
         for (const key of [
           "name",
@@ -166,7 +174,7 @@ function RoutingRules() {
           "priority",
           "enabled",
           "description",
-        ]) {
+        ] as const) {
           if (values[key] !== undefined && values[key] !== editingRule[key])
             data[key] = values[key];
         }
@@ -176,7 +184,7 @@ function RoutingRules() {
           setEditingRule(null);
           return;
         }
-        request(`routing/${editingRule.id}`, { data })
+        updateRoutingRule(editingRule.id, data)
           .then(() => {
             form.resetFields();
             setConditions({});
@@ -192,7 +200,7 @@ function RoutingRules() {
   };
 
   const handleDelete = (id: string) => {
-    request(`routing/${id}`, { data: undefined, method: "DELETE" })
+    deleteRoutingRule(id)
       .then(() => {
         fetch({ page: 1, per_page: 50 });
       })

@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, within, waitFor } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -7,10 +8,16 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import ServiceKeys from "../servicekeys/ServiceKeys";
 
-const mockRequest = vi.hoisted(() => vi.fn());
-
+const mockListApiKeys = vi.hoisted(() => vi.fn());
+const mockCreateApiKey = vi.hoisted(() => vi.fn());
+const mockDeleteApiKey = vi.hoisted(() => vi.fn());
+vi.mock("../api/servicekeys", () => ({
+  listApiKeys: mockListApiKeys,
+  createApiKey: mockCreateApiKey,
+  deleteApiKey: mockDeleteApiKey,
+}));
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -69,21 +76,13 @@ async function waitForTable() {
 describe("ServiceKeys", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation(() => Promise.resolve({ data: mockKeys }));
+    mockListApiKeys.mockImplementation(() => Promise.resolve(mockKeys));
+    mockCreateApiKey.mockResolvedValue({} as any);
+    mockDeleteApiKey.mockResolvedValue(undefined);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
-
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
 
   it("renders table with API keys from API", async () => {
     renderWithAuth(<ServiceKeys />);
@@ -109,7 +108,7 @@ describe("ServiceKeys", () => {
   it("calls request with correct endpoint on mount", async () => {
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
-    expect(mockRequest).toHaveBeenCalledWith("api-keys");
+    expect(mockListApiKeys).toHaveBeenCalled();
   });
 
   it("generate modal opens with form fields", async () => {
@@ -127,10 +126,8 @@ describe("ServiceKeys", () => {
     const user = userEvent.setup();
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
-    mockRequest.mockImplementation(() =>
-      Promise.resolve({
-        data: { id: "4", raw_key: "qpk_newly_generated_key_token" },
-      }),
+    mockCreateApiKey.mockImplementation(() =>
+      Promise.resolve({ id: "4", raw_key: "qpk_newly_generated_key_token" }),
     );
 
     await user.click(screen.getByText("Generate Key"));
@@ -140,12 +137,9 @@ describe("ServiceKeys", () => {
     await user.click(within(modal).getByText("Generate"));
 
     await waitFor(() => {
-      const calls = mockRequest.mock.calls;
-      const genCall = calls.find(
-        (c: any) => c[0] === "api-keys" && c[1]?.data?.name === "New Key",
+      expect(mockCreateApiKey).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "New Key", service_name: "MyService" }),
       );
-      expect(genCall).toBeDefined();
-      expect(genCall?.[1]?.data.service_name).toBe("MyService");
     });
 
     expect(
@@ -163,10 +157,7 @@ describe("ServiceKeys", () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith("api-keys/1", {
-        data: undefined,
-        method: "DELETE",
-      });
+      expect(mockDeleteApiKey).toHaveBeenCalledWith("1");
     });
   });
 });

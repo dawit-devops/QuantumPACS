@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -16,6 +17,14 @@ const { requestMock } = vi.hoisted(() => ({
   requestMock: vi.fn().mockResolvedValue({}),
 }));
 
+const { mockLogout } = vi.hoisted(() => ({
+  mockLogout: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../api/auth", () => ({
+  logout: mockLogout,
+}));
+
 vi.mock("../helpers", () => ({
   isAdmin: () => true,
   request: requestMock,
@@ -27,16 +36,6 @@ vi.mock("../helpers", () => ({
   startRefreshTimer: () => {},
   stopRefreshTimer: () => {},
 }));
-
-function renderWithAuth(ui: React.ReactElement) {
-  return render(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/"]}>{ui}</MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
-  );
-}
 
 describe("Sidebar", () => {
   beforeEach(() => {
@@ -117,17 +116,15 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("access_token", "a");
     localStorage.setItem("refresh_token", "r");
-    localStorage.setItem("tempKey", "share-temp");
+    sessionStorage.setItem("tempKey", "share-temp");
     renderWithAuth(<Sidebar />);
 
     await user.click(screen.getByText("Logout"));
 
-    expect(requestMock).toHaveBeenCalledWith("auth/logout", {
-      method: "POST",
-    });
+    expect(mockLogout).toHaveBeenCalled();
     expect(localStorage.getItem("userId")).toBeNull();
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
-    expect(localStorage.getItem("tempKey")).toBeNull();
+    expect(sessionStorage.getItem("tempKey")).toBeNull();
   });
 });

@@ -7,13 +7,13 @@ import React, {
   useRef,
 } from "react";
 import {
+  App,
   Layout,
   Card,
   Col,
   Row,
   Statistic,
   Table,
-  message,
   Tag,
   Select,
   Switch,
@@ -48,7 +48,7 @@ import {
 } from "chart.js";
 import withSidebar from "../common/base";
 import { useTheme } from "../common/ThemeProvider";
-import { request } from "../helpers";
+import { getDashboardMetrics, getHealth } from "../api/metrics";
 import { PageState } from "../common/PageState";
 import "./Metrics.css";
 
@@ -128,25 +128,23 @@ function getCSSVar(name: string): string {
 }
 
 function Metrics() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
 
-  let [data, setData] = useState<any>(null);
-  let [health, setHealth] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
-  let [timeRange, setTimeRange] = useState("30d");
-  let [autoRefresh, setAutoRefresh] = useState(false);
-  let [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [data, setData] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState("30d");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMetrics = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      request(`v2/dashboard/metrics?range=${timeRange}`),
-      request("v2/health").catch(() => null),
-    ])
+    Promise.all([getDashboardMetrics(timeRange), getHealth()])
       .then(([metricsResp, healthResp]) => {
         setData(metricsResp);
         setHealth(healthResp);

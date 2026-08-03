@@ -26,6 +26,9 @@ def _get_state():
 class WSState:
     def __init__(self):
         self.local_clients = defaultdict(dict)
+        # Per-user registry for server-initiated pushes (e.g. notification
+        # events) that are not bound to a specific file channel.
+        self.user_clients = defaultdict(dict)
         self.sub_lock = asyncio.Lock()
         self.pubsub = None
         self.listener_task = None
@@ -47,6 +50,26 @@ async def _get_pubsub(state):
 
 def _channel(file_id):
     return f'channel:file:{file_id}'
+
+
+async def broadcast_to_user(user_id, payload):
+    """Push a server-initiated event to every socket a user has open.
+
+    Used e.g. after a notification is created so the bell badge can refresh
+    immediately instead of waiting for the next poll. Shares the sub_lock with
+    the file-channel registry so concurrent connect/disconnect cannot race.
+    """
+    state = _get_state()
+    if state is None:
+        return
+    async with state.sub_lock:
+        conns = list(state.user_clients.get(user_id, {}).values())
+    for c in conns:
+        if isinstance(c, WebSocket):
+            try:
+                await c.send_json(payload)
+            except WebSocketDisconnect:
+                pass
 
 
 async def _pubsub_listener(state):
@@ -112,6 +135,18 @@ class WebsocketHandler(WebSocketEndpoint):
 
     async def on_connect(self, websocket):
         await websocket.accept()
+        # AuthenticationMiddleware puts the User on the scope for both HTTP
+        # and WS requests; read it via scope so sockets opened in test
+        # clients without the middleware are simply not registered.
+        user = websocket.scope.get('user')
+        if user is None:
+            return
+        state = _get_state()
+        if state is None:
+            return
+        async with state.sub_lock:
+            state.user_clients[user.id][str(id(websocket))] = websocket
+        websocket.user_id = user.id
 
     async def on_receive(self, websocket, data):
         state = _get_state()
@@ -176,6 +211,12 @@ class WebsocketHandler(WebSocketEndpoint):
         state = _get_state()
         if state is None:
             return
+        async with state.sub_lock:
+            uid = getattr(websocket, 'user_id', None)
+            if uid:
+                state.user_clients.get(uid, {}).pop(str(id(websocket)), None)
+                if not state.user_clients.get(uid):
+                    state.user_clients.pop(uid, None)
         f = getattr(websocket, 'file', None)
         if f:
             async with state.sub_lock:

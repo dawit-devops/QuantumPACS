@@ -1,9 +1,9 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect } from "react";
 import {
+  App,
   Layout,
   Table,
-  message,
   Tag,
   Divider,
   Popconfirm,
@@ -18,7 +18,14 @@ import { InfoCircleOutlined, CopyOutlined } from "@ant-design/icons";
 
 const { Text } = Typography;
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listUsers,
+  assignRole,
+  deactivateUser,
+  resetPassword,
+  type User,
+} from "../api/users";
+import { listRoles, type Role } from "../api/roles";
 import { PageState } from "../common/PageState";
 import { AddUser } from "./EditUser";
 import { BulkImport } from "./BulkImport";
@@ -26,24 +33,23 @@ import { BulkImport } from "./BulkImport";
 const Content = Layout.Content;
 
 function Users() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Users");
 
-  let [data, setData] = useState<any[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [password, setPassword] = useState<string | null>(null);
-  let [roles, setRoles] = useState<any[]>([]);
-  let [changingRole, setChangingRole] = useState<{
+  const [data, setData] = useState<User[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState<string | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [changingRole, setChangingRole] = useState<{
     userId: number;
     roleId: number | null;
   } | null>(null);
 
   useEffect(() => {
-    request("roles")
-      .then((res: any) => {
-        setRoles(res.data || []);
-      })
+    listRoles()
+      .then(setRoles)
       .catch(() => {});
   }, []);
 
@@ -111,7 +117,7 @@ function Users() {
       render: (_: any, record: any) =>
         record.status === "active" ? (
           <span>
-            <a onClick={() => resetPassword(record.id)}>Reset password</a>
+            <a onClick={() => handleResetPassword(record.id)}>Reset password</a>
             <Divider type="vertical" />
             <Popconfirm
               title="Sure to deactivate?"
@@ -128,23 +134,20 @@ function Users() {
     fetch();
   }, []);
 
-  const handleTableChange = (pag: any, _filters: any, sorter: any) => {
-    const pager = { ...pag };
+  const handleTableChange = (pag: any, _filters: any, _sorter: any) => {
     setPagination(Object.assign({}, pag, { current: pag.current }));
     fetch({
-      results: pag.pageSize,
-      page: pag.current,
-      sortField: sorter.field,
-      sortOrder: sorter.order,
+      offset: (pag.current - 1) * pag.pageSize,
+      limit: pag.pageSize,
     });
   };
 
-  const fetch = (params?: any) => {
+  const fetch = (params?: { offset?: number; limit?: number }) => {
     setLoading(true);
     setError(null);
-    request("users", params || {})
-      .then((res: any) => {
-        const pager = Object.assign({}, pagination, { total: res.data.length });
+    listUsers(params || {})
+      .then((res) => {
+        const pager = Object.assign({}, pagination, { total: res.total });
         setLoading(false);
         setData(res.data);
         setPagination(pager);
@@ -158,7 +161,7 @@ function Users() {
 
   const handleRoleChange = (userId: number, roleId: number) => {
     setChangingRole({ userId, roleId });
-    request("users/role", { data: { user_id: userId, role_id: roleId } })
+    assignRole(userId, roleId)
       .then(() => {
         setChangingRole(null);
         fetch();
@@ -170,12 +173,12 @@ function Users() {
   };
 
   const deactivate = (id: number) => {
-    request("users/deactivate", { data: { id } }).then(fetch);
+    deactivateUser(id).then(() => fetch());
   };
 
-  const resetPassword = (id: number) => {
-    request("users/new_password", { data: { id } }).then((data: any) => {
-      setPassword(data.password);
+  const handleResetPassword = (id: number) => {
+    resetPassword(id).then((res) => {
+      setPassword(res.password);
     });
   };
 

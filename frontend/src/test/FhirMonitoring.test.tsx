@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -7,11 +8,17 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import FhirMonitoring from "../fhir/FhirMonitoring";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockGetFhirMetrics = vi.hoisted(() => vi.fn());
+const mockGetFhirRecentRequests = vi.hoisted(() => vi.fn());
 const mockOpen = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
+vi.mock("../api/fhir", () => ({
+  getFhirMetrics: mockGetFhirMetrics,
+  getFhirRecentRequests: mockGetFhirRecentRequests,
+}));
+
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   open: mockOpen,
   isAdmin: () => true,
 }));
@@ -65,34 +72,21 @@ async function waitForReady() {
 describe("FhirMonitoring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string) => {
-      if (url.startsWith("fhir/admin/metrics"))
-        return Promise.resolve(mockMetrics);
-      if (url.startsWith("fhir/admin/requests"))
-        return Promise.resolve({ requests: mockRequests, total: 2 });
-      return Promise.resolve({});
-    });
+    mockGetFhirMetrics.mockImplementation(() => Promise.resolve(mockMetrics));
+    mockGetFhirRecentRequests.mockImplementation(() =>
+      Promise.resolve({ requests: mockRequests, total: 2 }),
+    );
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
-
   it("fetches metrics and requests on mount", async () => {
     renderWithAuth(<FhirMonitoring />);
     await waitForReady();
-    expect(mockRequest).toHaveBeenCalledWith("fhir/admin/metrics?period=24h");
-    expect(mockRequest).toHaveBeenCalledWith(
-      "fhir/admin/requests?limit=50&offset=0",
+    expect(mockGetFhirMetrics).toHaveBeenCalledWith("24h");
+    expect(mockGetFhirRecentRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 }),
     );
   });
 

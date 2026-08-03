@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
-import withRouter from "../withRouter";
+import { useLocation, useNavigate } from "react-router";
 import { useFetch, useDocumentTitle } from "../hooks";
-import { request } from "../helpers";
+import { listLoginProviders } from "../api/auth";
 import {
+  App,
   Form,
   Input,
   Button,
-  message,
   Layout,
   Card,
   Typography,
@@ -60,7 +60,10 @@ function clearAttempts() {
 }
 
 function LoginForm(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Login");
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [form] = Form.useForm();
   const { exec, showLoading, loading, data, error } = useFetch("login");
@@ -81,9 +84,9 @@ function LoginForm(props: any) {
   }, []);
 
   useEffect(() => {
-    request("oauth/providers")
-      .then((res: any) => {
-        if (res?.data) setProviders(res.data);
+    listLoginProviders()
+      .then((res) => {
+        setProviders(res);
       })
       .catch(() => {});
   }, []);
@@ -103,8 +106,12 @@ function LoginForm(props: any) {
       },
       data.refresh_token,
     );
-    props.history.push("/");
-  }, [data]);
+    // A-7: ProtectedRoute records the pre-login URL in location.state.from so
+    // users land back where they were headed instead of always the root.
+    const from = (location.state as { from?: { pathname?: string } } | null)
+      ?.from?.pathname;
+    navigate(from || "/");
+  }, [data, location.state]);
 
   const errorRef = React.useRef<HTMLDivElement>(null);
 
@@ -115,7 +122,7 @@ function LoginForm(props: any) {
       const msg =
         error.status === 429
           ? "Too many login attempts. Please wait before trying again."
-          : error.error || error;
+          : error.message || error;
       message.error(msg);
       setTimeout(() => {
         const btn = document.querySelector(
@@ -279,4 +286,4 @@ function LoginForm(props: any) {
   );
 }
 
-export default withRouter(LoginForm);
+export default LoginForm;

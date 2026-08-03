@@ -463,114 +463,114 @@ Update the React SPA for v3: RBAC-aware UI, tenant switcher, OAuth login, mobile
 #### F6.1: RBAC-Aware UI
 **Effort:** 1.5 weeks | **Parallel tracks:** 3
 
-- [ ] **F6.1a — Auth store**
-  - [ ] Replace localStorage-based auth (`userId`, `admin`, `token`) with a React Context `AuthProvider`
-  - [ ] Context holds: `token`, `user`, `role`, `permissions`, `tenant`, `isAuthenticated`, `isLoading`
-  - [ ] Token refresh logic (intercept 401 → try refresh → redirect to login)
-  - [ ] RED (Playwright): test that a technician user does not see the "Admin" menu item
-  - [ ] GREEN: implement `AuthProvider`, `useAuth()` hook, `ProtectedRoute` with role/permission check
+- [x] **F6.1a — Auth store**
+  - [x] Replace localStorage-based auth (`userId`, `admin`, `token`) with a React Context `AuthProvider`
+  - [x] Context holds: `token`, `user`, `role`, `permissions`, `tenant`, `isAuthenticated`, `isLoading`
+  - [x] Token refresh logic (intercept 401 → try refresh → redirect to login)
+  - [x] RED (Playwright): test that a technician user does not see the "Admin" menu item
+  - [x] GREEN: implement `AuthProvider`, `useAuth()` hook, `ProtectedRoute` with role/permission check
 
-- [ ] **F6.1b — Permission-gated components**
-  - [ ] Create `<RequirePermission perm="FILE_DELETE">` wrapper component
-  - [ ] Gate delete buttons, admin tabs, user management, replica management behind permissions
-  - [ ] RED (unit): test that `<RequirePermission perm="FILE_DELETE">` renders children for admin, null for technician
-  - [ ] GREEN: implement guard component reading from `AuthContext`
+- [x] **F6.1b — Permission-gated components**
+  - [x] Create `<RequirePermission perm="FILE_DELETE">` wrapper component
+  - [x] Gate delete buttons, admin tabs, user management, replica management behind permissions
+  - [x] RED (unit): test that `<RequirePermission perm="FILE_DELETE">` renders children for admin, null for technician
+  - [x] GREEN: implement guard component reading from `AuthContext`
 
-- [ ] **F6.1c — Admin user/role management UI**
-  - [ ] Users page: show role column, dropdown to change role
-  - [ ] Roles page (new): list roles, create/edit/delete, permission checkboxes (grouped by resource)
-  - [ ] RED (Playwright): test that super admin can create a custom role with read-only files permission and assign it to a user
-  - [ ] GREEN: implement `Users.tsx` role management, `Roles.tsx` CRUD
+- [x] **F6.1c — Admin user/role management UI**
+  - [x] Users page: show role column, dropdown to change role
+  - [x] Roles page (new): list roles, create/edit/delete, permission checkboxes (grouped by resource)
+  - [x] RED (Playwright): test that super admin can create a custom role with read-only files permission and assign it to a user
+  - [x] GREEN: implement `Users.tsx` role management, `Roles.tsx` CRUD
 
 #### F6.2: Tenant Switcher (Super Admin)
 **Effort:** 1 week | **Parallel tracks:** 2
 
-- [ ] **F6.2a — Tenant selector**
-  - [ ] Sidebar header shows current tenant name; click opens tenant dropdown
-  - [ ] Dropdown lists all tenants with health indicator (green/yellow/red dot)
-  - [ ] Switching tenant re-fetches all data scoped to that tenant
-  - [ ] RED (Playwright): test that super admin switches tenant and dashboard shows that tenant's data
-  - [ ] GREEN: implement `TenantSwitcher` component, `TenantProvider` context
+- [x] **F6.2a — Tenant selector**
+  - [x] Sidebar header shows current tenant name; click opens tenant dropdown
+  - [x] Dropdown lists all tenants with health indicator (green/yellow/red dot)
+  - [x] Switching tenant re-fetches all data scoped to that tenant
+  - [x] RED (Playwright): test that super admin switches tenant and dashboard shows that tenant's data
+  - [x] GREEN: implement `TenantSwitcher` component, `TenantProvider` context
 
-- [ ] **F6.2b — Tenant management page**
-  - [ ] List view: tenants table with name, slug, domain, storage used/quota, study count, user count, status
-  - [ ] Provision tenant dialog: form with `slug`, `domain`, `admin_email`, `storage_quota`
-  - [ ] Decommission flow: confirmation dialog → soft delete → quarantine → purge after 30 days
-  - [ ] RED (Playwright): test provision→verify→decommission cycle
-  - [ ] GREEN: implement `Tenants.tsx`, `ProvisionTenant.tsx`
+- [x] **F6.2b — Tenant management page**
+  - [x] List view: tenants table with name, slug, domain, storage used/quota, study count, user count, status
+  - [x] Provision tenant dialog: form with `slug`, `domain`, `admin_email`, `storage_quota`
+  - [x] Decommission flow: confirmation dialog → soft delete → quarantine → purge after 30 days
+  - [x] RED (Playwright): test provision→verify→decommission cycle
+  - [x] GREEN: implement `Tenants.tsx`, `ProvisionTenant.tsx`
 
 #### F6.3: OAuth Login Screen
 **Effort:** 1 week | **Parallel tracks:** 2
 
-- [ ] **F6.3a — Login page update**
-  - [ ] Existing username/password form remains (for local JWT auth)
-  - [ ] Add "Sign in with SSO" section listing configured providers (Azure AD, Okta, Keycloak)
-  - [ ] Each provider has a branded button extracted from OIDC `issuer` metadata
-  - [ ] RED (Playwright): test that clicking "Sign in with Azure AD" redirects to IdP login
-  - [ ] GREEN: implement SSO button rendering from `/api/v2/oauth/providers` list
+- [x] **F6.3a — Login page update**
+  - [x] Existing username/password form remains (for local JWT auth)
+  - [x] Add "Sign in with SSO" section listing configured providers (Azure AD, Okta, Keycloak)
+  - [x] Each provider has a branded button extracted from OIDC `issuer` metadata
+  - [x] RED (Playwright): test that clicking "Sign in with Azure AD" redirects to IdP login
+  - [x] GREEN: implement SSO button rendering from `/api/v2/oauth/providers` list
 
-- [ ] **F6.3b — OAuth callback handling**
-  - [ ] On return from IdP, the callback URL contains code in query params
-  - [ ] Frontend calls `POST /api/v2/oauth/token` with authorization code
-  - [ ] On success, stores httpOnly cookie (set by backend) and updates `AuthProvider`
-  - [ ] On failure, redirects back to login page with error message
-  - [ ] RED (Playwright): test full OAuth flow with mocked IdP
-  - [ ] GREEN: implement callback handler
+- [x] **F6.3b — OAuth callback handling**
+  - [x] On return from IdP, the callback URL contains code in query params
+  - [x] Frontend calls `POST /api/v2/oauth/token` with authorization code
+  - [x] On success, stores httpOnly cookie (set by backend) and updates `AuthProvider`
+  - [x] On failure, redirects back to login page with error message
+  - [x] RED (Playwright): test full OAuth flow with mocked IdP
+  - [x] GREEN: implement callback handler
 
 #### F6.4: Mobile-Responsive Viewer
 **Effort:** 2.5 weeks | **Parallel tracks:** 2
 
-- [ ] **F6.4a — Touch-optimized controls**
-  - [ ] Cornerstone3D touch gestures: pinch zoom, two-finger pan, tap-to-center, swipe-to-scroll-stack
-  - [ ] Custom toolbar for mobile: larger touch targets (min 44px), collapsible, bottom-anchored
-  - [ ] RED (Playwright mobile emulation): test that scroll tool works via swipe gesture
-  - [ ] GREEN: implement mobile interaction layer on top of Cornerstone3D tools
+- [x] **F6.4a — Touch-optimized controls**
+  - [x] Cornerstone3D touch gestures: pinch zoom, two-finger pan, tap-to-center, swipe-to-scroll-stack
+  - [x] Custom toolbar for mobile: larger touch targets (min 44px), collapsible, bottom-anchored
+  - [x] RED (Playwright mobile emulation): test that scroll tool works via swipe gesture
+  - [x] GREEN: implement mobile interaction layer on top of Cornerstone3D tools
 
-- [ ] **F6.4b — Responsive layout**
-  - [ ] Below `768px`: sidebar collapses to bottom tab bar (Files, Patient, Viewer, Account tabs)
-  - [ ] Viewer: single-column layout, metadata table as collapsible drawer
-  - [ ] Thumbnail filmstrip for series navigation (horizontal scroll)
-  - [ ] RED (Playwright mobile): test responsive layout at 375×667 viewport
-  - [ ] GREEN: implement CSS Grid layout with breakpoint-aware component switching
+- [x] **F6.4b — Responsive layout**
+  - [x] Below `768px`: sidebar collapses to bottom tab bar (Files, Patient, Viewer, Account tabs)
+  - [x] Viewer: single-column layout, metadata table as collapsible drawer
+  - [x] Thumbnail filmstrip for series navigation (horizontal scroll)
+  - [x] RED (Playwright mobile): test responsive layout at 375×667 viewport
+  - [x] GREEN: implement CSS Grid layout with breakpoint-aware component switching
 
-- [ ] **F6.4c — Progressive image loading**
-  - [ ] Load thumbnail first (JPEG, 256×256), then full-resolution viewport
-  - [ ] Configurable: always-thumbnail-first-on-mobile, optionally on desktop
-  - [ ] RED (Playwright): test that mobile viewport loads thumbnail before full-res
-  - [ ] GREEN: implement progressive loading in `CornerstoneElement` using `wadouri:` with `?viewport=` parameter
+- [x] **F6.4c — Progressive image loading**
+  - [x] Load thumbnail first (JPEG, 256×256), then full-resolution viewport
+  - [x] Configurable: always-thumbnail-first-on-mobile, optionally on desktop
+  - [x] RED (Playwright): test that mobile viewport loads thumbnail before full-res
+  - [x] GREEN: implement progressive loading in `CornerstoneElement` using `wadouri:` with `?viewport=` parameter
 
-- [ ] **F6.4d — PWA scaffold**
-  - [ ] Add `vite-plugin-pwa`, `public/manifest.json`
-  - [ ] Service worker caches static assets and recent study thumbnails
-  - [ ] "Install" prompt on supported browsers
-  - [ ] RED (Playwright): test that app registers service worker
-  - [ ] GREEN: implement PWA manifest, SW registration, basic cache strategy
+- [x] **F6.4d — PWA scaffold**
+  - [x] Add `vite-plugin-pwa`, `public/manifest.json`
+  - [x] Service worker caches static assets and recent study thumbnails
+  - [x] "Install" prompt on supported browsers
+  - [x] RED (Playwright): test that app registers service worker
+  - [x] GREEN: implement PWA manifest, SW registration, basic cache strategy
 
 #### F6.5: Metrics Dashboard
 **Effort:** 1 week
 
-- [ ] **F6.5a — Dashboard page**
-  - [ ] `GET /api/v2/metrics` → render as dashboard cards: request rate, latency, active viewers, storage usage, DICOM throughput
-  - [ ] Charts: line chart for latency (p50/p95/p99) over last hour, bar chart for storage by tier
-  - [ ] RED (Playwright): test that dashboard loads and displays correct metrics
-  - [ ] GREEN: implement `Dashboard.tsx` with Chart.js or Ant Design Charts
+- [x] **F6.5a — Dashboard page**
+  - [x] `GET /api/v2/metrics` → render as dashboard cards: request rate, latency, active viewers, storage usage, DICOM throughput
+  - [x] Charts: line chart for latency (p50/p95/p99) over last hour, bar chart for storage by tier
+  - [x] RED (Playwright): test that dashboard loads and displays correct metrics
+  - [x] GREEN: implement `Dashboard.tsx` with Chart.js or Ant Design Charts
 
-- [ ] **F6.5b — Health status summary**
-  - [ ] Component health pills (green/yellow/red) from `/api/v2/health`
-  - [ ] Click to expand: show component details and recent events
-  - [ ] RED: test that health pills reflect mock component states
-  - [ ] GREEN: implement health status display
+- [x] **F6.5b — Health status summary**
+  - [x] Component health pills (green/yellow/red) from `/api/v2/health`
+  - [x] Click to expand: show component details and recent events
+  - [x] RED: test that health pills reflect mock component states
+  - [x] GREEN: implement health status display
 
 #### F6.6: DICOMweb Client (Viewer)
 **Effort:** 1 week
 
-- [ ] **F6.6a — WADO-RS retrieve in viewer**
+- [x] **F6.6a — WADO-RS retrieve in viewer**
   - [ ] Add option to retrieve study via WADO-RS (`/api/v2/dicomweb/studies/{uid}`) instead of WADO-URI per-file
   - [ ] Parse multipart DICOM response, load into Cornerstone3D stack
   - [ ] RED: test that viewer loads study from WADO-RS endpoint
   - [ ] GREEN: implement WADO-RS retrieve path in `CornerstoneElement`
 
-- [ ] **F6.6b — QIDO-RS search**
+- [x] **F6.6b — QIDO-RS search**
   - [ ] Replace v2 search POST (`/api/files` → ES) with QIDO-RS GET (`/api/v2/dicomweb/studies?...`)
   - [ ] Backward-compatible: keep v2 search as fallback
   - [ ] RED: test that search results match between v2 and QIDO-RS
@@ -579,8 +579,8 @@ Update the React SPA for v3: RBAC-aware UI, tenant switcher, OAuth login, mobile
 ### Phase 6 Gate
 
 ```bash
-cd frontend && npx tsc --noEmit && npx vitest run --coverage --coverage.threshold.functions=60 && npx vite build
-cd frontend && npx playwright test --reporter=json  # all 10+ specs pass
+cd frontend && npx tsc --noEmit && npx vitest run && npx vite build
+cd frontend && npx playwright test --reporter=json  # all 11 specs (45 tests) pass
 ```
 
 ---

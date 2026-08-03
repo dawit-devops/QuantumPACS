@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { LOADING_DELAY, API_URL } from "../config";
-import { fetchWithRetry, handleResponse, RequestOptions } from "./client";
+import {
+  fetchWithRetry,
+  handleResponse,
+  ApiError,
+  RequestOptions,
+} from "./client";
 import { getAccessToken, tryRefreshToken } from "./session";
 import { navigate } from "../navigator";
 
@@ -58,7 +63,9 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
       setData(result);
       finish();
     } catch (error: any) {
-      if (error.error === 401) {
+      const is401 =
+        error instanceof ApiError ? error.status === 401 : error?.error === 401;
+      if (is401) {
         const refreshed = await tryRefreshToken();
         if (refreshed) {
           const newToken = getAccessToken();
@@ -78,8 +85,15 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
           navigate("/login");
         }
       }
-      if (!error.code || error.code !== 20) {
-        setError(error.error || error.message || error);
+      // AbortError (DOMException code 20 / name AbortError) is the caller
+      // signalling cancellation — swallow it.
+      const aborted = error?.name === "AbortError" || error?.code === 20;
+      if (!aborted) {
+        setError(
+          error instanceof ApiError
+            ? error
+            : Error(String(error?.message || error)),
+        );
       }
       finish();
     }

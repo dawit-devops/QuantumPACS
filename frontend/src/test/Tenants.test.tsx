@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -7,10 +8,21 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Tenants from "../tenants/Tenants";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListTenants = vi.hoisted(() => vi.fn());
+const mockCreateTenant = vi.hoisted(() => vi.fn());
+const mockUpdateTenant = vi.hoisted(() => vi.fn());
+const mockDeleteTenant = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/tenants", () => ({
+  listTenants: mockListTenants,
+  createTenant: mockCreateTenant,
+  updateTenant: mockUpdateTenant,
+  deleteTenant: mockDeleteTenant,
+  listSessionTenants: vi.fn(() => Promise.resolve([])),
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -63,25 +75,14 @@ async function waitForCards() {
 describe("Tenants", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url.endsWith("/stats")) return Promise.resolve({ data: mockStats });
-      if (opts?.method === "DELETE") return Promise.resolve({});
-      return Promise.resolve({ data: mockTenants });
-    });
+    mockListTenants.mockResolvedValue(mockTenants);
+    mockCreateTenant.mockResolvedValue({} as any);
+    mockUpdateTenant.mockResolvedValue(undefined);
+    mockDeleteTenant.mockResolvedValue(undefined);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
-
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
 
   it("displays tenant names from API", async () => {
     renderWithAuth(<Tenants />);
@@ -108,7 +109,7 @@ describe("Tenants", () => {
   it("calls tenants endpoint on mount", async () => {
     renderWithAuth(<Tenants />);
     await waitForCards();
-    expect(mockRequest).toHaveBeenCalledWith("tenants");
+    expect(mockListTenants).toHaveBeenCalled();
   });
 
   it("renders Provision Tenant button", async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 
 function BuggyComponent(): React.ReactNode {
@@ -17,7 +18,7 @@ describe("ErrorBoundary", () => {
   });
 
   it("renders children when no error occurs", () => {
-    render(
+    renderWithApp(
       <ErrorBoundary>
         <GoodComponent />
       </ErrorBoundary>,
@@ -28,7 +29,7 @@ describe("ErrorBoundary", () => {
   it("catches rendering errors and shows fallback UI", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(
+    renderWithApp(
       <ErrorBoundary>
         <BuggyComponent />
       </ErrorBoundary>,
@@ -41,7 +42,7 @@ describe("ErrorBoundary", () => {
   it("resets error state on Try Again click", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(
+    renderWithApp(
       <ErrorBoundary>
         <BuggyComponent />
       </ErrorBoundary>,
@@ -56,7 +57,7 @@ describe("ErrorBoundary", () => {
   it("renders custom fallback when provided", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(
+    renderWithApp(
       <ErrorBoundary fallback={<div>Custom error UI</div>}>
         <BuggyComponent />
       </ErrorBoundary>,

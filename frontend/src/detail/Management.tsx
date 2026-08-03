@@ -1,8 +1,8 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState } from "react";
-import withRouter from "../withRouter";
-import { Button, message, Layout, Modal } from "antd";
-import { request } from "../helpers";
+import { useNavigate } from "react-router";
+import { Button, message, App, Layout, Modal } from "antd";
+import { deleteFile } from "../api/files";
 const { Content } = Layout;
 
 function sleep(ms: number) {
@@ -10,8 +10,10 @@ function sleep(ms: number) {
 }
 
 function Management(props: any) {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Management");
-  let [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
   const confirmDelete = () => {
     Modal.confirm({
@@ -23,9 +25,9 @@ function Management(props: any) {
       cancelText: "Cancel",
       onOk: () => {
         setLoading(true);
-        return request(`files/${props.file.id}`, { method: "DELETE" })
+        return deleteFile(props.file.id)
           .then(() => sleep(1000))
-          .then(() => props.history.push("/"))
+          .then(() => navigate("/"))
           .catch(() => message.error("Deletion failed"))
           .finally(() => setLoading(false));
       },
@@ -48,4 +50,4 @@ function Management(props: any) {
   );
 }
 
-export default withRouter(Management);
+export default Management;

@@ -1,9 +1,9 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
+  App,
   Layout,
   Table,
-  message,
   Button,
   Tag,
   Modal,
@@ -25,9 +25,19 @@ import {
   TableOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import { mapLimit } from "../helpers";
+import {
+  listWorklist,
+  listStationAes,
+  createWorklistEntry,
+  updateWorklistEntry,
+  deleteWorklistEntry,
+  markWorklistPerformed,
+  type WorklistEntry,
+} from "../api/worklist";
 import { PageState } from "../common/PageState";
 import { CreateEntry } from "./CreateEntry";
+import CalendarView from "./CalendarView";
 import dayjs from "dayjs";
 import "./Worklist.css";
 
@@ -47,9 +57,10 @@ const STATUS_TABS = [
 ];
 
 function Worklist() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Worklist");
 
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<WorklistEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<any>({
@@ -58,7 +69,7 @@ function Worklist() {
     total: 0,
   });
   const [visible, setVisible] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<any | null>(null);
+  const [editingEntry, setEditingEntry] = useState<WorklistEntry | null>(null);
   const [statusTab, setStatusTab] = useState("all");
   const [stationFilter, setStationFilter] = useState<string | undefined>(
     undefined,
@@ -68,6 +79,7 @@ function Worklist() {
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [stationOptions, setStationOptions] = useState<string[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [tabTotals, setTabTotals] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
   const [batchLoading, setBatchLoading] = useState(false);
   const [form] = Form.useForm();
@@ -78,21 +90,50 @@ function Worklist() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetch = useCallback(
-    (params?: any) => {
-      setLoading(true);
-      setError(null);
+  const buildQuery = useCallback(
+    (overrides?: Record<string, string>) => {
       const query: Record<string, string> = {};
-      if (statusTab !== "all") query.status = statusTab;
       if (stationFilter) query.station_ae_title = stationFilter;
       if (debouncedSearch) query.search = debouncedSearch;
       if (dateRange) {
         query.date_from = dateRange[0];
         query.date_to = dateRange[1];
       }
+      if (overrides) Object.assign(query, overrides);
+      return query;
+    },
+    [stationFilter, debouncedSearch, dateRange],
+  );
+
+  const fetchTabTotals = useCallback(() => {
+    // Server-side per-status totals for the tab badges: the current page
+    // only reflects the active filter, so per-tab counts cannot be derived
+    // client-side (Q-7).
+    Promise.all(
+      STATUS_TABS.filter((t) => t.key !== "all").map((t) =>
+        listWorklist(buildQuery({ status: t.key, page: "1", per_page: "1" })),
+      ),
+    )
+      .then((results) => {
+        const totals: Record<string, number> = {};
+        STATUS_TABS.filter((t) => t.key !== "all").forEach((t, i) => {
+          totals[t.key] = results[i]?.total || 0;
+        });
+        setTabTotals(totals);
+      })
+      .catch(() => {});
+  }, [buildQuery]);
+
+  const fetch = useCallback(
+    (params?: any) => {
+      setLoading(true);
+      setError(null);
+      const query = buildQuery(
+        statusTab !== "all" ? { status: statusTab } : {},
+      );
       if (params?.page) query.page = String(params.page);
       if (params?.per_page) query.per_page = String(params.per_page);
-      request("worklist", { query })
+      listWorklist(query)
         .then((res: any) => {
           setLoading(false);
           const items = Array.isArray(res.data) ? res.data : [];
@@ -108,13 +149,14 @@ function Worklist() {
           setError(e.message);
           message.error(e.message);
         });
+      fetchTabTotals();
     },
-    [statusTab, stationFilter, debouncedSearch, dateRange],
+    [statusTab, buildQuery, fetchTabTotals],
   );
 
   useEffect(() => {
     fetch();
-    request("worklist/station-aes", { method: "GET" })
+    listStationAes()
       .then((res: any) => {
         if (Array.isArray(res)) setStationOptions(res);
         else if (res?.data) setStationOptions(res.data);
@@ -147,7 +189,7 @@ function Worklist() {
           data.scheduled_date = data.scheduled_date.format("YYYY-MM-DD");
         if (data.scheduled_time)
           data.scheduled_time = data.scheduled_time.format("HH:mm");
-        request("worklist", { data })
+        createWorklistEntry(data)
           .then(() => {
             form.resetFields();
             setVisible(false);
@@ -160,7 +202,7 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleEdit = (entry: any) => {
+  const handleEdit = useCallback((entry: any) => {
     setEditingEntry(entry);
     form.setFieldsValue({
       ...entry,
@@ -173,12 +215,13 @@ function Worklist() {
         : null,
     });
     setVisible(true);
-  };
+  }, []);
 
   const handleUpdate = () => {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingEntry) return;
         const data: any = {};
         for (const key of [
           "patient_name",
@@ -189,7 +232,7 @@ function Worklist() {
           "requested_procedure_desc",
           "modality",
           "station_ae_title",
-        ]) {
+        ] as const) {
           if (values[key] !== undefined && values[key] !== editingEntry[key]) {
             data[key] = Array.isArray(values[key])
               ? values[key][0]
@@ -205,7 +248,7 @@ function Worklist() {
           setEditingEntry(null);
           return;
         }
-        request(`worklist/${editingEntry.id}`, { data })
+        updateWorklistEntry(editingEntry.id, data)
           .then(() => {
             form.resetFields();
             setEditingEntry(null);
@@ -219,8 +262,8 @@ function Worklist() {
       .catch(() => {});
   };
 
-  const handleCancel = (id: string) => {
-    request(`worklist/${id}`, { data: undefined, method: "DELETE" })
+  const handleCancel = useCallback((id: string) => {
+    deleteWorklistEntry(id)
       .then(() => {
         fetch();
         setSelectedRowKeys((prev) => prev.filter((k) => k !== id));
@@ -228,10 +271,10 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
-  const handleMarkPerformed = (id: string) => {
-    request(`worklist/${id}`, { data: { status: "performed" } })
+  const handleMarkPerformed = useCallback((id: string) => {
+    markWorklistPerformed(id)
       .then(() => {
         message.success("Marked as performed");
         fetch();
@@ -240,21 +283,31 @@ function Worklist() {
       .catch((e: any) => {
         message.error(e.message);
       });
-  };
+  }, []);
 
   const handleBatchCancel = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
-    Promise.all(
-      ids.map((id) =>
-        request(`worklist/${id}`, { data: undefined, method: "DELETE" }).catch(
-          () => {},
-        ),
+    // Track failures individually so a fully-failed batch reports failure
+    // instead of a false success (Q-17). Runs at most 4 concurrent requests
+    // so a large selection cannot fan out hundreds of calls (P-M8).
+    mapLimit(ids, 4, (id) =>
+      deleteWorklistEntry(id as number).then(
+        () => true,
+        () => false,
       ),
-    ).then(() => {
+    ).then((results) => {
       setBatchLoading(false);
-      setSelectedRowKeys([]);
-      message.success(`Cancelled ${ids.length} entries`);
+      const ok = results.filter(Boolean).length;
+      const failed = ids.length - ok;
+      setSelectedRowKeys(ids.filter((_, i) => !results[i]));
+      if (failed > 0) {
+        message.error(
+          `Cancelled ${ok}/${ids.length} entries (${failed} failed)`,
+        );
+      } else {
+        message.success(`Cancelled ${ok} entries`);
+      }
       fetch();
     });
   };
@@ -262,16 +315,23 @@ function Worklist() {
   const handleBatchPerformed = () => {
     setBatchLoading(true);
     const ids = [...selectedRowKeys];
-    Promise.all(
-      ids.map((id) =>
-        request(`worklist/${id}`, { data: { status: "performed" } }).catch(
-          () => {},
-        ),
+    mapLimit(ids, 4, (id) =>
+      markWorklistPerformed(id as number).then(
+        () => true,
+        () => false,
       ),
-    ).then(() => {
+    ).then((results) => {
       setBatchLoading(false);
-      setSelectedRowKeys([]);
-      message.success(`Marked ${ids.length} entries as performed`);
+      const ok = results.filter(Boolean).length;
+      const failed = ids.length - ok;
+      setSelectedRowKeys(ids.filter((_, i) => !results[i]));
+      if (failed > 0) {
+        message.error(
+          `Marked ${ok}/${ids.length} performed (${failed} failed)`,
+        );
+      } else {
+        message.success(`Marked ${ok} entries as performed`);
+      }
       fetch();
     });
   };
@@ -289,149 +349,131 @@ function Worklist() {
   };
 
   const countedTabs = useMemo(() => {
-    return STATUS_TABS.map((tab) => {
-      let count: number | undefined;
-      if (tab.key === "all") {
-        count = data.length;
-      } else {
-        count = data.filter((e) => e.status === tab.key).length;
-      }
-      return { ...tab, count };
-    });
-  }, [data]);
+    return STATUS_TABS.map((tab) => ({
+      ...tab,
+      count: tab.key === "all" ? pagination.total : tabTotals[tab.key],
+    }));
+  }, [pagination.total, tabTotals]);
 
-  const filteredData = useMemo(() => {
-    let items = data;
-    if (statusTab !== "all") {
-      items = items.filter((e) => e.status === statusTab);
-    }
-    return items;
-  }, [data, statusTab]);
+  // The server already filters by the active status tab (query.status), so
+  // data is exactly the current view — no client-side re-filter (Q-7).
 
-  const columns: any[] = [
-    {
-      title: "Patient Name",
-      dataIndex: "patient_name",
-      width: "14%",
-      render: (v: string) => v || "-",
-    },
-    { title: "Patient ID", dataIndex: "patient_id", width: "8%" },
-    { title: "Accession #", dataIndex: "accession_number", width: "9%" },
-    {
-      title: "Proc ID",
-      dataIndex: "requested_procedure_id",
-      width: "7%",
-      render: (v: string) => v || "-",
-    },
-    { title: "Modality", dataIndex: "modality", width: "6%" },
-    {
-      title: "Scheduled Date",
-      dataIndex: "scheduled_date",
-      width: "9%",
-      render: (d: string) => d || "-",
-    },
-    {
-      title: "Station AE",
-      dataIndex: "station_ae_title",
-      width: "10%",
-      render: (v: string) => (v ? <Tag style={{ margin: 0 }}>{v}</Tag> : "-"),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      width: "7%",
-      render: (s: string) =>
-        s ? <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag> : null,
-    },
-    {
-      title: "Study UID",
-      dataIndex: "study_uid",
-      width: "10%",
-      render: (v: string) =>
-        v ? (
-          <Tag style={{ margin: 0, fontFamily: "monospace", fontSize: 11 }}>
-            {v.slice(0, 20)}…
-          </Tag>
-        ) : (
-          "-"
-        ),
-    },
-    {
-      title: "Performed",
-      dataIndex: "performed_at",
-      width: "9%",
-      render: (v: string) => (v ? new Date(v).toLocaleString() : "-"),
-    },
-    {
-      title: "Action",
-      key: "action",
-      width: "11%",
-      render: (_: any, record: any) => (
-        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Tooltip title="Edit">
-            <EditOutlined
-              onClick={() => handleEdit(record)}
-              style={{ cursor: "pointer", fontSize: 16 }}
-            />
-          </Tooltip>
-          {record.status === "scheduled" && (
-            <>
-              <Popconfirm
-                title="Mark as performed?"
-                onConfirm={() => handleMarkPerformed(record.id)}
-              >
-                <Tooltip title="Mark performed">
-                  <CheckCircleOutlined
-                    style={{
-                      cursor: "pointer",
-                      color: "#16a34a",
-                      fontSize: 16,
-                    }}
-                  />
-                </Tooltip>
-              </Popconfirm>
-              <Popconfirm
-                title="Cancel this entry?"
-                onConfirm={() => handleCancel(record.id)}
-              >
-                <Tooltip title="Cancel">
-                  <CloseCircleOutlined
-                    style={{
-                      cursor: "pointer",
-                      color: "#dc2626",
-                      fontSize: 16,
-                    }}
-                  />
-                </Tooltip>
-              </Popconfirm>
-            </>
-          )}
-          {record.status === "performed" && (
-            <Tooltip
-              title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
-            >
-              <CheckCircleOutlined
-                style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+  // (P-M6) Columns are stable across renders — memoize so the Table doesn't
+  // re-render its full cell set on every state change (e.g. each keystroke).
+  const columns: any[] = useMemo(
+    () => [
+      {
+        title: "Patient Name",
+        dataIndex: "patient_name",
+        width: "14%",
+        render: (v: string) => v || "-",
+      },
+      { title: "Patient ID", dataIndex: "patient_id", width: "8%" },
+      { title: "Accession #", dataIndex: "accession_number", width: "9%" },
+      {
+        title: "Proc ID",
+        dataIndex: "requested_procedure_id",
+        width: "7%",
+        render: (v: string) => v || "-",
+      },
+      { title: "Modality", dataIndex: "modality", width: "6%" },
+      {
+        title: "Scheduled Date",
+        dataIndex: "scheduled_date",
+        width: "9%",
+        render: (d: string) => d || "-",
+      },
+      {
+        title: "Station AE",
+        dataIndex: "station_ae_title",
+        width: "10%",
+        render: (v: string) => (v ? <Tag style={{ margin: 0 }}>{v}</Tag> : "-"),
+      },
+      {
+        title: "Status",
+        dataIndex: "status",
+        width: "7%",
+        render: (s: string) =>
+          s ? <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag> : null,
+      },
+      {
+        title: "Study UID",
+        dataIndex: "study_uid",
+        width: "10%",
+        render: (v: string) =>
+          v ? (
+            <Tag style={{ margin: 0, fontFamily: "monospace", fontSize: 11 }}>
+              {v.slice(0, 20)}…
+            </Tag>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        title: "Performed",
+        dataIndex: "performed_at",
+        width: "9%",
+        render: (v: string) => (v ? new Date(v).toLocaleString() : "-"),
+      },
+      {
+        title: "Action",
+        key: "action",
+        width: "11%",
+        render: (_: any, record: any) => (
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Tooltip title="Edit">
+              <EditOutlined
+                onClick={() => handleEdit(record)}
+                style={{ cursor: "pointer", fontSize: 16 }}
               />
             </Tooltip>
-          )}
-        </span>
-      ),
-    },
-  ];
-
-  const calendarEntries = useMemo(() => {
-    const grouped: Record<string, any[]> = {};
-    for (const entry of filteredData) {
-      const date = entry.scheduled_date || "No date";
-      if (!grouped[date]) grouped[date] = [];
-      grouped[date].push(entry);
-    }
-    const sorted = Object.entries(grouped).sort(([a], [b]) =>
-      a.localeCompare(b),
-    );
-    return sorted;
-  }, [filteredData]);
+            {record.status === "scheduled" && (
+              <>
+                <Popconfirm
+                  title="Mark as performed?"
+                  onConfirm={() => handleMarkPerformed(record.id)}
+                >
+                  <Tooltip title="Mark performed">
+                    <CheckCircleOutlined
+                      style={{
+                        cursor: "pointer",
+                        color: "#16a34a",
+                        fontSize: 16,
+                      }}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+                <Popconfirm
+                  title="Cancel this entry?"
+                  onConfirm={() => handleCancel(record.id)}
+                >
+                  <Tooltip title="Cancel">
+                    <CloseCircleOutlined
+                      style={{
+                        cursor: "pointer",
+                        color: "#dc2626",
+                        fontSize: 16,
+                      }}
+                    />
+                  </Tooltip>
+                </Popconfirm>
+              </>
+            )}
+            {record.status === "performed" && (
+              <Tooltip
+                title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
+              >
+                <CheckCircleOutlined
+                  style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+                />
+              </Tooltip>
+            )}
+          </span>
+        ),
+      },
+    ],
+    [handleEdit, handleCancel, handleMarkPerformed],
+  );
 
   const rowSelection = {
     selectedRowKeys,
@@ -454,9 +496,7 @@ function Worklist() {
           clip: "rect(0,0,0,0)",
         }}
       >
-        {loading
-          ? "Loading worklist"
-          : `${filteredData.length} worklist entries`}
+        {loading ? "Loading worklist" : `${data.length} worklist entries`}
       </div>
 
       <div className="worklist-toolbar">
@@ -568,7 +608,7 @@ function Worklist() {
       <PageState
         error={error}
         onRetry={() => fetch()}
-        empty={!loading && !error && filteredData.length === 0}
+        empty={!loading && !error && data.length === 0}
         emptyMessage={
           statusTab !== "all"
             ? `No ${statusTab} entries`
@@ -591,7 +631,7 @@ function Worklist() {
           <Table
             rowKey="id"
             columns={columns}
-            dataSource={filteredData}
+            dataSource={data}
             loading={loading}
             pagination={pagination}
             onChange={handleTableChange}
@@ -599,64 +639,7 @@ function Worklist() {
             size="middle"
           />
         ) : (
-          <div className="calendar-view">
-            {calendarEntries.map(([date, entries]) => (
-              <div key={date} className="calendar-day">
-                <div className="calendar-day-header">
-                  {date === "No date" ? "Unscheduled" : date}
-                  <Tag style={{ marginLeft: 8 }}>{entries.length}</Tag>
-                </div>
-                {entries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={`calendar-entry ${entry.status}`}
-                    onClick={() => handleEdit(entry)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleEdit(entry);
-                    }}
-                  >
-                    <Tag
-                      color={STATUS_COLORS[entry.status]}
-                      style={{ margin: 0, flexShrink: 0 }}
-                    >
-                      {entry.status}
-                    </Tag>
-                    <span style={{ fontWeight: 500, flex: 1 }}>
-                      {entry.patient_name || entry.patient_id}
-                    </span>
-                    <span
-                      style={{
-                        color: "var(--text-secondary, #64748b)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {entry.modality}
-                    </span>
-                    {entry.scheduled_time && (
-                      <span
-                        style={{
-                          color: "var(--text-secondary, #64748b)",
-                          fontSize: 13,
-                        }}
-                      >
-                        {entry.scheduled_time}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        color: "var(--text-secondary, #64748b)",
-                        fontSize: 13,
-                      }}
-                    >
-                      {entry.accession_number}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+          <CalendarView entries={data} onEdit={handleEdit} />
         )}
       </PageState>
 

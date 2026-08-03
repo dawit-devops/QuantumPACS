@@ -10,7 +10,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
   function wrapper(props: any) {
     const screens = useBreakpoint();
     const isMobile = !screens.lg;
-    const tempKey = localStorage.getItem("tempKey");
+    const tempKey = sessionStorage.getItem("tempKey");
     const { isDark } = useTheme();
     return (
       <Layout

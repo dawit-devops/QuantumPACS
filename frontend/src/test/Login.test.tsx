@@ -1,15 +1,20 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import LoginForm from "../login/Login";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListLoginProviders = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/auth", () => ({
+  listLoginProviders: mockListLoginProviders,
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -33,20 +38,10 @@ const mockProviders = [
   { id: "2", name: "Microsoft", slug: "microsoft", icon: null },
 ];
 
-function renderWithAuth(ui: React.ReactElement) {
-  return render(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
-  );
-}
-
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockResolvedValue({ data: mockProviders });
+    mockListLoginProviders.mockResolvedValue(mockProviders);
   });
 
   it("renders login form", () => {

@@ -7,7 +7,7 @@ interface MetaRow {
 }
 
 interface KeyValueTableProps {
-  file: { id: string; meta?: Record<string, string> };
+  file: { id: string | number; meta?: Record<string, unknown> };
   loading?: boolean;
   pagination?: false | { pageSize?: number };
   rowKey?: (record: MetaRow) => string;
@@ -30,7 +30,7 @@ const KeyValueTable = ({
 
   const metaToDatasource = (): MetaRow[] =>
     Object.entries(file.meta || {})
-      .map(([key, value]) => ({ key, value }))
+      .map(([key, value]) => ({ key, value: String(value) }))
       .sort((a, b) => a.key.localeCompare(b.key));
 
   useEffect(() => {

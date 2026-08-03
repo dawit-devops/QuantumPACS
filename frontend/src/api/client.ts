@@ -13,21 +13,97 @@ export interface RequestOptions {
   [key: string]: unknown;
 }
 
+export interface ApiErrorEnvelopeError {
+  code?: string;
+  message?: string;
+  details?: unknown;
+  request_id?: string;
+}
+
+export interface ApiErrorEnvelope {
+  error?: string | ApiErrorEnvelopeError;
+}
+
+const STATUS_MESSAGES: Record<number, string> = {
+  400: "Bad request",
+  401: "Session expired — please sign in again",
+  403: "You don't have permission to do that",
+  404: "Not found",
+  405: "Method not allowed",
+  409: "Conflict",
+  422: "Request validation failed",
+  429: "Too many requests",
+  500: "Server error",
+  502: "Bad gateway",
+  503: "Service unavailable",
+};
+
+// Backend messages are plain text but may embed upstream text (OAuth
+// provider responses, validation details, proxied FHIR errors). Strip
+// control characters and cap length so nothing hostile or huge reaches
+// message.error()/alert surfaces.
+export const sanitizeMessage = (text: string): string => {
+  const cleaned = text
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 240 ? `${cleaned.slice(0, 240)}…` : cleaned;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+  requestId?: string;
+
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    details?: unknown,
+    requestId?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.requestId = requestId;
+  }
+}
+
 export const handleResponse = async (response: Response): Promise<any> => {
   if (!response) {
     return;
   }
-  if (!response.ok && response.status !== 400) {
-    const error = { error: response.status };
-    throw error;
+  let body: any;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
   }
-  const json = await response.json();
   if (response.ok) {
-    return json;
-  } else {
-    const error = { error: json };
-    throw error;
+    return body;
   }
+  const status = response.status;
+  let message = STATUS_MESSAGES[status] ?? "Request failed";
+  let code: string | undefined;
+  let details: unknown;
+  let requestId: string | undefined;
+  const err = body?.error;
+  if (typeof err === "string") {
+    const cleaned = sanitizeMessage(err);
+    if (cleaned) message = cleaned;
+  } else if (err && typeof err === "object") {
+    if (typeof err.code === "string") code = err.code;
+    if (typeof err.message === "string") {
+      const cleaned = sanitizeMessage(err.message);
+      if (cleaned) message = cleaned;
+    }
+    details = err.details;
+    if (typeof err.request_id === "string") requestId = err.request_id;
+  }
+  throw new ApiError(status, message, code, details, requestId);
 };
 
 export async function fetchWithRetry(
@@ -69,7 +145,11 @@ export const request = async <T = any>(
     options.headers.set("X-Auth-Pacs", token);
   }
   if (options.data) {
-    options.method = "POST";
+    // Default to POST for payloads, but honor an explicit method — the
+    // legacy helper overwrote PUT/DELETE with POST whenever data was
+    // present, silently 405-ing every PUT endpoint (users/role, tenants,
+    // worklist, replicas, fhir admin, ...).
+    options.method = options.method || "POST";
     options.body = JSON.stringify(options.data);
     delete options.data;
   }
@@ -84,8 +164,10 @@ export const request = async <T = any>(
   try {
     return (await exec()) as T;
   } catch (error: any) {
-    if (error.error === 401) {
-      const tempKey = localStorage.getItem("tempKey");
+    const is401 =
+      error instanceof ApiError ? error.status === 401 : error?.error === 401;
+    if (is401) {
+      const tempKey = sessionStorage.getItem("tempKey");
       if (tempKey) {
         sessionStorage.setItem("shareKeyError", "expired");
       }
@@ -101,7 +183,11 @@ export const request = async <T = any>(
           // Only a second 401 means the session is really dead; any other
           // failure of the retried request must surface to the caller instead
           // of bouncing the user to the login screen.
-          if (retryError.error !== 401) throw retryError;
+          const retry401 =
+            retryError instanceof ApiError
+              ? retryError.status === 401
+              : retryError?.error === 401;
+          if (!retry401) throw retryError;
         }
       }
       if (options.unauthorized) {
@@ -110,9 +196,12 @@ export const request = async <T = any>(
         navigate("/login");
       }
     }
-    if (!error.code || error.code !== 20) {
-      throw Error(error.error || error.message || error);
-    }
-    return undefined as T;
+    // AbortError (DOMException code 20 / name AbortError) is the caller
+    // signalling cancellation. useFetch already filters it before setting
+    // state; re-throwing here guarantees request() never resolves undefined
+    // (Q-19) — callers can rely on a result object or a thrown error.
+    if (error instanceof ApiError) throw error;
+    if (error?.name === "AbortError" || error?.code === 20) throw error;
+    throw Error(String(error?.message || error));
   }
 };

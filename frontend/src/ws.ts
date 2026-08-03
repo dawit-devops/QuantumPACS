@@ -3,6 +3,9 @@ import { request } from "./helpers";
 
 const MAX_RECONNECT_DELAY = 30000;
 
+// Single module-level socket shared by every subscriber (NotificationBell,
+// viewer sync, ...). A per-component WebSocket would open one connection per
+// mount; the Set also gives stable identity for add/removeEventListener.
 const listeners = new Set<(data: any) => void>();
 const openListeners = new Set<() => void>();
 let ws: WebSocket | null = null;
@@ -10,9 +13,11 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 
 function wsUrl(token: string): string {
+  // Backend mounts the WS route under /api (Mount('/api', Router(routes))),
+  // so the socket lives at <host><API_URL pathname>/ws — not a bare /ws.
   const url = new URL(API_URL);
   const scheme = url.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${url.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${scheme}://${url.host}${url.pathname}/ws?token=${encodeURIComponent(token)}`;
 }
 
 function connect(token: string): void {
@@ -26,11 +31,14 @@ function connect(token: string): void {
     try {
       data = JSON.parse(event.data);
     } catch {
+      // Heartbeats/pings are not JSON — ignore, do not fan out garbage.
       return;
     }
     listeners.forEach((fn) => fn(data));
   });
   ws.addEventListener("close", () => {
+    // disconnect() nulls ws BEFORE close() so a deliberate close is not
+    // mistaken for a dropped connection and does not schedule a reconnect.
     if (ws === null) return;
     scheduleReconnect();
   });
@@ -53,6 +61,10 @@ function scheduleReconnect(): void {
 }
 
 export function init(): void {
+  // The browser API cannot set an Authorization header on a WebSocket and a
+  // query-string access token would be logged by proxies, so the backend
+  // issues a short-lived single-use ws_token (HttpOnly-cookie-authenticated)
+  // for the handshake instead.
   request("ws_token")
     .then((data: any) => connect(data.token))
     .catch((e: any) => {
@@ -75,6 +87,8 @@ export function disconnect(): void {
 
 export function onOpen(func: () => void): void {
   openListeners.add(func);
+  // Fire immediately when the socket is already up: a late subscriber
+  // (e.g. a screen mounted after login) must not wait for the next open.
   if (ws && ws.readyState === WebSocket.OPEN) {
     func();
   }

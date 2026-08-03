@@ -1,16 +1,16 @@
 import { useState, useRef } from "react";
 import {
+  App,
   Modal,
   Button,
   Upload,
   Table,
-  message,
   Tag,
   Typography,
   Progress,
 } from "antd";
 import { UploadOutlined, InboxOutlined } from "@ant-design/icons";
-import { request } from "../helpers";
+import { createUser } from "../api/users";
 
 const { Text } = Typography;
 
@@ -26,6 +26,7 @@ interface BulkImportProps {
 }
 
 export function BulkImport({ reload }: BulkImportProps) {
+  const { message } = App.useApp();
   const [visible, setVisible] = useState(false);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [importing, setImporting] = useState(false);
@@ -64,9 +65,7 @@ export function BulkImport({ reload }: BulkImportProps) {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        await request("users", {
-          data: { username: row.username, admin: row.admin },
-        });
+        await createUser({ username: row.username, admin: row.admin });
         rows[i] = { ...row, status: "success" };
         success++;
       } catch (e: any) {

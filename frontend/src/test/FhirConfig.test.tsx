@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -7,10 +8,23 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import FhirConfig from "../fhir/FhirConfig";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockGetFhirConfig = vi.hoisted(() => vi.fn());
+const mockUpdateFhirConfig = vi.hoisted(() => vi.fn());
+const mockListFhirClients = vi.hoisted(() => vi.fn());
+const mockCreateFhirClient = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/fhir", () => ({
+  getFhirConfig: mockGetFhirConfig,
+  updateFhirConfig: mockUpdateFhirConfig,
+  listFhirClients: mockListFhirClients,
+  createFhirClient: mockCreateFhirClient,
+  updateFhirClient: vi.fn(),
+  deleteFhirClient: vi.fn(),
+  testFhirConnection: vi.fn(),
+}));
 
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
 }));
 
@@ -52,32 +66,18 @@ async function waitForReady() {
 describe("FhirConfig", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "fhir/admin/config") return Promise.resolve(mockConfig);
-      if (url === "fhir/admin/clients")
-        return Promise.resolve({ clients: mockClients });
-      return Promise.resolve({});
-    });
+    mockGetFhirConfig.mockImplementation(() => Promise.resolve(mockConfig));
+    mockListFhirClients.mockImplementation(() => Promise.resolve(mockClients));
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
   });
 
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
-
   it("fetches config and clients on mount", async () => {
     renderWithAuth(<FhirConfig />);
     await waitForReady();
-    expect(mockRequest).toHaveBeenCalledWith("fhir/admin/config");
-    expect(mockRequest).toHaveBeenCalledWith("fhir/admin/clients");
+    expect(mockGetFhirConfig).toHaveBeenCalled();
+    expect(mockListFhirClients).toHaveBeenCalled();
   });
 
   it("renders config fields", async () => {
@@ -119,17 +119,9 @@ describe("FhirConfig", () => {
 
   it("creates a client via modal", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "fhir/admin/clients" && opts?.method === "POST")
-        return Promise.resolve({
-          client_id: "new-client",
-          client_secret: "s3cret",
-        });
-      if (url === "fhir/admin/clients")
-        return Promise.resolve({ clients: mockClients });
-      if (url === "fhir/admin/config") return Promise.resolve(mockConfig);
-      return Promise.resolve({});
-    });
+    mockCreateFhirClient.mockImplementation(() =>
+      Promise.resolve({ client_id: "new-client", client_secret: "s3cret" }),
+    );
     renderWithAuth(<FhirConfig />);
     await waitForReady();
     await user.click(screen.getByText("Register Client"));
@@ -138,10 +130,7 @@ describe("FhirConfig", () => {
     if (nameInput) await user.type(nameInput, "New EHR");
     await user.click(screen.getByText("OK"));
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        "fhir/admin/clients",
-        expect.objectContaining({ method: "POST" }),
-      );
+      expect(mockCreateFhirClient).toHaveBeenCalled();
     });
   });
 

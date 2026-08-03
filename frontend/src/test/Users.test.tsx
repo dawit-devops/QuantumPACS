@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -7,15 +8,21 @@ import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Users from "../users/Users";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockListUsers = vi.hoisted(() => vi.fn());
+const mockAssignRole = vi.hoisted(() => vi.fn());
+const mockDeactivateUser = vi.hoisted(() => vi.fn());
+const mockResetPassword = vi.hoisted(() => vi.fn());
+const mockListRoles = vi.hoisted(() => vi.fn());
 
-vi.mock("../helpers", () => ({
-  request: mockRequest,
-  isAdmin: () => true,
-  setTokens: () => {},
-  clearTokens: () => {},
-  startRefreshTimer: () => {},
-  stopRefreshTimer: () => {},
+vi.mock("../api/users", () => ({
+  listUsers: mockListUsers,
+  assignRole: mockAssignRole,
+  deactivateUser: mockDeactivateUser,
+  resetPassword: mockResetPassword,
+}));
+
+vi.mock("../api/roles", () => ({
+  listRoles: mockListRoles,
 }));
 
 vi.mock("../hooks", () => ({
@@ -62,21 +69,18 @@ const mockRoles = [
 describe("Users", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "roles") return Promise.resolve({ data: mockRoles });
-      return Promise.resolve({ data: mockUsers });
+    mockListUsers.mockResolvedValue({
+      data: mockUsers,
+      total: mockUsers.length,
+      page: 1,
+      per_page: 20,
+      total_pages: 1,
     });
+    mockListRoles.mockResolvedValue(mockRoles);
+    mockAssignRole.mockResolvedValue(undefined);
+    mockDeactivateUser.mockResolvedValue(undefined);
+    mockResetPassword.mockResolvedValue({ password: "newpass" });
   });
-
-  function renderWithAuth(ui: React.ReactElement) {
-    return render(
-      <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </ThemeProvider>,
-    );
-  }
 
   it("renders Role column header", async () => {
     renderWithAuth(<Users />);
@@ -98,11 +102,6 @@ describe("Users", () => {
 
   it("changes user role when a new role is selected", async () => {
     const user = userEvent.setup();
-    mockRequest.mockImplementation((url: string, opts?: any) => {
-      if (url === "roles") return Promise.resolve({ data: mockRoles });
-      if (url === "users/role") return Promise.resolve({});
-      return Promise.resolve({ data: mockUsers });
-    });
     renderWithAuth(<Users />);
     await screen.findByText("Technologist");
 
@@ -115,8 +114,42 @@ describe("Users", () => {
     expect(option).toBeTruthy();
     await user.click(option!);
 
-    expect(mockRequest).toHaveBeenCalledWith("users/role", {
-      data: { user_id: 1, role_id: 3 },
+    expect(mockAssignRole).toHaveBeenCalledWith(1, 3);
+  });
+
+  it("renders an error state when listUsers fails (T-M4)", async () => {
+    mockListUsers.mockRejectedValue(new Error("backend unreachable"));
+    renderWithAuth(<Users />);
+
+    expect(await screen.findByText(/backend unreachable/)).toBeInTheDocument();
+  });
+
+  it("renders an empty state when there are no users (T-M4)", async () => {
+    mockListUsers.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      per_page: 20,
+      total_pages: 0,
     });
+    renderWithAuth(<Users />);
+
+    expect(await screen.findByText(/No data/)).toBeInTheDocument();
+  });
+
+  it("surfaces a message when role assignment fails (T-M4)", async () => {
+    const user = userEvent.setup();
+    mockAssignRole.mockRejectedValue(new Error("denied"));
+    renderWithAuth(<Users />);
+    await screen.findByText("Technologist");
+
+    const selects = screen.getAllByRole("combobox");
+    await user.click(selects[0]);
+    const option = screen
+      .getAllByText("Radiologist")
+      .find((el) => el.closest(".ant-select-item-option"));
+    await user.click(option!);
+
+    expect(await screen.findByText(/denied/)).toBeInTheDocument();
   });
 });

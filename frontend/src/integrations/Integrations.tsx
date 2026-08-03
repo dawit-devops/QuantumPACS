@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
+  App,
   Layout,
   Card,
   Table,
@@ -12,7 +13,6 @@ import {
   InputNumber,
   Switch,
   Space,
-  message,
   Popconfirm,
   Descriptions,
   Tabs,
@@ -26,9 +26,20 @@ import {
   ApiOutlined,
   SendOutlined,
 } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listOauthProviders,
+  createOauthProvider,
+  updateOauthProvider,
+  deleteOauthProvider,
+  listWebhooks,
+  createWebhook,
+  updateWebhook,
+  deleteWebhook,
+  testWebhook,
+  type OauthProvider,
+  type Webhook,
+} from "../api/integrations";
 import { PageState } from "../common/PageState";
 import "./Integrations.css";
 
@@ -36,28 +47,31 @@ const { Content } = Layout;
 const { TextArea } = Input;
 
 function Integrations(props: any) {
+  const { message } = App.useApp();
   // ---- OAuth Providers ----
-  let [providers, setProviders] = useState<any[]>([]);
-  let [providersLoading, setProvidersLoading] = useState(true);
-  let [providerModal, setProviderModal] = useState(false);
-  let [editingProvider, setEditingProvider] = useState<any>(null);
-  let [providerForm] = Form.useForm();
+  const [providers, setProviders] = useState<OauthProvider[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providerModal, setProviderModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(
+    null,
+  );
+  const [providerForm] = Form.useForm();
 
   // ---- Webhooks ----
-  let [webhooks, setWebhooks] = useState<any[]>([]);
-  let [availableEvents, setAvailableEvents] = useState<string[]>([]);
-  let [webhooksLoading, setWebhooksLoading] = useState(true);
-  let [whModal, setWhModal] = useState(false);
-  let [editingWh, setEditingWh] = useState<any>(null);
-  let [whForm] = Form.useForm();
-  let [testResult, setTestResult] = useState<any>(null);
-  let [testing, setTesting] = useState(false);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [availableEvents, setAvailableEvents] = useState<string[]>([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(true);
+  const [whModal, setWhModal] = useState(false);
+  const [editingWh, setEditingWh] = useState<Webhook | null>(null);
+  const [whForm] = Form.useForm();
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
 
   const fetchProviders = async () => {
     setProvidersLoading(true);
     try {
-      const res = await request("oauth/providers");
-      setProviders(res?.data || []);
+      const res = await listOauthProviders();
+      setProviders(res || []);
     } catch {
     } finally {
       setProvidersLoading(false);
@@ -67,7 +81,7 @@ function Integrations(props: any) {
   const fetchWebhooks = async () => {
     setWebhooksLoading(true);
     try {
-      const res = await request("webhooks");
+      const res = await listWebhooks();
       setWebhooks(res?.webhooks || []);
       setAvailableEvents(res?.available_events || []);
     } catch {
@@ -104,13 +118,10 @@ function Integrations(props: any) {
     const values = await providerForm.validateFields();
     try {
       if (editingProvider) {
-        await request(`oauth/providers/${editingProvider.id}`, {
-          method: "PUT",
-          data: values,
-        });
+        await updateOauthProvider(editingProvider.id, values);
         message.success("OAuth provider updated");
       } else {
-        await request("oauth/providers", { method: "POST", data: values });
+        await createOauthProvider(values);
         message.success("OAuth provider created");
       }
       setProviderModal(false);
@@ -122,7 +133,7 @@ function Integrations(props: any) {
 
   const handleProviderDelete = async (id: string) => {
     try {
-      await request(`oauth/providers/${id}`, { method: "DELETE" });
+      await deleteOauthProvider(id);
       message.success("OAuth provider deleted");
       fetchProviders();
     } catch (e: any) {
@@ -152,13 +163,10 @@ function Integrations(props: any) {
     const values = await whForm.validateFields();
     try {
       if (editingWh) {
-        await request(`webhooks/${editingWh.id}`, {
-          method: "PUT",
-          data: values,
-        });
+        await updateWebhook(editingWh.id, values);
         message.success("Webhook updated");
       } else {
-        await request("webhooks", { method: "POST", data: values });
+        await createWebhook(values);
         message.success("Webhook created");
       }
       setWhModal(false);
@@ -170,7 +178,7 @@ function Integrations(props: any) {
 
   const handleWhDelete = async (id: string) => {
     try {
-      await request(`webhooks/${id}`, { method: "DELETE" });
+      await deleteWebhook(id);
       message.success("Webhook deleted");
       fetchWebhooks();
     } catch (e: any) {
@@ -183,9 +191,9 @@ function Integrations(props: any) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await request("webhooks/test", {
-        method: "POST",
-        data: { url: values.url, secret: values.secret },
+      const res = await testWebhook({
+        url: values.url,
+        secret: values.secret,
       });
       setTestResult(res);
     } catch (e: any) {
@@ -540,4 +548,4 @@ function Integrations(props: any) {
   );
 }
 
-export default withRouter(withSidebar(Integrations));
+export default withSidebar(Integrations);

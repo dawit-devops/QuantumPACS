@@ -1,14 +1,20 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import Account from "../account/Account";
 
-const mockRequest = vi.hoisted(() => vi.fn());
+const mockGetProfile = vi.hoisted(() => vi.fn());
+vi.mock("../api/account", () => ({
+  getProfile: mockGetProfile,
+  updateProfile: vi.fn(),
+  changePassword: vi.fn(),
+}));
 vi.mock("../helpers", () => ({
-  request: mockRequest,
+  request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
   setTokens: () => {},
   clearTokens: () => {},
@@ -25,7 +31,7 @@ const mockProfile = {
 };
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(
+  return renderWithApp(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter>{ui}</MemoryRouter>
@@ -37,13 +43,13 @@ function renderWithProviders(ui: React.ReactElement) {
 describe("Account", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequest.mockResolvedValue({ data: mockProfile });
+    mockGetProfile.mockResolvedValue(mockProfile);
     localStorage.setItem("token", "test-token");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("username", "alice");
     localStorage.setItem("admin", "true");
     localStorage.setItem("role", "admin");
-    localStorage.setItem("tempKey", "test-key");
+    sessionStorage.setItem("tempKey", "test-key");
   });
 
   it("renders within MemoryRouter", () => {

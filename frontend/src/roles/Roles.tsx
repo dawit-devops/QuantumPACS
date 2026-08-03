@@ -1,9 +1,9 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useMemo } from "react";
 import {
+  App,
   Layout,
   Table,
-  message,
   Tag,
   Button,
   Modal,
@@ -24,7 +24,15 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { request } from "../helpers";
+import {
+  listRoles,
+  listPermissions,
+  createRole,
+  updateRole,
+  deleteRole,
+  listRoleUsers,
+  type Role,
+} from "../api/roles";
 import { PageState } from "../common/PageState";
 
 const { Text, Paragraph } = Typography;
@@ -33,25 +41,24 @@ const Content = Layout.Content;
 const SUPER_ADMIN_SLUG = "super_admin";
 
 function Roles() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Roles");
 
-  let [data, setData] = useState<any[]>([]);
-  let [loading, setLoading] = useState(false);
-  let [error, setError] = useState<string | null>(null);
-  let [visible, setVisible] = useState(false);
-  let [editingRole, setEditingRole] = useState<any | null>(null);
-  let [selectedPerms, setSelectedPerms] = useState<string[]>([]);
-  let [permSearch, setPermSearch] = useState("");
-  let [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
+  const [data, setData] = useState<Role[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+  const [permSearch, setPermSearch] = useState("");
+  const [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
   const [form] = Form.useForm();
 
   const isEditingSuperAdmin = editingRole?.slug === SUPER_ADMIN_SLUG;
 
   useEffect(() => {
-    request("permissions")
-      .then((res: any) => {
-        setPermGroups(res.data || {});
-      })
+    listPermissions()
+      .then(setPermGroups)
       .catch(() => {});
   }, []);
 
@@ -185,10 +192,10 @@ function Roles() {
   const fetch = () => {
     setLoading(true);
     setError(null);
-    request("roles")
-      .then((res: any) => {
+    listRoles()
+      .then((res) => {
         setLoading(false);
-        setData(res.data || []);
+        setData(res);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -212,7 +219,7 @@ function Roles() {
     form
       .validateFields()
       .then((values: any) => {
-        request("roles", { data: { ...values, permissions: selectedPerms } })
+        createRole({ ...values, permissions: selectedPerms })
           .then(() => {
             form.resetFields();
             setSelectedPerms([]);
@@ -241,13 +248,14 @@ function Roles() {
     form
       .validateFields()
       .then((values: any) => {
+        if (!editingRole) return;
         const data: any = {};
         if (values.name !== editingRole.name) data.name = values.name;
         if (values.slug !== editingRole.slug) data.slug = values.slug;
         if (values.description !== editingRole.description)
           data.description = values.description;
         data.permissions = selectedPerms;
-        request(`roles/${editingRole.id}`, { data })
+        updateRole(editingRole.id, data)
           .then(() => {
             form.resetFields();
             setSelectedPerms([]);
@@ -263,7 +271,7 @@ function Roles() {
   };
 
   const handleDelete = (id: number) => {
-    request(`roles/${id}`, { data: undefined, method: "DELETE" })
+    deleteRole(id)
       .then(() => {
         fetch();
       })
@@ -300,9 +308,8 @@ function Roles() {
   };
 
   const showRoleUsers = (role: any) => {
-    request(`roles/${role.id}/users`)
-      .then((res: any) => {
-        const users = res.data || [];
+    listRoleUsers(role.id)
+      .then((users) => {
         Modal.info({
           title: `Users with role "${role.name}"`,
           width: 500,

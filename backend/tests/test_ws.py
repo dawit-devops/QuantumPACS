@@ -3,8 +3,9 @@ import types
 from unittest.mock import MagicMock, patch
 
 from starlette.applications import Starlette
+from starlette.authentication import AuthCredentials, AuthenticationBackend
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
 
@@ -18,21 +19,21 @@ import api.ws
 from api.ws import WSToken, WebsocketHandler
 
 
-class _FakeAuth(BaseHTTPMiddleware):
-    def __init__(self, app, user=None):
-        super().__init__(app)
+class _DummyAuthBackend(AuthenticationBackend):
+    def __init__(self, user=None):
         self._user = user or User({'id': 1, 'permissions': []})
 
-    async def dispatch(self, request, call_next):
-        request.scope['user'] = self._user
-        request.scope['auth'] = None
-        return await call_next(request)
+    async def authenticate(self, conn):
+        return AuthCredentials(['authenticated']), self._user
 
 
 def _make_app(routes, user=None):
     app = Starlette(
         routes=routes,
-        middleware=[Middleware(_FakeAuth, user=user)],
+        # AuthenticationMiddleware (unlike BaseHTTPMiddleware) runs for
+        # websocket connections too, which is what populates scope['user']
+        # for the per-user registry in on_connect.
+        middleware=[Middleware(AuthenticationMiddleware, backend=_DummyAuthBackend(user))],
     )
     api.ws.set_app(app)
     app.state.ws_state = api.ws.WSState()
@@ -89,3 +90,26 @@ class TestWebsocketHandler:
             ws.send_json({'type': 'open', 'file': '1'})
             ws.receive_json()
         assert '1' not in self._app.state.ws_state.local_clients
+
+    def test_connect_registers_user_and_disconnect_unregisters(self):
+        app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
+                        user=User({'id': 42, 'permissions': []}))
+        app.state.ws_state = api.ws.WSState()
+        client = TestClient(app)
+        with client.websocket_connect('/ws') as ws:
+            ws.send_json({'type': 'open', 'file': '1'})
+            ws.receive_json()
+            assert 42 in app.state.ws_state.user_clients
+        assert 42 not in app.state.ws_state.user_clients
+
+    def test_broadcast_to_user(self):
+        import asyncio
+        app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
+                        user=User({'id': 7, 'permissions': []}))
+        app.state.ws_state = api.ws.WSState()
+        client = TestClient(app)
+        with client.websocket_connect('/ws') as ws:
+            ws.send_json({'type': 'open', 'file': '1'})
+            ws.receive_json()
+            asyncio.run(api.ws.broadcast_to_user(7, {'type': 'notifications'}))
+            assert ws.receive_json()['type'] == 'notifications'

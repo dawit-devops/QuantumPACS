@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
-import { ConfigProvider, Spin } from "antd";
+import { App as AntdApp, ConfigProvider, Spin } from "antd";
 import { createRoot } from "react-dom/client";
 import "./common/tokens.css";
 import "./index.css";
@@ -69,9 +69,13 @@ function ThemedApp() {
   const params = new URLSearchParams(window.location.search);
   const tempKey = params.get("key");
 
-  if (tempKey) {
-    localStorage.setItem("tempKey", tempKey);
-  }
+  // (M1) Store the share key in an effect, not during render — effects run
+  // after commit, keeping the storage write out of the render phase.
+  useEffect(() => {
+    if (tempKey) {
+      sessionStorage.setItem("tempKey", tempKey);
+    }
+  }, [tempKey]);
   useEffect(() => {
     init();
   }, []);
@@ -81,275 +85,244 @@ function ThemedApp() {
       theme={isDark ? darkTheme : lightTheme}
       renderEmpty={renderEmpty}
     >
-      <BrowserRouter>
-        <AuthProvider>
-          <NavigatorSetter />
-          <ErrorBoundary>
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    height: "100vh",
-                  }}
-                >
-                  <Spin size="large" />
-                </div>
-              }
-            >
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route
-                  path="/account"
-                  element={
-                    <ProtectedRoute>
-                      <Account />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/replicas"
-                  element={
-                    <PermissionRoute permission="REPLICA_READ">
-                      <Replicas />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/users"
-                  element={
-                    <PermissionRoute permission="USER_READ">
-                      <Users />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/roles"
-                  element={
-                    <PermissionRoute permission="ROLE_READ">
-                      <Roles />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/tenants"
-                  element={
-                    <PermissionRoute permission="TENANT_READ">
-                      <Tenants />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/metrics"
-                  element={
-                    <ProtectedRoute>
-                      <Metrics />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/logs"
-                  element={
-                    <PermissionRoute permission="LOG_READ">
-                      <Logs />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/worklist"
-                  element={
-                    <PermissionRoute permission="WORKLIST_READ">
-                      <Worklist />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/schedule-board"
-                  element={
-                    <PermissionRoute permission="WORKLIST_READ">
-                      <ScheduleBoard />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/exams"
-                  element={
-                    <PermissionRoute permission="EXAM_READ">
-                      <TechnologistWorklist />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/exams/:id"
-                  element={
-                    <PermissionRoute permission="EXAM_READ">
-                      <ExamConsole />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/reading"
-                  element={
-                    <PermissionRoute permission="REPORT_READ">
-                      <ReadingWorklist />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/reading/:examId"
-                  element={
-                    <PermissionRoute permission="REPORT_READ">
-                      <ReportEditor />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/peer-review"
-                  element={
-                    <PermissionRoute permission="PEER_REVIEW_READ">
-                      <PeerReviewInbox />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/qa/queue"
-                  element={
-                    <PermissionRoute permission="QA_READ">
-                      <QAQueue />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/qa/review/:examId"
-                  element={
-                    <PermissionRoute permission="QA_READ">
-                      <QAReviewForm />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/qa/protocols"
-                  element={
-                    <PermissionRoute permission="QA_READ">
-                      <ProtocolRegistry />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/qa/incidents"
-                  element={
-                    <PermissionRoute permission="QA_READ">
-                      <Incidents />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/qa/actions"
-                  element={
-                    <PermissionRoute permission="QA_READ">
-                      <CorrectiveActions />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/service-keys"
-                  element={
-                    <PermissionRoute permission="SERVICE_KEY_READ">
-                      <ServiceKeys />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/routing"
-                  element={
-                    <PermissionRoute permission="ROUTING_READ">
-                      <RoutingRules />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/config"
-                  element={
-                    <PermissionRoute permission="SYSTEM_ADMIN">
-                      <FhirConfig />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/monitoring"
-                  element={
-                    <PermissionRoute permission="SYSTEM_ADMIN">
-                      <FhirMonitoring />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/fhir/docs"
-                  element={
-                    <PermissionRoute permission="SYSTEM_ADMIN">
-                      <FhirDocs />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/hl7"
-                  element={
-                    <PermissionRoute permission="HL7_READ">
-                      <Hl7Dashboard />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/dicomweb"
-                  element={
-                    <PermissionRoute permission="DICOMWEB_READ">
-                      <DicomWebAdmin />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/integrations"
-                  element={
-                    <PermissionRoute permission="SYSTEM_ADMIN">
-                      <Integrations />
-                    </PermissionRoute>
-                  }
-                />
-                <Route
-                  path="/patients/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Patient />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="/view/:key" element={<ShareView />} />
-                <Route
-                  path="/files/:id"
-                  element={
-                    <ProtectedRoute>
-                      <Detail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <Files />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-            <OnboardingTour onComplete={() => {}} />
-            <HelpButton />
-          </ErrorBoundary>
-        </AuthProvider>
-      </BrowserRouter>
+      <AntdApp>
+        <BrowserRouter>
+          <AuthProvider>
+            <NavigatorSetter />
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      height: "100vh",
+                    }}
+                  >
+                    <Spin size="large" />
+                  </div>
+                }
+              >
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/account" element={<Account />} />
+                    <Route
+                      path="/replicas"
+                      element={
+                        <PermissionRoute permission="REPLICA_READ">
+                          <Replicas />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/users"
+                      element={
+                        <PermissionRoute permission="USER_READ">
+                          <Users />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/roles"
+                      element={
+                        <PermissionRoute permission="ROLE_READ">
+                          <Roles />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/tenants"
+                      element={
+                        <PermissionRoute permission="TENANT_READ">
+                          <Tenants />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route path="/metrics" element={<Metrics />} />
+                    <Route
+                      path="/logs"
+                      element={
+                        <PermissionRoute permission="LOG_READ">
+                          <Logs />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/worklist"
+                      element={
+                        <PermissionRoute permission="WORKLIST_READ">
+                          <Worklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule-board"
+                      element={
+                        <PermissionRoute permission="WORKLIST_READ">
+                          <ScheduleBoard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/exams"
+                      element={
+                        <PermissionRoute permission="EXAM_READ">
+                          <TechnologistWorklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/exams/:id"
+                      element={
+                        <PermissionRoute permission="EXAM_READ">
+                          <ExamConsole />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/reading"
+                      element={
+                        <PermissionRoute permission="REPORT_READ">
+                          <ReadingWorklist />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/reading/:examId"
+                      element={
+                        <PermissionRoute permission="REPORT_READ">
+                          <ReportEditor />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/peer-review"
+                      element={
+                        <PermissionRoute permission="PEER_REVIEW_READ">
+                          <PeerReviewInbox />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/queue"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <QAQueue />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/review/:examId"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <QAReviewForm />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/protocols"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <ProtocolRegistry />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/incidents"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <Incidents />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/actions"
+                      element={
+                        <PermissionRoute permission="QA_READ">
+                          <CorrectiveActions />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/service-keys"
+                      element={
+                        <PermissionRoute permission="SERVICE_KEY_READ">
+                          <ServiceKeys />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/routing"
+                      element={
+                        <PermissionRoute permission="ROUTING_READ">
+                          <RoutingRules />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/fhir/config"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirConfig />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/fhir/monitoring"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirMonitoring />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/fhir/docs"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <FhirDocs />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/hl7"
+                      element={
+                        <PermissionRoute permission="HL7_READ">
+                          <Hl7Dashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/dicomweb"
+                      element={
+                        <PermissionRoute permission="DICOMWEB_READ">
+                          <DicomWebAdmin />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/integrations"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <Integrations />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route path="/patients/:id" element={<Patient />} />
+                    <Route path="/files/:id" element={<Detail />} />
+                    <Route path="/" element={<Files />} />
+                  </Route>
+                  <Route path="/view/:key" element={<ShareView />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+              <OnboardingTour onComplete={() => {}} />
+              <HelpButton />
+            </ErrorBoundary>
+          </AuthProvider>
+        </BrowserRouter>
+      </AntdApp>
     </ConfigProvider>
   );
 }

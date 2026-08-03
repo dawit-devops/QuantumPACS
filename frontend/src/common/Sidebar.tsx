@@ -36,6 +36,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "./ThemeProvider";
 import QuantumLogo from "./QuantumLogo";
 import TenantSelector from "../auth/TenantSelector";
+import { logout } from "../api/auth";
 import { request } from "../helpers";
 import "./Sidebar.css";
 
@@ -131,10 +132,9 @@ function Sidebar() {
     setCollapsed(collapsed);
   };
 
-  const handleLogout = async (e: React.MouseEvent) => {
-    e.preventDefault();
+  const handleLogout = async () => {
     try {
-      await request("auth/logout", { method: "POST" });
+      await logout();
     } catch {}
     // signOut clears the token pair plus all session keys (S1-B); the logout
     // endpoint blocks the cookies server-side before the navigation.
@@ -413,11 +413,9 @@ function Sidebar() {
             </span>
           </span>
         </Menu.Item>
-        <Menu.Item key="logout">
-          <Link to="/logout" onClick={handleLogout}>
-            <LogoutOutlined />
-            <span className="nav-text">Logout</span>
-          </Link>
+        <Menu.Item key="logout" onClick={handleLogout}>
+          <LogoutOutlined />
+          <span className="nav-text">Logout</span>
         </Menu.Item>
       </Menu>
     </div>

@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect } from "vitest";
-import { wadoRsUrl } from "../dicomweb/dicomweb";
+import { wadoRsUrl } from "../api/studies";
 import CornerstoneElement from "../detail/CornerstoneElement";
 
 describe("Progressive Loading", () => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
+  App,
   Layout,
   Card,
   Row,
@@ -13,12 +14,11 @@ import {
   Space,
   Spin,
   Tabs,
-  message,
 } from "antd";
 import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
-import withRouter from "../withRouter";
 import withSidebar from "../common/base";
-import { request, open } from "../helpers";
+import { open } from "../helpers";
+import { getFhirMetrics, getFhirRecentRequests } from "../api/fhir";
 import { PageState } from "../common/PageState";
 import "./Fhir.css";
 
@@ -26,25 +26,26 @@ const { Content } = Layout;
 const { RangePicker } = DatePicker;
 
 function FhirMonitoring(props: any) {
-  let [metrics, setMetrics] = useState<any>(null);
-  let [loading, setLoading] = useState(true);
-  let [error, setError] = useState<string | null>(null);
-  let [period, setPeriod] = useState("24h");
-  let [requests, setRequests] = useState<any[]>([]);
-  let [requestsLoading, setRequestsLoading] = useState(false);
-  let [requestsTotal, setRequestsTotal] = useState(0);
-  let [resourceFilter, setResourceFilter] = useState("");
-  let [statusFilter, setStatusFilter] = useState("");
-  let [limit, setLimit] = useState(50);
-  let [offset, setOffset] = useState(0);
-  let [autoRefresh, setAutoRefresh] = useState(true);
+  const { message } = App.useApp();
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState("24h");
+  const [requests, setRequests] = useState<any[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsTotal, setRequestsTotal] = useState(0);
+  const [resourceFilter, setResourceFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMetrics = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await request(`fhir/admin/metrics?period=${period}`);
+      const res = await getFhirMetrics(period);
       setMetrics(res);
     } catch (e: any) {
       setError(e.message);
@@ -56,13 +57,16 @@ function FhirMonitoring(props: any) {
   const fetchRequests = async () => {
     setRequestsLoading(true);
     try {
-      let q = `fhir/admin/requests?limit=${limit}&offset=${offset}`;
-      if (resourceFilter) q += `&resource_type=${resourceFilter}`;
-      if (statusFilter) q += `&status_min=${statusFilter}`;
-      const res = await request(q);
+      const res = await getFhirRecentRequests({
+        limit,
+        offset,
+        ...(resourceFilter ? { resource_type: resourceFilter } : {}),
+        ...(statusFilter ? { status_min: statusFilter } : {}),
+      });
       setRequests(res.requests || []);
       setRequestsTotal(res.total || 0);
-    } catch {
+    } catch (e: unknown) {
+      setError((e as Error).message || "Failed to load FHIR requests");
     } finally {
       setRequestsLoading(false);
     }
@@ -356,4 +360,4 @@ function FhirMonitoring(props: any) {
   );
 }
 
-export default withRouter(withSidebar(FhirMonitoring));
+export default withSidebar(FhirMonitoring);

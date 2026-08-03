@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from "react";
 import {
+  App,
   Button,
   Modal,
   Form,
   Input,
   Checkbox,
   Select,
-  message,
   Space,
   Typography,
 } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
-import { request } from "../helpers";
+import { createUser } from "../api/users";
+import { listRoles } from "../api/roles";
 
 const { Text, Paragraph } = Typography;
 
 export function AddUserFinish(props: any) {
+  const { message } = App.useApp();
   const copyPassword = () => {
     navigator.clipboard.writeText(props.password);
     message.success("Password copied to clipboard");
@@ -72,17 +74,16 @@ export function AddUserFinish(props: any) {
 }
 
 export function AddUser(props: any) {
-  let [visible, setVisible] = useState(false);
-  let [result, setResult] = useState<any>({});
-  let [roles, setRoles] = useState<any[]>([]);
+  const { message } = App.useApp();
+  const [visible, setVisible] = useState(false);
+  const [result, setResult] = useState<any>({});
+  const [roles, setRoles] = useState<any[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
     if (visible) {
-      request("roles")
-        .then((res: any) => {
-          setRoles(res.data || []);
-        })
+      listRoles()
+        .then(setRoles)
         .catch(() => {});
     }
   }, [visible]);
@@ -104,7 +105,7 @@ export function AddUser(props: any) {
           admin: values.admin || false,
         };
         if (values.role_id) data.role_id = values.role_id;
-        request("users", { data })
+        createUser(data)
           .then((res: any) => {
             form.resetFields();
             setVisible(false);

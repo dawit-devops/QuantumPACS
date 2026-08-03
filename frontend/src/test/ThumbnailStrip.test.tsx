@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import ThumbnailStrip from "../detail/ThumbnailStrip";
 import { API_URL } from "../config";
@@ -27,7 +28,7 @@ describe("ThumbnailStrip", () => {
     }
     vi.stubGlobal("Image", FakeImage);
 
-    render(
+    renderWithApp(
       <ThumbnailStrip files={mockFiles} currentFileId="1" onSelect={vi.fn()} />,
     );
 
@@ -39,29 +40,29 @@ describe("ThumbnailStrip", () => {
     expect(srcs.join(" ")).not.toContain("token=");
   });
   it("renders null when files is null", () => {
-    const { container } = render(
+    renderWithApp(
       <ThumbnailStrip
         files={null as any}
         currentFileId="1"
         onSelect={vi.fn()}
       />,
     );
-    expect(container.innerHTML).toBe("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("renders null when files has only one item", () => {
-    const { container } = render(
+    renderWithApp(
       <ThumbnailStrip
         files={[{ id: 1, name: "single.dcm" }]}
         currentFileId="1"
         onSelect={vi.fn()}
       />,
     );
-    expect(container.innerHTML).toBe("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("renders a thumbnail option for each file", () => {
-    render(
+    renderWithApp(
       <ThumbnailStrip files={mockFiles} currentFileId="1" onSelect={vi.fn()} />,
     );
     const options = screen.getAllByRole("option");
@@ -69,7 +70,7 @@ describe("ThumbnailStrip", () => {
   });
 
   it("marks the current file as active", () => {
-    render(
+    renderWithApp(
       <ThumbnailStrip files={mockFiles} currentFileId="2" onSelect={vi.fn()} />,
     );
     const options = screen.getAllByRole("option");
@@ -80,7 +81,7 @@ describe("ThumbnailStrip", () => {
 
   it("calls onSelect with index when clicked", () => {
     const onSelect = vi.fn();
-    render(
+    renderWithApp(
       <ThumbnailStrip
         files={mockFiles}
         currentFileId="1"
