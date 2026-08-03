@@ -29,7 +29,8 @@ conventions.
 All packages re-verified 2026-08-03 against the post-merge codebase (merge
 `4d136e0`: R04 schedule board, R05 QI/QA module, R06/R07 exam lifecycle,
 R12/R13/R18 reading, reporting, peer review and reading presets). Each package
-contains a `DELTA.md` documenting the changes; see per-role `CHANGELOG.md`.
+contains a `DELTA.md` documenting the changes and a `feedback.md` for the
+stakeholder review loop; see per-role `CHANGELOG.md`.
 
 ## Cross-Role Dependencies
 
