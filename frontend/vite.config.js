@@ -88,6 +88,9 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8080",
         ws: true,
+        // Rewrite Host to the target so TrustedHostMiddleware (localhost-only)
+        // accepts proxied requests from any dev origin (LAN/docker IPs).
+        changeOrigin: true,
       },
     },
   },
