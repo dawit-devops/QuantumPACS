@@ -57,6 +57,11 @@ from api.reports import (
     PeerReviewHandler, PeerReviewSubmitHandler,
 )
 from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
+from api.qa import (
+    QAQueueHandler, QAReviewHandler, QAProtocolsHandler, QAProtocolHandler,
+    QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
+    QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
+)
 from api.dashboard_metrics import DashboardMetricsHandler
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
@@ -185,6 +190,17 @@ _V1_ROUTES = [
     v2(Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler)),
     v2(Route('/reading-presets', endpoint=ReadingPresetsHandler)),
     v2(Route('/reading-presets/{id}', endpoint=ReadingPresetHandler)),
+    v2(Route('/qa/queue', endpoint=QAQueueHandler)),
+    v2(Route('/qa/reviews/{exam_id}', endpoint=QAReviewHandler)),
+    v2(Route('/qa/reviews', endpoint=QAReviewHandler, methods=['POST'])),
+    v2(Route('/qa/protocols', endpoint=QAProtocolsHandler)),
+    v2(Route('/qa/protocols/{id}', endpoint=QAProtocolHandler)),
+    v2(Route('/qa/incidents', endpoint=QAIncidentsHandler)),
+    v2(Route('/qa/incidents/{id}/resolve', endpoint=QAIncidentHandler)),
+    v2(Route('/qa/corrective-actions', endpoint=QACorrectiveActionsHandler)),
+    v2(Route('/qa/corrective-actions/{id}/resolve', endpoint=QACorrectiveActionHandler)),
+    v2(Route('/qa/dashboard', endpoint=QADashboardHandler)),
+    v2(Route('/qa/reviewers', endpoint=QAReviewersHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),

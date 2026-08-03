@@ -20,6 +20,7 @@ _module_registry = [
     'db.exams',
     'db.reports',
     'db.reading_presets',
+    'db.qa',
 ]
 
 _registered = False
@@ -56,6 +57,10 @@ def register_tables():
         ('db.reports', 'ReportTemplates'),
         ('db.reports', 'PeerReviews'),
         ('db.reading_presets', 'ReadingPresets'),
+        ('db.qa', 'QaScores'),
+        ('db.qa', 'CorrectiveActions'),
+        ('db.qa', 'IncidentsQA'),
+        ('db.qa', 'ProtocolsQA'),
     ]
     for mod_path, cls_name in _classes:
         mod = importlib.import_module(mod_path)

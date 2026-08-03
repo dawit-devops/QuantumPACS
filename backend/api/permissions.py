@@ -35,6 +35,9 @@ class Permission(str, Enum):
     REPORT_SIGN = 'REPORT_SIGN'
     PEER_REVIEW_READ = 'PEER_REVIEW_READ'
     PEER_REVIEW_WRITE = 'PEER_REVIEW_WRITE'
+    QA_READ = 'QA_READ'
+    QA_WRITE = 'QA_WRITE'
+    PROTOCOL_MANAGE = 'PROTOCOL_MANAGE'
     DICOMWEB_READ = 'DICOMWEB_READ'
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
     ROUTING_READ = 'ROUTING_READ'
@@ -59,6 +62,7 @@ PERMISSION_GROUPS = {
     'Exams': ['EXAM_READ', 'EXAM_WRITE'],
     'Reports': ['REPORT_READ', 'REPORT_WRITE', 'REPORT_SIGN'],
     'Peer Review': ['PEER_REVIEW_READ', 'PEER_REVIEW_WRITE'],
+    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE'],
     'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
     'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
     'Metrics': ['METRICS_READ'],
@@ -110,6 +114,19 @@ BUILT_IN_ROLES = {
         Permission.PEER_REVIEW_READ.value,
         Permission.PEER_REVIEW_WRITE.value,
         Permission.DICOMWEB_READ.value,
+    ],
+    'qa_team': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.STUDY_READ.value,
+        Permission.EXAM_READ.value,
+        Permission.QA_READ.value,
+        Permission.QA_WRITE.value,
+        Permission.PROTOCOL_MANAGE.value,
+        Permission.PEER_REVIEW_READ.value,
+        Permission.PEER_REVIEW_WRITE.value,
+        Permission.DICOMWEB_READ.value,
+        Permission.METRICS_READ.value,
     ],
     'physician': [
         Permission.FILE_READ.value,

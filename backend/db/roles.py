@@ -11,6 +11,7 @@ NAME_BY_SLUG = {
     'tenant_admin': 'Tenant Admin',
     'technologist': 'Technologist',
     'radiologist': 'Radiologist',
+    'qa_team': 'QA Team',
     'physician': 'Physician',
     'cashier': 'Cashier',
 }

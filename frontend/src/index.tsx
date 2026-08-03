@@ -30,11 +30,22 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
-const TechnologistWorklist = React.lazy(() => import("./technologist/TechnologistWorklist"));
+const TechnologistWorklist = React.lazy(
+  () => import("./technologist/TechnologistWorklist"),
+);
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
-const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
+const ReadingWorklist = React.lazy(
+  () => import("./radiologist/ReadingWorklist"),
+);
 const ReportEditor = React.lazy(() => import("./radiologist/ReportEditor"));
-const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
+const PeerReviewInbox = React.lazy(
+  () => import("./radiologist/PeerReviewInbox"),
+);
+const QAQueue = React.lazy(() => import("./qa/QAQueue"));
+const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
+const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
+const Incidents = React.lazy(() => import("./qa/Incidents"));
+const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -199,6 +210,46 @@ function ThemedApp() {
                   element={
                     <PermissionRoute permission="PEER_REVIEW_READ">
                       <PeerReviewInbox />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/qa/queue"
+                  element={
+                    <PermissionRoute permission="QA_READ">
+                      <QAQueue />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/qa/review/:examId"
+                  element={
+                    <PermissionRoute permission="QA_READ">
+                      <QAReviewForm />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/qa/protocols"
+                  element={
+                    <PermissionRoute permission="QA_READ">
+                      <ProtocolRegistry />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/qa/incidents"
+                  element={
+                    <PermissionRoute permission="QA_READ">
+                      <Incidents />
+                    </PermissionRoute>
+                  }
+                />
+                <Route
+                  path="/qa/actions"
+                  element={
+                    <PermissionRoute permission="QA_READ">
+                      <CorrectiveActions />
                     </PermissionRoute>
                   }
                 />
