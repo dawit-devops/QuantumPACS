@@ -62,6 +62,23 @@ export default defineConfig({
       },
     },
   },
+  // Pre-bundle the heavy ESM vendor tree once at dev-server start so first
+  // page loads (and cold transforms) don't pay per-import costs for antd and
+  // the Cornerstone3D stack.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-router",
+      "antd",
+      "@ant-design/icons",
+      "@cornerstonejs/core",
+      "@cornerstonejs/tools",
+      "@cornerstonejs/dicom-image-loader",
+      "dicom-parser",
+      "hammerjs",
+    ],
+  },
   server: {
     host: "0.0.0.0",
     port: 5173,
@@ -86,6 +103,32 @@ export default defineConfig({
     testTimeout: 120000,
     hookTimeout: 60000,
     exclude: ["node_modules/**", "e2e/**", "dist/**"],
+    // jsdom tests never assert on real CSS; skipping the transform avoids
+    // re-parsing the antd stylesheet tree per fork (major time sink).
+    css: false,
+    // Speed: match the dep optimizer cache to the dev server and let jsdom
+    // reuse the pre-bundled antd/cornerstone graph instead of re-transforming
+    // it in every fork.
+    server: {
+      deps: {
+        optimizer: {
+          web: {
+            include: [
+              "react",
+              "react-dom",
+              "react-router",
+              "antd",
+              "@ant-design/icons",
+              "@cornerstonejs/core",
+              "@cornerstonejs/tools",
+              "@cornerstonejs/dicom-image-loader",
+              "dicom-parser",
+              "hammerjs",
+            ],
+          },
+        },
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -100,10 +143,12 @@ export default defineConfig({
     },
     pool: "forks",
     singleFork: false,
-    maxForks: 4,
+    // One worker per core: each fork re-transforms only its own test files;
+    // the vendor graph comes from the shared optimizer cache.
+    maxForks: 3,
     minForks: 1,
     fileParallelism: true,
-    maxConcurrency: 4,
+    maxConcurrency: 3,
     retry: 0,
   },
   define: {
