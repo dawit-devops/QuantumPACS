@@ -1,4 +1,5 @@
 from starlette.endpoints import HTTPEndpoint
+from datetime import timedelta
 
 from api.rbac import requires_permission
 from api.permissions import Permission
@@ -84,8 +85,8 @@ class DicomWebMetricsHandler(HTTPEndpoint):
     async def get(self, request):
         async with get_conn() as conn:
             total = await conn.fetchval(
-                "SELECT COUNT(*) FROM files WHERE created_at > now() - $1::interval",
-                '24 hours'
+                "SELECT COUNT(*) FROM files WHERE created > now() - $1::interval",
+                timedelta(hours=24)
             )
         return ok({
             'period': '24h',

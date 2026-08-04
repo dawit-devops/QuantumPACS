@@ -1,4 +1,26 @@
+import re
+from datetime import timedelta
+
 from db.table import Table
+
+
+def period_to_interval(period: str) -> timedelta:
+    # asyncpg encodes interval params from timedelta only; '24 hours' strings
+    # raise DataError. Default to 24h for unknown/malformed values.
+    m = re.match(r'(\d+)\s*(\w+)', str(period))
+    if not m:
+        return timedelta(hours=24)
+    amount = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit.startswith('d'):
+        return timedelta(days=amount)
+    if unit.startswith('h'):
+        return timedelta(hours=amount)
+    if unit.startswith('m'):
+        return timedelta(minutes=amount)
+    if unit.startswith('w'):
+        return timedelta(weeks=amount)
+    return timedelta(hours=24)
 
 
 class Hl7Message(Table):
@@ -100,6 +122,7 @@ class Hl7Message(Table):
         return [dict(r) for r in rows]
 
     async def get_metrics(self, period='24 hours'):
+        period = period_to_interval(period)
         total = await self.conn.fetchval(
             'SELECT COUNT(*) FROM hl7_messages WHERE created_at > now() - $1::interval', period
         )

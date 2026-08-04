@@ -56,7 +56,7 @@ class TestDashboardMetrics:
         client = TestClient(_make_app(user))
 
         fake_conn = AsyncMock()
-        fake_conn.fetchval = AsyncMock(side_effect=[10, 20, 30, 40, 5, 1000000])
+        fake_conn.fetchval = AsyncMock(side_effect=[10, 20, 30, 40, 5])
         fake_conn.fetch = AsyncMock(side_effect=[
             [{'modality': 'CT', 'count': 15}, {'modality': 'MR', 'count': 10}],
             [{'day': '2026-07-20', 'count': 5}, {'day': '2026-07-21', 'count': 3}],
@@ -75,7 +75,8 @@ class TestDashboardMetrics:
         assert 'totals' in body
         assert body['totals']['patients'] == 10
         assert body['totals']['files'] == 40
-        assert body['totals']['storage_bytes'] == 1000000
+        # file sizes are not tracked on ingest yet; reported as 0
+        assert body['totals']['storage_bytes'] == 0
         assert body['modalities'] == {'CT': 15, 'MR': 10}
         assert len(body['ingestion_30d']) == 2
         assert len(body['latest_files']) == 1

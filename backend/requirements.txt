@@ -28,6 +28,6 @@ websockets>=10.0
 httpx<1.0
 prometheus_client>=0.20,<1.0
 hl7>=0.4,<1.0
-cryptography>=42.0.0,<50.0
+cryptography>=50.0.0,<51.0
 
 Pillow>=10.0.0,<13.0.0

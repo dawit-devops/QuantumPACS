@@ -16,6 +16,9 @@ class LogsHandler(HTTPEndpoint):
         date_to = request.query_params.get('date_to')
         tenant_filter = request.query_params.get('tenant')
         cursor = request.query_params.get('cursor')
+        # the web client serializes JS null to the literal string 'null'
+        if cursor and cursor.lower() in ('null', 'none', ''):
+            cursor = None
         limit = int(request.query_params.get('limit', 50))
         limit = max(10, min(200, limit))
 
