@@ -72,7 +72,7 @@ NO_PERMS = User({'id': 3, 'permissions': []})
 
 
 def _scope_row(**over):
-    row = {'id': 'scope-1', 'scope_type': 'ward'}
+    row = {'id': 'scope-1', 'patient_id': 'MRN1', 'scope_type': 'ward'}
     row.update(over)
     return row
 
@@ -114,6 +114,7 @@ class TestPortalScope:
     def test_list_returns_scope_rows(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [_scope_row(name='Jane^Doe')]
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/scope')
@@ -130,6 +131,7 @@ class TestPortalScope:
     def test_create_success(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchval.return_value = 1
         mock_conn.fetchrow.side_effect = [
             None,
@@ -144,6 +146,7 @@ class TestPortalScope:
     def test_create_duplicate_returns_existing(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchval.return_value = 1
         mock_conn.fetchrow.return_value = {'id': 'scope-1', 'scope_type': 'ward'}
         with patch('api.portal.get_conn', return_value=mock_conn):
@@ -156,6 +159,7 @@ class TestPortalScope:
     def test_create_unknown_patient_not_found(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchval.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.post('/portal/scope', json={'patient_id': 'NOPE'})
@@ -164,6 +168,7 @@ class TestPortalScope:
     def test_delete_own_scope(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {'id': 'scope-1', 'patient_id': 'MRN1'}
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.delete('/portal/scope/scope-1')
@@ -172,6 +177,7 @@ class TestPortalScope:
     def test_delete_other_users_scope_not_found(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.delete('/portal/scope/scope-1')
@@ -193,6 +199,7 @@ class TestPortalPatientSearch:
     def test_returns_scoped_rows_only(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [_demo_row()]
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/patients?q=Jane')
@@ -212,6 +219,7 @@ class TestPortalPatientView:
     def test_scoped_view_returns_patient_orders_and_final_reports(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [_scope_row(), _demo_row()]
         mock_conn.fetch.side_effect = [
             [_order_row()],
@@ -228,6 +236,7 @@ class TestPortalPatientView:
     def test_out_of_scope_returns_null_data(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/patients/MRN1')
@@ -244,6 +253,7 @@ class TestPortalReportView:
     def test_non_final_report_never_returned(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [
             _scope_row(),
             {'report_id': 'rep-1', 'status': 'draft'},
@@ -261,6 +271,7 @@ class TestPortalReportView:
             'signed_by': 'Dr. Radiologist', 'signed_at': None,
         }
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [_scope_row(), final_row]
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/patients/MRN1/reports/rep-1')
@@ -272,6 +283,7 @@ class TestPortalReportView:
     def test_out_of_scope_returns_null_data(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/patients/MRN1/reports/rep-1')
@@ -288,6 +300,7 @@ class TestPortalOrders:
     def test_scoped_orders(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = _scope_row()
         mock_conn.fetch.return_value = [_order_row()]
         with patch('api.portal.get_conn', return_value=mock_conn):
@@ -300,6 +313,7 @@ class TestPortalOrders:
     def test_out_of_scope_orders_empty(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.get('/portal/patients/MRN1/orders')
@@ -316,6 +330,7 @@ class TestPortalFollowUps:
     def test_list_returns_own_follow_ups(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [{
             'id': 'fu-1', 'report_id': None, 'exam_id': 'exam-1',
             'patient_id': 'MRN1', 'reason': 'Repeat CT', 'status': 'submitted',
@@ -331,12 +346,12 @@ class TestPortalFollowUps:
     def test_list_filters_by_status(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = []
         with patch('api.portal.get_conn', return_value=mock_conn):
             client.get('/portal/follow-ups?status=submitted')
-        _, kwargs = mock_conn.fetch.call_args
-        assert 'submitted' in kwargs['args']
-
+        call = mock_conn.fetch.call_args
+        assert 'submitted' in call.args
     def test_create_requires_follow_up_write(self):
         client = TestClient(_make_app(READ_ONLY))
         resp = client.post('/portal/follow-ups', json={
@@ -352,6 +367,7 @@ class TestPortalFollowUps:
     def test_create_success_notifies_radiologists(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {'id': 'fu-1'}
         with patch('api.portal.get_conn', return_value=mock_conn):
             with patch('api.portal.notify_role') as mock_notify:
@@ -375,6 +391,7 @@ class TestPortalFollowUps:
     def test_update_own_follow_up_success(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {'id': 'fu-1'}
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.put('/portal/follow-ups/fu-1', json={'status': 'cancelled'})
@@ -383,6 +400,7 @@ class TestPortalFollowUps:
     def test_update_other_users_follow_up_not_found(self):
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.put('/portal/follow-ups/fu-1', json={'status': 'completed'})

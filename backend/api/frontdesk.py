@@ -464,7 +464,7 @@ class WaitingQueueHandler(HTTPEndpoint):
         for r in rows:
             name = r['patient_name'] or ''
             pid = r['patient_id'] or ''
-            initials = ' '.join(w[0].upper() + '.' for w in name.split() if w) if name else ''
+            initials = ''.join(w[0].upper() + '.' for w in name.split() if w) if name else ''
             last4 = pid[-4:] if len(pid) >= 4 else pid
             data.append({
                 'visit_id': str(r['visit_id']),

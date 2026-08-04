@@ -91,6 +91,7 @@ class TestInvoiceCreate:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [
             {'description': 'X-ray Chest 2 views', 'list_price': Decimal('120.00')},
             _invoice_row('120.00', '0.00', 'open'),
@@ -123,6 +124,7 @@ class TestInvoiceCreate:
         user = User({'id': 1, 'permissions': ['BILLING_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = None
         with patch('api.billing.get_conn', return_value=mock_conn):
             resp = client.get('/billing/invoices/missing')
@@ -142,6 +144,7 @@ class TestPayments:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         existing = {
             'id': 'pay-1', 'invoice_id': 'inv-1', 'method': 'cash',
             'amount': Decimal('50.00'), 'payment_date': _now(), 'operator_id': 1,
@@ -164,6 +167,7 @@ class TestPayments:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [None, _invoice_row('50.00', '0.00', 'open')]
         with patch('api.billing.get_conn', return_value=mock_conn):
             resp = client.post('/billing/invoices/inv-1/payments', json={
@@ -176,6 +180,7 @@ class TestPayments:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.side_effect = [
             None,
             _invoice_row('100.00', '0.00', 'open'),
@@ -217,6 +222,7 @@ class TestRefunds:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {
             'id': 'ref-1', 'invoice_id': 'inv-1', 'payment_id': None,
             'amount': Decimal('600.00'), 'reason': 'billing error',
@@ -244,6 +250,7 @@ class TestRefunds:
         user = User({'id': 1, 'permissions': ['BILLING_ADMIN']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {
             'id': 'ref-1', 'invoice_id': 'inv-1', 'payment_id': None,
             'amount': Decimal('600.00'), 'reason': 'billing error',
@@ -262,6 +269,7 @@ class TestQuotes:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchval.return_value = Decimal('1100.00')
         mock_conn.fetchrow.return_value = {
             'id': 'q-1', 'patient_id': 'P001', 'invoice_id': None,
@@ -284,6 +292,7 @@ class TestReconciliation:
         user = User({'id': 1, 'permissions': ['BILLING_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [
             {'method': 'cash', 'total': Decimal('100.00')},
             {'method': 'card', 'total': Decimal('50.00')},
@@ -305,6 +314,7 @@ class TestReconciliation:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [
             {'method': 'cash', 'total': Decimal('100.00')},
         ]
@@ -321,6 +331,7 @@ class TestReconciliation:
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [
             {'method': 'cash', 'total': Decimal('100.00')},
         ]

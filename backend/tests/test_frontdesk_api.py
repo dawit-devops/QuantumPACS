@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -72,6 +72,7 @@ class TestPatientRegistration:
         user = User({'id': 1, 'permissions': ['REGISTRATION_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {
             'id': 1, 'patient_id': 'P001', 'name': 'Test Patient',
             'birth_date': '1990-01-01', 'sex': 'F',
@@ -90,6 +91,7 @@ class TestPatientRegistration:
         user = User({'id': 1, 'permissions': ['REGISTRATION_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {
             'id': 2, 'patient_id': 'P1234567890', 'name': 'Gen Patient',
             'birth_date': '', 'sex': '',
@@ -118,6 +120,7 @@ class TestPatientSearch:
         user = User({'id': 1, 'permissions': ['REGISTRATION_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [
             {
                 'id': 1, 'patient_id': 'P001', 'name': 'Test Patient',
@@ -143,6 +146,9 @@ class TestAppointmentConflict:
         user = User({'id': 1, 'permissions': ['SCHEDULE_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.transaction = MagicMock()
+        mock_conn.transaction.return_value.__aenter__.return_value = mock_conn
         mock_conn.fetchval.side_effect = [1, 1]
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.post('/appointments', json={
@@ -158,6 +164,9 @@ class TestAppointmentConflict:
         user = User({'id': 1, 'permissions': ['SCHEDULE_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.transaction = MagicMock()
+        mock_conn.transaction.return_value.__aenter__.return_value = mock_conn
         mock_conn.fetchval.side_effect = [1, 0, 'wl-uuid']
         mock_conn.fetchrow.side_effect = [
             {
@@ -195,6 +204,7 @@ class TestWaitingQueuePrivacy:
         user = User({'id': 1, 'permissions': ['QUEUE_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetch.return_value = [
             {
                 'visit_id': 'v1', 'patient_id': 'MRN12345',
@@ -236,6 +246,7 @@ class TestAppointmentCancel:
         user = User({'id': 1, 'permissions': ['SCHEDULE_WRITE']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         mock_conn.fetchrow.return_value = {'id': 'appt-1'}
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.delete('/appointments/appt-1')

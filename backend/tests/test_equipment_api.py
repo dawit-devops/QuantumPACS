@@ -150,7 +150,7 @@ class TestDowntime:
             if 'operational_status =' in str(c.args[0])
         ]
         assert status_calls
-        assert 'down' in str(status_calls[0].args[0])
+        assert status_calls[0].args[2] == 'down'
 
     def test_downtime_close_restores_operational(self):
         user = User({'id': 1, 'permissions': ['EQUIPMENT_WRITE']})
@@ -202,7 +202,7 @@ class TestQcRecords:
         assert resp.json()['data']['pass_fail'] == 'fail'
         mock_notify.assert_awaited_once()
         maintenance_calls = [
-            c for c in conn.execute.call_args_list if 'maintenance' in str(c.args[0])
+            c for c in conn.execute.call_args_list if len(c.args) > 2 and c.args[2] == 'maintenance'
         ]
         assert maintenance_calls
 
