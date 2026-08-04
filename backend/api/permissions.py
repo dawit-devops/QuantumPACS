@@ -46,6 +46,29 @@ class Permission(str, Enum):
     SYSTEM_ADMIN = 'SYSTEM_ADMIN'
     HL7_READ = 'HL7_READ'
     HL7_WRITE = 'HL7_WRITE'
+    # R08 Front Desk
+    REGISTRATION_READ = 'REGISTRATION_READ'
+    REGISTRATION_WRITE = 'REGISTRATION_WRITE'
+    SCHEDULE_READ = 'SCHEDULE_READ'
+    SCHEDULE_WRITE = 'SCHEDULE_WRITE'
+    QUEUE_READ = 'QUEUE_READ'
+    # R09 Cashier
+    BILLING_READ = 'BILLING_READ'
+    BILLING_WRITE = 'BILLING_WRITE'
+    BILLING_ADMIN = 'BILLING_ADMIN'
+    # R10 Biomedical Engineer
+    EQUIPMENT_READ = 'EQUIPMENT_READ'
+    EQUIPMENT_WRITE = 'EQUIPMENT_WRITE'
+    # R11 Nursing
+    NURSING_READ = 'NURSING_READ'
+    NURSING_WRITE = 'NURSING_WRITE'
+    # R03 Service Director
+    ANALYTICS_READ = 'ANALYTICS_READ'
+    ANALYTICS_EXPORT = 'ANALYTICS_EXPORT'
+    REPORT_BUILD = 'REPORT_BUILD'
+    # R19 Hospital Staff
+    PORTAL_READ = 'PORTAL_READ'
+    FOLLOW_UP_WRITE = 'FOLLOW_UP_WRITE'
 
 
 PERMISSION_GROUPS = {
@@ -68,6 +91,12 @@ PERMISSION_GROUPS = {
     'Metrics': ['METRICS_READ'],
     'HL7': ['HL7_READ', 'HL7_WRITE'],
     'System Admin': ['SYSTEM_ADMIN'],
+    'Front Desk': ['REGISTRATION_READ', 'REGISTRATION_WRITE', 'SCHEDULE_READ', 'SCHEDULE_WRITE', 'QUEUE_READ'],
+    'Billing': ['BILLING_READ', 'BILLING_WRITE', 'BILLING_ADMIN'],
+    'Equipment': ['EQUIPMENT_READ', 'EQUIPMENT_WRITE'],
+    'Nursing': ['NURSING_READ', 'NURSING_WRITE'],
+    'Analytics': ['ANALYTICS_READ', 'ANALYTICS_EXPORT', 'REPORT_BUILD'],
+    'Portal': ['PORTAL_READ', 'FOLLOW_UP_WRITE'],
 }
 
 SUPER_ADMIN_PERMISSIONS = {p.value for p in Permission}
@@ -94,6 +123,14 @@ BUILT_IN_ROLES = {
         Permission.METRICS_READ.value,
         Permission.SYSTEM_ADMIN.value,
         Permission.HL7_READ.value, Permission.HL7_WRITE.value,
+        Permission.REGISTRATION_READ.value, Permission.REGISTRATION_WRITE.value,
+        Permission.SCHEDULE_READ.value, Permission.SCHEDULE_WRITE.value,
+        Permission.QUEUE_READ.value,
+        Permission.BILLING_READ.value, Permission.BILLING_WRITE.value, Permission.BILLING_ADMIN.value,
+        Permission.EQUIPMENT_READ.value, Permission.EQUIPMENT_WRITE.value,
+        Permission.NURSING_READ.value, Permission.NURSING_WRITE.value,
+        Permission.ANALYTICS_READ.value, Permission.ANALYTICS_EXPORT.value, Permission.REPORT_BUILD.value,
+        Permission.PORTAL_READ.value, Permission.FOLLOW_UP_WRITE.value,
     ],
     'technologist': [
         Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
@@ -148,5 +185,50 @@ BUILT_IN_ROLES = {
     'cashier': [
         Permission.PATIENT_READ.value,
         Permission.PATIENT_WRITE.value,
+        Permission.STUDY_READ.value,
+        Permission.FILE_READ.value,
+        Permission.BILLING_READ.value,
+        Permission.BILLING_WRITE.value,
+    ],
+    'front_desk': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
+        Permission.STUDY_READ.value,
+        Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
+        Permission.REGISTRATION_READ.value, Permission.REGISTRATION_WRITE.value,
+        Permission.SCHEDULE_READ.value, Permission.SCHEDULE_WRITE.value,
+        Permission.QUEUE_READ.value,
+    ],
+    'nurse': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.STUDY_READ.value,
+        Permission.EXAM_READ.value,
+        Permission.WORKLIST_READ.value,
+        Permission.NURSING_READ.value, Permission.NURSING_WRITE.value,
+    ],
+    'biomedical_engineer': [
+        Permission.EQUIPMENT_READ.value, Permission.EQUIPMENT_WRITE.value,
+        Permission.METRICS_READ.value,
+    ],
+    'service_director': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.STUDY_READ.value,
+        Permission.EXAM_READ.value,
+        Permission.REPORT_READ.value,
+        Permission.METRICS_READ.value,
+        Permission.ANALYTICS_READ.value,
+        Permission.ANALYTICS_EXPORT.value,
+        Permission.REPORT_BUILD.value,
+        Permission.QUEUE_READ.value,
+    ],
+    'hospital_staff': [
+        Permission.FILE_READ.value,
+        Permission.PATIENT_READ.value,
+        Permission.STUDY_READ.value,
+        Permission.REPORT_READ.value,
+        Permission.PORTAL_READ.value,
+        Permission.FOLLOW_UP_WRITE.value,
     ],
 }
