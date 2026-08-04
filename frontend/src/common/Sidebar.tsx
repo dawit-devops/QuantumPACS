@@ -97,8 +97,10 @@ function hasAnyAdminPermission(
     "USER_READ",
     "REPLICA_READ",
     "TENANT_READ",
+    "TENANT_ADMIN",
     "ROLE_READ",
     "LOG_READ",
+    "AUDIT_READ",
     "SERVICE_KEY_READ",
     "WORKLIST_READ",
     "EXAM_READ",
@@ -107,7 +109,12 @@ function hasAnyAdminPermission(
     "QA_READ",
     "HL7_READ",
     "ROUTING_READ",
+    "INTERFACE_MONITOR",
+    "INTERFACE_ADMIN",
     "DICOMWEB_READ",
+    "STORAGE_ADMIN",
+    "METERING_READ",
+    "BILLING_READ",
     "SYSTEM_ADMIN",
   ];
   return adminPermissions.some((p) => hasPermission(p));
@@ -241,14 +248,14 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission("LOG_READ") && (
+            {hasPermission("LOG_READ") || hasPermission("AUDIT_READ") ? (
               <Menu.Item key="logs">
                 <Link to="/logs">
                   <AlignLeftOutlined />
                   <span className="nav-text">Logs</span>
                 </Link>
               </Menu.Item>
-            )}
+            ) : null}
             {hasPermission("WORKLIST_READ") && (
               <Menu.Item key="worklist">
                 <Link to="/worklist">
@@ -329,14 +336,15 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission("ROUTING_READ") && (
+            {hasPermission("ROUTING_READ") ||
+            hasPermission("INTERFACE_ADMIN") ? (
               <Menu.Item key="routing">
                 <Link to="/routing">
                   <ApartmentOutlined />
                   <span className="nav-text">Routing</span>
                 </Link>
               </Menu.Item>
-            )}
+            ) : null}
             {hasPermission("SYSTEM_ADMIN") && (
               <Menu.SubMenu
                 key="fhir"
@@ -375,14 +383,16 @@ function Sidebar() {
                 </Link>
               </Menu.Item>
             )}
-            {hasPermission("DICOMWEB_READ") && (
+            {hasPermission("DICOMWEB_READ") ||
+            hasPermission("STORAGE_ADMIN") ||
+            hasPermission("INTERFACE_ADMIN") ? (
               <Menu.Item key="dicomweb">
                 <Link to="/dicomweb">
                   <CloudServerOutlined />
                   <span className="nav-text">DICOMweb</span>
                 </Link>
               </Menu.Item>
-            )}
+            ) : null}
             {hasPermission("SYSTEM_ADMIN") && (
               <Menu.Item key="integrations">
                 <Link to="/integrations">

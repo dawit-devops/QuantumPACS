@@ -39,54 +39,59 @@ const navItems = [
   },
 ];
 
-const adminItems = [
+const adminItems: {
+  path: string;
+  label: string;
+  icon: React.ReactNode;
+  permissions: string[];
+}[] = [
   {
     path: "/worklist",
     label: "Worklist",
     icon: <PlusOutlined />,
-    permission: "WORKLIST_READ",
+    permissions: ["WORKLIST_READ"],
   },
   {
     path: "/replicas",
     label: "Replicas",
     icon: <DatabaseOutlined />,
-    permission: "REPLICA_READ",
+    permissions: ["REPLICA_READ"],
   },
   {
     path: "/users",
     label: "Users",
     icon: <TeamOutlined />,
-    permission: "USER_READ",
+    permissions: ["USER_READ"],
   },
   {
     path: "/tenants",
     label: "Tenants",
     icon: <BankOutlined />,
-    permission: "TENANT_READ",
+    permissions: ["TENANT_READ"],
   },
   {
     path: "/roles",
     label: "Roles",
     icon: <SafetyCertificateOutlined />,
-    permission: "ROLE_READ",
+    permissions: ["ROLE_READ"],
   },
   {
     path: "/logs",
     label: "Logs",
     icon: <AlignLeftOutlined />,
-    permission: "LOG_READ",
+    permissions: ["LOG_READ", "AUDIT_READ"],
   },
   {
     path: "/service-keys",
     label: "Keys",
     icon: <KeyOutlined />,
-    permission: "SERVICE_KEY_READ",
+    permissions: ["SERVICE_KEY_READ"],
   },
   {
     path: "/routing",
     label: "Routing",
     icon: <ApartmentOutlined />,
-    permission: "ROUTING_READ",
+    permissions: ["ROUTING_READ", "INTERFACE_ADMIN"],
   },
 ];
 
@@ -97,7 +102,8 @@ export default function MobileNav() {
   const [adminOpen, setAdminOpen] = useState(false);
 
   const hasAdminAccess =
-    user?.admin || adminItems.some((item) => hasPermission(item.permission));
+    user?.admin ||
+    adminItems.some((item) => item.permissions.some((p) => hasPermission(p)));
 
   const isActive = (path: string) =>
     path === "/"
@@ -159,7 +165,11 @@ export default function MobileNav() {
           mode="inline"
           onClick={() => setAdminOpen(false)}
           items={adminItems
-            .filter((item) => hasAdminAccess || hasPermission(item.permission))
+            .filter((item) =>
+              hasAdminAccess
+                ? true
+                : item.permissions.some((p) => hasPermission(p)),
+            )
             .map((item) => ({
               key: item.path,
               icon: item.icon,

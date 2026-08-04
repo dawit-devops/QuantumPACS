@@ -87,6 +87,8 @@ from api.portal import (
     PortalFollowUpStatusHandler,
 )
 from api.dashboard_metrics import DashboardMetricsHandler
+from api.rbac import guard_endpoint_method
+from api.permissions import Permission
 from api.ws import WSToken, WebsocketHandler
 from config import is_docker
 
@@ -141,8 +143,8 @@ _V1_ROUTES = [
     v2(Route('/files/download.zip', endpoint=DownloadFiles)),
     v2(Route('/files/download.csv', endpoint=DownloadData)),
     v2(Route('/files', endpoint=FilesHandler)),
-    v2(Route('/files/{id}', endpoint=FileHandler)),
-    v2(Route('/files/{id}/changes', endpoint=FileChangesHandler)),
+    v2(Route('/files/{id}', endpoint=guard_endpoint_method(FileHandler, 'post', Permission.FILE_WRITE))),
+    v2(Route('/files/{id}/changes', endpoint=guard_endpoint_method(FileChangesHandler, 'get', Permission.FILE_READ))),
     v2(Route('/files/{id}/share', endpoint=ShareFilesHandler)),
     v2(Route('/files/{id}/shares', endpoint=ShareFilesListHandler)),
     v2(Route('/files/{id}/shares/{share_id}', endpoint=ShareFilesListHandler)),

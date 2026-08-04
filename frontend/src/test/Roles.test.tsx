@@ -22,6 +22,8 @@ vi.mock("../api/roles", () => ({
   updateRole: mockUpdateRole,
   deleteRole: mockDeleteRole,
   listRoleUsers: mockListRoleUsers,
+  roleDisplayName: (slug?: string, fallback?: string) => fallback ?? slug,
+  permissionLabel: (code: string) => code,
 }));
 
 vi.mock("../hooks", () => ({
