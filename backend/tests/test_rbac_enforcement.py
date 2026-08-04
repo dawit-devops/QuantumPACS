@@ -359,3 +359,49 @@ def test_routes_wire_guards_for_unguarded_file_handlers():
     by_path = {r.path: r for r in routes._V1_ROUTES if isinstance(r, Route)}
     assert by_path['/files/{id}'].endpoint.__name__ == 'GuardedFileHandler'
     assert by_path['/files/{id}/changes'].endpoint.__name__ == 'GuardedFileChangesHandler'
+
+
+# ------------------------------------------------ built-in immutability + schema validation
+
+def test_put_built_in_role_forbidden():
+    role = {'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist', 'built_in': True}
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
+    p_conn = _patch_conn('api.roles')[0]
+
+    with p_conn, p_roles[0] as roles_cls:
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
+    assert resp.status_code == 403
+    roles_cls.return_value.patch.assert_not_awaited()
+
+
+def test_put_unknown_permission_rejected():
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get={'id': 'r1', 'built_in': False})
+    p_conn = _patch_conn('api.roles')[0]
+
+    with p_conn, p_roles[0]:
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['NOT_A_PERMISSION']})
+    assert resp.status_code == 422
+
+
+def test_create_role_wildcard_permission_rejected():
+    route = Route('/api/roles', endpoint=RolesHandler)
+    p_conn = _patch_conn('api.roles')[0]
+
+    with p_conn:
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+            resp = client.post('/api/roles', json={'name': 'X', 'slug': 'x', 'permissions': ['*']})
+    assert resp.status_code == 422
+
+
+def test_create_role_invalid_slug_rejected():
+    route = Route('/api/roles', endpoint=RolesHandler)
+    p_conn = _patch_conn('api.roles')[0]
+
+    with p_conn:
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+            resp = client.post('/api/roles', json={'name': 'X', 'slug': 'bad slug!', 'permissions': []})
+    assert resp.status_code == 422

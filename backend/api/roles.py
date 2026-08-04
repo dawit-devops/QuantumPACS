@@ -58,6 +58,11 @@ class RoleHandler(HTTPEndpoint):
             role = await Roles(conn).get(role_id)
             if not role:
                 return not_found('Role not found')
+            if role.get('built_in'):
+                # Built-in roles are immutable (RBAC spec §4: "built-in ·
+                # immutable") — editing them would let ROLE_WRITE holders
+                # escalate grants (e.g. add permissions to super_admin).
+                return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
             await Roles(conn).patch(
                 role_id,
                 body.model_dump(exclude_none=True),
