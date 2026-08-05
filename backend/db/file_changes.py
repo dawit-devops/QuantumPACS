@@ -12,7 +12,7 @@ class FileChange(Table):
             id SERIAL PRIMARY KEY,
             file_id INTEGER NOT NULL REFERENCES files(id),
             created TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
-            by_user_id INTEGER REFERENCES users(id),
+            by_user_id INTEGER NOT NULL REFERENCES users(id),
             type TEXT NOT NULL,
             old TEXT,
             new TEXT
@@ -28,18 +28,17 @@ class FileChange(Table):
         return data
 
     async def add_change(self, file_id, type_, by_user=None, old=None, new=None):
-        cols = ['file_id', 'type', 'old', 'new']
-        vals = [file_id, type_, old, new]
-        if by_user is not None:
-            cols.append('by_user_id')
-            vals.append(by_user)
-        q = self.insert().columns(*cols).insert(*vals)
+        q = self.insert().columns(
+            'file_id', 'type', 'by_user_id', 'old', 'new',
+        ).insert(
+            file_id, type_, by_user, old, new,
+        )
         await self.exec(q)
 
     async def for_file(self, file_id):
-        users = Users(conn=self.conn)
+        users = Users()
         q = self.select(self.table.star, users.table.username)\
-            .left_join(users.table).on(users.table.id == self.table.by_user_id)\
+            .join(users.table).on(users.table.id == self.table.by_user_id)\
             .where(self.table.file_id == file_id)\
             .orderby('id', order=Order.desc)
 

@@ -28,11 +28,11 @@ QuantumPACS replaces traditional vendor-locked imaging systems with an open, mod
 |--------|-------|
 | Backend Python Modules | 61 |
 | Frontend Components | 38 |
- | Architecture Decision Records | 22 |
- | Backend Tests | 103 (pytest) |
- | Frontend Tests | 246 (Vitest) |
- | E2E Tests | 45 across 11 specs (Playwright) |
- | DB Migrations | 31 (Alembic) |
+| Architecture Decision Records | 13 |
+| Backend Tests | 103 (pytest) |
+| Frontend Tests | 33 (Vitest) |
+| E2E Tests | 8 (Playwright) |
+| DB Migrations | 4 (Alembic) |
 
 ## Getting Started
 
@@ -47,31 +47,10 @@ QuantumPACS replaces traditional vendor-locked imaging systems with an open, mod
 ```bash
 git clone https://github.com/dawit-devops/QuantumPACS.git
 cd quantumpacs
-cp .env.example .env      # optional: override POSTGRES_PASSWORD / SECRET
-docker compose up -d      # full stack: postgres, redis, elasticsearch, backend, frontend
-docker compose ps         # wait until backend is healthy
+docker compose up -d
 ```
 
-- Frontend: <http://localhost:5173> (nginx, proxies `/api` to the backend)
-- Backend API: <http://localhost:8080> — health: `curl http://localhost:8080/api/health`
-- Credentials: the initial superadmin login is `admin` with the password from
-  `SUPERADMIN_PASS` (default `pa55w0rd` — override in any non-dev deployment).
-  The **database** password is separate: `manage db init` generates a random
-  one (capture it from the output); with Docker it comes from
-  `POSTGRES_PASSWORD` in `.env`.
-
-### Development Workflow (recommended)
-
-The permanent dev environment runs as systemd user services backed by a
-PostgreSQL Docker container:
-
-```bash
-bash scripts/dev.sh start     # starts backend (:8080) + frontend (:5173)
-bash scripts/dev.sh status
-bash scripts/dev.sh logs      # tail backend logs
-bash scripts/dev.sh logs-fe   # tail frontend logs
-bash scripts/setup_dev.sh     # first-time setup: config, venv, ports, schema
-```
+Open `http://localhost` — default credentials: `admin` / `pa55w0rd`
 
 ### Manual Setup
 
@@ -79,15 +58,13 @@ bash scripts/setup_dev.sh     # first-time setup: config, venv, ports, schema
 
 ```bash
 cd backend
-python -m venv venv        # creates venv at backend/venv/ (canonical location)
+python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ./manage db init          # creates database, outputs random password
 export DB_PASS=<password> # or set in config.local.yaml
 ./start.sh                # starts DICOM listener, sync, HTTP server
 ```
-
-> The virtual environment is at `backend/venv/`. This is the sole canonical venv used by the systemd service, pre-commit hooks, and `manage` script. Run tests with `cd backend && python -m pytest tests/` (with venv activated).
 
 #### Frontend
 
@@ -98,7 +75,7 @@ npm run dev          # development server with HMR (http://localhost:5173)
 npm run build        # production build to dist/
 ```
 
-Serve `dist/` via the nginx image (`frontend/Dockerfile`), or copy to `backend/static/` with `QUANTUMPACS_DOCKER=true`.
+Serve `dist/` via Caddy/Nginx, or copy to `backend/static/` with `QUANTUMPACS_DOCKER=true`.
 
 ## Repository Structure
 
@@ -110,7 +87,7 @@ quantumpacs/
 │   ├── db/                       # Database access layer (asyncpg + PyPika)
 │   ├── dcm/                      # DICOM listener and processing
 │   ├── es/                       # Elasticsearch indexing (optional)
-│   ├── migrations/               # Alembic migrations (001-031)
+│   ├── migrations/               # Alembic migrations (001-004)
 │   │   └── versions/             # Version-controlled migration scripts
 │   ├── storage/                  # Pluggable storage backends
 │   ├── tests/                    # 103 pytest tests
@@ -124,10 +101,10 @@ quantumpacs/
 │       ├── detail/               # Cornerstone3D DICOM viewer
 │       ├── files/                # File management + search
 │       ├── login/                # Authentication
-│   ├── src/test/                 # 246 Vitest tests
+│       ├── test/                 # 33 Vitest tests
 │       └── ...
 ├── docs/
-│   ├── decisions/                # 22 Architecture Decision Records (ADRs)
+│   ├── decisions/                # 13 Architecture Decision Records (ADRs)
 │   ├── component-specs.md        # UI component state/variant specs
 │   ├── design-tokens.json        # Three-layer token system
 │   ├── ops-guide.md              # Backup/restore/monitoring/DR
@@ -139,19 +116,19 @@ quantumpacs/
 │   └── SECURITY_AUDIT.md         # Security audit
 ├── docker/                       # Docker build files
 │   └── postgres/                 # Custom PostgreSQL 16 image
-├── docker-compose.yaml           # Service orchestration (postgres/redis/es/backend/frontend)
-├── deploy/systemd/               # Backup timer + failure-notify units
-├── nginx.conf                    # Frontend proxy + security headers (in frontend/)
-└── .github/workflows/            # CI pipelines (lint, tests, build, docker-smoke)
+├── docker-compose.yaml           # Service orchestration
+├── Dockerfile                    # Multi-stage production image
+├── Caddyfile                     # Caddy reverse proxy + security headers
+└── .github/workflows/            # CI pipelines (backend, frontend, security)
 ```
 
 ## Architecture
 
 ```
 ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│  Browser      │────▶│  nginx (frontend│────▶│  PostgreSQL   │
-│  (React SPA   │     │   image: proxy  │     │  + LISTEN/    │
-│   + Viewer)   │◀────│   + CSP) :5173 │◀────│  NOTIFY      │
+│  Browser      │────▶│  Caddy (reverse  │────▶│  PostgreSQL   │
+│  (React SPA   │     │   proxy + CSP)   │     │  + LISTEN/    │
+│   + Viewer)   │◀────│   :80 → :8080   │◀────│  NOTIFY      │
 └──────────────┘     └────────┬─────────┘     └──────────────┘
                               │
                      ┌────────▼─────────┐
@@ -174,7 +151,7 @@ quantumpacs/
                      └──────────────────┘
 ```
 
-Architecture decisions: 22 ADRs in [docs/decisions/](docs/decisions/).
+Architecture decisions: 13 ADRs in [docs/decisions/](docs/decisions/).
 
 ## Configuration
 
@@ -188,48 +165,10 @@ Settings loaded from `config.local.yaml` + environment variables:
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_DATABASE` | `quantumpacs` | PostgreSQL database |
 | `DB_USER` | `quantumpacs` | PostgreSQL user |
-| `DB_PASSWORD` | `pa55w0rd` | PostgreSQL password |
+| `DB_PASS` | `pa55w0rd` | PostgreSQL password |
 | `ES_HOST` | `localhost` | Elasticsearch host |
-| `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins (lock for production) |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins (lock for production) |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | TrustedHost middleware |
-| `REDIS_HOST` | `localhost` | Redis host for rate limiting and cache |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `` | Redis password |
-| `DB_POOL_SIZE` | `8` | asyncpg connection pool size |
-| `SENTRY_DSN` | `` | Sentry DSN for error tracking |
-| `OAUTH_ISSUER` | `` | OAuth/OpenID issuer URL |
-| `OAUTH_CLIENT_ID` | `` | OAuth client ID |
-| `OAUTH_CLIENT_SECRET` | `` | OAuth client secret |
-| `OAUTH_REDIRECT_URI` | `` | OAuth callback redirect URI |
-| `OAUTH_JWKS_URI` | `` | JWKS URI for OAuth token verification |
-| `OAUTH_TOKEN_URL` | `` | OAuth token endpoint URL |
-| `OAUTH_DEFAULT_ROLE` | `radiologist` | Default role for OAuth-provisioned users |
-| `OAUTH_SCOPE` | `openid email profile` | OAuth scopes |
-| `OAUTH_SECRET_ENCRYPTION_KEY` | `` | Key for encrypting stored OAuth client secrets |
-| `DICOM_AE_TITLE` | `QUANTUMPACS` | DICOM Application Entity title |
-| `DICOM_CSTORE_PORT` | `11112` | DICOM C-STORE SCP port |
-| `DICOM_MWL_PORT` | `11113` | DICOM Modality Worklist SCP port |
-| `DICOM_CMOVE_PORT` | `11114` | DICOM C-MOVE SCP port |
-| `HL7_MLLP_PORT` | `12579` | HL7 MLLP listener port |
-| `HL7_MLLP_TLS_CERT` | `` | HL7 MLLP TLS certificate path |
-| `HL7_MLLP_TLS_KEY` | `` | HL7 MLLP TLS key path |
-| `HL7_MLLP_ALLOWED_IPS` | `` | Comma-separated IPs allowed for HL7 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `` | OpenTelemetry OTLP exporter endpoint |
-| `OTEL_SERVICE_NAME` | `quantumpacs-backend` | OpenTelemetry service name |
-| `OTEL_DEPLOYMENT_ENVIRONMENT` | `development` | OpenTelemetry deployment environment |
-| `OTEL_SAMPLER` | `always_on` | OpenTelemetry sampler type |
-| `OTEL_BSP_SCHEDULE_DELAY` | `5000` | OpenTelemetry batch span processor delay (ms) |
-| `OTEL_BSP_MAX_QUEUE_SIZE` | `2048` | OpenTelemetry batch span processor queue size |
-| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `512` | OpenTelemetry batch span processor batch size |
-| `PROMETHEUS_ENABLED` | `true` | Enable Prometheus metrics endpoint |
-| `MAX_UPLOAD_SIZE_MB` | `500` | Maximum upload file size (MB) |
-| `B2_CORS_ORIGINS` | `http://localhost:5173` | Backblaze B2 allowed CORS origins |
-| `INGESTION_STREAM` | `events:ingestion` | Redis stream name for ingestion events |
-| `INGESTION_GROUP` | `ingestion-service` | Redis consumer group for ingestion |
-| `INGESTION_CONSUMER` | `worker-1` | Redis consumer name for ingestion |
-| `INGESTION_POLL_COUNT` | `10` | Redis stream poll count per batch |
-| `INGESTION_POLL_BLOCK_MS` | `5000` | Redis stream poll block timeout (ms) |
-| `INGESTION_MAX_RETRIES` | `3` | Max retries for failed ingestion |
 | `QUANTUMPACS_DOCKER` | — | Enable Docker mode (serves static files) |
 
 ## Security
@@ -254,16 +193,16 @@ Security audit completed ([docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)):
 
 - **Backend:** Python 3.12+, Starlette 0.35+, asyncpg, PyPika, Alembic, Pydantic v2, PyJWT, pydicom, pynetdicom
 - **Frontend:** React 19, TypeScript, Vite, Ant Design 6, Cornerstone3D 5, dicom-parser
-- **Database:** PostgreSQL 16, Elasticsearch 9 (optional)
-- **Infrastructure:** Docker compose, nginx (frontend image), GitHub Actions CI
+- **Database:** PostgreSQL 16, Elasticsearch 8 (optional)
+- **Infrastructure:** Docker multi-stage, Caddy, GitHub Actions CI
 
 ## Testing
 
 | Suite | Command | Count |
 |-------|---------|-------|
 | Backend unit | `cd backend && python -m pytest` | 103 tests |
-| Frontend unit | `cd frontend && npx vitest run` | 246 tests |
-| E2E (Playwright) | `cd frontend && npx playwright test` | 45 tests (11 specs) |
+| Frontend unit | `cd frontend && npx vitest run` | 33 tests |
+| E2E (Playwright) | `cd frontend && npx playwright test` | 8 tests |
 | TypeScript | `cd frontend && npx tsc --noEmit` | 0 errors |
 
 ## Commands

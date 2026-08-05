@@ -56,18 +56,14 @@ class LocalStorage(Storage):
                 shutil.copyfileobj(src, f)
 
     def get_path(self, filedata):
-        patient_id = filedata.get('patient_id', '')
-        if not patient_id:
-            raise ValueError('patient_id is required and must be non-empty')
         safe_parts = []
         for part in [
-            str(patient_id),
+            str(filedata.get('patient_id', '')),
             str(filedata.get('study_id', '')) or 'empty',
             str(filedata.get('series_number', '')) or 'empty',
             filedata.get('name', ''),
         ]:
-            safe = part.replace('\x00', '')
-            safe = os.path.basename(os.path.normpath(safe)).encode('ascii', errors='ignore').decode('ascii')
+            safe = os.path.basename(os.path.normpath(part)).encode('ascii', errors='ignore').decode('ascii')
             if not safe:
                 safe = 'unnamed'
             safe_parts.append(safe)

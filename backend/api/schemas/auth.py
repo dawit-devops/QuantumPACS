@@ -2,13 +2,13 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(description="User login identifier")
-    password: str = Field(description="User password in plain text")
+    username: str
+    password: str
 
 
 class ChangePasswordRequest(BaseModel):
-    password: str = Field(min_length=8, max_length=128, description="New password (8–128 characters)")
-    password2: str | None = Field(None, description="Confirmation — must match password")
+    password: str = Field(min_length=8, max_length=128)
+    password2: str | None = None
 
     @model_validator(mode='after')
     def passwords_match(self):

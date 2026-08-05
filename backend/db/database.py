@@ -10,9 +10,8 @@ class Database:
         self._pool = None
 
     async def setup(self, pool_size=None):
-        from api.tracing import traced_connection
         pool_size = pool_size or 8
-        raw_pool = await asyncpg.create_pool(
+        self._pool = await asyncpg.create_pool(
             user=config['db_user'],
             password=config['db_password'],
             database=config['db_database'],
@@ -23,7 +22,6 @@ class Database:
             command_timeout=30,
             statement_cache_size=100,
         )
-        self._pool = traced_connection(raw_pool)
 
     async def close(self):
         if self._pool:

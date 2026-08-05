@@ -2,8 +2,6 @@ from datetime import datetime, timezone
 
 from dateutil.relativedelta import relativedelta
 
-from pypika import Order
-
 from db.table import Table
 from log import get_logger
 from utils import rand_str
@@ -57,15 +55,3 @@ class SharedFiles(Table):
         cnt = await self.exec(q)
         if cnt:
             log.info('Cleaned up %s expired shared files', cnt)
-
-    async def list_for_file(self, file_id):
-        q = self.select('id', 'created', 'expires', 'hash').where(
-            self.table.file_id == file_id
-        ).orderby(self.table.created, order=Order.desc)
-        return await self.fetch(q)
-
-    async def revoke(self, share_id, file_id):
-        q = self.query().where(
-            (self.table.id == share_id) & (self.table.file_id == file_id)
-        ).delete()
-        return await self.exec(q)

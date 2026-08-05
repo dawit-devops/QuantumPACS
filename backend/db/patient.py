@@ -1,4 +1,6 @@
 from db.table import Table
+from db.study import Study
+from db.series import Series
 from pypika.pseudocolumns import PseudoColumn
 
 
@@ -34,76 +36,44 @@ class Patient(Table):
         return {'id': patient_id}
 
     async def get_extra(self, patient_id):
+        from db.files import Files
+
         q = self.select('*').where(self.table.id == patient_id)
         patient = await self.fetchone(q)
         if not patient:
             return None
         patient = dict(patient)
-        pid = patient['id']
 
-        rows = await self.conn.fetch("""
-            SELECT
-                s.id AS study_id,
-                s.study_id AS study_uid,
-                s.description AS study_desc,
-                s.study_instance_uid,
-                s.accession_number,
-                se.id AS series_id,
-                se.number AS series_number,
-                se.modality AS series_modality,
-                se.description AS series_desc,
-                se.series_instance_uid,
-                f.id AS file_id,
-                f.name AS file_name,
-                f.hash AS file_hash,
-                f.indexed,
-                f.sop_instance_uid,
-                f.deleted,
-                f.meta,
-                f.tools_state
-            FROM studies s
-            LEFT JOIN series se ON se.study_id = s.id
-            LEFT JOIN files f ON f.series_id = se.id
-            WHERE s.patient_id = $1
-            ORDER BY s.id, se.id, f.id
-        """, pid)
-
+        StudyT = Study(self.conn)
+        q = StudyT.select('*').where(
+            StudyT.table.patient_id == patient_id
+        )
+        studies_data = await self.fetch(q)
+        studies_data = [dict(s) for s in studies_data]
         studies = {}
-        series_map = {}
-        for row in rows:
-            sid = row['study_id']
-            if sid not in studies:
-                studies[sid] = {
-                    'id': sid, 'study_id': row['study_uid'],
-                    'description': row['study_desc'],
-                    'study_instance_uid': row['study_instance_uid'],
-                    'accession_number': row['accession_number'],
-                    'series': [],
-                }
-            seid = row['series_id']
-            if seid is not None and seid not in series_map:
-                series_map[seid] = {
-                    'id': seid, 'study_id': sid,
-                    'number': row['series_number'],
-                    'modality': row['series_modality'],
-                    'description': row['series_desc'],
-                    'series_instance_uid': row['series_instance_uid'],
-                    'files': [],
-                }
-            if row['file_id'] is not None:
-                series_map[seid]['files'].append({
-                    'id': row['file_id'],
-                    'name': row['file_name'],
-                    'hash': row['file_hash'],
-                    'indexed': row['indexed'],
-                    'sop_instance_uid': row['sop_instance_uid'],
-                    'deleted': row['deleted'],
-                    'meta': row['meta'],
-                    'tools_state': row['tools_state'],
-                })
+        for s in studies_data:
+            s['series'] = {}
+            studies[s['id']] = s
 
-        for sid, s in studies.items():
-            s['series'] = [v for v in series_map.values() if v['study_id'] == sid]
+        SeriesT = Series(self.conn)
+        q = SeriesT.select('*').where(
+            SeriesT.table.study_id.isin(list(studies.keys()))
+        )
+        series_data = await self.fetch(q)
+        series_data = [dict(s) for s in series_data]
+        for s in series_data:
+            s['files'] = []
+            studies[s['study_id']]['series'][s['id']] = s
+
+        FilesT = Files(self.conn)
+        q = FilesT.select('*').where(FilesT.table.study_id.isin(list(studies.keys())))
+        files = await self.fetch(q)
+        files = [dict(f) for f in files]
+        for f in files:
+            studies[f['study_id']]['series'][f['series_id']]['files'].append(f)
+
+        for s in studies.values():
+            s['series'] = list(s['series'].values())
 
         patient['studies'] = list(studies.values())
         return patient

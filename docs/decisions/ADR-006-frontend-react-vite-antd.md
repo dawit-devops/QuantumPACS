@@ -18,22 +18,10 @@ The original frontend used Jinja2 templates per-route with minimal JavaScript. A
 ## Decision
 Build a React SPA with:
 - **Vite** for build tooling (fast HMR, TypeScript-native, esbuild bundling)
-- **Ant Design v6** for UI component library (tables, forms, modals, layout)
-- **Cornerstone3D v5** for DICOM rendering via cornerstone-wado-image-loader
+- **Ant Design v5** for UI component library (tables, forms, modals, layout)
+- **Cornerstone3D** for DICOM rendering via cornerstone-wado-image-loader
 - **React Router** for client-side routing
 - **Manual chunk splitting** in Vite config for optimized bundles (vendor-react, vendor-antd, vendor-cornerstone)
-- **React 19**, TypeScript 6, plain CSS files per component (no CSS Modules)
-
-## Updates (2026-08)
-
-- Ant Design v5 → **v6**; React → **19**; Cornerstone3D → **v5**.
-- Styling convention is plain CSS files (`*.css` next to each component) —
-  no CSS Modules, no Tailwind.
-- `withRouter` HOC removed in favor of router hooks; `message.*` statics
-  migrated to `antd` `App.useApp()`.
-- State is component-local + React context (no Redux).
-- Token storage decided in [ADR-025](ADR-025-token-storage-http-cookie.md);
-  WebSocket transport in [ADR-023](ADR-023-websocket-real-time-events.md).
 
 ## Alternatives Considered
 
@@ -54,7 +42,7 @@ Build a React SPA with:
 
 ## Consequences
 - Vite provides sub-second HMR for rapid frontend development
-- Ant Design v6 provides accessible, tested components for complex data tables
+- Ant Design v5 provides accessible, tested components for complex data tables
 - Cornerstone3D enables DICOM rendering directly in the browser
 - Manual chunk splitting reduces initial load time for the viewer
 - TypeScript throughout catches type errors at build time

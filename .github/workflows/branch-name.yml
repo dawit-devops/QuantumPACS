@@ -14,12 +14,10 @@ jobs:
           script: |
             const patterns = [
               /^main$/,
-              /^v3-dev$/,
               /^feature\/.+/,
               /^fix\/.+/,
               /^release\/.+/,
               /^hotfix\/.+/,
-              /^phase\/.+/,
               /^dependabot\/.+/,
               /^renovate\/.+/,
               /^production-hardening\/.+/
@@ -45,12 +43,10 @@ jobs:
 
             const allowedPatterns = [
               'main',
-              'v3-dev',
               'feature/*',
               'fix/*',
               'release/*',
               'hotfix/*',
-              'phase/*',
               'dependabot/*',
               'renovate/*',
               'production-hardening/*'

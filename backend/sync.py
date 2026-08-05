@@ -17,8 +17,7 @@ from utils import hash_file
 
 log = get_logger(__name__)
 
-_work_event = asyncio.Event()
-_work_event.set()
+work = True
 
 
 async def index(replica):
@@ -30,7 +29,7 @@ async def index(replica):
 
         indexing_interrupted = False
         async for d in storage.index():
-            if not _work_event.is_set():
+            if not work:
                 indexing_interrupted = True
                 break
 
@@ -74,11 +73,12 @@ async def index(replica):
 
 
 async def do_sync():
+    # index unindexed files
     async with get_conn() as conn:
         files = await Files(conn).unindexed()
 
     for f in files:
-        if not _work_event.is_set():
+        if not work:
             return
         await index_file(f)
 
@@ -99,7 +99,7 @@ async def do_sync():
             master['storage'] = storage
 
     for r in replicas.values():
-        if not _work_event.is_set():
+        if not work:
             return
 
         if r['status'] == 'indexing':
@@ -117,7 +117,7 @@ async def do_sync():
                     await Replica(conn).update_status(r['id'], 'syncing')
 
                 for d in data:
-                    if not _work_event.is_set():
+                    if not work:
                         return
 
                     if d['status'] == Status.deleted:
@@ -149,16 +149,17 @@ listener_conn = None
 
 
 def db_event(conn, pid, channel, payload):
+    global work
     data = json.loads(payload)
     if data['action'] == 'UPDATE':
         diff = [k for k in data['old'] if data['new'][k] != data['old'][k]]
         if len(diff) == 0 or (len(diff) == 1 and diff[0] == 'status'):
             return
-    _work_event.clear()
+    work = False
 
 
 async def sync():
-    global listener_conn
+    global listener_conn, work
 
     await setup()
 
@@ -167,7 +168,7 @@ async def sync():
 
     backoff = 1
     while True:
-        _work_event.set()
+        work = True
         try:
             await do_sync()
             backoff = 1

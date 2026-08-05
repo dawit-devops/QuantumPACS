@@ -6,10 +6,6 @@ import sys
 from contextvars import ContextVar
 
 request_id_var: ContextVar[str] = ContextVar('request_id', default='')
-tenant_var: ContextVar[str] = ContextVar('tenant', default='')
-user_id_var: ContextVar[str] = ContextVar('user_id', default='')
-trace_id_var: ContextVar[str] = ContextVar('trace_id', default='')
-span_id_var: ContextVar[str] = ContextVar('span_id', default='')
 
 
 class JSONFormatter(logging.Formatter):
@@ -21,22 +17,10 @@ class JSONFormatter(logging.Formatter):
             'message': record.getMessage(),
         }
         if record.exc_info and record.exc_info[0]:
-            log_entry['error'] = {'stack': self.formatException(record.exc_info)}
+            log_entry['exception'] = self.formatException(record.exc_info)
         rid = request_id_var.get()
         if rid:
             log_entry['request_id'] = rid
-        tid = trace_id_var.get()
-        if tid:
-            log_entry['trace_id'] = tid
-        sid = span_id_var.get()
-        if sid:
-            log_entry['span_id'] = sid
-        t = tenant_var.get()
-        if t:
-            log_entry['tenant'] = t
-        uid = user_id_var.get()
-        if uid:
-            log_entry['user_id'] = uid
         extra = getattr(record, 'extra', None)
         if extra:
             log_entry.update(extra)

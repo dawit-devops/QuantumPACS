@@ -2,6 +2,7 @@ from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pydicom
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 
@@ -20,10 +21,6 @@ def _make_minimal_dicom():
     ds.Modality = 'CR'
     ds.SeriesDescription = 'AP View'
     ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.1'
-    ds.StudyInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.1'
-    ds.SeriesInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.2'
-    ds.SOPInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.3'
-    ds.AccessionNumber = 'ACC001'
     ds.file_meta = FileMetaDataset()
     ds.file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.1'
     ds.file_meta.MediaStorageSOPInstanceUID = '1.2.3.4.5.6.7.8'
@@ -67,10 +64,6 @@ class TestGetMeta:
         assert meta['series_number'] == '1'
         assert meta['modality'] == 'CR'
         assert meta['series_description'] == 'AP View'
-        assert meta['study_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.1'
-        assert meta['series_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.2'
-        assert meta['sop_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.3'
-        assert meta['accession_number'] == 'ACC001'
 
     def test_get_meta_includes_cleaned_dict(self):
         ds = _make_minimal_dicom()
@@ -139,38 +132,9 @@ class _AsyncContextMock(AsyncMock):
 
 def _make_mock_conn():
     conn = _AsyncContextMock()
-    conn.fetchrow = AsyncMock(return_value=None)
     tx = _AsyncContextMock()
     conn.transaction = MagicMock(return_value=tx)
     return conn
-
-class _TxTracker:
-    in_transaction = False
-    copy_called_in_tx = False
-    copy_call_count = 0
-
-    def track_tx(self, conn, storage_copy):
-        tx = _AsyncContextMock()
-        orig_aenter = tx.__aenter__
-
-        async def tracked_aenter(*args):
-            _TxTracker.in_transaction = True
-            return await orig_aenter()
-
-        async def tracked_aexit(*args):
-            _TxTracker.in_transaction = False
-
-        tx.__aenter__ = tracked_aenter
-        tx.__aexit__ = tracked_aexit
-        conn.transaction = MagicMock(return_value=tx)
-
-        async def tracked_copy(*args, **kwargs):
-            _TxTracker.copy_call_count += 1
-            if _TxTracker.in_transaction:
-                _TxTracker.copy_called_in_tx = True
-            return await storage_copy(*args, **kwargs)
-
-        return tracked_copy
 
 class TestStoreHandler:
     @pytest.mark.asyncio
@@ -183,7 +147,6 @@ class TestStoreHandler:
         mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -191,12 +154,12 @@ class TestStoreHandler:
         mock_replicafiles_cls.return_value.add = AsyncMock()
 
         with patch('dcm.server.setup', AsyncMock()), \
-             patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
-             patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.server.Replica', new=mock_replica_cls), \
+             patch('dcm.server.Files', new=mock_files_cls), \
+             patch('dcm.server.Storage.get', AsyncMock(return_value=mock_storage)), \
+             patch('dcm.server.ReplicaFiles', new=mock_replicafiles_cls), \
+             patch('dcm.server.hash_file', return_value='abc123'), \
+             patch('dcm.server.get_conn') as mock_get_conn:
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.server import store
@@ -213,222 +176,10 @@ class TestStoreHandler:
         mock_replica_cls.return_value.master = AsyncMock(return_value=None)
 
         with patch('dcm.server.setup', AsyncMock()), \
-             patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.server.Replica', new=mock_replica_cls), \
+             patch('dcm.server.get_conn') as mock_get_conn:
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.server import store
             result = await store(ds, data)
             assert result is False
-
-
-class TestStoreInstance:
-    @pytest.mark.asyncio
-    async def test_store_instance_importable(self):
-        from dcm.store import store_instance
-        assert callable(store_instance)
-
-    @pytest.mark.asyncio
-    async def test_store_instance_success(self):
-        ds = _make_minimal_dicom()
-        data = BytesIO(b'dicom data')
-
-        mock_conn = _make_mock_conn()
-        mock_replica_cls = MagicMock()
-        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-        mock_files_cls = MagicMock()
-        mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
-
-        mock_storage = MagicMock()
-        mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
-        mock_replicafiles_cls = MagicMock()
-        mock_replicafiles_cls.return_value.add = AsyncMock()
-
-        with patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
-             patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value.__aenter__.return_value = mock_conn
-
-            from dcm.store import store_instance
-            result = await store_instance(ds, data)
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_store_instance_uses_hash_for_dedup(self):
-        ds = _make_minimal_dicom()
-        data = BytesIO(b'dicom data')
-
-        mock_conn = _make_mock_conn()
-        existing_file = {'id': 99, 'name': 'existing.dcm', 'hash': 'abc123'}
-        mock_files_cls = MagicMock()
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=existing_file)
-
-        mock_replica_cls = MagicMock()
-        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-
-        with patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value.__aenter__.return_value = mock_conn
-
-            from dcm.store import store_instance
-            result = await store_instance(ds, data)
-            assert result is True
-            mock_files_cls.return_value.get_by_hash.assert_called_once_with('abc123')
-            mock_files_cls.return_value.insert_or_select.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_store_instance_no_setup_guard(self):
-        from dcm.store import store_instance
-        import inspect
-        source = inspect.getsource(store_instance)
-        assert '_initialized' not in source
-        assert 'setup()' not in source
-
-    @pytest.mark.asyncio
-    async def test_store_instance_calls_worklist_bridge(self):
-        ds = _make_minimal_dicom()
-        data = BytesIO(b'dicom data')
-
-        mock_conn = _make_mock_conn()
-        mock_replica_cls = MagicMock()
-        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-        mock_files_cls = MagicMock()
-        mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
-
-        mock_storage = MagicMock()
-        mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
-        mock_replicafiles_cls = MagicMock()
-        mock_replicafiles_cls.return_value.add = AsyncMock()
-
-        with patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
-             patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()) as mock_match, \
-             patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value.__aenter__.return_value = mock_conn
-
-            from dcm.store import store_instance
-            await store_instance(ds, data)
-            assert mock_match.called
-
-    @pytest.mark.asyncio
-    async def test_match_worklist_performed_uses_accession(self):
-        from db.worklist import Worklist
-
-        class _FakeAc:
-            async def __aenter__(self):
-                return self
-            async def __aexit__(self, *args):
-                pass
-
-        with patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value = _FakeAc()
-
-            mock_entry = {'status': 'scheduled', 'accession_number': 'ACC001'}
-            with patch.object(Worklist, 'get_by_accession', new=AsyncMock(return_value=mock_entry)) as mock_get_acc:
-                with patch.object(Worklist, 'mark_performed', new=AsyncMock()) as mock_mark:
-                    from dcm.store import match_worklist_performed
-                    await match_worklist_performed({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
-                    mock_get_acc.assert_called_once_with('ACC001')
-                    mock_mark.assert_called_once_with('ACC001', '1.2.3')
-
-    @pytest.mark.asyncio
-    async def test_match_worklist_no_action_when_no_accession(self):
-        from dcm.store import match_worklist_performed
-        with patch('db.worklist.Worklist') as mock_wl_cls:
-            await match_worklist_performed({'accession_number': '', 'study_instance_uid': '1.2.3'})
-            assert not mock_wl_cls.called
-
-    @pytest.mark.asyncio
-    async def test_store_instance_routes_to_destination(self):
-        _TxTracker.in_transaction = False
-        _TxTracker.copy_called_in_tx = False
-        _TxTracker.copy_call_count = 0
-
-        ds = _make_minimal_dicom()
-        data = BytesIO(b'dicom data')
-
-        mock_conn = _make_mock_conn()
-        mock_replica_cls = MagicMock()
-        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-        mock_replica_cls.return_value.get = AsyncMock(return_value={'id': 2, 'type': 'remote', 'location': '/remote'})
-        mock_files_cls = MagicMock()
-        mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
-
-        mock_master_storage = MagicMock()
-        mock_master_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
-        mock_remote_storage = MagicMock()
-        mock_remote_storage.copy = AsyncMock(return_value={'path': '/remote/file.dcm', 'size': 1024})
-
-        mock_replicafiles_cls = MagicMock()
-        mock_replicafiles_cls.return_value.add = AsyncMock()
-
-        with patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.Storage.get', side_effect=[mock_master_storage, mock_remote_storage]), \
-             patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()), \
-             patch('dcm.store.evaluate_routing_rules', new=AsyncMock(return_value=[
-                 {'rule_id': '1', 'rule_name': 'CT route', 'destination': '2'},
-             ])), \
-             patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value.__aenter__.return_value = mock_conn
-
-            from dcm.store import store_instance
-            result = await store_instance(ds, data)
-
-        assert result is True
-        assert mock_master_storage.copy.call_count == 1
-        assert mock_remote_storage.copy.call_count == 1
-        assert mock_replicafiles_cls.return_value.add.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_store_instance_two_phase_commit(self):
-        _TxTracker.in_transaction = False
-        _TxTracker.copy_called_in_tx = False
-        _TxTracker.copy_call_count = 0
-
-        ds = _make_minimal_dicom()
-        data = BytesIO(b'dicom data')
-
-        mock_conn = _make_mock_conn()
-        mock_replica_cls = MagicMock()
-        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-        mock_files_cls = MagicMock()
-        mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
-        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
-
-        mock_storage = MagicMock()
-        mock_storage_copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
-        mock_replicafiles_cls = MagicMock()
-        mock_replicafiles_cls.return_value.add = AsyncMock()
-
-        tracker = _TxTracker()
-        mock_storage.copy = tracker.track_tx(mock_conn, mock_storage_copy)
-
-        with patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.Files', new=mock_files_cls), \
-             patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
-             patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
-             patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
-            mock_get_conn.return_value.__aenter__.return_value = mock_conn
-
-            from dcm.store import store_instance
-            result = await store_instance(ds, data)
-
-        assert result is True
-        assert _TxTracker.copy_call_count == 1
-        assert not _TxTracker.copy_called_in_tx, \
-            "storage.copy must NOT be called inside a DB transaction"

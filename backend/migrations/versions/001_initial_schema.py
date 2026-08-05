@@ -4,24 +4,6 @@ Revision ID: 001
 Revises:
 Create Date: 2026-07-22
 
-Why
----
-Foundation migration creating all 10 core tables (users, patients, studies, series,
-files, file_changes, replicas, replica_files, logs, shared_files) plus the notify_event()
-trigger function for LISTEN/NOTIFY-based replication event streaming.
-
-Data Migration
---------------
-None — this is the initial schema creation.
-
-Rollback
---------
-Drops all tables, triggers, and the notify_event() function.
-
-References
-----------
-- ADR-001: Initial database schema
-- ADR-003: PostgreSQL LISTEN/NOTIFY for replication
 """
 
 from alembic import op

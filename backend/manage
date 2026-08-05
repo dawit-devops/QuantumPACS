@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV="$DIR/venv"
-
 if [ -z "${1:-}" ]; then
     echo "Command needed (run, db)"
     exit 1
@@ -57,16 +54,16 @@ handle_db() {
             create_db "$DBNAME"
             ;;
         migrate)
-            $VENV/bin/alembic upgrade head
+            venv/bin/alembic upgrade head
             ;;
         rollback)
-            $VENV/bin/alembic downgrade -1
+            venv/bin/alembic downgrade -1
             ;;
         current)
-            $VENV/bin/alembic current
+            venv/bin/alembic current
             ;;
         history)
-            $VENV/bin/alembic history
+            venv/bin/alembic history
             ;;
         shell)
             psql -h "$DBHOST" "$DBNAME" -U "$DBUSER"
@@ -83,26 +80,17 @@ handle_db() {
 
 case $1 in
     run)
-        $VENV/bin/python app.py
+        venv/bin/python app.py
         ;;
     db)
         handle_db "${@:2}"
         ;;
-    tenant)
-        shift
-        if [ "$1" = "migrate" ]; then
-            shift
-            $VENV/bin/python -m management.tenant_migrate "$@"
-        elif [ "$1" = "migrate-one" ]; then
-            shift
-            $VENV/bin/python -m management.tenant_migrate "$1"
-        else
-            echo "Usage: tenant {migrate|migrate-one <slug>}"
+    *)
+        cmd="./cmd/$1.py"
+        if [ ! -f "$cmd" ]; then
+            echo "Unsupported command $1"
             exit 1
         fi
-        ;;
-    *)
-        echo "Unsupported command $1"
-        exit 1
+        python "$cmd" "${@:2}"
         ;;
 esac

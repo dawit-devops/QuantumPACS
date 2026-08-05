@@ -1,15 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from db.table import Table
-
-
-class _AsyncContextMock(AsyncMock):
-    async def __aenter__(self):
-        return self
-    async def __aexit__(self, *args):
-        pass
 
 
 class TestTableRegistry:
@@ -41,7 +34,7 @@ class TestTableRegistry:
         class C(Table):
             name = 'c'
         Table.register(C)
-        t = Table(conn=MagicMock())
+        t = Table()
         assert C in t.tables
 
     def test_register_same_class_twice(self):
@@ -64,14 +57,14 @@ class TestTableQuery:
     def test_query_returns_pypika_query_object(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock())
+        t = PatientTable()
         q = t.query()
         assert 'Query' in type(q).__name__
 
     def test_select_returns_valid_sql(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock())
+        t = PatientTable()
         q = t.select('id', 'name')
         sql = str(q)
         assert 'SELECT' in sql
@@ -82,14 +75,14 @@ class TestTableQuery:
     def test_select_star(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock())
+        t = PatientTable()
         q = t.select('*')
         assert str(q) == 'SELECT * FROM "patients"'
 
     def test_update_requires_set(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock())
+        t = PatientTable()
         table = t.table
         q = t.update().set('name', 'test').where(table.id == 1)
         sql = str(q)
@@ -99,7 +92,7 @@ class TestTableQuery:
     def test_insert_requires_values(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock())
+        t = PatientTable()
         q = t.insert().columns('id', 'name').insert(1, 'Alice')
         sql = str(q)
         assert sql.startswith('INSERT INTO')
@@ -108,7 +101,7 @@ class TestTableQuery:
     def test_alias_in_query(self):
         class PatientTable(Table):
             name = 'patients'
-        t = PatientTable(conn=MagicMock(), alias='p')
+        t = PatientTable(alias='p')
         q = t.select('id')
         sql = str(q)
         assert '"patients"' in sql or '"p"' in sql
@@ -127,8 +120,8 @@ class TestTableAsync:
     async def test_sync_db_raises_not_implemented(self):
         class MyTable(Table):
             name = 'test'
-        t = MyTable(conn=MagicMock())
-        with pytest.raises(NotImplementedError):
+        t = MyTable()
+        with pytest.raises(TypeError, match='NotImplemented'):
             await t.sync_db()
 
     @pytest.mark.asyncio
@@ -174,50 +167,6 @@ class TestTableAsync:
         result = await t.exec('INSERT INTO test VALUES (1)')
         conn.execute.assert_called_once_with('INSERT INTO test VALUES (1)')
         assert result == 'INSERT 0 1'
-
-    @pytest.mark.asyncio
-    async def test_files_insert_or_select_toctou(self):
-        import asyncpg
-        conn = MagicMock()
-        from db.files import Files
-        f = Files(conn)
-        f.get = AsyncMock(side_effect=[None, {'id': 42, 'name': 'test.dcm'}])
-        f.add = AsyncMock(side_effect=asyncpg.UniqueViolationError('duplicate key'))
-        result = await f.insert_or_select({'name': 'test.dcm'})
-        assert result['id'] == 42
-        assert f.get.call_count == 2
-        f.add.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_files_insert_or_select_returns_existing(self):
-        conn = MagicMock()
-        from db.files import Files
-        f = Files(conn)
-        f.get = AsyncMock(return_value={'id': 42, 'name': 'existing.dcm'})
-        result = await f.insert_or_select({'name': 'existing.dcm'})
-        assert result['id'] == 42
-
-    @pytest.mark.asyncio
-    async def test_files_delete_calls_storage_delete(self):
-        tx = _AsyncContextMock()
-        conn = AsyncMock()
-        conn.transaction = MagicMock(return_value=tx)
-        conn.fetchval = AsyncMock(return_value=0)
-        conn.execute = AsyncMock()
-        conn.fetchrow = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
-
-        mock_storage = MagicMock()
-        mock_storage.delete = AsyncMock()
-
-        from db.files import Files, set_es_indexer, set_storage_provider
-        mock_indexer = AsyncMock()
-        set_es_indexer(mock_indexer)
-        set_storage_provider(AsyncMock(return_value=mock_storage))
-
-        f = Files(conn)
-        await f.delete(file_id=42, master_id=1)
-
-        assert mock_storage.delete.called
 
     @pytest.mark.asyncio
     async def test_fetch_with_select_query(self):

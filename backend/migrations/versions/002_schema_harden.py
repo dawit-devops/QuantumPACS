@@ -4,24 +4,14 @@ Revision ID: 002
 Revises: 001
 Create Date: 2026-07-23
 
-Why
----
-Addresses findings from DB_SCHEMA_REVIEW.md: adds missing PRIMARY KEY on
-replica_files, UNIQUE constraint on users.username, 8 missing FK indexes,
-CHECK constraints for domain integrity, composite index for sync queries,
-and drops the redundant patients.patient_id index.
+See docs/DB_SCHEMA_REVIEW.md for full rationale.
 
-Data Migration
---------------
-None — all changes are structural (constraints, indexes).
-
-Rollback
---------
-Reverses all constraint/index changes; restores dropped index.
-
-References
-----------
-- docs/DB_SCHEMA_REVIEW.md — full rationale for each finding (P0–P3)
+P0: replica_files.id PRIMARY KEY
+P0: UNIQUE on users.username
+P0: Missing FK indexes (8)
+P1: CHECK constraints on users.status, patients.sex
+P2: Composite index for ReplicaFiles sync queries
+P3: Drop redundant index on patients.patient_id
 """
 
 from alembic import op

@@ -29,13 +29,9 @@ def get_meta(data):
         'patient_sex': clean(getattr(data, 'PatientSex', '')),
         'study_id': clean(getattr(data, 'StudyID', ''), strict=True),
         'study_description': clean(getattr(data, 'StudyDescription', '')),
-        'study_instance_uid': clean(getattr(data, 'StudyInstanceUID', ''), strict=True),
-        'accession_number': clean(getattr(data, 'AccessionNumber', ''), strict=True),
         'series_number': clean(getattr(data, 'SeriesNumber', ''), strict=True),
-        'series_instance_uid': clean(getattr(data, 'SeriesInstanceUID', ''), strict=True),
         'modality': clean(getattr(data, 'Modality', '')),
         'series_description': clean(getattr(data, 'SeriesDescription', '')),
-        'sop_instance_uid': clean(getattr(data, 'SOPInstanceUID', ''), strict=True),
         'cleaned': cleaned,
         'raw': data_dict,
     }

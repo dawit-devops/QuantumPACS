@@ -1,74 +1,22 @@
 .viewportElement {
-  max-height: 80%;
-  margin: var(--space-5);
-  position: relative;
-  color: var(--text-inverse);
-  touch-action: none;
+    max-height: 80%;
+    margin: 20px;
+    position: relative;
+    color: white;
 }
 
 @media only screen and (max-width: 420px) {
-  .viewportElement {
-    min-width: 350px;
-    min-height: 350px;
-    max-height: 350px;
-  }
+    .viewportElement {
+        min-width: 350px;
+        min-height: 350px;
+        max-height: 350px;
+        max-height: 350px;
+    }
 }
 
-@media only screen and (min-width: 600px) and (max-width: 767px) {
-  .viewportElement {
-    min-width: 500px;
-    min-height: 500px;
-    max-height: 500px;
-  }
-}
-
-@media only screen and (min-width: 768px) {
-  .viewportElement {
-    min-width: 700px;
-    min-height: 700px;
-  }
-}
-
-/* FR-R12-15 layout grid: when tiling companion viewports, drop the fixed
-   minimum sizes that keep the single-viewport layout stable and give the
-   grid a definite height (its parent is not a flex container). */
-.ce-layout-grid {
-  width: 100%;
-  height: 100%;
-}
-
-.ce-layout-grid .ce-primary-cell,
-.ce-layout-grid .ce-companion-cell {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ce-layout-grid .viewportElement {
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.metadata-collapse {
-  max-width: 600px;
-  margin: var(--space-2) auto;
-}
-
-@media only screen and (max-width: 767px) {
-  .metadata-collapse {
-    margin: var(--space-2);
-  }
+@media only screen and (min-width: 600px) {
+    .viewportElement {
+        min-width: 700px;
+        min-height: 700px;
+    }
 }

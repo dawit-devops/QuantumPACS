@@ -4,7 +4,3 @@ class ApiException(Exception):
         self.message = message
         self.status_code = status_code
         self.error_code = error_code
-
-
-class ConfigurationError(Exception):
-    pass

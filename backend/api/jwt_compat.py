@@ -1,4 +1,5 @@
 import jwt as _jwt
+from jwt import PyJWTError
 
 
 def encode(payload, key, algorithm='HS256'):

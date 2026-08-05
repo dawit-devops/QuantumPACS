@@ -8,17 +8,12 @@
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.31.0",
-    "@typescript-eslint/parser": "^8.31.0",
     "@vitejs/plugin-react": "^6.0.4",
-    "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^9.24.0",
     "eslint-plugin-react": "^7.13.0",
     "jsdom": "^29.1.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
   },
@@ -26,35 +21,24 @@
     "@ant-design/icons": "^6.3.2",
     "@cornerstonejs/core": "^5.6.10",
     "@cornerstonejs/dicom-image-loader": "^5.6.10",
+    "@cornerstonejs/metadata": "^5.6.10",
     "@cornerstonejs/tools": "^5.6.10",
     "antd": "^6.5.1",
-    "chart.js": "^4.5.1",
     "dicom-parser": "^1.8.3",
+    "events": "^3.3.0",
     "react": "^19.2.8",
-    "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.8",
     "react-highlight-words": "^0.21.0",
-    "react-router": "^8.3.0",
-    "vite-plugin-pwa": "^1.3.0"
+    "react-router-dom": "^7.18.1"
   },
   "scripts": {
     "start": "vite",
     "build": "vite build",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
-    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --fix",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run",
-    "test:fast": "vitest run src/test/AuthContext.test.tsx src/test/NotFound.test.tsx src/test/QuantumLogo.test.tsx src/test/helpers.test.ts src/test/hooks.test.ts src/test/Pwa.test.ts src/test/dicomweb.test.ts src/test/App.test.tsx",
-    "test:slow": "vitest run src/test/Roles.test.tsx src/test/CornerstoneElement.test.tsx src/test/Metrics.test.tsx src/test/Sidebar.test.tsx src/test/Users.test.tsx src/test/Tenants.test.tsx src/test/TenantSelector.test.tsx src/test/Login.test.tsx src/test/StudyBrowser.test.tsx src/test/Account.test.tsx",
     "test:e2e": "playwright test",
-    "test:e2e:all": "playwright test e2e/login.spec.ts e2e/role-based-access.spec.ts e2e/study-viewer.spec.ts e2e/tenant-provisioning.spec.ts e2e/integration.spec.ts e2e/service-worker.spec.ts e2e/share-link.spec.ts e2e/mobile-viewport.spec.ts e2e/roles.spec.ts e2e/worklist.spec.ts",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "npm run test:unit && npm run test:e2e:all"
-  },
-  "overrides": {
-    "adm-zip": "0.6.0"
+    "test:all": "vitest run && playwright test"
   }
 }

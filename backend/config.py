@@ -1,63 +1,24 @@
 import os
+import sys
 
 import yaml
 
-from exceptions import ConfigurationError
-
-_DEFAULT_SECRET = 'quantumpacs-default-secret-32-bytes-long!!'
-_DEFAULT_DB_PASSWORD = 'pa55w0rd'
-_DEFAULT_SUPERADMIN_PASS = 'pa55w0rd'
-
 default_config = {
-    'secret': _DEFAULT_SECRET,
-    'superadmin_pass': _DEFAULT_SUPERADMIN_PASS,
+    'secret': 'default',
+    'superadmin_pass': 'pa55w0rd',
     'db_host': '127.0.0.1',
     'db_port': '5432',
     'db_database': 'quantumpacs',
     'db_user': 'quantumpacs',
-    'db_password': _DEFAULT_DB_PASSWORD,
+    'db_password': 'pa55w0rd',
     'es_host': 'localhost',
-    'cors_origins': 'http://localhost:5173',
+    'cors_origins': '*',
     'allowed_hosts': 'localhost,127.0.0.1',
     'redis_host': 'localhost',
     'redis_port': '6379',
     'redis_password': '',
     'db_pool_size': '8',
     'sentry_dsn': '',
-    'sentry_traces_sample_rate': '1.0',
-    'oauth_issuer': '',
-    'oauth_client_id': '',
-    'oauth_client_secret': '',
-    'oauth_redirect_uri': '',
-    'oauth_jwks_uri': '',
-    'oauth_token_url': '',
-    'oauth_default_role': 'radiologist',
-    'oauth_scope': 'openid email profile',
-    'dicom_ae_title': 'QUANTUMPACS',
-    'dicom_cstore_port': '11112',
-    'dicom_mwl_port': '11113',
-    'dicom_cmove_port': '11114',
-    'hl7_mllp_port': '12579',
-    'hl7_mllp_tls_cert': '',
-    'hl7_mllp_tls_key': '',
-    'hl7_mllp_allowed_ips': '',
-    'otel_exporter_otlp_endpoint': '',
-    'otel_service_name': 'quantumpacs-backend',
-    'otel_deployment_environment': 'development',
-    'otel_sampler': 'always_on',
-    'otel_bsp_schedule_delay': '5000',
-    'otel_bsp_max_queue_size': '2048',
-    'otel_bsp_max_export_batch_size': '512',
-    'prometheus_enabled': 'true',
-    'max_upload_size_mb': '500',
-    'b2_cors_origins': 'http://localhost:5173',
-    'ingestion_stream': 'events:ingestion',
-    'ingestion_group': 'ingestion-service',
-    'ingestion_consumer': 'worker-1',
-    'ingestion_poll_count': '10',
-    'ingestion_poll_block_ms': '5000',
-    'ingestion_max_retries': '3',
-    'oauth_secret_encryption_key': '',
 }
 
 
@@ -81,8 +42,8 @@ def load_config(overrides=None):
     if overrides:
         cfg.update(overrides)
 
-    if cfg['secret'] in ('default', ):
-        cfg['secret'] = _DEFAULT_SECRET
+    if cfg['secret'] == 'default':
+        cfg['secret'] = cfg['db_password']
 
     return cfg
 
@@ -91,11 +52,12 @@ config = load_config()
 
 
 def assert_production_secret():
-    if config['secret'] in ('default', 'pa55w0rd', _DEFAULT_SECRET):
-        raise ConfigurationError(
+    if config['secret'] in ('default', 'pa55w0rd'):
+        import logging
+        logging.getLogger(__name__).critical(
             'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
         )
+        sys.exit(1)
 
 
-def is_docker():
-    return bool(os.getenv('QUANTUMPACS_DOCKER'))
+is_docker = bool(os.getenv('QUANTUMPACS_DOCKER'))

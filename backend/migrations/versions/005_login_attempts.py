@@ -4,23 +4,10 @@ Revision ID: 005
 Revises: 004
 Create Date: 2026-07-24
 
-Why
----
-Adds a login_attempts table that records each login attempt (IP, endpoint, timestamp)
-for persistent rate limiting across server restarts — replaces in-memory rate limiting
-that was lost on process restart.
+Add a login_attempts table that records each login attempt (IP, timestamp)
+for persistent rate limiting across server restarts.
 
-Data Migration
---------------
-None — new table creation only.
-
-Rollback
---------
-Drops the login_attempts table and its indexes.
-
-References
-----------
-- Sprint 1 security hardening: persistent rate limiting
+Also adds a cleanup trigger to auto-purge records older than 24 hours.
 """
 
 from alembic import op
