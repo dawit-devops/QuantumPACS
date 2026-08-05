@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pydicom
 import pytest
@@ -66,6 +66,8 @@ class TestGetMeta:
             'patient_id', 'patient_name', 'patient_birth_date',
             'patient_sex', 'study_id', 'study_description',
             'series_number', 'modality', 'series_description',
+            'study_instance_uid', 'series_instance_uid',
+            'sop_instance_uid', 'accession_number',
             'cleaned', 'raw',
         }
         assert set(meta.keys()) == expected
@@ -119,6 +121,34 @@ class TestGetMeta:
     def test_patient_name_unmodified(self, dataset):
         meta = get_meta(dataset)
         assert meta['patient_name'] == 'Smith^John'
+
+    def test_get_meta_returns_study_instance_uid(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        ds.StudyInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.1'
+        ds.SeriesInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.2'
+        ds.SOPInstanceUID = '1.2.840.113619.2.55.1.1760426491.1234.3'
+        ds.AccessionNumber = 'ACC001'
+        meta = get_meta(ds)
+        assert meta['study_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.1'
+        assert meta['series_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.2'
+        assert meta['sop_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.3'
+        assert meta['accession_number'] == 'ACC001'
+
+    def test_get_meta_uids_default_to_empty_when_missing(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        meta = get_meta(ds)
+        assert meta['study_instance_uid'] == ''
+        assert meta['series_instance_uid'] == ''
+        assert meta['sop_instance_uid'] == ''
+        assert meta['accession_number'] == ''
 
 
 class TestParseDcm:

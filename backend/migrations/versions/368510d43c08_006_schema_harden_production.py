@@ -4,12 +4,25 @@ Revision ID: 368510d43c08
 Revises: 005
 Create Date: 2026-07-24 20:42:36.512155
 
-Adds:
-- Index on patients(name) for name-based lookups
-- Index on logs(created) for time-range queries
-- UNIQUE constraint on shared_files(hash) to prevent collisions
-- Make file_changes.by_user_id nullable (ON DELETE SET NULL already set)
-- Add users.needs_rehash column for legacy password upgrade path
+Why
+---
+Production hardening additions: index on patients(name) for name-based FHIR
+searches, index on logs(created) for time-range queries, UNIQUE constraint on
+shared_files(hash) to prevent collisions, nullable by_user_id (complementing
+the ON DELETE SET NULL from migration 003), and users.needs_rehash for the
+legacy password hash upgrade path.
+
+Data Migration
+--------------
+None — index/constraint/column changes only.
+
+Rollback
+--------
+Reverses all index, constraint, and column changes.
+
+References
+----------
+- docs/DB_SCHEMA_REVIEW.md — production hardening findings
 """
 
 from typing import Sequence, Union

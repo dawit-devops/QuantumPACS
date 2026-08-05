@@ -3,6 +3,35 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = [
-    "ignore::PendingDeprecationWarning:starlette.formparsers",
-    "ignore::PendingDeprecationWarning:multipart",
+    "ignore::UserWarning:jwt.warnings",
+    'ignore:Using `httpx` with `starlette.testclient`:UserWarning',
+    "ignore:unclosed <socket.socket:ResourceWarning",
+    "ignore:unclosed transport:ResourceWarning",
+    "ignore:unclosed event loop:ResourceWarning",
+    "ignore:coroutine 'handle_find_async' was never awaited:RuntimeWarning",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use sys.modules mocks before imports (E402) and compact one-liners (E701/E702)
+"tests/**" = ["E402", "E701", "E702"]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "migrations/*",
+    "venv/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

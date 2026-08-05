@@ -1,7 +1,8 @@
 from starlette.endpoints import HTTPEndpoint
 
+from api.rbac import requires_permission
+from api.permissions import Permission
 from api.response import ok, created
-from api.utils import is_admin
 from api.validate import parse_body
 from api.schemas.replicas import CreateReplicaRequest, UpdateReplicaRequest
 from db.conn import get_conn
@@ -10,8 +11,8 @@ from db.replica_files import ReplicaFiles
 
 
 class ReplicasHandlers(HTTPEndpoint):
+    @requires_permission(Permission.REPLICA_WRITE)
     async def post(self, request):
-        is_admin(request)
         body = await parse_body(CreateReplicaRequest, request)
 
         async with get_conn()as conn:
@@ -30,8 +31,8 @@ class ReplicasHandlers(HTTPEndpoint):
 
         return created({'id': result})
 
+    @requires_permission(Permission.REPLICA_READ)
     async def get(self, request):
-        is_admin(request)
         async with get_conn() as conn:
             replicas = await Replica(conn).get_all()
 
@@ -39,8 +40,8 @@ class ReplicasHandlers(HTTPEndpoint):
 
 
 class ReplicaHandlers(HTTPEndpoint):
+    @requires_permission(Permission.REPLICA_WRITE)
     async def post(self, request):
-        is_admin(request)
         body = await parse_body(UpdateReplicaRequest, request)
         replica_id = int(request.path_params['id'])
 
@@ -52,8 +53,8 @@ class ReplicaHandlers(HTTPEndpoint):
 
         return ok({})
 
+    @requires_permission(Permission.REPLICA_DELETE)
     async def delete(self, request):
-        is_admin(request)
         replica_id = int(request.path_params['id'])
 
         async with get_conn() as conn:

@@ -1,15 +1,33 @@
+import asyncpg
 from datetime import datetime, timezone
 import json
+from typing import Callable, Optional
 
 from pypika.functions import Count
+from pypika import Order
 
-from es import es
 from db.patient import Patient
 from db.study import Study
 from db.series import Series
 from db.replica_files import ReplicaFiles
 from db.table import Table
 from db.file_changes import FileChange
+from log import get_logger
+
+log = get_logger(__name__)
+
+_es_indexer: Optional[Callable] = None
+_storage_provider: Optional[Callable] = None
+
+
+def set_es_indexer(indexer: Callable):
+    global _es_indexer
+    _es_indexer = indexer
+
+
+def set_storage_provider(provider: Callable):
+    global _storage_provider
+    _storage_provider = provider
 
 
 class Files(Table):
@@ -25,6 +43,7 @@ class Files(Table):
             name TEXT NOT NULL,
             indexed BOOLEAN NOT NULL DEFAULT FALSE,
             hash TEXT NOT NULL,
+            sop_instance_uid TEXT,
             created TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             updated TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -57,18 +76,23 @@ class Files(Table):
             now = datetime.now(timezone.utc)
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
-                'indexed', 'hash', 'created', 'updated',
+                'indexed', 'hash', 'sop_instance_uid', 'created', 'updated',
             ).insert((
                 filedata['name'], patient['id'], study['id'], series['id'], json.dumps(filedata['cleaned']),
-                False, filedata['hash'], now, now,
+                False, filedata['hash'], filedata.get('sop_instance_uid', ''), now, now,
             ), ).returning('id')
 
             file_id = await self.fetchval(q)
 
         filedata['id'] = file_id
         filedata['meta'] = filedata['cleaned']
+        if _es_indexer is not None:
+            try:
+                await _es_indexer(filedata)
+            except Exception as e:
+                log.warning('ES indexing failed for file %s: %s, will retry via sync loop', file_id, e)
+                return filedata
         async with self.conn.transaction():
-            await es.index_file(filedata)
             q = self.update().where(self.table.id == file_id).set(self.table.indexed, True)
             await self.exec(q)
 
@@ -105,11 +129,18 @@ class Files(Table):
         )
         return await self.fetchone(q)
 
+    async def find_by_hash(self, hsh):
+        q = self.select('id', 'name', 'hash').where(self.table.hash == hsh).limit(1)
+        return await self.fetchone(q)
+
     async def insert_or_select(self, filedata):
         f = await self.get(filedata)
         if f:
             return f
-        return await self.add(filedata)
+        try:
+            return await self.add(filedata)
+        except asyncpg.UniqueViolationError:
+            return await self.get(filedata)
 
     def q(self):
         PatientT = Patient().table
@@ -192,7 +223,7 @@ class Files(Table):
 
         return file
 
-    async def get_all(self, limit=None):
+    async def get_all(self, limit=1000):
         q = self.q()
         if limit:
             q = q.limit(limit)
@@ -206,11 +237,11 @@ class Files(Table):
                 (self.table.name.ilike(f'%{search}%')) |
                 (Patient().table.patient_id.cast('text').ilike(f'%{search}%'))
             )
-        q = q.orderby(self.table.id.desc()).limit(per_page).offset((page - 1) * per_page)
+        q = q.orderby(self.table.id, order=Order.desc).limit(per_page).offset((page - 1) * per_page)
         files = await self.fetch(q)
         data = [self.from_row(f) for f in files]
 
-        count_q = self.select(Count(1)).from_(self.table)
+        count_q = self.select(Count(1))
         if search:
             PatientT = Patient().table
             count_q = count_q.join(PatientT).on(PatientT.id == self.table.patient_id)
@@ -222,7 +253,7 @@ class Files(Table):
         return data, total
 
     async def unindexed(self):
-        q = self.q().where(self.table.indexed == False)
+        q = self.q().where(self.table.indexed.eq(False))
         files = await self.fetch(q)
         return [self.from_row(f) for f in files]
 
@@ -255,7 +286,18 @@ class Files(Table):
         return await self.fetchone(q)
 
     async def delete(self, file_id, master_id):
-        await es.delete(file_id)
+        if _es_indexer is not None:
+            try:
+                await _es_indexer(file_id, delete=True)
+            except Exception:
+                log.warning('ES delete failed for file %s', file_id)
+
+        from db.replica import Replica as ReplicaModel
+        replica = await ReplicaModel(self.conn).get(master_id)
+        if replica and _storage_provider is not None:
+            storage = await _storage_provider(replica)
+            file_data = {'id': file_id}
+            await storage.delete(file_data)
 
         async with self.conn.transaction():
             q = self.update().where(self.table.id == file_id).set(self.table.deleted, True)
@@ -266,9 +308,11 @@ class Files(Table):
                 await self.exec(q)
 
     async def delete_all(self):
-        try:
-            await es.reset_index()
-        except Exception:
-            pass
-        q = self.query().delete()
-        await self.exec(q)
+        async with self.conn.transaction():
+            if _es_indexer is not None:
+                try:
+                    await _es_indexer(None, reset=True)
+                except Exception:
+                    pass
+            q = self.query().delete()
+            await self.exec(q)

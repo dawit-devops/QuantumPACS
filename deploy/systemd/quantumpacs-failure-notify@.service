@@ -1,0 +1,8 @@
+[Unit]
+Description=QuantumPACS failure notification for %i
+
+[Service]
+Type=oneshot
+# Optional webhook: QUANTUMPACS_NOTIFY_WEBHOOK=... in this file
+EnvironmentFile=-/etc/quantumpacs/notify.env
+ExecStart=/home/quantumpacs/openpacs/scripts/notify_failure.sh %i

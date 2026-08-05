@@ -1,5 +1,4 @@
 import hashlib
-import pytest
 from io import BytesIO
 
 from utils import hash_file, rand_str

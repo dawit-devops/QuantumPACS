@@ -1,4 +1,37 @@
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+    container_name: quantumpacs-es-1
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=quantumpacs
+      - node.name=quantumpacs-es-1
+      - network.host=0.0.0.0
+      - http.host=0.0.0.0
+      - indices.memory.index_buffer_size=10%
+      - indices.fielddata.cache.size=20%
+      - thread_pool.search.queue_size=100
+    volumes:
+      - quantumpacs_esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE 'green|yellow'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    mem_limit: 1g
+    mem_reservation: 512m
+
   postgres:
     build:
       context: ./docker/postgres
@@ -9,9 +42,12 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: quantumpacs
-      POSTGRES_PASSWORD: pa55w0rd
-      POSTGRES_DB: quantumpacs
+      # (D-M5) Never hardcode credentials in the committed compose file.
+      # Override via .env (see .env.example) — POSTGRES_PASSWORD only takes
+      # effect on first init of the data volume.
+      POSTGRES_USER: ${POSTGRES_USER:-quantumpacs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
+      POSTGRES_DB: ${POSTGRES_DB:-quantumpacs}
     volumes:
       - quantumpacs_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,5 +56,56 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: quantumpacs-redis-1
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # (D-M11) The Dockerfile runtime was never exercised by compose — systemd
+  # source installs ran the app while the images sat unbuilt. This service
+  # makes `docker compose up -d` a real, testable "prod-like" runtime.
+  backend:
+    build: ./backend
+    image: quantumpacs-backend:local
+    container_name: quantumpacs-backend-1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-quantumpacs}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-pa55w0rd}
+      - DB_DATABASE=${POSTGRES_DB:-quantumpacs}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET=${SECRET:-quantumpacs-docker-compose-dev-secret-change-me}
+      - QUANTUMPACS_DOCKER=true
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    image: quantumpacs-frontend:local
+    container_name: quantumpacs-frontend-1
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
 volumes:
   quantumpacs_pgdata:
+  quantumpacs_esdata:

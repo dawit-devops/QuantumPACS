@@ -1,0 +1,55 @@
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.report-back {
+  align-self: center;
+}
+
+.report-header-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.report-subtitle {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.report-saved {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 12px;
+}
+
+.report-steps {
+  margin: 16px 0 0;
+}
+
+.report-stat-tag {
+  font-weight: 700;
+}
+
+.report-template-hint {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.report-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.report-loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}

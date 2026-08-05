@@ -1,36 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { Table, message, Tag } from 'antd';
-import { request } from '../helpers';
+import React, { useState, useEffect } from "react";
+import { Table, message, App, Tag } from "antd";
+import { listFileChanges } from "../api/files";
 
 const columns = [
   {
-    title: 'time',
-    dataIndex: 'created',
-    width: '30%',
+    title: "time",
+    dataIndex: "created",
+    width: "30%",
     render: (data: number) => new Date(data * 1000).toUTCString(),
   },
   {
-    title: 'username',
-    dataIndex: 'username',
-    width: '10%',
+    title: "username",
+    dataIndex: "username",
+    width: "10%",
   },
   {
-    title: 'change',
-    dataIndex: 'type',
-    width: '70%',
+    title: "change",
+    dataIndex: "type",
+    width: "70%",
     render: (data: string) => {
-      return (
-        <Tag color='orange'>{data}</Tag>
-      );
-    }
+      return <Tag color="orange">{data}</Tag>;
+    },
   },
 ];
 
 function Changes(props: any) {
-
-  let [data, setData] = useState<any[]>([]);
-  let [pagination, setPagination] = useState<any>({});
-  let [loading, setLoading] = useState(false);
+  const { message } = App.useApp();
+  const [data, setData] = useState<any[]>([]);
+  const [pagination, setPagination] = useState<any>({});
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetch();
@@ -40,7 +38,9 @@ function Changes(props: any) {
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
     const pager = { ...pagination };
     pager.current = pagination.current;
-    setPagination(Object.assign({}, pagination, { current: pagination.current }));
+    setPagination(
+      Object.assign({}, pagination, { current: pagination.current }),
+    );
     fetch({
       results: pagination.pageSize,
       page: pagination.current,
@@ -52,15 +52,19 @@ function Changes(props: any) {
 
   const fetch = (params?: any) => {
     setLoading(true);
-    request(`files/${props.file.id}/changes`, params || {}).then((data: any) => {
-      const pager = Object.assign({}, pagination, { total: data.data.length });
-      setLoading(false);
-      setData(data.data);
-      setPagination(pager);
-    }).catch((e: any) => {
-      setLoading(false);
-      message.error(e.message);
-    });
+    listFileChanges(props.file.id, params || {})
+      .then((data: any) => {
+        const pager = Object.assign({}, pagination, {
+          total: data.data.length,
+        });
+        setLoading(false);
+        setData(data.data);
+        setPagination(pager);
+      })
+      .catch((e: any) => {
+        setLoading(false);
+        message.error(e.message);
+      });
   };
 
   return (

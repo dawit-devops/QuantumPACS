@@ -1,0 +1,11 @@
+/* Companion cells flow into the parent CSS grid via display: contents. */
+.ce-companion-grid {
+  display: contents;
+}
+
+.ce-companion-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: #000;
+}

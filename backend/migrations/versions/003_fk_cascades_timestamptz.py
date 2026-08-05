@@ -4,10 +4,26 @@ Revision ID: 003
 Revises: 002
 Create Date: 2026-07-23
 
-See docs/DB_SCHEMA_REVIEW.md for full rationale.
+Why
+---
+Converts all TIMESTAMP columns to TIMESTAMPTZ for proper timezone handling and adds
+ON DELETE CASCADE on 8 foreign keys to prevent orphaned records. file_changes.by_user_id
+uses ON DELETE SET NULL to preserve audit trail when a user is deleted.
 
-R5: ON DELETE CASCADE on 8 FKs, ON DELETE SET NULL on 1
-R4: TIMESTAMP → TIMESTAMPTZ on all timestamp columns
+Data Migration
+--------------
+All timestamp columns are converted IN PLACE using AT TIME ZONE 'UTC' to preserve
+existing values. Default expressions are updated from `(now() at time zone 'utc')`
+to plain `now()`.
+
+Rollback
+--------
+Converts TIMESTAMPTZ back to TIMESTAMP, restores old default expressions, and
+reverses cascading FK behavior to NO ACTION.
+
+References
+----------
+- docs/DB_SCHEMA_REVIEW.md R4, R5
 """
 
 from alembic import op

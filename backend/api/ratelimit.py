@@ -8,40 +8,29 @@ from collections import defaultdict
 
 from log import get_logger
 
+_MAX_ATTEMPTS_ENTRIES = 10000
+
 log = get_logger(__name__)
 
 _redis = None
 _redis_available = False
 
-try:
-    import redis.asyncio as _aioredis
 
-    def _get_rate_redis():
-        global _redis, _redis_available
-        if _redis is not None:
-            return _redis
-        try:
-            from config import config as cfg
-            host = cfg.get('redis_host', 'localhost')
-            port = int(cfg.get('redis_port', '6379'))
-            password = cfg.get('redis_password') or None
-            _redis = _aioredis.Redis(
-                host=host, port=port, password=password, db=3,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
-            _redis_available = True
-        except Exception:
-            _redis_available = False
+async def _get_rate_redis():
+    global _redis, _redis_available
+    if _redis is not None:
         return _redis
-
-except ImportError:
-    def _get_rate_redis():
-        return None
+    try:
+        from api.redis_client import get_client
+        _redis = await get_client(db=3)
+        _redis_available = True
+    except Exception:
+        _redis_available = False
+    return _redis
 
 
 class TokenBucket:
-    def __init__(self, max_attempts=5, window_seconds=60, lockout_attempts=10, lockout_seconds=300):
+    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.lockout_attempts = lockout_attempts
@@ -54,6 +43,14 @@ class TokenBucket:
         cutoff = now - self.window_seconds
         self._attempts[ip] = [t for t in self._attempts[ip] if t > cutoff]
 
+    def _scavenge(self):
+        if len(self._attempts) > _MAX_ATTEMPTS_ENTRIES:
+            cutoff = time.monotonic() - self.window_seconds
+            stale_ips = [ip for ip, times in list(self._attempts.items())
+                         if not any(t > cutoff for t in times)]
+            for ip in stale_ips:
+                del self._attempts[ip]
+
     def _is_locked_out(self, ip):
         lockout_until = self._lockouts.get(ip)
         if lockout_until and time.monotonic() < lockout_until:
@@ -64,6 +61,7 @@ class TokenBucket:
 
     def check(self, ip):
         self._prune(ip)
+        self._scavenge()
         if self._is_locked_out(ip):
             return False, 'Too many attempts. Try again in 5 minutes.'
         if len(self._attempts[ip]) >= self.max_attempts:
@@ -77,6 +75,7 @@ class TokenBucket:
             return
         now = time.monotonic()
         self._attempts[ip].append(now)
+        self._scavenge()
         if len(self._attempts[ip]) >= self.lockout_attempts:
             self._lockouts[ip] = now + self.lockout_seconds
 
@@ -96,7 +95,7 @@ class TokenBucket:
 
 
 class RedisTokenBucket:
-    def __init__(self, max_attempts=5, window_seconds=60, lockout_attempts=10, lockout_seconds=300):
+    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.lockout_attempts = lockout_attempts
@@ -110,7 +109,7 @@ class RedisTokenBucket:
         return f'ratelimit:login:lockout:{ip}'
 
     async def check(self, ip):
-        r = _get_rate_redis()
+        r = await _get_rate_redis()
         if r is None or not _redis_available:
             return self._fallback.check(ip)
         try:
@@ -129,7 +128,7 @@ class RedisTokenBucket:
             return self._fallback.check(ip)
 
     async def record(self, ip, success=False):
-        r = _get_rate_redis()
+        r = await _get_rate_redis()
         if r is None or not _redis_available:
             self._fallback.record(ip, success=success)
             return
@@ -158,7 +157,7 @@ class RedisTokenBucket:
             log.warning('Failed to record login attempt: %s', e)
 
     async def remaining(self, ip):
-        r = _get_rate_redis()
+        r = await _get_rate_redis()
         if r is None or not _redis_available:
             return self._fallback.remaining(ip)
         try:
@@ -173,3 +172,4 @@ class RedisTokenBucket:
 
 
 login_bucket = RedisTokenBucket()
+password_bucket = RedisTokenBucket(max_attempts=3, window_seconds=300)

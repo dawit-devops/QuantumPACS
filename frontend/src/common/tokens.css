@@ -1,7 +1,7 @@
 /* ── QuantumPACS Design Tokens ───────────────────────────────
    Three-layer architecture: Primitive → Semantic → Component
    Source of truth: docs/design-tokens.json
-   DO NOT hardcode raw hex values — use var() references.
+   Dark mode via [data-theme="dark"] selectors
    ──────────────────────────────────────────────────────── */
 
 /* ═══════════════════════════════════════════════════════════
@@ -11,27 +11,55 @@
 
 :root {
   /* ── Color Primitives ────────────────────────────── */
-  --color-blue-600: #0077B6;
-  --color-indigo-500: #6366F1;
-  --color-cyan-500: #06B6D4;
-  --color-emerald-500: #10B981;
-  --color-amber-500: #F59E0B;
-  --color-red-500: #EF4444;
-  --color-slate-50: #F8FAFC;
-  --color-slate-100: #F1F5F9;
-  --color-slate-200: #E2E8F0;
-  --color-slate-300: #CBD5E1;
-  --color-slate-500: #64748B;
-  --color-slate-600: #475569;
-  --color-slate-700: #334155;
-  --color-slate-800: #1E293B;
-  --color-slate-900: #0F172A;
-  --color-white: #FFFFFF;
+  --color-cyan-600: #0891b2;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-200: #a5f3fc;
+  --color-cyan-100: #cffafe;
+  --color-cyan-50: #ecfeff;
+
+  --color-teal-600: #059669;
+  --color-teal-500: #10b981;
+  --color-teal-400: #34d399;
+  --color-teal-300: #6ee7b7;
+  --color-teal-100: #d1fae5;
+  --color-teal-50: #f0fdfa;
+
+  --color-blue-600: #0077b6;
   --color-blue-500: #1890ff;
 
+  --color-indigo-500: #6366f1;
+
+  --color-amber-500: #f59e0b;
+  --color-amber-400: #fbbf24;
+
+  --color-red-600: #dc2626;
+  --color-red-500: #ef4444;
+  --color-red-400: #f87171;
+  --color-red-100: #fee2e2;
+  --color-red-50: #fef2f2;
+
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+
   /* ── Typography Primitives ────────────────────────── */
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, monospace;
+  --font-sans:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+    sans-serif;
+  --font-heading: Figtree, var(--font-sans);
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
 
   --font-size-xs: 12px;
   --font-size-sm: 13px;
@@ -73,22 +101,29 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  /* ── Motion Primitives ────────────────────────────── */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-enter: cubic-bezier(0, 0, 0.2, 1);
+  --easing-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LAYER 2: SEMANTIC TOKENS
-   Purpose-based aliases — use in layout and design logic.
+   LAYER 2: SEMANTIC TOKENS — LIGHT MODE (default)
    ═══════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Brand Colors ─────────────────────────────────── */
-  --color-primary: var(--color-blue-600);
-  --color-secondary: var(--color-indigo-500);
-  --color-accent: var(--color-cyan-500);
-  --color-success: var(--color-emerald-500);
+  --color-primary: var(--color-cyan-600);
+  --color-secondary: var(--color-cyan-400);
+  --color-accent: var(--color-teal-600);
+  --color-success: var(--color-teal-500);
   --color-warning: var(--color-amber-500);
-  --color-error: var(--color-red-500);
-  --color-info: var(--color-indigo-500);
+  --color-error: var(--color-red-600);
+  --color-info: var(--color-cyan-600);
 
   /* ── Background ───────────────────────────────────── */
   --bg-page: var(--color-slate-50);
@@ -96,29 +131,43 @@
   --bg-elevated: var(--color-white);
   --bg-dark: var(--color-slate-900);
   --bg-muted: var(--color-slate-100);
+  --bg-overlay: rgba(0, 0, 0, 0.45);
 
   /* ── Text ─────────────────────────────────────────── */
   --text-primary: var(--color-slate-800);
   --text-secondary: var(--color-slate-600);
-  --text-muted: var(--color-slate-500);
+  --text-muted: var(--color-slate-400);
   --text-light: var(--color-slate-300);
   --text-inverse: var(--color-white);
   --text-link: var(--color-primary);
-  --text-link-hover: var(--color-secondary);
+  --text-link-hover: var(--color-cyan-500);
 
   /* ── Border ───────────────────────────────────────── */
   --border-color: var(--color-slate-200);
   --border-color-strong: var(--color-slate-300);
 
-  /* ── Status ───────────────────────────────────────── */
-  --color-info-bg: rgba(99, 102, 241, 0.06);
-  --color-success-bg: rgba(16, 185, 129, 0.06);
-  --color-warning-bg: rgba(245, 158, 11, 0.06);
-  --color-error-bg: rgba(239, 68, 68, 0.06);
+  /* ── Status Backgrounds ───────────────────────────── */
+  --color-info-bg: rgba(8, 145, 178, 0.08);
+  --color-success-bg: rgba(16, 185, 129, 0.08);
+  --color-warning-bg: rgba(245, 158, 11, 0.08);
+  --color-error-bg: rgba(220, 38, 38, 0.08);
+
+  /* ── Interactive ──────────────────────────────── */
+  --bg-hover: rgba(8, 145, 178, 0.04);
+  --bg-active: rgba(8, 145, 178, 0.08);
+
+  /* ── Scrollbar ───────────────────────────────── */
+  --scrollbar-thumb: var(--color-slate-300);
+  --scrollbar-track: transparent;
+  --scrollbar-width: 6px;
+
+  /* ── Selection ────────────────────────────────── */
+  --selection-bg: var(--color-primary);
+  --selection-text: var(--text-inverse);
 
   /* ── Typography Scale ─────────────────────────────── */
   --font-family-base: var(--font-sans);
-  --font-family-heading: var(--font-sans);
+  --font-family-heading: var(--font-heading);
   --font-family-mono: var(--font-mono);
 
   --font-size-body: var(--font-size-base);
@@ -127,40 +176,178 @@
   --font-size-h2: var(--font-size-2xl);
   --font-size-h3: var(--font-size-xl);
   --font-size-label: var(--font-size-sm);
+
+  /* ── Shadows (light) ──────────────────────────────── */
+  --shadow-card: var(--shadow-sm);
+  --shadow-dropdown: var(--shadow-md);
+  --shadow-modal: var(--shadow-lg);
+  --shadow-drawer: var(--shadow-xl);
+
+  /* ── Spacing Semantics ────────────────────────── */
+  --space-section: var(--space-6);
+  --space-section-lg: var(--space-8);
+  --space-element: var(--space-4);
+  --space-element-sm: var(--space-2);
+  --space-element-xs: var(--space-1);
+  --space-gap: var(--space-2);
+  --space-gap-lg: var(--space-3);
+  --space-panel: var(--space-4);
+  --space-panel-sm: var(--space-3);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LAYER 3: COMPONENT TOKENS
-   Component-specific overrides — scoped to Ant Design.
+   LAYER 2: SEMANTIC TOKENS — DARK MODE
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  /* ── Brand Colors ─────────────────────────────────── */
+  --color-primary: var(--color-cyan-400);
+  --color-secondary: var(--color-cyan-300);
+  --color-accent: var(--color-teal-400);
+  --color-success: var(--color-teal-400);
+  --color-warning: var(--color-amber-400);
+  --color-error: var(--color-red-400);
+  --color-info: var(--color-cyan-400);
+
+  /* ── Background ───────────────────────────────────── */
+  --bg-page: var(--color-slate-900);
+  --bg-surface: var(--color-slate-800);
+  --bg-elevated: var(--color-slate-700);
+  --bg-dark: var(--color-slate-900);
+  --bg-muted: var(--color-slate-700);
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ── Text ─────────────────────────────────────────── */
+  --text-primary: var(--color-slate-100);
+  --text-secondary: var(--color-slate-300);
+  --text-muted: var(--color-slate-400);
+  --text-light: var(--color-slate-500);
+  --text-inverse: var(--color-slate-900);
+  --text-link: var(--color-primary);
+  --text-link-hover: var(--color-cyan-300);
+
+  /* ── Border ───────────────────────────────────────── */
+  --border-color: var(--color-slate-700);
+  --border-color-strong: var(--color-slate-600);
+
+  /* ── Status Backgrounds ───────────────────────────── */
+  --color-info-bg: rgba(6, 182, 212, 0.15);
+  --color-success-bg: rgba(52, 211, 153, 0.15);
+  --color-warning-bg: rgba(251, 191, 36, 0.15);
+  --color-error-bg: rgba(248, 113, 113, 0.15);
+
+  /* ── Interactive ──────────────────────────────── */
+  --bg-hover: rgba(6, 182, 212, 0.1);
+  --bg-active: rgba(6, 182, 212, 0.15);
+
+  /* ── Scrollbar ───────────────────────────────── */
+  --scrollbar-thumb: var(--color-slate-600);
+  --scrollbar-track: transparent;
+
+  /* ── Shadows (dark) ───────────────────────────────── */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-dropdown: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  --shadow-drawer: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYER 3: COMPONENT TOKENS — LIGHT MODE
    ═══════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Button ───────────────────────────────────────── */
   --btn-primary-bg: var(--color-primary);
   --btn-primary-text: var(--color-white);
-  --btn-primary-hover-bg: var(--color-blue-600);
+  --btn-primary-hover-bg: var(--color-cyan-500);
 
   /* ── Sidebar ──────────────────────────────────────── */
   --sidebar-bg: var(--color-slate-900);
   --sidebar-text: var(--color-slate-300);
-  --sidebar-selected-bg: rgba(99, 102, 241, 0.2);
+  --sidebar-selected-bg: rgba(6, 182, 212, 0.2);
   --sidebar-trigger-bg: var(--color-white);
-  --sidebar-trigger-text: #001529;
+  --sidebar-trigger-text: var(--color-slate-900);
 
   /* ── Card ─────────────────────────────────────────── */
-  --card-bg: var(--color-white);
+  --card-bg: var(--bg-surface);
   --card-radius: var(--radius-lg);
 
   /* ── Table ────────────────────────────────────────── */
   --table-radius: var(--radius-lg);
-  --table-highlight-bg: #ffc069;
+  --table-highlight-bg: #fef3c7;
 
   /* ── Layout ───────────────────────────────────────── */
-  --layout-header-bg: var(--color-white);
+  --layout-header-bg: var(--bg-surface);
   --layout-body-bg: var(--bg-page);
 
   /* ── Login ────────────────────────────────────────── */
   --login-gradient-start: var(--color-slate-900);
   --login-gradient-mid: var(--color-slate-800);
   --login-gradient-end: var(--color-slate-900);
+
+  /* ── Viewer ───────────────────────────────────────── */
+  --viewer-bg: var(--color-black);
+  --viewer-toolbar-bg: rgba(30, 41, 59, 0.9);
+  --viewer-toolbar-text: var(--color-slate-200);
+  --viewer-toolbar-hover: var(--color-cyan-400);
+
+  /* ── Focus ────────────────────────────────────────── */
+  --focus-ring-color: var(--color-primary);
+  --focus-ring-width: 2px;
+
+  /* ── Thumbnail Strip ──────────────────────────── */
+  --thumbnail-bg: rgba(0, 0, 0, 0.85);
+  --thumbnail-item-bg: rgba(255, 255, 255, 0.1);
+  --thumbnail-item-hover-border: rgba(255, 255, 255, 0.5);
+  --thumbnail-item-active-border: var(--color-cyan-500);
+  --thumbnail-placeholder-color: rgba(255, 255, 255, 0.4);
+
+  /* ── Mobile Nav ───────────────────────────────── */
+  --mobile-nav-border: rgba(255, 255, 255, 0.08);
+  --mobile-nav-text-hover: rgba(255, 255, 255, 0.85);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYER 3: COMPONENT TOKENS — DARK MODE
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  /* ── Button ───────────────────────────────────────── */
+  --btn-primary-bg: var(--color-primary);
+  --btn-primary-text: var(--color-slate-900);
+  --btn-primary-hover-bg: var(--color-cyan-300);
+
+  /* ── Sidebar ──────────────────────────────────────── */
+  --sidebar-bg: var(--color-slate-900);
+  --sidebar-text: var(--color-slate-300);
+  --sidebar-selected-bg: rgba(6, 182, 212, 0.25);
+  --sidebar-trigger-bg: var(--color-slate-800);
+  --sidebar-trigger-text: var(--color-slate-200);
+
+  /* ── Card ─────────────────────────────────────────── */
+  --card-bg: var(--bg-surface);
+  --card-radius: var(--radius-lg);
+
+  /* ── Table ────────────────────────────────────────── */
+  --table-radius: var(--radius-lg);
+  --table-highlight-bg: rgba(6, 182, 212, 0.2);
+
+  /* ── Layout ───────────────────────────────────────── */
+  --layout-header-bg: var(--bg-surface);
+  --layout-body-bg: var(--bg-page);
+
+  /* ── Login ────────────────────────────────────────── */
+  --login-gradient-start: var(--color-slate-900);
+  --login-gradient-mid: var(--color-cyan-600);
+  --login-gradient-end: var(--color-slate-900);
+
+  /* ── Viewer ───────────────────────────────────────── */
+  --viewer-bg: var(--color-black);
+  --viewer-toolbar-bg: rgba(15, 23, 42, 0.95);
+  --viewer-toolbar-text: var(--color-slate-300);
+  --viewer-toolbar-hover: var(--color-cyan-300);
+
+  /* ── Focus ────────────────────────────────────────── */
+  --focus-ring-color: var(--color-primary);
+  --focus-ring-width: 2px;
 }

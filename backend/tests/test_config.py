@@ -1,6 +1,4 @@
-from unittest.mock import patch
 
-import pytest
 
 from config import default_config, load_config
 
@@ -15,7 +13,7 @@ class TestDefaultConfig:
             assert key in default_config, f'Missing key: {key}'
 
     def test_default_secret_is_default(self):
-        assert default_config['secret'] == 'default'
+        assert default_config['secret'] == 'quantumpacs-default-secret-32-bytes-long!!'
 
     def test_db_defaults_are_reasonable(self):
         assert default_config['db_host'] == '127.0.0.1'
@@ -26,9 +24,15 @@ class TestDefaultConfig:
     def test_es_host_default(self):
         assert default_config['es_host'] == 'localhost'
 
-    def test_secret_falls_back_to_db_password(self):
+    def test_has_dicom_config_keys(self):
+        assert default_config['dicom_ae_title'] == 'QUANTUMPACS'
+        assert default_config['dicom_cstore_port'] == '11112'
+        assert default_config['dicom_mwl_port'] == '11113'
+        assert default_config['dicom_cmove_port'] == '11114'
+
+    def test_secret_falls_back_to_dev_default(self):
         cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})
-        assert cfg['secret'] == 'pa55w0rd'
+        assert cfg['secret'] == 'quantumpacs-default-secret-32-bytes-long!!'
 
     def test_env_overrides_default(self, monkeypatch):
         monkeypatch.setenv('DB_HOST', '10.0.0.1')
@@ -46,17 +50,13 @@ class TestDefaultConfig:
 
     def test_is_docker_set_by_env(self, monkeypatch):
         monkeypatch.setenv('QUANTUMPACS_DOCKER', '1')
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.is_docker is True
+        from config import is_docker
+        assert is_docker() is True
 
     def test_is_docker_false_by_default(self, monkeypatch):
         monkeypatch.delenv('QUANTUMPACS_DOCKER', raising=False)
-        import importlib
-        import config as cfg_module
-        importlib.reload(cfg_module)
-        assert cfg_module.is_docker is False
+        from config import is_docker
+        assert is_docker() is False
 
     def test_env_keys_are_upper_case(self, monkeypatch):
         monkeypatch.setenv('SUPERADMIN_PASS', 's3cret!')

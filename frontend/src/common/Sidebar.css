@@ -2,4 +2,7 @@
   top: 3px !important;
   background: var(--sidebar-trigger-bg) !important;
   color: var(--sidebar-trigger-text) !important;
+  transition:
+    background-color var(--duration-normal) var(--easing-standard),
+    color var(--duration-normal) var(--easing-standard);
 }

@@ -1,10 +1,9 @@
 import os.path
 import tempfile
-from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
 import aiobotocore.session
-from starlette.responses import StreamingResponse, RedirectResponse
+from starlette.responses import RedirectResponse
 
 from storage.storage import Storage
 
@@ -83,22 +82,20 @@ class S3Storage(Storage):
     async def copy(self, src, filedata):
         key = self.get_key(filedata)
 
-        if isinstance(src, SpooledTemporaryFile):
-            src.seek(0)
-            body = src
-        elif isinstance(src, str):
-            body = open(src, 'rb')
-        elif isinstance(src, BytesIO):
-            body = src
-        else:
-            raise ValueError('Unsupported source')
-
-        client = await self._get_client()
-        await client.put_object(
-            Bucket=self.bucket, Key=key, Body=body,
-        )
         if isinstance(src, str):
-            body.close()
+            with open(src, 'rb') as f:
+                client = await self._get_client()
+                await client.put_object(
+                    Bucket=self.bucket, Key=key, Body=f,
+                )
+        else:
+            body = src
+            if isinstance(src, SpooledTemporaryFile):
+                src.seek(0)
+            client = await self._get_client()
+            await client.put_object(
+                Bucket=self.bucket, Key=key, Body=body,
+            )
         return {
             'location': key
         }

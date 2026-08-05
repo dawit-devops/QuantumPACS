@@ -8,6 +8,7 @@ __pycache__
 /backend/venv
 /backend/static
 /backend/config.local.yaml
+.env
 /frontend/node_modules
 /frontend/build
 /frontend/dist
@@ -15,5 +16,11 @@ __pycache__
 /graphify-out
 *.log
 .coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+**/__pycache__/
+*.egg-info/
 opencode.json
 SCRATCH
+.opencode/teams/

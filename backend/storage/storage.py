@@ -42,16 +42,16 @@ class Storage:
         pass
 
     async def index(self):
-        raise NotImplemented
+        raise NotImplementedError
 
     async def copy(self, src, file_data):
-        raise NotImplemented
+        raise NotImplementedError
 
     async def fetch(self, file_data):
-        raise NotImplemented
+        raise NotImplementedError
 
     async def serve(self, file_data):
-        raise NotImplemented
+        raise NotImplementedError
 
     async def delete(self, file_data):
-        raise NotImplemented
+        raise NotImplementedError

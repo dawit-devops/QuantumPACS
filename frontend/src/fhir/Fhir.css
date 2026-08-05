@@ -1,0 +1,19 @@
+.fhir-config .ant-card {
+  border-radius: 8px;
+}
+
+.fhir-monitoring .ant-statistic-title {
+  font-size: 13px;
+}
+
+.fhir-docs pre {
+  background: var(--bg-code, #1a1a2e);
+  color: var(--text-code, #e0e0e0);
+  padding: 12px;
+  border-radius: 6px;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.fhir-docs .ant-collapse-header {
+  font-size: 13px;
+}

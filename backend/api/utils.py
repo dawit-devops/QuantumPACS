@@ -1,6 +1,5 @@
 from starlette.exceptions import HTTPException
 
-from api.response import api_error
 
 
 def get_id(request):

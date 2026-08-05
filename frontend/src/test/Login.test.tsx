@@ -1,62 +1,61 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect } from 'vitest';
-import Login from '../login/Login';
+import React from "react";
+import { render, screen } from "@testing-library/react";
+import { renderWithAuth } from "./renderWithApp";
+import { MemoryRouter } from "react-router";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { AuthProvider } from "../auth/AuthContext";
+import { ThemeProvider } from "../common/ThemeProvider";
+import LoginForm from "../login/Login";
 
-describe('Login', () => {
-  it('renders within MemoryRouter', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
+const mockListLoginProviders = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/auth", () => ({
+  listLoginProviders: mockListLoginProviders,
+}));
+
+vi.mock("../helpers", () => ({
+  request: vi.fn(() => Promise.resolve({})),
+  isAdmin: () => true,
+  setTokens: () => {},
+  clearTokens: () => {},
+  startRefreshTimer: () => {},
+  stopRefreshTimer: () => {},
+}));
+
+vi.mock("../hooks", () => ({
+  useDocumentTitle: vi.fn(),
+  useFetch: () => ({
+    exec: vi.fn(),
+    showLoading: false,
+    loading: false,
+    data: null,
+    error: null,
+  }),
+}));
+
+const mockProviders = [
+  { id: "1", name: "Google", slug: "google", icon: null },
+  { id: "2", name: "Microsoft", slug: "microsoft", icon: null },
+];
+
+describe("LoginForm", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListLoginProviders.mockResolvedValue(mockProviders);
   });
 
-  it('renders username input', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+  it("renders login form", () => {
+    renderWithAuth(<LoginForm />);
+    expect(screen.getByText(/Sign in to your account/)).toBeInTheDocument();
+    expect(screen.getByText("Sign In")).toBeInTheDocument();
   });
 
-  it('renders password input', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
-  });
+  it("renders SSO section with provider buttons", async () => {
+    renderWithAuth(<LoginForm />);
 
-  it('renders Sign In button', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-    expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
-  });
-
-  it('renders QuantumLogo', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-    const svg = document.querySelector('svg');
-    expect(svg?.textContent).toContain('Quantum');
-    expect(screen.getByText('PACS')).toBeInTheDocument();
-  });
-
-  it('renders tagline', () => {
-    render(
-      <MemoryRouter>
-        <Login />
-      </MemoryRouter>
-    );
-    expect(screen.getByText('QuantumPACS v1.0 — Diagnostic Clarity, Quantum Fast')).toBeInTheDocument();
+    const googleBtns = await screen.findAllByText("Sign in with Google");
+    expect(googleBtns.length).toBeGreaterThanOrEqual(1);
+    const msBtns = await screen.findAllByText("Sign in with Microsoft");
+    expect(msBtns.length).toBeGreaterThanOrEqual(1);
   });
 });

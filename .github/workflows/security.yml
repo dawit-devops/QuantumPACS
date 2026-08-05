@@ -1,10 +1,16 @@
 name: Lint & Security
 
+# PRs to main/v3-dev already cover feature branches — direct pushes to
+# phase/** ran this suite twice per PR.
 on:
   push:
-    branches: [main, dev]
+    branches: [main, v3-dev]
   pull_request:
-    branches: [main]
+    branches: [main, v3-dev]
+
+concurrency:
+  group: sec-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   security:

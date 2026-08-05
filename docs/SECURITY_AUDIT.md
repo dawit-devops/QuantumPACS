@@ -1,3 +1,7 @@
+> **Last Verified:** 2026-07-30  
+> **Findings Status:** 18 Critical, 29 High, 48 Medium, 19 Low (see `.full-review/05-final-report.md`)  
+> **Remediation:** Sprint 1 complete (7 critical security fixes merged), Sprints 2-9 in progress
+
 # QuantumPACS Security Audit
 
 **Date:** 2026-07-23

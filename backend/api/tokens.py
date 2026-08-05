@@ -12,30 +12,31 @@ log = get_logger(__name__)
 _blocklist_redis = None
 
 
-def _get_blocklist_redis():
+async def _get_blocklist_redis():
     global _blocklist_redis
     if _blocklist_redis is None:
         try:
-            import redis.asyncio as _aioredis
-            host = config.get('redis_host', 'localhost')
-            port = int(config.get('redis_port', '6379'))
-            password = config.get('redis_password') or None
-            _blocklist_redis = _aioredis.Redis(
-                host=host, port=port, password=password, db=1,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-            )
+            from api.redis_client import get_client
+            _blocklist_redis = await get_client(db=1)
         except Exception:
             pass
     return _blocklist_redis
 
 
-def create_token(user, expire=None):
+def create_token(user, expire=None, role=None, permissions=None, token_version=None):
     payload = {
         'jti': str(uuid4()),
         'id': user['id'],
         'admin': user['admin'],
     }
+    if role is not None:
+        payload['role'] = role
+    if permissions is not None:
+        payload['permissions'] = permissions
+    if user.get('tenant'):
+        payload['tenant'] = user['tenant']
+    if token_version is not None:
+        payload['token_version'] = token_version
     if not expire:
         expire = {'days': 14}
 
@@ -55,7 +56,7 @@ async def block_token(token):
         jti = data.get('jti')
         if not jti:
             return
-        r = _get_blocklist_redis()
+        r = await _get_blocklist_redis()
         if r is None:
             return
         exp = data.get('exp')
@@ -67,12 +68,40 @@ async def block_token(token):
 
 async def is_blocked(jti):
     try:
-        r = _get_blocklist_redis()
+        r = await _get_blocklist_redis()
         if r is None:
             return False
         return await r.exists(f'blocklist:{jti}') == 1
     except Exception:
         return False
+
+
+def create_token_pair(user, role=None, permissions=None, token_version=None):
+    access = create_token(user, expire={'hours': 1}, role=role, permissions=permissions, token_version=token_version)
+    refresh_payload = {
+        'jti': str(uuid4()),
+        'id': user['id'],
+        'type': 'refresh',
+        'admin': user['admin'],
+    }
+    if user.get('tenant'):
+        refresh_payload['tenant'] = user['tenant']
+    exp = datetime.now(timezone.utc) + timedelta(days=14)
+    refresh_payload['exp'] = exp
+    refresh = jwt_encode(refresh_payload, config['secret'], algorithm='HS256')
+    return access, refresh
+
+
+def verify_refresh_token(token):
+    try:
+        data = jwt_decode(token, config['secret'], options={'require': ['exp'], 'verify_exp': True})
+        if data.get('type') != 'refresh':
+            raise _jwt.InvalidTokenError('Not a refresh token')
+        return data
+    except _jwt.ExpiredSignatureError:
+        raise
+    except _jwt.InvalidTokenError:
+        raise
 
 
 def verify_token(token):
