@@ -1,5 +1,19 @@
 import "@testing-library/jest-dom";
-import { beforeEach } from "vitest";
+import { beforeEach, vi } from "vitest";
+import { message } from "antd";
+
+// (T-L1) antd's static message API (message.success/error/...) spawns a
+// real React root with a 3s auto-dismiss timer that outlives the test
+// file. After vitest tears down jsdom the pending scheduler callback
+// throws "window is not defined" — an unhandled-error flake in CI.
+// Patch the shared module instance here so every file is covered
+// (QAReviewForm.test.tsx etc. carry an equivalent per-file vi.mock).
+Object.assign(message, {
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+});
 
 const noop = () => {};
 const originalWarn = console.warn;
