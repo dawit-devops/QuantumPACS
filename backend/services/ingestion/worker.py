@@ -1,6 +1,5 @@
 import asyncio
 import json
-import signal
 from typing import Any, Optional
 
 from config import config
@@ -43,17 +42,14 @@ class IngestionWorker:
         self._shutdown = asyncio.Event()
 
     async def start(self) -> None:
+        # No signal handlers here: installing SIGTERM/SIGINT in the loop
+        # replaces uvicorn's handlers and blocks graceful shutdown
+        # (lifespan teardown) — teardown() drives shutdown via _shutdown.
         log.info(
             'starting ingestion worker (group=%s, consumer=%s)',
             self.group, self.consumer_name,
         )
         await self.consumer.ensure_group(INGESTION_STREAM, self.group)
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
-                loop.add_signal_handler(sig, self._shutdown.set)
-            except NotImplementedError:
-                pass
 
     async def run_once(self) -> int:
         messages = await self.consumer.poll(
