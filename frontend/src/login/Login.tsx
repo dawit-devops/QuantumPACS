@@ -17,11 +17,17 @@ import { UserOutlined, LockOutlined, LoginOutlined } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../common/ThemeProvider";
 import QuantumLogo from "../common/QuantumLogo";
+import { landingRouteFor } from "../navigator";
+import { NAME_MAP } from "../api/roles";
 import "./Login.css";
 const { Content } = Layout;
 const { Text } = Typography;
 
 const LOGIN_RETRY_KEY = "loginAttempts";
+
+// Dev-only quick-fill: every canonical role slug becomes a `test.`-prefixed
+// username so testers can sign in as any persona without typing credentials.
+const demoUsernames = Object.keys(NAME_MAP).map((slug) => `test.${slug}`);
 
 function getLoginDelay(): number {
   try {
@@ -110,7 +116,16 @@ function LoginForm(props: any) {
     // users land back where they were headed instead of always the root.
     const from = (location.state as { from?: { pathname?: string } } | null)
       ?.from?.pathname;
-    navigate(from || "/");
+    // Role-scoped landing: the user shape mirrors the one handed to signIn()
+    // above, so the redirect matches the workspace the session exposes.
+    navigate(
+      from ||
+        landingRouteFor({
+          role: data.role || (data.admin ? "admin" : "user"),
+          admin: data.admin === true || data.admin === "true",
+          permissions: data.permissions || [],
+        }),
+    );
   }, [data, location.state]);
 
   const errorRef = React.useRef<HTMLDivElement>(null);
@@ -217,8 +232,28 @@ function LoginForm(props: any) {
                 placeholder="Username"
                 size="large"
                 autoComplete="username"
+                list="demo-usernames"
               />
             </Form.Item>
+            {/* Dev/demo helper: a datalist of `test.`-prefixed role usernames
+                so testers can impersonate any persona from the role catalog
+                without typing credentials by hand. */}
+            <datalist id="demo-usernames">
+              {demoUsernames.map((username) => (
+                <option key={username} value={username} />
+              ))}
+            </datalist>
+            <Text
+              type="secondary"
+              style={{
+                display: "block",
+                textAlign: "center",
+                fontSize: 11,
+                marginBottom: 16,
+              }}
+            >
+              Demo users (dev only): pick a role username, e.g. test.radiologist
+            </Text>
             <Form.Item
               name="password"
               rules={[

@@ -37,6 +37,18 @@ vi.mock("../helpers", () => ({
   stopRefreshTimer: () => {},
 }));
 
+function setSession(opts: {
+  role?: string;
+  admin?: boolean;
+  permissions?: string[];
+}) {
+  localStorage.setItem("token", "t");
+  localStorage.setItem("userId", "u1");
+  localStorage.setItem("admin", String(opts.admin ?? false));
+  localStorage.setItem("role", opts.role ?? "user");
+  localStorage.setItem("permissions", JSON.stringify(opts.permissions ?? []));
+}
+
 describe("Sidebar", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -126,5 +138,51 @@ describe("Sidebar", () => {
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
     expect(sessionStorage.getItem("tempKey")).toBeNull();
+  });
+
+  it("renders Reading section items for a radiologist and hides Acquisition/QA/Admin", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "radiologist",
+      permissions: ["REPORT_READ", "PEER_REVIEW_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
+    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Analytics")).not.toBeInTheDocument();
+    await user.click(screen.getByText("Reading"));
+    expect(screen.getByText("Reading Worklist")).toBeInTheDocument();
+    expect(screen.getByText("Peer Review")).toBeInTheDocument();
+    expect(screen.queryByText("Exams")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA Queue")).not.toBeInTheDocument();
+  });
+
+  it("renders no PACS sections for a patient role", () => {
+    setSession({
+      role: "patient",
+      permissions: ["PORTAL_READ", "RESULTS_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
+    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Analytics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Metrics")).not.toBeInTheDocument();
+  });
+
+  it("shows the Admin section for a user with only LOG_READ", async () => {
+    const user = userEvent.setup();
+    setSession({ role: "user", permissions: ["LOG_READ"] });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("Logs")).toBeInTheDocument();
+    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Replicas")).not.toBeInTheDocument();
   });
 });

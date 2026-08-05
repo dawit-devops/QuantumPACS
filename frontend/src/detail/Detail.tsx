@@ -36,6 +36,7 @@ import {
 } from "../api/files";
 import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
+import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import { API_URL } from "../config";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
 import KeyValueTable from "./KeyValueTable";
@@ -60,6 +61,9 @@ function Detail() {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
   const { hasPermission } = useAuth();
+  // Viewer-level scope (route gate is the first line of defense; this covers
+  // direct component reuse where no PermissionRoute wraps the mount point).
+  const canViewFiles = VIEWER_ROUTE_PERMISSIONS.some((p) => hasPermission(p));
 
   const [tab, setTab] = useState("image");
   const [data, setData] = useState<FileRecord>({ id: 0 });
@@ -92,6 +96,9 @@ function Detail() {
   }, []);
 
   useEffect(() => {
+    // Do not fetch the study without viewer perms: the DICOM payload itself
+    // is the protected resource, so mounting the viewer must not pull it.
+    if (!canViewFiles) return;
     setLoading(true);
     setError(null);
     const { id } = params;
@@ -111,10 +118,10 @@ function Detail() {
         // hack below used to force a second mount because the viewer could
         // initialize with empty props. CornerstoneElement now mounts
         // after-metadata and its checkReady loop covers engine readiness.
-        for (let s of data.patient?.studies ?? []) {
+        for (const s of data.patient?.studies ?? []) {
           if (s.id === data.study_db_id) {
             setStudy(s);
-            for (let sr of s.series ?? []) {
+            for (const sr of s.series ?? []) {
               if (sr.id === data.series_db_id) {
                 setSeries(sr);
               }
@@ -185,6 +192,14 @@ function Detail() {
       label: <Link to={`/files/${d.id}`}>{`File ${d.name}`}</Link>,
     }));
   };
+
+  if (!canViewFiles) {
+    return (
+      <Content style={{ alignItems: "center", justifyContent: "center" }}>
+        <PageState error="You don't have access to this image" empty={false} />
+      </Content>
+    );
+  }
 
   return (
     <Content

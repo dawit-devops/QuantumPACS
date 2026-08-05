@@ -3,19 +3,12 @@ import { Link, useLocation } from "react-router";
 import { Badge, Drawer, Menu } from "antd";
 import {
   FileSearchOutlined,
-  DashboardOutlined,
   UserOutlined,
-  LockOutlined,
-  DatabaseOutlined,
-  TeamOutlined,
-  AlignLeftOutlined,
-  SafetyCertificateOutlined,
-  BankOutlined,
-  KeyOutlined,
-  ApartmentOutlined,
-  PlusOutlined,
+  MenuOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
+import { workspaceFor } from "../navigator";
+import { NAV_SECTIONS, hasItemPermission, type NavItemDef } from "./Sidebar";
 import "./MobileNav.css";
 
 const navItems = [
@@ -26,12 +19,6 @@ const navItems = [
     badge: undefined as number | undefined,
   },
   {
-    path: "/metrics",
-    label: "Metrics",
-    icon: <DashboardOutlined />,
-    badge: undefined,
-  },
-  {
     path: "/account",
     label: "Account",
     icon: <UserOutlined />,
@@ -39,71 +26,23 @@ const navItems = [
   },
 ];
 
-const adminItems: {
-  path: string;
-  label: string;
-  icon: React.ReactNode;
-  permissions: string[];
-}[] = [
-  {
-    path: "/worklist",
-    label: "Worklist",
-    icon: <PlusOutlined />,
-    permissions: ["WORKLIST_READ"],
-  },
-  {
-    path: "/replicas",
-    label: "Replicas",
-    icon: <DatabaseOutlined />,
-    permissions: ["REPLICA_READ"],
-  },
-  {
-    path: "/users",
-    label: "Users",
-    icon: <TeamOutlined />,
-    permissions: ["USER_READ"],
-  },
-  {
-    path: "/tenants",
-    label: "Tenants",
-    icon: <BankOutlined />,
-    permissions: ["TENANT_READ"],
-  },
-  {
-    path: "/roles",
-    label: "Roles",
-    icon: <SafetyCertificateOutlined />,
-    permissions: ["ROLE_READ"],
-  },
-  {
-    path: "/logs",
-    label: "Logs",
-    icon: <AlignLeftOutlined />,
-    permissions: ["LOG_READ", "AUDIT_READ"],
-  },
-  {
-    path: "/service-keys",
-    label: "Keys",
-    icon: <KeyOutlined />,
-    permissions: ["SERVICE_KEY_READ"],
-  },
-  {
-    path: "/routing",
-    label: "Routing",
-    icon: <ApartmentOutlined />,
-    permissions: ["ROUTING_READ", "INTERFACE_ADMIN"],
-  },
-];
-
 export default function MobileNav() {
   const location = useLocation();
   const currentPath = location.pathname;
   const { hasPermission, user } = useAuth();
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const hasAdminAccess =
-    user?.admin ||
-    adminItems.some((item) => item.permissions.some((p) => hasPermission(p)));
+  // Same section visibility rule as the desktop sidebar: the user's own
+  // workspace section always shows, plus any section with a visible item.
+  const userWorkspace = user ? workspaceFor(user) : null;
+  const sections = NAV_SECTIONS.map((section) => ({
+    section,
+    items: section.items.filter((item) =>
+      hasItemPermission(item, hasPermission),
+    ),
+  })).filter(
+    ({ section, items }) => userWorkspace === section.key || items.length > 0,
+  );
 
   const isActive = (path: string) =>
     path === "/"
@@ -112,6 +51,23 @@ export default function MobileNav() {
         currentPath.startsWith("/detail") ||
         currentPath.startsWith("/patients")
       : currentPath.startsWith(path);
+
+  const closeDrawer = () => setDrawerOpen(false);
+
+  // Leaf drawer entries are Links so the drawer closes on navigation; submenu
+  // headers (e.g. FHIR inside Admin) stay plain titles like on desktop.
+  const toMenuNode = (item: NavItemDef) =>
+    item.children
+      ? { key: item.key, icon: item.icon, label: item.label }
+      : {
+          key: item.key,
+          icon: item.icon,
+          label: (
+            <Link to={item.path!} onClick={closeDrawer}>
+              {item.label}
+            </Link>
+          ),
+        };
 
   return (
     <>
@@ -136,11 +92,11 @@ export default function MobileNav() {
             </Link>
           );
         })}
-        {hasAdminAccess && (
+        {sections.length > 0 && (
           <button
-            className={`mobile-nav-item ${adminOpen ? "active" : ""}`}
-            onClick={() => setAdminOpen(true)}
-            aria-label="Admin menu"
+            className={`mobile-nav-item ${drawerOpen ? "active" : ""}`}
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Menu"
             style={{
               background: "none",
               border: "none",
@@ -148,37 +104,31 @@ export default function MobileNav() {
               fontFamily: "inherit",
             }}
           >
-            <LockOutlined />
-            <span className="mobile-nav-label">Admin</span>
+            <MenuOutlined />
+            <span className="mobile-nav-label">Menu</span>
           </button>
         )}
       </nav>
       <Drawer
-        open={adminOpen}
-        onClose={() => setAdminOpen(false)}
+        open={drawerOpen}
+        onClose={closeDrawer}
         placement="bottom"
         height="auto"
-        title="Admin"
+        title="Menu"
         styles={{ body: { padding: 0 } }}
       >
         <Menu
           mode="inline"
-          onClick={() => setAdminOpen(false)}
-          items={adminItems
-            .filter((item) =>
-              hasAdminAccess
-                ? true
-                : item.permissions.some((p) => hasPermission(p)),
-            )
-            .map((item) => ({
-              key: item.path,
-              icon: item.icon,
-              label: (
-                <Link to={item.path} onClick={() => setAdminOpen(false)}>
-                  {item.label}
-                </Link>
-              ),
-            }))}
+          onClick={closeDrawer}
+          items={sections.map(({ section, items }) => ({
+            key: section.key,
+            icon: section.icon,
+            label: section.title,
+            children: items.map((item) => ({
+              ...toMenuNode(item),
+              children: item.children?.map((child) => toMenuNode(child)),
+            })),
+          }))}
         />
       </Drawer>
     </>

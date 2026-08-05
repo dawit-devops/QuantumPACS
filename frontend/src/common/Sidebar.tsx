@@ -38,6 +38,7 @@ import QuantumLogo from "./QuantumLogo";
 import TenantSelector from "../auth/TenantSelector";
 import { logout } from "../api/auth";
 import { request } from "../helpers";
+import { workspaceFor } from "../navigator";
 import "./Sidebar.css";
 
 const { Sider } = Layout;
@@ -59,65 +60,324 @@ function getKey(loc: string) {
   return parts[0];
 }
 
-function getOpenKey(key: string) {
-  if (
-    [
-      "replicas",
-      "users",
-      "roles",
-      "tenants",
-      "logs",
-      "worklist",
-      "exams",
-      "reading",
-      "peer-review",
-      "qa-queue",
-      "qa-protocols",
-      "qa-incidents",
-      "qa-actions",
-      "service-keys",
-      "routing",
-      "fhir",
-      "hl7",
-      "dicomweb",
-      "integrations",
-    ].includes(key)
-  ) {
-    return "admin";
-  }
-  return key;
+export interface NavItemDef {
+  key: string;
+  path?: string;
+  label: string;
+  icon: React.ReactNode;
+  // Item shows when ANY listed permission passes (or the user is admin via
+  // hasPermission). An empty list means the item is never permission-gated —
+  // reserved for the always-visible Files/Account entries and for children of
+  // a gated submenu (FHIR), whose parent gate governs visibility.
+  permissions: string[];
+  children?: NavItemDef[];
 }
 
-function hasAnyAdminPermission(
+export interface NavSectionDef {
+  key: string;
+  title: string;
+  icon: React.ReactNode;
+  items: NavItemDef[];
+}
+
+// Workspace section definitions. Every item permission gate is copied VERBATIM
+// from the pre-workspace sidebar (REPORT_READ on Reading Worklist, QA_READ on
+// each QA item, ...) so role scoping never weakens an existing gate. The one
+// addition — METRICS_READ on Metrics — matches the /v2/dashboard/metrics
+// endpoint guard (backend/api/dashboard_metrics.py) so the nav item no longer
+// advertises a page the backend rejects; it only ever hides navigation.
+export const NAV_SECTIONS: NavSectionDef[] = [
+  {
+    key: "reading",
+    title: "Reading",
+    icon: <FileDoneOutlined />,
+    items: [
+      {
+        key: "reading",
+        path: "/reading",
+        label: "Reading Worklist",
+        icon: <FileDoneOutlined />,
+        permissions: ["REPORT_READ"],
+      },
+      {
+        key: "peer-review",
+        path: "/peer-review",
+        label: "Peer Review",
+        icon: <AuditOutlined />,
+        permissions: ["PEER_REVIEW_READ"],
+      },
+    ],
+  },
+  {
+    key: "acquisition",
+    title: "Acquisition",
+    icon: <MedicineBoxOutlined />,
+    items: [
+      {
+        key: "exams",
+        path: "/exams",
+        label: "Exams",
+        icon: <MedicineBoxOutlined />,
+        permissions: ["EXAM_READ"],
+      },
+      {
+        key: "worklist",
+        path: "/worklist",
+        label: "Worklist",
+        icon: <FileSearchOutlined />,
+        permissions: ["WORKLIST_READ"],
+      },
+      {
+        key: "schedule-board",
+        path: "/schedule-board",
+        label: "Schedule",
+        icon: <CalendarOutlined />,
+        permissions: ["WORKLIST_READ"],
+      },
+    ],
+  },
+  {
+    key: "qa",
+    title: "QA",
+    icon: <SafetyCertificateOutlined />,
+    items: [
+      {
+        key: "qa-queue",
+        path: "/qa/queue",
+        label: "QA Queue",
+        icon: <SafetyCertificateOutlined />,
+        permissions: ["QA_READ"],
+      },
+      {
+        key: "qa-protocols",
+        path: "/qa/protocols",
+        label: "Protocols",
+        icon: <BookOutlined />,
+        permissions: ["QA_READ"],
+      },
+      {
+        key: "qa-incidents",
+        path: "/qa/incidents",
+        label: "Incidents",
+        icon: <WarningOutlined />,
+        permissions: ["QA_READ"],
+      },
+      {
+        key: "qa-actions",
+        path: "/qa/actions",
+        label: "Corrective Actions",
+        icon: <CheckCircleOutlined />,
+        permissions: ["QA_READ"],
+      },
+    ],
+  },
+  {
+    key: "admin",
+    title: "Admin",
+    icon: <LockOutlined />,
+    items: [
+      {
+        key: "replicas",
+        path: "/replicas",
+        label: "Replicas",
+        icon: <DatabaseOutlined />,
+        permissions: ["REPLICA_READ"],
+      },
+      {
+        key: "users",
+        path: "/users",
+        label: "Users",
+        icon: <TeamOutlined />,
+        permissions: ["USER_READ"],
+      },
+      {
+        key: "tenants",
+        path: "/tenants",
+        label: "Tenants",
+        icon: <BankOutlined />,
+        permissions: ["TENANT_READ"],
+      },
+      {
+        key: "roles",
+        path: "/roles",
+        label: "Roles",
+        icon: <SafetyCertificateOutlined />,
+        permissions: ["ROLE_READ"],
+      },
+      {
+        key: "logs",
+        path: "/logs",
+        label: "Logs",
+        icon: <AlignLeftOutlined />,
+        permissions: ["LOG_READ", "AUDIT_READ"],
+      },
+      {
+        key: "service-keys",
+        path: "/service-keys",
+        label: "Service Keys",
+        icon: <KeyOutlined />,
+        permissions: ["SERVICE_KEY_READ"],
+      },
+      {
+        key: "routing",
+        path: "/routing",
+        label: "Routing",
+        icon: <ApartmentOutlined />,
+        permissions: ["ROUTING_READ", "INTERFACE_ADMIN"],
+      },
+      {
+        // FHIR is a nested submenu; SYSTEM_ADMIN gates the whole group, and
+        // its children inherit that gate (they carry no gates of their own).
+        key: "fhir",
+        label: "FHIR",
+        icon: <MedicineBoxOutlined />,
+        permissions: ["SYSTEM_ADMIN"],
+        children: [
+          {
+            key: "fhir-config",
+            path: "/fhir/config",
+            label: "FHIR Config",
+            icon: <MedicineBoxOutlined />,
+            permissions: [],
+          },
+          {
+            key: "fhir-monitoring",
+            path: "/fhir/monitoring",
+            label: "FHIR Monitoring",
+            icon: <FundOutlined />,
+            permissions: [],
+          },
+          {
+            key: "fhir-docs",
+            path: "/fhir/docs",
+            label: "FHIR Docs",
+            icon: <BookOutlined />,
+            permissions: [],
+          },
+        ],
+      },
+      {
+        key: "integrations",
+        path: "/integrations",
+        label: "Integrations",
+        icon: <ApiOutlined />,
+        permissions: ["SYSTEM_ADMIN"],
+      },
+      {
+        key: "hl7",
+        path: "/hl7",
+        label: "HL7",
+        icon: <MessageOutlined />,
+        permissions: ["HL7_READ"],
+      },
+      {
+        key: "dicomweb",
+        path: "/dicomweb",
+        label: "DICOMweb",
+        icon: <CloudServerOutlined />,
+        permissions: ["DICOMWEB_READ", "STORAGE_ADMIN", "INTERFACE_ADMIN"],
+      },
+    ],
+  },
+  {
+    key: "analytics",
+    title: "Metrics",
+    icon: <DashboardOutlined />,
+    items: [
+      {
+        key: "metrics",
+        path: "/metrics",
+        label: "Metrics",
+        icon: <DashboardOutlined />,
+        permissions: ["METRICS_READ"],
+      },
+    ],
+  },
+];
+
+const SECTION_KEYS = NAV_SECTIONS.map((s) => s.key);
+
+// Menu key → owning section. Used to auto-open the group that owns the current
+// route, preserving the old "admin" open behavior and extending it to the new
+// Reading/Acquisition/QA/Analytics groups.
+const SECTION_OF_KEY: Record<string, string> = {
+  replicas: "admin",
+  users: "admin",
+  roles: "admin",
+  tenants: "admin",
+  logs: "admin",
+  "service-keys": "admin",
+  routing: "admin",
+  fhir: "admin",
+  "fhir-config": "admin",
+  "fhir-monitoring": "admin",
+  "fhir-docs": "admin",
+  hl7: "admin",
+  dicomweb: "admin",
+  integrations: "admin",
+  worklist: "acquisition",
+  exams: "acquisition",
+  "schedule-board": "acquisition",
+  reading: "reading",
+  "peer-review": "reading",
+  "qa-queue": "qa",
+  "qa-protocols": "qa",
+  "qa-incidents": "qa",
+  "qa-actions": "qa",
+  metrics: "analytics",
+};
+
+function getOpenKey(key: string): string | undefined {
+  return SECTION_OF_KEY[key];
+}
+
+export function hasItemPermission(
+  item: NavItemDef,
   hasPermission: (p: string) => boolean,
-  userAdmin: boolean | undefined,
 ): boolean {
-  if (userAdmin) return true;
-  const adminPermissions = [
-    "USER_READ",
-    "REPLICA_READ",
-    "TENANT_READ",
-    "TENANT_ADMIN",
-    "ROLE_READ",
-    "LOG_READ",
-    "AUDIT_READ",
-    "SERVICE_KEY_READ",
-    "WORKLIST_READ",
-    "EXAM_READ",
-    "REPORT_READ",
-    "PEER_REVIEW_READ",
-    "QA_READ",
-    "HL7_READ",
-    "ROUTING_READ",
-    "INTERFACE_MONITOR",
-    "INTERFACE_ADMIN",
-    "DICOMWEB_READ",
-    "STORAGE_ADMIN",
-    "METERING_READ",
-    "BILLING_READ",
-    "SYSTEM_ADMIN",
-  ];
-  return adminPermissions.some((p) => hasPermission(p));
+  return item.permissions.length === 0 || item.permissions.some(hasPermission);
+}
+
+function renderNavItem(item: NavItemDef, selectedKey: string) {
+  const link = (child: NavItemDef) => (
+    <Link to={child.path!}>
+      {child.icon}
+      <span className="nav-text">{child.label}</span>
+    </Link>
+  );
+  if (item.children) {
+    return (
+      <Menu.SubMenu
+        key={item.key}
+        title={
+          <span>
+            {item.icon}
+            <span>{item.label}</span>
+          </span>
+        }
+      >
+        {item.children.map((child) => (
+          <Menu.Item
+            key={child.key}
+            aria-current={selectedKey === child.key ? "page" : undefined}
+          >
+            {link(child)}
+          </Menu.Item>
+        ))}
+      </Menu.SubMenu>
+    );
+  }
+  return (
+    <Menu.Item
+      key={item.key}
+      aria-current={selectedKey === item.key ? "page" : undefined}
+    >
+      <Link to={item.path!}>
+        {item.icon}
+        <span className="nav-text">{item.label}</span>
+      </Link>
+    </Menu.Item>
+  );
 }
 
 function Sidebar() {
@@ -132,8 +392,31 @@ function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const key = getKey(loc);
+
+  // workspaceFor() decides which section a role "lives in"; sections without a
+  // role mapping (clinical, platform, files) fall back to pure permission-based
+  // visibility, so e.g. a physician still sees Reading via REPORT_READ.
+  const userWorkspace = user ? workspaceFor(user) : null;
+  const workspaceOpenKey =
+    userWorkspace && SECTION_KEYS.includes(userWorkspace)
+      ? userWorkspace
+      : null;
+
   const [selectedKey, setSelectedKey] = useState(key);
-  const [openKey, setOpenKey] = useState(getOpenKey(key));
+  const [openKey, setOpenKey] = useState(getOpenKey(key) ?? workspaceOpenKey);
+
+  // Section visibility rule: a section shows when it owns the user's workspace
+  // OR the user can see at least one item inside it. The workspace clause keeps
+  // e.g. a role-only user's own section available; the item clause keeps
+  // cross-scope access (radiologist granted LOG_READ still reaches Admin).
+  const sections = NAV_SECTIONS.map((section) => ({
+    section,
+    items: section.items.filter((item) =>
+      hasItemPermission(item, hasPermission),
+    ),
+  })).filter(
+    ({ section, items }) => userWorkspace === section.key || items.length > 0,
+  );
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
@@ -152,8 +435,10 @@ function Sidebar() {
   useEffect(() => {
     const key = getKey(loc);
     setSelectedKey(key);
-    setOpenKey(getOpenKey(key));
-  }, [loc]);
+    // When the route belongs to a section, open that section; otherwise open
+    // the user's workspace section (e.g. radiologist on Files → Reading open).
+    setOpenKey(getOpenKey(key) ?? workspaceOpenKey);
+  }, [loc, workspaceOpenKey]);
 
   const sidebarContent = (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -173,7 +458,7 @@ function Sidebar() {
       <Menu
         mode="inline"
         theme="dark"
-        defaultOpenKeys={[openKey]}
+        defaultOpenKeys={openKey ? [openKey] : []}
         defaultSelectedKeys={[selectedKey]}
         onClick={() => {
           if (isMobile) setDrawerOpen(false);
@@ -189,15 +474,6 @@ function Sidebar() {
           </Link>
         </Menu.Item>
         <Menu.Item
-          key="metrics"
-          aria-current={selectedKey === "metrics" ? "page" : undefined}
-        >
-          <Link to="/metrics">
-            <DashboardOutlined />
-            <span className="nav-text">Metrics</span>
-          </Link>
-        </Menu.Item>
-        <Menu.Item
           key="account"
           aria-current={selectedKey === "account" ? "page" : undefined}
         >
@@ -206,203 +482,19 @@ function Sidebar() {
             <span className="nav-text">Account</span>
           </Link>
         </Menu.Item>
-        {hasAnyAdminPermission(hasPermission, user?.admin) && (
+        {sections.map(({ section, items }) => (
           <Menu.SubMenu
-            key="admin"
+            key={section.key}
             title={
               <span>
-                <LockOutlined />
-                <span>Admin</span>
+                {section.icon}
+                <span>{section.title}</span>
               </span>
             }
           >
-            {hasPermission("REPLICA_READ") && (
-              <Menu.Item key="replicas">
-                <Link to="/replicas">
-                  <DatabaseOutlined />
-                  <span className="nav-text">Replicas</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("USER_READ") && (
-              <Menu.Item key="users">
-                <Link to="/users">
-                  <TeamOutlined />
-                  <span className="nav-text">Users</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("TENANT_READ") && (
-              <Menu.Item key="tenants">
-                <Link to="/tenants">
-                  <BankOutlined />
-                  <span className="nav-text">Tenants</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("ROLE_READ") && (
-              <Menu.Item key="roles">
-                <Link to="/roles">
-                  <SafetyCertificateOutlined />
-                  <span className="nav-text">Roles</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("LOG_READ") || hasPermission("AUDIT_READ") ? (
-              <Menu.Item key="logs">
-                <Link to="/logs">
-                  <AlignLeftOutlined />
-                  <span className="nav-text">Logs</span>
-                </Link>
-              </Menu.Item>
-            ) : null}
-            {hasPermission("WORKLIST_READ") && (
-              <Menu.Item key="worklist">
-                <Link to="/worklist">
-                  <FileSearchOutlined />
-                  <span className="nav-text">Worklist</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("WORKLIST_READ") && (
-              <Menu.Item key="schedule-board">
-                <Link to="/schedule-board">
-                  <CalendarOutlined />
-                  <span className="nav-text">Schedule</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("EXAM_READ") && (
-              <Menu.Item key="exams">
-                <Link to="/exams">
-                  <MedicineBoxOutlined />
-                  <span className="nav-text">Exams</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("REPORT_READ") && (
-              <Menu.Item key="reading">
-                <Link to="/reading">
-                  <FileDoneOutlined />
-                  <span className="nav-text">Reading Worklist</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("PEER_REVIEW_READ") && (
-              <Menu.Item key="peer-review">
-                <Link to="/peer-review">
-                  <AuditOutlined />
-                  <span className="nav-text">Peer Review</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("QA_READ") && (
-              <Menu.Item key="qa-queue">
-                <Link to="/qa/queue">
-                  <SafetyCertificateOutlined />
-                  <span className="nav-text">QA Queue</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("QA_READ") && (
-              <Menu.Item key="qa-protocols">
-                <Link to="/qa/protocols">
-                  <BookOutlined />
-                  <span className="nav-text">Protocols</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("QA_READ") && (
-              <Menu.Item key="qa-incidents">
-                <Link to="/qa/incidents">
-                  <WarningOutlined />
-                  <span className="nav-text">Incidents</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("QA_READ") && (
-              <Menu.Item key="qa-actions">
-                <Link to="/qa/actions">
-                  <CheckCircleOutlined />
-                  <span className="nav-text">Corrective Actions</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("SERVICE_KEY_READ") && (
-              <Menu.Item key="service-keys">
-                <Link to="/service-keys">
-                  <KeyOutlined />
-                  <span className="nav-text">Service Keys</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("ROUTING_READ") ||
-            hasPermission("INTERFACE_ADMIN") ? (
-              <Menu.Item key="routing">
-                <Link to="/routing">
-                  <ApartmentOutlined />
-                  <span className="nav-text">Routing</span>
-                </Link>
-              </Menu.Item>
-            ) : null}
-            {hasPermission("SYSTEM_ADMIN") && (
-              <Menu.SubMenu
-                key="fhir"
-                title={
-                  <span>
-                    <MedicineBoxOutlined />
-                    <span>FHIR</span>
-                  </span>
-                }
-              >
-                <Menu.Item key="fhir-config">
-                  <Link to="/fhir/config">
-                    <MedicineBoxOutlined />
-                    <span className="nav-text">FHIR Config</span>
-                  </Link>
-                </Menu.Item>
-                <Menu.Item key="fhir-monitoring">
-                  <Link to="/fhir/monitoring">
-                    <FundOutlined />
-                    <span className="nav-text">FHIR Monitoring</span>
-                  </Link>
-                </Menu.Item>
-                <Menu.Item key="fhir-docs">
-                  <Link to="/fhir/docs">
-                    <BookOutlined />
-                    <span className="nav-text">FHIR Docs</span>
-                  </Link>
-                </Menu.Item>
-              </Menu.SubMenu>
-            )}
-            {hasPermission("HL7_READ") && (
-              <Menu.Item key="hl7">
-                <Link to="/hl7">
-                  <MessageOutlined />
-                  <span className="nav-text">HL7</span>
-                </Link>
-              </Menu.Item>
-            )}
-            {hasPermission("DICOMWEB_READ") ||
-            hasPermission("STORAGE_ADMIN") ||
-            hasPermission("INTERFACE_ADMIN") ? (
-              <Menu.Item key="dicomweb">
-                <Link to="/dicomweb">
-                  <CloudServerOutlined />
-                  <span className="nav-text">DICOMweb</span>
-                </Link>
-              </Menu.Item>
-            ) : null}
-            {hasPermission("SYSTEM_ADMIN") && (
-              <Menu.Item key="integrations">
-                <Link to="/integrations">
-                  <ApiOutlined />
-                  <span className="nav-text">Integrations</span>
-                </Link>
-              </Menu.Item>
-            )}
+            {items.map((item) => renderNavItem(item, selectedKey))}
           </Menu.SubMenu>
-        )}
+        ))}
         <Menu.Item
           key="notifications"
           style={{

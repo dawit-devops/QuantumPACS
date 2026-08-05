@@ -1,10 +1,7 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
-import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AuthProvider } from "../auth/AuthContext";
-import { ThemeProvider } from "../common/ThemeProvider";
 import LoginForm from "../login/Login";
 
 const mockListLoginProviders = vi.hoisted(() => vi.fn());
@@ -57,5 +54,19 @@ describe("LoginForm", () => {
     expect(googleBtns.length).toBeGreaterThanOrEqual(1);
     const msBtns = await screen.findAllByText("Sign in with Microsoft");
     expect(msBtns.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("offers a demo-user datalist with test-role usernames", () => {
+    renderWithAuth(<LoginForm />);
+
+    const datalist = document.getElementById("demo-usernames");
+    expect(datalist).not.toBeNull();
+    const values = Array.from(
+      (datalist as HTMLDataListElement).querySelectorAll("option"),
+    ).map((o) => o.getAttribute("value"));
+    expect(values).toContain("test.radiologist");
+    expect(values).toContain("test.technologist");
+    expect(values).toContain("test.pacs_admin");
+    expect(values).toContain("test.patient");
   });
 });
