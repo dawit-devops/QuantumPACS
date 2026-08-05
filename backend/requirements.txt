@@ -23,7 +23,7 @@ python-multipart>=0.0.5,<1.0
 sentry-sdk>=2.0,<3.0
 starlette>=1.1.0,<2.0
 ujson>=1.35,<6.0
-uvicorn>=0.8.6,<0.52
+uvicorn>=0.52.1,<0.53
 websockets>=10.0
 httpx<1.0
 prometheus_client>=0.20,<1.0
