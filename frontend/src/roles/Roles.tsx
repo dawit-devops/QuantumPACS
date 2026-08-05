@@ -40,8 +40,6 @@ import { PageState } from "../common/PageState";
 const { Text, Paragraph } = Typography;
 const Content = Layout.Content;
 
-const SUPER_ADMIN_SLUG = "super_admin";
-
 function Roles() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Roles");
@@ -55,8 +53,6 @@ function Roles() {
   const [permSearch, setPermSearch] = useState("");
   const [permGroups, setPermGroups] = useState<Record<string, string[]>>({});
   const [form] = Form.useForm();
-
-  const isEditingSuperAdmin = editingRole?.slug === SUPER_ADMIN_SLUG;
 
   useEffect(() => {
     listPermissions()
@@ -401,21 +397,13 @@ function Roles() {
         title={editingRole ? "Edit Role" : "Create Role"}
         open={visible}
         onCancel={handleCancel}
-        onOk={
-          isEditingSuperAdmin
-            ? undefined
-            : editingRole
-              ? handleUpdate
-              : handleCreate
-        }
-        okText={
-          isEditingSuperAdmin ? "Close" : editingRole ? "Update" : "Create"
-        }
+        onOk={editingRole ? handleUpdate : handleCreate}
+        okText={editingRole ? "Update" : "Create"}
         width={600}
         footer={(_, { OkBtn, CancelBtn }) => (
           <Space>
             <CancelBtn />
-            {!isEditingSuperAdmin && <OkBtn />}
+            <OkBtn />
           </Space>
         )}
       >
@@ -425,7 +413,7 @@ function Roles() {
             label="Role Name"
             rules={[{ required: true, max: 64 }]}
           >
-            <Input disabled={isEditingSuperAdmin} />
+            <Input />
           </Form.Item>
           <Form.Item
             name="slug"
@@ -438,15 +426,10 @@ function Roles() {
               },
             ]}
           >
-            <Input disabled={isEditingSuperAdmin} />
+            <Input />
           </Form.Item>
           <Form.Item name="description" label="Description">
-            <Input.TextArea
-              rows={2}
-              maxLength={255}
-              showCount
-              disabled={isEditingSuperAdmin}
-            />
+            <Input.TextArea rows={2} maxLength={255} showCount />
           </Form.Item>
           <Form.Item label="Permissions">
             <Input
@@ -494,7 +477,6 @@ function Roles() {
                         }
                         checked={selectedCount === perms.length}
                         onChange={() => toggleGroup(group, perms)}
-                        disabled={isEditingSuperAdmin}
                       >
                         <Text strong style={{ fontSize: 13 }}>
                           {group}
@@ -518,7 +500,6 @@ function Roles() {
                             marginBottom: 2,
                             fontSize: 12,
                           }}
-                          disabled={isEditingSuperAdmin}
                         >
                           {perm}
                         </Checkbox>

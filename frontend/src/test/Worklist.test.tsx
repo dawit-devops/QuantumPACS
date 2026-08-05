@@ -133,31 +133,21 @@ describe("Worklist", () => {
     localStorage.setItem("admin", "true");
   });
 
-  it("renders table with worklist entries from API", async () => {
+  it("renders table, headers, and create button from API", async () => {
     renderWithAuth(<Worklist />);
     expect(await screen.findByText("John Doe")).toBeInTheDocument();
     expect(await screen.findByText("Jane Smith")).toBeInTheDocument();
     expect(await screen.findByText("Bob Wilson")).toBeInTheDocument();
-  });
-
-  it("renders column headers", async () => {
-    renderWithAuth(<Worklist />);
-    await waitForTable();
     expect(screen.getByText("Patient Name")).toBeInTheDocument();
     expect(screen.getByText("Patient ID")).toBeInTheDocument();
     expect(screen.getByText("Accession #")).toBeInTheDocument();
     expect(screen.getByText("Modality")).toBeInTheDocument();
     expect(screen.getByText("Scheduled Date")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
-  });
-
-  it("renders Create Worklist Entry button", async () => {
-    renderWithAuth(<Worklist />);
-    await waitForTable();
     expect(screen.getByText("Create Entry")).toBeInTheDocument();
   });
 
-  it("calls request with correct endpoint and query object on mount", async () => {
+  it("calls list endpoint with default query on mount", async () => {
     renderWithAuth(<Worklist />);
     await waitForTable();
     expect(mockListWorklist).toHaveBeenCalledWith({});
@@ -200,7 +190,7 @@ describe("Worklist", () => {
     );
   });
 
-  it("create modal opens with form fields", async () => {
+  it("create modal opens with form fields and sends correct API request", async () => {
     const user = userEvent.setup();
     renderWithAuth(<Worklist />);
     await waitForTable();
@@ -212,21 +202,7 @@ describe("Worklist", () => {
     ).toBeInTheDocument();
     expect(within(modal).getByLabelText("Patient ID")).toBeInTheDocument();
     expect(within(modal).getByLabelText("Patient Name")).toBeInTheDocument();
-  });
 
-  it("create entry sends correct API request", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<Worklist />);
-    await waitForTable();
-    mockCreateWorklistEntry.mockResolvedValue({ id: 4 } as any);
-    mockListStationAes.mockResolvedValue([]);
-    mockCreateWorklistEntry.mockResolvedValue({} as any);
-    mockUpdateWorklistEntry.mockResolvedValue(undefined);
-    mockDeleteWorklistEntry.mockResolvedValue(undefined);
-    mockMarkWorklistPerformed.mockResolvedValue(undefined);
-
-    await user.click(screen.getByText("Create Entry"));
-    const modal = screen.getByRole("dialog");
     await user.type(within(modal).getByLabelText("Patient ID"), "P004");
     await user.type(
       within(modal).getByLabelText("Patient Name"),

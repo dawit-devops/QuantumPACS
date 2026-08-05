@@ -94,18 +94,18 @@ describe("Integrations", () => {
     localStorage.setItem("admin", "true");
   });
 
-  it("renders both tabs", async () => {
+  it("renders tabs, webhook table, count, and fetches endpoints on mount", async () => {
     renderWithAuth(<Integrations />);
     await waitForTabs();
     expect(screen.getByText("Webhooks")).toBeInTheDocument();
     expect(screen.getByText("OAuth Providers")).toBeInTheDocument();
-  });
-
-  it("renders webhook names in table", async () => {
-    renderWithAuth(<Integrations />);
-    await waitForTabs();
     expect(await screen.findByText("Slack")).toBeInTheDocument();
     expect(await screen.findByText("PagerDuty")).toBeInTheDocument();
+    expect(
+      await screen.findByText("2 webhooks configured"),
+    ).toBeInTheDocument();
+    expect(mockListWebhooks).toHaveBeenCalled();
+    expect(mockListOauthProviders).toHaveBeenCalled();
   });
 
   it("renders OAuth provider table on tab switch", async () => {
@@ -121,31 +121,25 @@ describe("Integrations", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows webhook count", async () => {
+  it("shows webhook count and calls endpoints on mount", async () => {
     renderWithAuth(<Integrations />);
     await waitForTabs();
     expect(
       await screen.findByText("2 webhooks configured"),
     ).toBeInTheDocument();
+    expect(mockListWebhooks).toHaveBeenCalled();
+    expect(mockListOauthProviders).toHaveBeenCalled();
   });
 
-  it("opens add webhook modal", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<Integrations />);
-    await waitForTabs();
-    await user.click(screen.getByText("Add Webhook"));
-    const modal = screen.getByRole("dialog");
-    expect(within(modal).getByLabelText("Name")).toBeInTheDocument();
-    expect(within(modal).getByLabelText("URL")).toBeInTheDocument();
-  });
-
-  it("creates a webhook via modal", async () => {
+  it("opens add webhook modal and creates a webhook", async () => {
     const user = userEvent.setup();
     mockCreateWebhook.mockResolvedValue({} as any);
     renderWithAuth(<Integrations />);
     await waitForTabs();
     await user.click(screen.getByText("Add Webhook"));
     const modal = screen.getByRole("dialog");
+    expect(within(modal).getByLabelText("Name")).toBeInTheDocument();
+    expect(within(modal).getByLabelText("URL")).toBeInTheDocument();
     await user.type(within(modal).getByLabelText("Name"), "New Hook");
     await user.type(
       within(modal).getByLabelText("URL"),
@@ -180,12 +174,5 @@ describe("Integrations", () => {
     const modal = screen.getByRole("dialog");
     expect(within(modal).getByLabelText("Issuer URL")).toBeInTheDocument();
     expect(within(modal).getByLabelText("Client ID")).toBeInTheDocument();
-  });
-
-  it("calls endpoints on mount", async () => {
-    renderWithAuth(<Integrations />);
-    await waitForTabs();
-    expect(mockListWebhooks).toHaveBeenCalled();
-    expect(mockListOauthProviders).toHaveBeenCalled();
   });
 });

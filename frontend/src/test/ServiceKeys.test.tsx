@@ -84,45 +84,19 @@ describe("ServiceKeys", () => {
     localStorage.setItem("admin", "true");
   });
 
-  it("renders table with API keys from API", async () => {
+  it("renders table, headers, generate button, and fetches on mount", async () => {
     renderWithAuth(<ServiceKeys />);
     expect(await screen.findByText("RIS Integration")).toBeInTheDocument();
     expect(await screen.findByText("HL7 Connector")).toBeInTheDocument();
-  });
-
-  it("renders column headers", async () => {
-    renderWithAuth(<ServiceKeys />);
-    await waitForTable();
     expect(screen.getByText("Name")).toBeInTheDocument();
     expect(screen.getByText("Permissions")).toBeInTheDocument();
     expect(screen.getByText("Last Used")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
-  });
-
-  it("renders Generate Key button", async () => {
-    renderWithAuth(<ServiceKeys />);
-    await waitForTable();
     expect(screen.getByText("Generate Key")).toBeInTheDocument();
-  });
-
-  it("calls request with correct endpoint on mount", async () => {
-    renderWithAuth(<ServiceKeys />);
-    await waitForTable();
     expect(mockListApiKeys).toHaveBeenCalled();
   });
 
-  it("generate modal opens with form fields", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ServiceKeys />);
-    await waitForTable();
-
-    await user.click(screen.getByText("Generate Key"));
-    const modal = screen.getByRole("dialog");
-    expect(within(modal).getByLabelText("Name")).toBeInTheDocument();
-    expect(within(modal).getByLabelText("Service Name")).toBeInTheDocument();
-  });
-
-  it("generate key sends API request and shows raw key", async () => {
+  it("generate modal opens with form fields and creates a key", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ServiceKeys />);
     await waitForTable();
@@ -132,6 +106,9 @@ describe("ServiceKeys", () => {
 
     await user.click(screen.getByText("Generate Key"));
     const modal = screen.getByRole("dialog");
+    expect(within(modal).getByLabelText("Name")).toBeInTheDocument();
+    expect(within(modal).getByLabelText("Service Name")).toBeInTheDocument();
+
     await user.type(within(modal).getByLabelText("Name"), "New Key");
     await user.type(within(modal).getByLabelText("Service Name"), "MyService");
     await user.click(within(modal).getByText("Generate"));

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -89,33 +89,24 @@ describe("Hl7Dashboard", () => {
     localStorage.setItem("admin", "true");
   });
 
-  it("renders all three tabs", async () => {
+  it("renders tabs, fetches messages, and shows refresh/count", async () => {
     renderWithAuth(<Hl7Dashboard />);
-    await waitForMessagesTab();
+    expect(await screen.findByText("P001")).toBeInTheDocument();
     expect(screen.getByText("Messages")).toBeInTheDocument();
     expect(screen.getByText("Analytics")).toBeInTheDocument();
     expect(screen.getByText("Configuration")).toBeInTheDocument();
+    expect(mockListHl7Messages).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 }),
+    );
+    expect(screen.getByText("Refresh")).toBeInTheDocument();
+    expect(screen.getByText("2 messages")).toBeInTheDocument();
   });
 
-  it("fetches messages on mount", async () => {
-    renderWithAuth(<Hl7Dashboard />);
-    await waitFor(() => {
-      expect(mockListHl7Messages).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 50, offset: 0 }),
-      );
-    });
-  });
-
-  it("renders message data in table", async () => {
+  it("renders message data and filter inputs", async () => {
     renderWithAuth(<Hl7Dashboard />);
     await waitForMessagesTab();
     expect(await screen.findByText("P001")).toBeInTheDocument();
     expect(await screen.findByText("P002")).toBeInTheDocument();
-  });
-
-  it("renders filter inputs", async () => {
-    renderWithAuth(<Hl7Dashboard />);
-    await waitForMessagesTab();
     expect(screen.getByPlaceholderText("Patient ID")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Facility")).toBeInTheDocument();
   });
@@ -155,18 +146,5 @@ describe("Hl7Dashboard", () => {
       await screen.findByText("Failed to load configuration"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-  });
-
-  it("renders refresh button", async () => {
-    renderWithAuth(<Hl7Dashboard />);
-    await waitForMessagesTab();
-    expect(screen.getByText("Refresh")).toBeInTheDocument();
-  });
-
-  it("shows message count", async () => {
-    renderWithAuth(<Hl7Dashboard />);
-    await waitForMessagesTab();
-    await screen.findByText("P001");
-    expect(screen.getByText("2 messages")).toBeInTheDocument();
   });
 });

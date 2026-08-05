@@ -76,14 +76,10 @@ describe("Roles", () => {
     localStorage.setItem("admin", "true");
   });
 
-  it("renders Role column header", async () => {
+  it("renders headers and role names from API", async () => {
     renderWithAuth(<Roles />);
     const headers = await screen.findAllByText("Role");
     expect(headers.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("displays role names from API", async () => {
-    renderWithAuth(<Roles />);
     const admins = await screen.findAllByText("Administrator");
     expect(admins.length).toBeGreaterThanOrEqual(1);
     const techs = await screen.findAllByText("Technologist");
@@ -124,20 +120,7 @@ describe("Roles", () => {
     });
   });
 
-  it("edit modal opens with pre-filled values when clicking edit", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<Roles />);
-    await waitForTable();
-
-    const editBtn = screen.getAllByText("Edit")[2];
-    await user.click(editBtn);
-
-    const modal = screen.getByRole("dialog");
-    expect(within(modal).getByDisplayValue("Custom Role")).toBeInTheDocument();
-    expect(within(modal).getByDisplayValue("custom")).toBeInTheDocument();
-  });
-
-  it("edit role sends updated permissions", async () => {
+  it("edit modal pre-fills values and sends updated permissions", async () => {
     const user = userEvent.setup();
     renderWithAuth(<Roles />);
     await waitForTable();
@@ -145,6 +128,9 @@ describe("Roles", () => {
     await user.click(screen.getAllByText("Edit")[2]);
 
     const modal = screen.getByRole("dialog");
+    expect(within(modal).getByDisplayValue("Custom Role")).toBeInTheDocument();
+    expect(within(modal).getByDisplayValue("custom")).toBeInTheDocument();
+
     await user.click(within(modal).getByText("PATIENT_READ"));
     await user.click(within(modal).getByText("FILE_READ"));
     await user.click(within(modal).getByText("Update"));
