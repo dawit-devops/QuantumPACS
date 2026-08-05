@@ -45,7 +45,7 @@ test or visual evidence.
 | AC-R01-34 | NFR-R01-13 | Given admin inactivity, when the idle timeout (30 min) is reached, then the session expires and re-auth is required | Config/integration test | Pass — re-auth prompt observed |
 | AC-R01-35 | FR-R01-09 | Given a webhook exists, when "Test delivery" runs, then a structured result (HTTP status, latency, response body) is shown ≤ 5s | API probe (`POST /webhooks/test`) | Pass — structured result asserted |
 | AC-R01-36 | FR-R01-12 | Given the DICOMweb admin screen, when a station AE title is created/edited, then it appears in the station list and is usable by modality worklists | API + component test | Pass — list state + MWL integration probe |
-| AC-R01-37 | FR-R01-17 | Given the health dashboard is implemented, when an area is degraded, then it is flagged with icon + text and links to the area dashboard with matching time scope | E2E (pending backend `GET /dashboard/health`) | GATED — blocked on backend aggregate endpoint |
+| AC-R01-37 | FR-R01-17 | Given the health dashboard is implemented, when an area is degraded, then it is flagged with icon + text and links to the area dashboard with matching time scope | API test (component keys/status) + component test (link rendering, per-panel isolation) | Pass — API test (`GET /v2/dashboard/health` component keys/status) + component test (link rendering, per-panel isolation) |
 | AC-R01-38 | FR-R01-18 | Given backup exists, when triggered, then a single artifact (DB + files) with timestamp and checksum is produced; restore returns to that state and is audit-logged | E2E (pending implementation — roadmap) | GATED — no implementation exists; backlog |
 | AC-R01-39 | NFR-R01-04 | Given a list with >1,000 rows, when it loads, then pagination is server-side with page size 20–100 and the client payload stays bounded | API test (payload size assertion) | Pass — bounded response verified |
 | AC-R01-40 | NFR-R01-12 | Given 10 concurrent super-admin sessions, when they perform admin operations simultaneously, then no session errors or data corruption occur | Load test | Pass — concurrent load verified |
@@ -57,22 +57,21 @@ test or visual evidence.
 - **Billing/payments** (R09) and scheduling UX (R04) — separate packages.
 - **Backup/restore implementation** (US-R01-16) — backlog; AC retained as Could but not gateable today.
 - **Mobile experience** for R01 — explicitly not required (desktop-first).
-- **Aggregate health endpoint** (`GET /dashboard/health`) — flagged GAP requiring backend work; AC-R01-15 in `03-user-stories.md` is pending backend feasibility before it becomes gateable.
 
 ## Validator Gate Verdict (ui-visual-validator lens)
 
 From the verification evidence, I observe:
 
-- **Achieved**: 36 of 41 ACs are verifiable today against the existing API surface
+- **Achieved**: 37 of 41 ACs are verifiable today against the existing API surface
   (`backend/api/routes.py`) and frontend screens (tenants, users, roles, replicas,
   routing, service keys, webhooks, station AEs, logs, metrics, fhir, hl7, oauth,
-  notifications).
+  notifications, system health).
 - **Partially achieved**: AC-R01-02/14/22 (secret one-time display) are specified but
   require frontend implementation to confirm; the API already returns secrets once.
-- **Not achieved (gated)**: AC-R01-37 (dashboard health — no aggregate endpoint);
-  AC-R01-38 (backup/restore — no implementation exists). These remain flagged gaps.
+- **Not achieved (gated)**: AC-R01-38 (backup/restore — no implementation exists).
+  This remains a flagged gap.
 - **Risk noted**: notification-creation rules for admin events (US-R01-14) depend on
   backend event wiring that must be confirmed before sprint commitment.
 
-Verdict: package **approved for sprint planning** with the two gated items tracked
-as backend dependencies.
+Verdict: package **approved for sprint planning** with the remaining gated item
+(backup/restore) tracked as a backend dependency.

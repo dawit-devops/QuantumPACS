@@ -55,8 +55,10 @@ unauthorized calls return 403. The `super_admin` built-in role is fully locked i
 Roles UI (name/slug/description/permissions all disabled). Aspirational v3.0 FRs with
 no backend yet are kept but marked `GATED` (see artifacts 01/07/08):
 
-- `FR-R01-17` global health aggregate (no endpoint) — GATED
 - `FR-R01-18` backup/restore (no implementation) — GATED
+
+`FR-R01-17` (global health aggregate) is implemented — data comes from
+`GET /v2/dashboard/health` (METRICS_READ) — and is no longer gated.
 
 Design-system conformance: all colors, typography, spacing, and radius reference
 `docs/design-tokens.json` (Ant Design v6, `frontend/src/common/theme.ts`); components
@@ -66,7 +68,7 @@ reference `docs/component-specs.md`. No one-off styling.
 
 | Screen | Route (existing) | Entry Point | Purpose |
 |--------|------------------|-------------|---------|
-| Dashboard / Health | `/metrics` | Sidebar "Metrics" | System-wide health + platform metrics |
+| Dashboard / Health | `/metrics` | Sidebar "Metrics" | System-wide health + platform metrics; System Health component rows are drill-down links to area dashboards (replicas/dicomweb/hl7/fhir) with time-scope passthrough |
 | Tenants | `/tenants` | Sidebar | Tenant CRUD + provision dialog |
 | Users | `/users` | Sidebar | User lifecycle + bulk import |
 | Roles | `/roles` | Sidebar | RBAC roles + permission catalog |
@@ -130,8 +132,8 @@ reference `docs/component-specs.md`. No one-off styling.
 ### Metrics Dashboards
 | Component | Default | Loading | Empty | Error | Success | Disabled |
 |-----------|---------|---------|-------|-------|---------|----------|
-| Dashboard panels | per-area cards | panel skeleton | "no data in range" | "metrics unavailable" + retry (isolated panel) | charts + accessible table | n/a |
-| Time-range control | 24h default | n/a | n/a | n/a | range applied | n/a |
+| Dashboard panels | per-area cards; System Health rows are drill-down links to area dashboards (replicas/dicomweb/hl7/fhir) with time-scope passthrough; degraded rows flagged icon + text | panel skeleton | "no data in range" | "metrics unavailable" + retry (isolated panel) | charts + accessible table | n/a |
+| Time-range control | 24h default | n/a | n/a | n/a | range applied (passed through to drill-down dashboards) | n/a |
 
 ### Integrations (FHIR / HL7 / OAuth / Webhooks)
 | Component | Default | Loading | Empty | Error | Success | Disabled |

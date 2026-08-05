@@ -86,7 +86,7 @@ from api.portal import (
     PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
     PortalFollowUpStatusHandler,
 )
-from api.dashboard_metrics import DashboardMetricsHandler
+from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.rbac import guard_endpoint_method
 from api.permissions import Permission
 from api.ws import WSToken, WebsocketHandler
@@ -240,6 +240,7 @@ _V1_ROUTES = [
     v2(Route('/fhir/admin/requests', endpoint=FhirAdminRecentRequestsHandler)),
     v2(Route('/fhir/admin/test', endpoint=FhirAdminTestHandler)),
     Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
+    Route('/v2/dashboard/health', endpoint=DashboardHealthHandler),
     v2(Route('/visits', endpoint=VisitsHandler)),
     v2(Route('/visits/{id}', endpoint=VisitHandler)),
     v2(Route('/visits/{id}/orders', endpoint=VisitOrdersHandler)),

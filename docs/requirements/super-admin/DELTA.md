@@ -6,18 +6,25 @@
 - **Stakeholder**: PACS requirements architect
 
 ## Changed Requirements
-No requirement meaning changed — re-verification only. FR-R01-17 (global health
-dashboard) and FR-R01-18 (backup/restore) remain GATED: no `/dashboard/health`
-endpoint exists and backup is script-only (`scripts/backup_db.sh`), no API.
+FR-R01-17 (global health dashboard) implemented: `GET /v2/dashboard/health`
+(METRICS_READ) aggregates storage, DICOM listener, HL7, FHIR, auth + core
+(db/es/redis/ingestion) status; System Health card rows on `/metrics` link to
+area dashboards with time-scope passthrough and per-panel error isolation.
+FR-R01-18 (backup/restore) remains GATED — backup is script-only
+(`scripts/backup_db.sh`), no API.
 
 ## Impact on Existing Artifacts
 | Artifact | Changed? | Summary |
 |----------|----------|---------|
-| README | Yes | Codebase Alignment re-verified post-merge 4d136e0; PermissionRoute route-level enforcement noted; new built-in roles + permission groups (`Exams`, `Reports`, `Peer Review`, `QA`) noted in `/roles` catalog; version 1.2.1 |
-| CHANGELOG | Yes | New `## [1.2.1] — 2026-08-03` entry (`### Changed`) |
-| 01-user-requirements | No | FR-R01-17/18 GAP notes still accurate |
-| 07-traceability | No | GATED entries (AC-R01-37/38) still accurate |
-| 08-implementation-roadmap | No | Statuses unaffected by merge |
+| README | Yes | FR-R01-17 moved to Implemented; `GET /v2/dashboard/health` added to API surface; Flagged Gaps list updated; version 1.3.0 |
+| CHANGELOG | Yes | New `## [1.3.0] — 2026-08-05` entry (`### Added`/`### Changed`); FR-R01-18 remains backlog |
+| 01-user-requirements | Yes | FR-R01-17 note replaced with implemented endpoint reference |
+| 02-workflow-maps | Yes | Aggregate-health GAP note replaced with implementation summary |
+| 03-user-stories | Yes | US-R01-15 GAP notes replaced with implementation references |
+| 04-ui-ux-requirements | Yes | FR-R01-17 removed from GATED list; health-card drill-down + panel-isolation spec |
+| 06-acceptance-criteria | Yes | AC-R01-37 → Pass (API + component test); AC-R01-38 remains GATED; achieved count 36 → 37 |
+| 07-traceability | Yes | FR-R01-17 / AC-R01-37 marked covered/passing |
+| 08-implementation-roadmap | Yes | FR-R01-17 moved to Implemented; Phase 2 item 1 done; only backup/restore blocking |
 
 ## Notes
 - New post-merge backend routes (`/exams/*`, `/qa/*`, `/reports/*`,

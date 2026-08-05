@@ -20,7 +20,7 @@
 | FR-R01-14 | Yes | AC-R01-23, AC-R01-24 | Covered |
 | FR-R01-15 | Yes | AC-R01-25, AC-R01-26 | Covered |
 | FR-R01-16 | Yes | AC-R01-27 | Covered |
-| FR-R01-17 | Yes | AC-R01-37 | GATED — blocked on backend aggregate endpoint |
+| FR-R01-17 | Yes | AC-R01-37 | Covered — `GET /v2/dashboard/health` (METRICS_READ) implemented; AC-R01-37 Pass |
 | FR-R01-18 | Yes | AC-R01-38 | GATED — no implementation exists; backlog |
 | FR-R01-19 | Yes | AC-R01-05, AC-R01-28 | Covered |
 | FR-R01-20 | Yes | AC-R01-29 | Covered |

@@ -9,7 +9,7 @@
 | 03 | User Stories | `03-user-stories.md` | done | 17 stories with Given/When/Then AC |
 | 04 | UI/UX Requirements | `04-ui-ux-requirements.md` | done | Screens, states, tokens, a11y, responsive |
 | 05 | Metrics & SLAs | `05-metrics-slas.md` | done | 5 KPIs with targets and owners |
-| 06 | Acceptance Criteria | `06-acceptance-criteria.md` | done | 41 ACs; 39 Pass, 2 GATED |
+| 06 | Acceptance Criteria | `06-acceptance-criteria.md` | done | 41 ACs; 40 Pass, 1 GATED |
 | 07 | Traceability Matrix | `07-traceability.md` | partial | Created as part of this update; all FR/NFR → AC mappings verified |
 | 08 | Implementation Roadmap | `08-implementation-roadmap.md` | partial | Being created; initial draft |
 
@@ -35,6 +35,7 @@
 | FR-R01-14 | HL7 connection config, status, message history | AC-R01-23, 24 | Small |
 | FR-R01-15 | OAuth/SSO provider management | AC-R01-25, 26 | Small |
 | FR-R01-16 | In-app notifications for admin events | AC-R01-27 | Small |
+| FR-R01-17 | Global system health summary (`GET /v2/dashboard/health` aggregate of db/es/redis/storage/dicom_listener/ingestion_service/hl7/fhir/auth; drill-down links) | AC-R01-37 | Medium |
 | FR-R01-19 | Audit logging for all admin mutations | AC-R01-05, 28 | Small |
 | FR-R01-20 | Permission-based access control (403 for unauthorized) | AC-R01-29 | Small |
 | NFR-R01-01 | Admin page load budget (LCP ≤ 2.5s) | AC-R01-30 | Small |
@@ -55,20 +56,17 @@
 
 | FR/NFR ID | Summary | Blocking Dependency | AC | Effort |
 |-----------|---------|---------------------|----|--------|
-| FR-R01-17 | Global system health summary dashboard | Backend `GET /dashboard/health` aggregate endpoint does not exist | AC-R01-37 | Medium |
 | FR-R01-18 | Backup/restore (DB + files) with audit logging | No implementation exists; backlog | AC-R01-38 | Large |
 
 ## Dependency-Ordered Implementation Plan
 
 ### Phase 1: Foundation (already done)
-- Artifacts 01–06 complete; 34 of 36 FR/NFR requirements implemented and passing
+- Artifacts 01–06 complete; 32 of 33 FR/NFR requirements implemented and passing
 
 ### Phase 2: Unblock GATED requirements (next priority)
-1. **Backend aggregate health endpoint** (`GET /dashboard/health`) — required for FR-R01-17 / AC-R01-37
-   - Owner: Backend team
-   - Blocks: AC-R01-37, FR-R01-17
-   - Effort: Medium
-   - Once done, re-run validator gate on AC-R01-37
+1. **Backend aggregate health endpoint** — **DONE** (2026-08-05): `GET /v2/dashboard/health` (METRICS_READ) implemented; AC-R01-37 now Pass
+   - Owner: Backend team (completed)
+   - Blocks: none — AC-R01-37 verified, FR-R01-17 closed
 2. **Backup/restore implementation** — required for FR-R01-18 / AC-R01-38
    - Owner: Backend + DevOps
    - Blocks: AC-R01-38, FR-R01-18
@@ -83,12 +81,10 @@
 
 | Blocking Dependency | Blocks | AC | Impact |
 |---------------------|--------|----|--------|
-| `GET /dashboard/health` backend endpoint | FR-R01-17 | AC-R01-37 | Health dashboard cannot be verified |
 | Backup/restore implementation | FR-R01-18 | AC-R01-38 | Backup/restore cannot be tested or validated |
 
 ## Next Steps (highest priority)
 
-1. **Implement `GET /dashboard/health`** — unblocks AC-R01-37 and FR-R01-17; Medium effort
-2. **Implement backup/restore** — unblocks AC-R01-38 and FR-R01-18; Large effort
-3. **Regenerate traceability matrix** — update 07-traceability.md when other role packages (R02–R19) are generated to cross-reference R01 dependencies
-4. **Update roadmap each sprint** — mark FR/NFR status changes as artifacts 01–06 evolve
+1. **Implement backup/restore** — unblocks AC-R01-38 and FR-R01-18; Large effort
+2. **Regenerate traceability matrix** — update 07-traceability.md when other role packages (R02–R19) are generated to cross-reference R01 dependencies
+3. **Update roadmap each sprint** — mark FR/NFR status changes as artifacts 01–06 evolve

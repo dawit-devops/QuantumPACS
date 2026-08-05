@@ -3,6 +3,15 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.3.0] — 2026-08-05
+### Added
+- FR-R01-17 closed: `GET /v2/dashboard/health` (METRICS_READ) aggregates db, es, redis, storage, dicom_listener, ingestion_service, hl7, fhir, auth component status
+- /metrics System Health rows are drill-down links to area dashboards (replicas/dicomweb/hl7/fhir) with time-scope passthrough; per-panel "metrics unavailable" + retry (panel isolation)
+### Changed
+- Artifacts 01/04/06/07/08 updated: FR-R01-17 GATED → Implemented; AC-R01-37 Pass (achieved 36 → 37 of 41; 3 partial, 1 gated)
+- Excluded-scope note for the aggregate health endpoint removed from artifact 06
+- FR-R01-18 (backup/restore) remains GATED / backlog — AC-R01-38 untouched
+
 ## [1.2.1] — 2026-08-03
 ### Changed
 - Re-verified against post-merge codebase (4d136e0): no new admin endpoints affect R01 FRs; FR-R01-17/18 remain GATED

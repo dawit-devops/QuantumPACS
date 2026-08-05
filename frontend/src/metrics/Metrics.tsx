@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
+import { useNavigate } from "react-router";
 import {
   App,
   Layout,
@@ -20,6 +21,7 @@ import {
   Radio,
   Typography,
   Space,
+  Spin,
   Button,
 } from "antd";
 import {
@@ -48,7 +50,12 @@ import {
 } from "chart.js";
 import withSidebar from "../common/base";
 import { useTheme } from "../common/ThemeProvider";
-import { getDashboardMetrics, getHealth } from "../api/metrics";
+import {
+  getDashboardMetrics,
+  getHealth,
+  type HealthComponent,
+  type HealthStatus,
+} from "../api/metrics";
 import { PageState } from "../common/PageState";
 import "./Metrics.css";
 
@@ -121,6 +128,76 @@ function healthIcon(status: string) {
   return <CloseCircleOutlined />;
 }
 
+// Components with a dedicated area dashboard become drill-down links from
+// the System Health card; everything else (database, elasticsearch, redis,
+// auth, ingestion_service) stays a plain status row. hl7/fhir mirror the
+// current /metrics time scope via a period query param.
+const AREA_LINKS: Record<string, { path: string; period?: boolean }> = {
+  storage: { path: "/replicas" },
+  dicom_listener: { path: "/dicomweb" },
+  hl7: { path: "/hl7", period: true },
+  fhir: { path: "/fhir/monitoring", period: true },
+};
+
+// Target dashboards cap their period at 30d, so the 90d scope clamps to 30d.
+function scopeToPeriod(range: string): string {
+  if (range === "24h") return "24h";
+  if (range === "7d") return "7d";
+  return "30d";
+}
+
+function HealthRow({
+  name,
+  comp,
+  timeRange,
+}: {
+  name: string;
+  comp: HealthComponent;
+  timeRange: string;
+}) {
+  const navigate = useNavigate();
+  const label = labelName(name);
+  const area = AREA_LINKS[name];
+
+  const rowStyle: React.CSSProperties = {
+    marginBottom: 8,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  };
+  const content = (
+    <>
+      {healthIcon(comp.status)}
+      <span style={{ flex: 1, fontWeight: 500 }}>{label}</span>
+      <Tag color={healthColor(comp.status)}>
+        {String(comp.status).toUpperCase()}
+      </Tag>
+    </>
+  );
+
+  if (!area) {
+    return <div style={rowStyle}>{content}</div>;
+  }
+
+  const href = area.period
+    ? `${area.path}?period=${scopeToPeriod(timeRange)}`
+    : area.path;
+  return (
+    <a
+      href={href}
+      className="metrics-health-link"
+      aria-label={`View ${label.toLowerCase()} health dashboard`}
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(href);
+      }}
+      style={rowStyle}
+    >
+      {content}
+    </a>
+  );
+}
+
 function getCSSVar(name: string): string {
   return getComputedStyle(document.documentElement)
     .getPropertyValue(name)
@@ -132,10 +209,14 @@ function Metrics() {
   useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
 
+  // Dashboard metrics and system health are fetched independently so one
+  // panel's failure never blocks the other (AC-R01-19).
   const [data, setData] = useState<any>(null);
-  const [health, setHealth] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState("30d");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
@@ -144,27 +225,45 @@ function Metrics() {
   const fetchMetrics = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([getDashboardMetrics(timeRange), getHealth()])
-      .then(([metricsResp, healthResp]) => {
-        setData(metricsResp);
-        setHealth(healthResp);
-        setLoading(false);
+    getDashboardMetrics(timeRange)
+      .then((resp) => {
+        setData(resp);
         setLastUpdate(new Date().toLocaleTimeString());
       })
       .catch((e: any) => {
         setError(e.message);
         message.error(e.message);
-        setLoading(false);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [timeRange]);
+
+  const fetchHealth = useCallback(() => {
+    setHealthLoading(true);
+    setHealthError(null);
+    getHealth()
+      .then((resp) => {
+        setHealth(resp);
+        if (resp) setLastUpdate(new Date().toLocaleTimeString());
+      })
+      .catch((e: any) => {
+        setHealthError(e.message);
+      })
+      .finally(() => setHealthLoading(false));
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    fetchMetrics();
+    fetchHealth();
+  }, [fetchMetrics, fetchHealth]);
 
   useEffect(() => {
     fetchMetrics();
-  }, [fetchMetrics]);
+    fetchHealth();
+  }, [fetchMetrics, fetchHealth]);
 
   useEffect(() => {
     if (autoRefresh) {
-      intervalRef.current = setInterval(fetchMetrics, 30000);
+      intervalRef.current = setInterval(refreshAll, 30000);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -172,7 +271,7 @@ function Metrics() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [autoRefresh, fetchMetrics]);
+  }, [autoRefresh, refreshAll]);
 
   const chartTheme = useMemo(() => {
     const primary = getCSSVar("--color-primary") || "#0891B2";
@@ -252,7 +351,57 @@ function Metrics() {
 
   return (
     <Content style={{ padding: 24 }}>
-      <PageState loading={loading} error={error} onRetry={fetchMetrics}>
+      <Card
+        title="System Health"
+        className="animate-fade-in-up"
+        style={{ animationDelay: "0ms", marginBottom: 16 }}
+      >
+        {healthLoading ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "24px 0",
+            }}
+          >
+            <Spin size="small" />
+          </div>
+        ) : healthError ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 0",
+            }}
+          >
+            <Text type="secondary">
+              <CloseCircleOutlined style={{ marginRight: 6 }} />
+              Metrics unavailable
+            </Text>
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={fetchHealth}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : Object.entries(components).length > 0 ? (
+          Object.entries(components).map(([name, comp]: [string, any]) => (
+            <HealthRow
+              key={name}
+              name={name}
+              comp={comp}
+              timeRange={timeRange}
+            />
+          ))
+        ) : (
+          <Tag color="green">OK</Tag>
+        )}
+      </Card>
+      <PageState loading={loading} error={error} onRetry={refreshAll}>
         <Row
           justify="space-between"
           align="middle"
@@ -294,7 +443,7 @@ function Metrics() {
               <Button
                 size="small"
                 icon={<ReloadOutlined />}
-                onClick={fetchMetrics}
+                onClick={refreshAll}
               >
                 Refresh
               </Button>
@@ -377,40 +526,7 @@ function Metrics() {
         </Row>
 
         <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-          <Col xs={24} md={8}>
-            <Card
-              title="System Health"
-              className="animate-fade-in-up"
-              style={{ animationDelay: "100ms" }}
-            >
-              {Object.entries(components).length > 0 ? (
-                Object.entries(components).map(
-                  ([name, comp]: [string, any]) => (
-                    <div
-                      key={name}
-                      style={{
-                        marginBottom: 8,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      {healthIcon(comp.status)}
-                      <span style={{ flex: 1, fontWeight: 500 }}>
-                        {labelName(name)}
-                      </span>
-                      <Tag color={healthColor(comp.status)}>
-                        {comp.status.toUpperCase()}
-                      </Tag>
-                    </div>
-                  ),
-                )
-              ) : (
-                <Tag color="green">OK</Tag>
-              )}
-            </Card>
-          </Col>
-          <Col xs={24} md={16}>
+          <Col xs={24}>
             <Card
               title="Modality Distribution"
               className="animate-fade-in-up"
@@ -504,6 +620,9 @@ function labelName(key: string): string {
     storage: "Storage",
     dicom_listener: "DICOM Listener",
     ingestion_service: "Ingestion Service",
+    hl7: "HL7",
+    fhir: "FHIR",
+    auth: "Auth",
   };
   return map[key] || key;
 }
