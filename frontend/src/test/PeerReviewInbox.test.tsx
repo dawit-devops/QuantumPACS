@@ -28,6 +28,22 @@ vi.mock("../hooks", () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+// antd's static message API spawns a real React root + auto-dismiss timer;
+// after jsdom tears down, the pending scheduler callback throws
+// "window is not defined". Stub it like QAReviewForm.test.tsx does.
+vi.mock("antd", async () => {
+  const actual = await vi.importActual("antd");
+  return {
+    ...actual,
+    message: {
+      success: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warning: vi.fn(),
+    },
+  };
+});
+
 function renderInbox() {
   return render(
     <ThemeProvider>
