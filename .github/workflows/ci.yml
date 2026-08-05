@@ -1,5 +1,16 @@
 name: CI
-on: [push, pull_request]
+
+# PRs already run the full suite, so direct pushes only need coverage on the
+# integration/production branches — running on phase/** pushed twice per PR.
+on:
+  push:
+    branches: [main, v3-dev]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-backend:
     runs-on: ubuntu-latest
