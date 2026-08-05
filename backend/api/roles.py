@@ -1,4 +1,5 @@
 from starlette.endpoints import HTTPEndpoint
+import asyncpg
 
 from api.rbac import requires_permission
 from api.permissions import Permission, PERMISSION_GROUPS
@@ -23,11 +24,16 @@ class RolesHandler(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(CreateRoleRequest, request)
         async with get_conn() as conn:
-            role_id = await Roles(conn).create(
-                name=body.name,
-                slug=body.slug,
-                permissions=body.permissions,
-            )
+            try:
+                role_id = await Roles(conn).create(
+                    name=body.name,
+                    slug=body.slug,
+                    permissions=body.permissions,
+                )
+            except asyncpg.UniqueViolationError:
+                return api_error(
+                    'CONFLICT', f'Slug "{body.slug}" is already in use', status=409
+                )
             await AuditLog(conn).log_event(
                 event_type='role.created',
                 actor_id=request.user.id,
@@ -63,10 +69,15 @@ class RoleHandler(HTTPEndpoint):
                 # immutable") — editing them would let ROLE_WRITE holders
                 # escalate grants (e.g. add permissions to super_admin).
                 return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
-            await Roles(conn).patch(
-                role_id,
-                body.model_dump(exclude_none=True),
-            )
+            try:
+                await Roles(conn).patch(
+                    role_id,
+                    body.model_dump(exclude_none=True),
+                )
+            except asyncpg.UniqueViolationError:
+                return api_error(
+                    'CONFLICT', f'Slug "{body.slug}" is already in use', status=409
+                )
             if body.permissions is not None:
                 await Users(conn).bulk_increment_token_version_by_role(role_id)
             await AuditLog(conn).log_event(
