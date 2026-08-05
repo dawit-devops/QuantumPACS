@@ -182,7 +182,7 @@ export const createRole = (input: RoleInput): Promise<void> =>
   request("roles", { data: input });
 
 export const updateRole = (id: number, input: RoleInput): Promise<void> =>
-  request(`roles/${id}`, { data: input });
+  request(`roles/${id}`, { data: input, method: "PUT" });
 
 export const deleteRole = (id: number): Promise<void> =>
   request(`roles/${id}`, { data: undefined, method: "DELETE" });

@@ -85,6 +85,22 @@ class TestRolesHandler:
             resp = await handler.post(request)
         assert resp.status_code == 403
 
+    @pytest.mark.asyncio
+    async def test_create_duplicate_slug_returns_409(self):
+        import asyncpg
+
+        conn = MockConn()
+        conn.fetchval = AsyncMock(
+            side_effect=asyncpg.UniqueViolationError('duplicate key value violates unique constraint "roles_slug_key"')
+        )
+        body = {'name': 'Dup Role', 'slug': 'dup_slug', 'permissions': ['FILE_READ']}
+        request = make_request(method='POST', body=body, permissions=[Permission.ROLE_WRITE.value])
+        handler = make_handler(RolesHandler, request)
+        with patch('api.roles.get_conn', return_value=conn):
+            resp = await handler.post(request)
+        assert resp.status_code == 409
+        assert b'CONFLICT' in resp.body
+
 
 class TestRoleHandler:
     @pytest.mark.asyncio
