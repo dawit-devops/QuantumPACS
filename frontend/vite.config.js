@@ -157,10 +157,6 @@ export default defineConfig({
     // Memory-constrained boxes: 2 forks, generous timeouts, retries absorb
     // the antd+jsdom waitFor flakes that appear under parallel load.
     fileParallelism: true,
-    maxForks: 2,
-    minForks: 1,
-    maxConcurrency: 2,
-    retry: 2,
   },
   define: {
     "process.env": {},
