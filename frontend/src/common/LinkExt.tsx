@@ -3,11 +3,11 @@ import { useLocation, useNavigate } from "react-router";
 import { parseParams, encodeQuery } from "../helpers";
 
 function LinkExt(props: any) {
-  let { reload } = props;
+  const { reload } = props;
   const location = useLocation();
   const navigate = useNavigate();
-  let { pathname, search } = location;
-  let loc = pathname + search;
+  const { pathname, search } = location;
+  const loc = pathname + search;
   let href: string | undefined;
 
   if (props.to) {

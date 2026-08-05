@@ -43,8 +43,13 @@ const STATUS_MESSAGES: Record<number, string> = {
 // control characters and cap length so nothing hostile or huge reaches
 // message.error()/alert surfaces.
 export const sanitizeMessage = (text: string): string => {
-  const cleaned = text
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+  // Strip control characters (C0 + DEL) by code point: a control-char range
+  // in a regex trips eslint no-control-regex, and a spread/charCode pass is
+  // equally readable for 240-char-bound messages.
+  const cleaned = Array.from(text, (ch) =>
+    ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? " " : ch,
+  )
+    .join("")
     .replace(/\s+/g, " ")
     .trim();
   return cleaned.length > 240 ? `${cleaned.slice(0, 240)}…` : cleaned;

@@ -14,7 +14,11 @@ import { renderEmpty } from "./common/EmptyState";
 import { OnboardingTour } from "./common/OnboardingTour";
 import { HelpButton } from "./common/HelpButton";
 import ProtectedRoute from "./auth/ProtectedRoute";
-import PermissionRoute from "./auth/PermissionRoute";
+import PermissionRoute, {
+  VIEWER_ROUTE_PERMISSIONS,
+  PATIENT_ROUTE_PERMISSIONS,
+  METRICS_ROUTE_PERMISSIONS,
+} from "./auth/PermissionRoute";
 
 const Login = React.lazy(() => import("./login/Login"));
 const Account = React.lazy(() => import("./account/Account"));
@@ -148,7 +152,14 @@ function ThemedApp() {
                         </PermissionRoute>
                       }
                     />
-                    <Route path="/metrics" element={<Metrics />} />
+                    <Route
+                      path="/metrics"
+                      element={
+                        <PermissionRoute permission={METRICS_ROUTE_PERMISSIONS}>
+                          <Metrics />
+                        </PermissionRoute>
+                      }
+                    />
                     <Route
                       path="/logs"
                       element={
@@ -317,9 +328,30 @@ function ThemedApp() {
                         </PermissionRoute>
                       }
                     />
-                    <Route path="/patients/:id" element={<Patient />} />
-                    <Route path="/files/:id" element={<Detail />} />
-                    <Route path="/" element={<Files />} />
+                    <Route
+                      path="/patients/:id"
+                      element={
+                        <PermissionRoute permission={PATIENT_ROUTE_PERMISSIONS}>
+                          <Patient />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/files/:id"
+                      element={
+                        <PermissionRoute permission={VIEWER_ROUTE_PERMISSIONS}>
+                          <Detail />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/"
+                      element={
+                        <PermissionRoute permission={VIEWER_ROUTE_PERMISSIONS}>
+                          <Files />
+                        </PermissionRoute>
+                      }
+                    />
                   </Route>
                   <Route path="/view/:key" element={<ShareView />} />
                   <Route path="*" element={<NotFound />} />

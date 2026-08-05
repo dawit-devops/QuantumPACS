@@ -1,13 +1,27 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import PermissionRoute from "../auth/PermissionRoute";
+import { landingRouteFor } from "../navigator";
+
+// navigator's landingRouteFor is implementer-1's module; tests stub it so the
+// gate's redirect wiring is asserted without depending on its priority logic.
+const { landingRouteForMock } = vi.hoisted(() => ({
+  landingRouteForMock: vi.fn(() => "/"),
+}));
+
+vi.mock("../navigator", () => ({
+  landingRouteFor: landingRouteForMock,
+  navigate: vi.fn(),
+  setNavigator: vi.fn(),
+}));
 
 describe("PermissionRoute", () => {
   beforeEach(() => {
     localStorage.clear();
+    landingRouteForMock.mockImplementation(() => "/");
   });
 
   it("redirects unauthenticated users to /login", () => {
@@ -35,7 +49,7 @@ describe("PermissionRoute", () => {
     expect(screen.queryByTestId("users-page")).toBeNull();
   });
 
-  it("redirects authenticated users lacking the permission to / (Files)", () => {
+  it("redirects authenticated users lacking the permission to landingRouteFor", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("username", "tech-user");
     localStorage.setItem("admin", "false");
@@ -44,6 +58,7 @@ describe("PermissionRoute", () => {
       "permissions",
       JSON.stringify(["FILE_READ", "WORKLIST_READ"]),
     );
+    landingRouteForMock.mockImplementation(() => "/worklist");
 
     render(
       <MemoryRouter initialEntries={["/users"]}>
@@ -52,6 +67,10 @@ describe("PermissionRoute", () => {
             <Route
               path="/"
               element={<div data-testid="files-page">Files</div>}
+            />
+            <Route
+              path="/worklist"
+              element={<div data-testid="worklist-page">Worklist</div>}
             />
             <Route
               path="/users"
@@ -65,8 +84,12 @@ describe("PermissionRoute", () => {
         </AuthProvider>
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("files-page")).toBeInTheDocument();
+    expect(screen.getByTestId("worklist-page")).toBeInTheDocument();
     expect(screen.queryByTestId("users-page")).toBeNull();
+    // The current user must be passed so the landing choice fits their grants.
+    expect(landingRouteForMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "technologist" }),
+    );
   });
 
   it("renders children when the user has the required permission", () => {
@@ -124,5 +147,66 @@ describe("PermissionRoute", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("replicas-page")).toBeInTheDocument();
+  });
+
+  it("renders children when any of the listed permissions matches", () => {
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "ops-user");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "biomedical_engineer");
+    localStorage.setItem("permissions", JSON.stringify(["REPLICA_READ"]));
+
+    render(
+      <MemoryRouter initialEntries={["/admin-panel"]}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/admin-panel"
+              element={
+                <PermissionRoute permission={["USER_READ", "REPLICA_READ"]}>
+                  <div data-testid="panel-page">Panel</div>
+                </PermissionRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("panel-page")).toBeInTheDocument();
+  });
+
+  it("redirects when none of the listed permissions matches", () => {
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "biller-user");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "biller");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["BILLING_READ", "METERING_READ"]),
+    );
+    landingRouteForMock.mockImplementation(() => "/account");
+
+    render(
+      <MemoryRouter initialEntries={["/admin-panel"]}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/account"
+              element={<div data-testid="account-page">Account</div>}
+            />
+            <Route
+              path="/admin-panel"
+              element={
+                <PermissionRoute permission={["USER_READ", "REPLICA_READ"]}>
+                  <div data-testid="panel-page">Panel</div>
+                </PermissionRoute>
+              }
+            />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("account-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("panel-page")).toBeNull();
   });
 });

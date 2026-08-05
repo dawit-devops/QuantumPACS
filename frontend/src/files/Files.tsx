@@ -128,7 +128,7 @@ function Files() {
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  let searchInput = useRef<InputRef>(null);
+  const searchInput = useRef<InputRef>(null);
   const [globSearchCurrent, setGlobSearchCurrent] = useState("");
   const [globSearch, setGlobSearch] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -155,8 +155,8 @@ function Files() {
       s.query = globSearch;
     }
     if (advancedFields) {
-      let so: any = {};
-      for (let f of advancedFields) {
+      const so: any = {};
+      for (const f of advancedFields) {
         if (!f[0].length || !f[1].length) continue;
         so[f[0]] = [f[1]];
       }
@@ -185,7 +185,7 @@ function Files() {
       setSearchText("");
     } else {
       let set = false;
-      for (let k in searchObj) {
+      for (const k in searchObj) {
         if (Array.isArray(searchObj[k])) {
           setSearchText(searchObj[k][0]);
           setGlobSearch("");
@@ -342,7 +342,7 @@ function Files() {
       if (options.render) {
         return options.render(text, record);
       }
-      let searchWords = [searchText];
+      const searchWords = [searchText];
       if (globSearch) {
         searchWords.push(globSearch);
       }
@@ -406,8 +406,8 @@ function Files() {
     setGlobSearchCurrent("");
     setGlobSearch("");
     setShowAdvanced(false);
-    let so: Record<string, string[]> = {};
-    for (let f of advancedFields) {
+    const so: Record<string, string[]> = {};
+    for (const f of advancedFields) {
       if (!f[0].length || !f[1].length) continue;
       so[f[0]] = [f[1]];
     }

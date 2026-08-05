@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderWithAuth } from "../../src/test/renderWithApp";
-import { MemoryRouter } from "react-router";
-import { App } from "antd";
-import React from "react";
 
 // Mock the tenant API module
 vi.mock("../../src/api/tenants", () => ({
