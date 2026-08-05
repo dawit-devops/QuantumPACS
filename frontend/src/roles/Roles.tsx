@@ -167,27 +167,15 @@ function Roles() {
             </Space>
           );
         }
-        if (record.slug === SUPER_ADMIN_SLUG) {
+        if (record.built_in) {
           return (
-            <Tooltip title="Immutable built-in role">
+            <Tooltip title="Built-in roles cannot be edited or deleted">
               <Button type="link" size="small" disabled icon={<EditOutlined />}>
                 Edit
               </Button>
             </Tooltip>
           );
         }
-        return (
-          <Tooltip title="Built-in roles cannot be deleted">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            >
-              Edit
-            </Button>
-          </Tooltip>
-        );
       },
     },
   ];
@@ -439,7 +427,17 @@ function Roles() {
           >
             <Input disabled={isEditingSuperAdmin} />
           </Form.Item>
-          <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
+          <Form.Item
+            name="slug"
+            label="Slug"
+            rules={[
+              { required: true },
+              {
+                pattern: /^[a-z0-9_]+$/,
+                message: "Only lowercase letters, numbers, and underscores",
+              },
+            ]}
+          >
             <Input disabled={isEditingSuperAdmin} />
           </Form.Item>
           <Form.Item name="description" label="Description">
