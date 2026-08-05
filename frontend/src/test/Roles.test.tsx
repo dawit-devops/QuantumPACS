@@ -22,6 +22,8 @@ vi.mock("../api/roles", () => ({
   updateRole: mockUpdateRole,
   deleteRole: mockDeleteRole,
   listRoleUsers: mockListRoleUsers,
+  roleDisplayName: (slug?: string, fallback?: string) => fallback ?? slug,
+  permissionLabel: (code: string) => code,
 }));
 
 vi.mock("../hooks", () => ({
@@ -110,14 +112,14 @@ describe("Roles", () => {
 
     const modal = screen.getByRole("dialog");
     await user.type(within(modal).getByLabelText("Role Name"), "Test Role");
-    await user.type(within(modal).getByLabelText("Slug"), "test-role");
+    await user.type(within(modal).getByLabelText("Slug"), "test_role");
     await user.click(within(modal).getByText("FILE_READ"));
 
     await user.click(within(modal).getByText("Create"));
 
     expect(mockCreateRole).toHaveBeenCalledWith({
       name: "Test Role",
-      slug: "test-role",
+      slug: "test_role",
       permissions: ["FILE_READ"],
     });
   });
@@ -127,7 +129,7 @@ describe("Roles", () => {
     renderWithAuth(<Roles />);
     await waitForTable();
 
-    const editBtn = screen.getAllByRole("button", { name: /edit/i })[2];
+    const editBtn = screen.getAllByText("Edit")[2];
     await user.click(editBtn);
 
     const modal = screen.getByRole("dialog");
@@ -140,7 +142,7 @@ describe("Roles", () => {
     renderWithAuth(<Roles />);
     await waitForTable();
 
-    await user.click(screen.getAllByRole("button", { name: /edit/i })[2]);
+    await user.click(screen.getAllByText("Edit")[2]);
 
     const modal = screen.getByRole("dialog");
     await user.click(within(modal).getByText("PATIENT_READ"));
@@ -159,9 +161,9 @@ describe("Roles", () => {
     renderWithAuth(<Roles />);
     await waitForTable();
 
-    await user.click(screen.getByRole("button", { name: /delete/i }));
+    await user.click(screen.getByText("Delete"));
 
-    const confirmBtn = screen.getByRole("button", { name: /yes|confirm|ok/i });
+    const confirmBtn = screen.getByText(/yes|confirm|ok/i);
     await user.click(confirmBtn);
 
     await waitFor(() => {
@@ -169,13 +171,15 @@ describe("Roles", () => {
     });
   });
 
-  it("does not show edit/delete for built-in roles", async () => {
+  it("renders built-in roles with disabled edit and no delete", async () => {
     renderWithAuth(<Roles />);
     await waitForTable();
 
-    const editBtns = screen.queryAllByRole("button", { name: /edit/i });
-    const deleteBtns = screen.queryAllByRole("button", { name: /delete/i });
+    const editBtns = screen.getAllByText("Edit");
     expect(editBtns.length).toBe(3);
-    expect(deleteBtns.length).toBe(1);
+    expect(editBtns[0].closest("button")).toBeDisabled();
+    expect(editBtns[1].closest("button")).toBeDisabled();
+    expect(editBtns[2].closest("button")).toBeEnabled();
+    expect(screen.queryAllByText("Delete").length).toBe(1);
   });
 });

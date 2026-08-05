@@ -31,6 +31,8 @@ import {
   updateRole,
   deleteRole,
   listRoleUsers,
+  roleDisplayName,
+  permissionLabel,
   type Role,
 } from "../api/roles";
 import { PageState } from "../common/PageState";
@@ -70,7 +72,7 @@ function Roles() {
       render: (_: any, r: any) => (
         <Space>
           {r.built_in ? <LockOutlined style={{ color: "#8c8c8c" }} /> : null}
-          <Text strong={r.built_in}>{r.name}</Text>
+          <Text strong={r.built_in}>{roleDisplayName(r.slug, r.name)}</Text>
           {r.built_in ? (
             <Tag color="default" style={{ fontSize: 10 }}>
               Built-in
@@ -93,8 +95,13 @@ function Roles() {
         perms?.length ? (
           <Space wrap size={[2, 2]}>
             {perms.slice(0, 4).map((p: string) => (
-              <Tag key={p} color="blue" style={{ fontSize: 11, margin: 0 }}>
-                {p}
+              <Tag
+                key={p}
+                color="blue"
+                style={{ fontSize: 11, margin: 0 }}
+                title={p}
+              >
+                {permissionLabel(p)}
               </Tag>
             ))}
             {perms.length > 4 ? (
@@ -160,27 +167,15 @@ function Roles() {
             </Space>
           );
         }
-        if (record.slug === SUPER_ADMIN_SLUG) {
+        if (record.built_in) {
           return (
-            <Tooltip title="Immutable built-in role">
+            <Tooltip title="Built-in roles cannot be edited or deleted">
               <Button type="link" size="small" disabled icon={<EditOutlined />}>
                 Edit
               </Button>
             </Tooltip>
           );
         }
-        return (
-          <Tooltip title="Built-in roles cannot be deleted">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            >
-              Edit
-            </Button>
-          </Tooltip>
-        );
       },
     },
   ];
@@ -311,7 +306,7 @@ function Roles() {
     listRoleUsers(role.id)
       .then((users) => {
         Modal.info({
-          title: `Users with role "${role.name}"`,
+          title: `Users with role "${roleDisplayName(role.slug, role.name)}"`,
           width: 500,
           content: (
             <div>
@@ -389,8 +384,8 @@ function Roles() {
               >
                 {record.permissions?.length ? (
                   record.permissions.map((p: string) => (
-                    <Tag key={p} color="blue">
-                      {p}
+                    <Tag key={p} color="blue" title={p}>
+                      {permissionLabel(p)}
                     </Tag>
                   ))
                 ) : (
@@ -432,7 +427,17 @@ function Roles() {
           >
             <Input disabled={isEditingSuperAdmin} />
           </Form.Item>
-          <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
+          <Form.Item
+            name="slug"
+            label="Slug"
+            rules={[
+              { required: true },
+              {
+                pattern: /^[a-z0-9_]+$/,
+                message: "Only lowercase letters, numbers, and underscores",
+              },
+            ]}
+          >
             <Input disabled={isEditingSuperAdmin} />
           </Form.Item>
           <Form.Item name="description" label="Description">

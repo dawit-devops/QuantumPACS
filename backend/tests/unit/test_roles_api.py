@@ -151,7 +151,7 @@ class TestRoleHandler:
         conn = MockConn()
         conn.fetchrow = AsyncMock(return_value={
             'id': 'r1', 'name': 'Admin', 'slug': 'admin',
-            'permissions': '["FILE_READ"]', 'built_in': True, 'tenant_id': None,
+            'permissions': '["FILE_READ"]', 'built_in': False, 'tenant_id': None,
         })
         body = {'name': 'Updated', 'permissions': ['FILE_WRITE']}
         request = make_request(method='PUT', params={'id': 'r1'}, body=body, permissions=[Permission.ROLE_WRITE.value])
@@ -159,6 +159,20 @@ class TestRoleHandler:
         with patch('api.roles.get_conn', return_value=conn):
             resp = await handler.put(request)
         assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_put_built_in_role_forbidden(self):
+        conn = MockConn()
+        conn.fetchrow = AsyncMock(return_value={
+            'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist',
+            'permissions': '["REPORT_SIGN"]', 'built_in': True, 'tenant_id': None,
+        })
+        body = {'name': 'Hacked', 'permissions': ['FILE_WRITE']}
+        request = make_request(method='PUT', params={'id': 'r1'}, body=body, permissions=[Permission.ROLE_WRITE.value])
+        handler = make_handler(RoleHandler, request)
+        with patch('api.roles.get_conn', return_value=conn):
+            resp = await handler.put(request)
+        assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_put_not_found(self):

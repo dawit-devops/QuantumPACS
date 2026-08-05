@@ -32,3 +32,21 @@ async def notify_user(conn, user_id, event_type, title, body, link):
     if not row:
         return
     await Notifications(conn).create(row['id'], event_type, title, body, link)
+
+
+async def notify_patient_scoped(conn, patient_id, event_type, title, body, link):
+    """Create a notification for every staff user scoped to a patient (R19).
+
+    Fan-out is patient-scoped via patient_staff_scope (minimum necessary:
+    staff only see notifications for patients they are linked to). Bodies
+    must stay PHI-free — callers are responsible for that.
+    """
+    rows = await conn.fetch(
+        "SELECT DISTINCT user_id FROM patient_staff_scope WHERE patient_id = $1",
+        patient_id,
+    )
+    if not rows:
+        return
+    n = Notifications(conn)
+    for row in rows:
+        await n.create(row['user_id'], event_type, title, body, link)

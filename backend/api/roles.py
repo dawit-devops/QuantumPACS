@@ -58,6 +58,11 @@ class RoleHandler(HTTPEndpoint):
             role = await Roles(conn).get(role_id)
             if not role:
                 return not_found('Role not found')
+            if role.get('built_in'):
+                # Built-in roles are immutable (RBAC spec §4: "built-in ·
+                # immutable") — editing them would let ROLE_WRITE holders
+                # escalate grants (e.g. add permissions to super_admin).
+                return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
             await Roles(conn).patch(
                 role_id,
                 body.model_dump(exclude_none=True),
@@ -85,6 +90,9 @@ class RoleHandler(HTTPEndpoint):
             if role.get('built_in'):
                 return api_error('FORBIDDEN', 'Cannot delete built-in role', status=403)
             await Roles(conn).delete(role_id)
+            # Users holding the deleted role lose its grants — bump their
+            # token_version so stale JWTs force re-auth on next request.
+            await Users(conn).bulk_increment_token_version_by_role(role_id)
             await AuditLog(conn).log_event(
                 event_type='role.deleted',
                 actor_id=request.user.id,
