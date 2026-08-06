@@ -17,6 +17,7 @@ from db.conn import get_conn
 from db.patient import Patient
 from db.study import Study
 from db.series import Series
+from db.files import Files
 from log import get_logger
 
 
@@ -231,6 +232,10 @@ async def _imagingstudy_resource(study) -> dict:
         'subject': {'reference': f'Patient/{study["_patient_logical_id"]}'},
         'endpoint': [{'reference': dicomweb_base}],
     }
+    if study.get('study_date'):
+        sd = str(study['study_date'])
+        if len(sd) == 8:
+            resource['started'] = f'{sd[0:4]}-{sd[4:6]}-{sd[6:8]}'
     if study.get('description'):
         resource['description'] = study['description']
     if study.get('accession_number'):
@@ -254,7 +259,7 @@ async def _imagingstudy_resource(study) -> dict:
                 sr['instance'] = [{
                     'uid': inst.get('sop_instance_uid', ''),
                     'sopClass': {'system': 'http://dicom.nema.org/resources/ontology/DCM', 'code': inst.get('sop_class_uid', '')},
-                    'number': int(inst.get('instance_number', 0)),
+                    'number': int(inst['instance_number']) if str(inst.get('instance_number', '')).isdigit() else 0,
                 } for inst in s['_instances']]
             resource['series'].append(sr)
     return resource
@@ -681,7 +686,39 @@ async def _fetch_series_for_study(conn, study_db_id):
     sr = Series(conn)
     q = sr.select(sr.table.star).where(sr.table.study_id == study_db_id)
     rows = await sr.fetch(q)
-    return [dict(r) for r in rows]
+    series_rows = []
+    for r in rows:
+        s = dict(r)
+        s['_instances'] = await _fetch_instances_for_series(conn, s['id'])
+        series_rows.append(s)
+    return series_rows
+
+
+async def _fetch_instances_for_series(conn, series_db_id):
+    fl = Files(conn)
+    q = (
+        fl.select(
+            fl.table.sop_instance_uid,
+            fl.table.meta,
+        )
+        .where(fl.table.series_id == series_db_id)
+        .where(fl.table.deleted == False)
+        .where(fl.table.indexed == True)
+    )
+    rows = await fl.fetch(q)
+    out = []
+    for r in rows:
+        raw = r.get('meta') or '{}'
+        try:
+            meta = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except (ValueError, TypeError):
+            meta = {}
+        out.append({
+            'sop_instance_uid': r.get('sop_instance_uid') or meta.get('sop_instance_uid', ''),
+            'sop_class_uid': meta.get('sop_class_uid', ''),
+            'instance_number': meta.get('instance_number', ''),
+        })
+    return out
 
 
 class FhirDocumentReferenceRead(HTTPEndpoint):

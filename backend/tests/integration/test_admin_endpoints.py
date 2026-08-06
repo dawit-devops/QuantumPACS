@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
@@ -396,8 +396,12 @@ class TestHl7Config:
             'hl7_mllp_port': '12579',
             'hl7_mllp_allowed_ips': '10.0.0.0/24,192.168.1.0/24',
         }
+        # open() is mocked so the handler never truncates the real
+        # config.local.yaml (which holds the runtime secret) — the PUT
+        # read/dump cycle must stay in-memory during tests.
         with patch('api.hl7_admin.config', fake_cfg), \
-             patch('yaml.safe_load', return_value={}):
+             patch('yaml.safe_load', return_value={}), \
+             patch('builtins.open', mock_open()):
             client = TestClient(self._make_app())
             resp = client.put('/hl7/admin/config', json={'mllp_port': 12580, 'allowed_ips': ['10.0.0.0/24']})
         assert resp.status_code == 200
