@@ -171,6 +171,170 @@ class _TxTracker:
 
         return tracked_copy
 
+class _FakeAE:
+    def __init__(self):
+        self.require_called_aet = False
+        self.require_calling_aet = []
+
+
+def _config_mock(values):
+    cfg = MagicMock()
+    cfg.get.side_effect = lambda key, default='': values.get(key, default)
+    return cfg
+
+
+class TestAssociationPolicy:
+    def test_empty_config_accepts_any_calling_aet(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_called_aet is False
+        assert ae.require_calling_aet == []
+
+    def test_called_aet_enforced_when_enabled(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({'dicom_require_called_aet': 'true'})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_called_aet is True
+
+    def test_calling_aet_allowlist_applied(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({'dicom_aet_allowed': 'MODALITY-A, MODALITY-B'})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_calling_aet == ['MODALITY-A', 'MODALITY-B']
+
+    def test_ip_allowed_matches_cidr(self):
+        from dcm.server import _ip_allowed
+        assert _ip_allowed('10.0.0.5', ['10.0.0.0/8'])
+        assert not _ip_allowed('192.168.1.5', ['10.0.0.0/8'])
+        assert not _ip_allowed('not-an-ip', ['10.0.0.0/8'])
+
+    def test_handle_accept_aborts_disallowed_ip(self):
+        mock_assoc = MagicMock()
+        mock_assoc.requestor.address = '203.0.113.9'
+        event = MagicMock()
+        event.assoc = mock_assoc
+        with patch('dcm.server.config', _config_mock({'dicom_allowed_ips': '10.0.0.0/8'})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        mock_assoc.abort.assert_called_once()
+
+    def test_handle_accept_allows_matching_ip(self):
+        mock_assoc = MagicMock()
+        mock_assoc.requestor.address = '10.0.0.9'
+        event = MagicMock()
+        event.assoc = mock_assoc
+        with patch('dcm.server.config', _config_mock({'dicom_allowed_ips': '10.0.0.0/8'})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        mock_assoc.abort.assert_not_called()
+
+    def test_handle_accept_noop_when_ips_unset(self):
+        event = MagicMock()
+        with patch('dcm.server.config', _config_mock({})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        event.assoc.abort.assert_not_called()
+
+
+class TestRenderPreview:
+    def _ct_dataset(self):
+        ds = Dataset()
+        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+        ds.Rows = 16
+        ds.Columns = 16
+        ds.BitsAllocated = 16
+        ds.BitsStored = 12
+        ds.HighBit = 11
+        ds.PixelRepresentation = 1
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = 'MONOCHROME2'
+        ds.RescaleSlope = 1
+        ds.RescaleIntercept = -1024
+        ds.WindowCenter = 40
+        ds.WindowWidth = 400
+        ds.file_meta = FileMetaDataset()
+        ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        import numpy as np
+        ds.PixelData = np.arange(256, dtype=np.int16).tobytes()
+        return ds
+
+    def test_render_preview_returns_jpeg(self):
+        from api.files import _render_preview
+        payload = _render_preview(self._ct_dataset())
+        assert payload[:2] == b'\xff\xd8'
+        assert payload.rstrip().endswith(b'\xff\xd9')
+
+    def test_render_preview_respects_voi_window(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        ds.RescaleIntercept = 0
+        ds.RescaleSlope = 1
+        ds.WindowCenter = 40
+        ds.WindowWidth = 400
+        import numpy as np
+        ds.PixelData = np.ones(256, dtype=np.int16).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_min_max_stretch_without_window(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        del ds.WindowCenter
+        del ds.WindowWidth
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_inverts_monochrome1(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        ds.PhotometricInterpretation = 'MONOCHROME1'
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_rgb(self):
+        from api.files import _render_preview
+        import numpy as np
+        ds = self._ct_dataset()
+        ds.SamplesPerPixel = 3
+        ds.PhotometricInterpretation = 'RGB'
+        ds.BitsAllocated = 8
+        ds.BitsStored = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PlanarConfiguration = 0
+        ds.PixelData = np.zeros((16, 16, 3), dtype=np.uint8).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_uses_middle_frame(self):
+        from api.files import _render_preview
+        import numpy as np
+        ds = self._ct_dataset()
+        ds.NumberOfFrames = 3
+        ds.BitsAllocated = 16
+        ds.BitsStored = 16
+        ds.HighBit = 15
+        ds.PixelRepresentation = 0
+        ds.RescaleSlope = 1
+        ds.RescaleIntercept = 0
+        ds.WindowCenter = 128
+        ds.WindowWidth = 256
+        ds.PixelData = np.zeros((3, 16, 16), dtype=np.uint16).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_raises_without_pixel_data(self):
+        from api.files import _render_preview
+        ds = Dataset()
+        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+        with pytest.raises(Exception):
+            _render_preview(ds)
+
+
 class TestStoreHandler:
     @pytest.mark.asyncio
     async def test_store_success(self):

@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import signal
 import traceback
 from io import BytesIO
@@ -11,6 +12,7 @@ from pynetdicom.sop_class import (
 )
 
 from dcm.store import store_instance
+from config import config
 from lifecycle import setup, teardown
 from log import get_logger
 
@@ -176,9 +178,57 @@ def handle_find(event):
     yield 0x0000, None
 
 
+def _ip_allowed(address, allowed):
+    try:
+        addr = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    for entry in allowed:
+        try:
+            net = ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            continue
+        if addr in net:
+            return True
+    return False
+
+
+def _handle_accept(event):
+    """EVT_ACCEPTED — abort associations from hosts outside the IP allowlist.
+
+    AE-title gating is enforced natively via ``ae.require_calling_aet``
+    (configured in lifecycle/main); pynetdicom has no pre-acceptance event,
+    so the IP check runs here — aborting immediately after acceptance still
+    prevents any C-STORE/C-FIND exchange with non-allowlisted hosts. Both
+    lists default to empty (allow all) so local dev flows are unchanged.
+    """
+    allowed_ips = [s.strip() for s in (config.get('dicom_allowed_ips') or '').split(',') if s.strip()]
+    if not allowed_ips:
+        return
+    requestor = event.assoc.requestor
+    address = (requestor.address or '').split(':')[0]
+    if not _ip_allowed(address, allowed_ips):
+        log.warning('DICOM association aborted: caller %s not in IP allowlist', address)
+        event.assoc.abort()
+
+
+def apply_association_policy(ae):
+    """Apply AE-title/called-AE restrictions to an AE from config.
+
+    Empty dicom_aet_allowed accepts any calling AE title; when set, the
+    association is rejected pre-acceptance by pynetdicom.
+    """
+    if config.get('dicom_require_called_aet', 'false') == 'true':
+        ae.require_called_aet = True
+    allowed_aets = [s.strip() for s in (config.get('dicom_aet_allowed') or '').split(',') if s.strip()]
+    if allowed_aets:
+        ae.require_calling_aet = allowed_aets
+
+
 handlers = [
     (evt.EVT_C_STORE, handle_store),
     (evt.EVT_C_FIND, handle_find),
+    (evt.EVT_ACCEPTED, _handle_accept),
 ]
 _scp = None
 _loop = None
@@ -202,7 +252,10 @@ def main():
 
     signal.signal(signal.SIGINT, _signal_handler)
     ae = AE()
+    ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
     ae.supported_contexts = StoragePresentationContexts
-    _scp = ae.start_server(('', 11112), evt_handlers=handlers)
+    apply_association_policy(ae)
+    port = int(config.get('dicom_cstore_port', '11112'))
+    _scp = ae.start_server(('', port), evt_handlers=handlers)
     _scp.blocking_run()
     _loop.close()

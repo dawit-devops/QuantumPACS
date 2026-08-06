@@ -72,6 +72,7 @@ def _run_dicom():
             asyncio.set_event_loop(_dcm_server._loop)
         ae = AE()
         ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+        _dcm_server.apply_association_policy(ae)
         ae.supported_contexts = (
             StoragePresentationContexts
             + [build_context(ModalityWorklistInformationFind)]

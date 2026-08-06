@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from zipfile import ZipFile
 from uuid import uuid4
 
+import numpy as np
 from pydicom import dcmread
 from PIL import Image
 from starlette.endpoints import HTTPEndpoint
@@ -468,22 +469,71 @@ class ServeThumbnail(HTTPEndpoint):
         tmp = await storage.fetch(file)
         try:
             ds = dcmread(tmp)
-            pixel_array = ds.pixel_array
-            if pixel_array.ndim > 2:
-                pixel_array = pixel_array[0]
-            img = Image.fromarray(pixel_array)
-            img = img.convert('L')
-            img.thumbnail((256, 256), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format='JPEG', quality=85)
-            payload = buf.getvalue()
-        except Exception:
-            pixel_array = None
-
-        if pixel_array is None:
+            payload = _render_preview(ds)
+        except Exception as exc:
+            log.warning('thumbnail render failed for file %s: %s', file_id, exc)
             return Response(status_code=404, content='Cannot generate thumbnail')
 
         return Response(content=payload, media_type='image/jpeg')
+
+
+def _render_preview(ds) -> bytes:
+    """Render a DICOM instance to a JPEG preview byte string.
+
+    DICOM stores raw modality values (e.g. CT HU), so a usable preview
+    needs the standard display pipeline — rescale slope/intercept, VOI
+    window (or min/max stretch when no window is present), and photometric
+    conversion. Without it, CT previews are near-black and color images
+    (YBR_FULL) are corrupted.
+    """
+    arr = ds.pixel_array
+    photometric = getattr(ds, 'PhotometricInterpretation', 'MONOCHROME2')
+
+    if photometric == 'RGB':
+        if getattr(ds, 'PlanarConfiguration', 0) == 1:
+            arr = arr.transpose(1, 2, 0)
+        img = Image.fromarray(arr)
+    elif photometric in ('YBR_FULL', 'YBR_FULL_422', 'YBR_ICT', 'YBR_RCT'):
+        from pydicom.pixel_data_handlers.util import convert_color_space
+        try:
+            rgb = convert_color_space(arr, 'YBR_FULL', 'RGB')
+        except Exception:
+            rgb = convert_color_space(arr, 'YBR_FULL_422', 'RGB') \
+                if photometric == 'YBR_FULL_422' else None
+        if rgb is not None:
+            img = Image.fromarray(rgb)
+        else:
+            img = Image.fromarray(arr[..., 0])
+    else:
+        arr = arr.astype(np.float32)
+        if arr.ndim > 2:
+            # Multi-frame: preview the middle frame, not the first.
+            arr = arr[arr.shape[0] // 2]
+        slope = float(getattr(ds, 'RescaleSlope', 1) or 1)
+        intercept = float(getattr(ds, 'RescaleIntercept', 0) or 0)
+        arr = arr * slope + intercept
+        wc = getattr(ds, 'WindowCenter', None)
+        ww = getattr(ds, 'WindowWidth', None)
+        if wc is not None and ww is not None:
+            wc = float(wc[0] if isinstance(wc, (list, tuple)) else wc)
+            ww = float(ww[0] if isinstance(ww, (list, tuple)) else ww)
+            if ww > 0:
+                lo, hi = wc - ww / 2, wc + ww / 2
+                if hi > lo:
+                    arr = np.clip((arr - lo) / (hi - lo), 0, 1)
+        if photometric == 'MONOCHROME1':
+            arr = 1.0 - arr
+        amin, amax = float(np.min(arr)), float(np.max(arr))
+        if amax > amin:
+            arr = (arr - amin) / (amax - amin)
+        img = Image.fromarray(np.clip(arr * 255, 0, 255).astype(np.uint8))
+
+    if img.mode not in ('L', 'RGB'):
+        img = img.convert('RGB')
+    img.thumbnail((256, 256), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=85)
+    return buf.getvalue()
 
 
 class DownloadToken(HTTPEndpoint):
