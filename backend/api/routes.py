@@ -23,7 +23,7 @@ from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
-from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
+from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebArchive
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
@@ -183,6 +183,9 @@ _V1_ROUTES = [
     # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
     # a study. POST /dicomweb/studies stores without a pre-specified study.
     v2(Route('/dicomweb/studies/{study_uid}/instances', endpoint=DicomWebStudies, methods=['POST'])),
+    # Streamed study/series ZIP export (HI-08).
+    v2(Route('/dicomweb/studies/{study_uid}/archive', endpoint=DicomWebArchive)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/archive', endpoint=DicomWebArchive)),
     v2(Route('/wado', endpoint=DicomWebWadoUri)),
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),

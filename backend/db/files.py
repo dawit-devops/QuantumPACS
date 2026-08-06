@@ -56,6 +56,13 @@ class Files(Table):
         """)
         await self.exec('CREATE INDEX IF NOT EXISTS files_name on files(name);')
         await self.exec('CREATE INDEX IF NOT EXISTS files_hash on files(hash);')
+        # Parity with migration 017: the partial unique index that makes
+        # SOPInstanceUID the dedup identity key.
+        await self.exec("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_files_sop_instance_uid
+        ON files(sop_instance_uid)
+        WHERE sop_instance_uid IS NOT NULL
+        """)
 
     @staticmethod
     def from_row(file):
@@ -77,12 +84,19 @@ class Files(Table):
             filedata['series_db_id'] = series['id']
 
             now = datetime.now(timezone.utc)
+            # Persist both the DICOM-element-name view (cleaned) and the
+            # snake_case lookup keys (patient_name, study_date, ...) so that
+            # meta->>'patient_name' & co — used by WADO/QIDO retrieval — are
+            # non-NULL for real rows. Element names and snake_case keys never
+            # collide, so the merge is lossless.
+            meta = {**filedata['cleaned']}
+            meta.update({k: v for k, v in filedata.items() if k != 'cleaned'})
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
                 'indexed', 'hash', 'sop_instance_uid', 'created', 'updated',
                 'size', 'sop_class_uid', 'instance_number',
             ).insert((
-                filedata['name'], patient['id'], study['id'], series['id'], json.dumps(filedata['cleaned']),
+                filedata['name'], patient['id'], study['id'], series['id'], json.dumps(meta),
                 False, filedata['hash'], filedata.get('sop_instance_uid', ''), now, now,
                 filedata.get('size', 0),
                 filedata.get('sop_class_uid', ''), filedata.get('instance_number', ''),
@@ -139,6 +153,10 @@ class Files(Table):
         q = self.select('id', 'name', 'hash').where(self.table.hash == hsh).limit(1)
         return await self.fetchone(q)
 
+    async def get_by_sop_uid(self, sop_instance_uid):
+        q = self.select('*').where(self.table.sop_instance_uid == sop_instance_uid).limit(1)
+        return await self.fetchone(q)
+
     async def insert_or_select(self, filedata):
         f = await self.get(filedata)
         if f:
@@ -146,7 +164,16 @@ class Files(Table):
         try:
             return await self.add(filedata)
         except asyncpg.UniqueViolationError:
-            return await self.get(filedata)
+            # A concurrent ingest beat us to the same SOPInstanceUID (partial
+            # unique index). get() matches on patient/study/series/name, so it
+            # misses races — resolve by the identity key instead.
+            f = await self.get(filedata)
+            if f:
+                return f
+            sop_uid = filedata.get('sop_instance_uid', '')
+            if sop_uid:
+                return await self.get_by_sop_uid(sop_uid)
+            raise
 
     def q(self):
         PatientT = Patient().table

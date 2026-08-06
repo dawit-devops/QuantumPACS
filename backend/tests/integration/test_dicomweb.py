@@ -17,8 +17,12 @@ from api.validate import validation_exception_handler, _ValidationException
 class _AsyncFileMock:
     def __init__(self, data):
         self._data = data
+        self._exhausted = False
 
-    async def read(self):
+    async def read(self, n=-1):
+        if self._exhausted:
+            return b''
+        self._exhausted = True
         return self._data
 
     async def __aenter__(self):

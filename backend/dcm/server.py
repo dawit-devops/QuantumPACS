@@ -4,7 +4,11 @@ import traceback
 from io import BytesIO
 
 from pynetdicom import AE, evt, StoragePresentationContexts
-from pynetdicom.sop_class import ModalityWorklistInformationFind
+from pynetdicom.sop_class import (
+    ModalityWorklistInformationFind,
+    PatientRootQueryRetrieveInformationModelFind,
+    StudyRootQueryRetrieveInformationModelFind,
+)
 
 from dcm.store import store_instance
 from lifecycle import setup, teardown
@@ -83,7 +87,9 @@ async def handle_find_async(query_ds):
             filters['search'] = filters.get('search', str(query_ds.AccessionNumber))
 
         async with get_conn() as conn:
-            entries = await Worklist(conn).search(status='scheduled', per_page=1000, **filters)
+            # search() returns (rows, total) — the tuple must be unpacked or
+            # the caller iterates a 2-tuple and crashes (seen as empty MWL).
+            entries, _ = await Worklist(conn).search(status='scheduled', per_page=1000, **filters)
 
         results = []
         for entry in entries:
@@ -108,7 +114,7 @@ def _entry_to_dataset(entry):
     ds.PatientBirthDate = entry.get('patient_birth_date', '') or ''
     ds.PatientSex = entry.get('patient_sex', '') or ''
     ds.ReferringPhysicianName = ''
-    ds.RequestingPhysician = ''
+    ds.RequestingPhysician = entry.get('requesting_physician', '') or ''
     ds.StudyInstanceUID = entry.get('study_uid', '') or ''
     ds.RequestedProcedureID = entry.get('requested_procedure_id', '') or ''
     ds.RequestedProcedureDescription = entry.get('requested_procedure_desc', '') or ''
@@ -120,6 +126,8 @@ def _entry_to_dataset(entry):
     sps_ds.ScheduledProcedureStepStartTime = str(entry.get('scheduled_time', '') or '')
     sps_ds.ScheduledPerformingPhysicianName = ''
     sps_ds.ScheduledProcedureStepDescription = entry.get('requested_procedure_desc', '') or ''
+    sps_ds.ScheduledProcedureStepID = entry.get('scheduled_procedure_step_id', '') or ''
+    sps_ds.ProtocolName = entry.get('protocol_name', '') or ''
     ds.ScheduledProcedureStepSequence = [sps_ds]
 
     ds.file_meta = Dataset()
@@ -129,14 +137,37 @@ def _entry_to_dataset(entry):
     return ds
 
 
+async def handle_find_qr_async(query_ds):
+    """Patient/Study Root Q/R C-FIND: study-, series- or instance-level."""
+    try:
+        from db.conn import get_conn
+        from db.query_retrieve import QueryRetrieve
+
+        async with get_conn() as conn:
+            return await QueryRetrieve(query_ds).search(conn)
+    except Exception:
+        log.error('Q/R C-FIND failed: %s', traceback.format_exc())
+        return []
+
+
 def handle_find(event):
     query_ds = event.identifier
+    # EVT_C_FIND carries both the MWL and the Q/R models — dispatch on the
+    # negotiated abstract syntax of the presentation context.
+    abstract = getattr(getattr(event, 'context', None), 'abstract_syntax', '')
+    if abstract in (
+        PatientRootQueryRetrieveInformationModelFind,
+        StudyRootQueryRetrieveInformationModelFind,
+    ):
+        coro = handle_find_qr_async(query_ds)
+    else:
+        coro = handle_find_async(query_ds)
 
-    future = asyncio.run_coroutine_threadsafe(handle_find_async(query_ds), _loop)
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
     try:
         results = future.result(timeout=30)
     except Exception:
-        log.error('MWL C-FIND timed out or failed: %s', traceback.format_exc())
+        log.error('C-FIND timed out or failed: %s', traceback.format_exc())
         return 0xA700
 
     for ds in results:
@@ -145,21 +176,9 @@ def handle_find(event):
     yield 0x0000, None
 
 
-def handle_move(event):
-    log.warning('C-MOVE received but not fully implemented')
-    return 0x0000
-
-
-def handle_get(event):
-    log.warning('C-GET received but not fully implemented')
-    return 0x0000
-
-
 handlers = [
     (evt.EVT_C_STORE, handle_store),
     (evt.EVT_C_FIND, handle_find),
-    (evt.EVT_C_MOVE, handle_move),
-    (evt.EVT_C_GET, handle_get),
 ]
 _scp = None
 _loop = None

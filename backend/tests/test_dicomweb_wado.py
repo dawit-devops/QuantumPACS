@@ -8,9 +8,16 @@ from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 class _AsyncFileMock:
     def __init__(self, data):
         self._data = data
+        self._offset = 0
 
-    async def read(self):
-        return self._data
+    async def read(self, n=-1):
+        if self._offset >= len(self._data):
+            return b''
+        chunk = self._data[self._offset:]
+        if n and n > 0:
+            chunk = chunk[:n]
+        self._offset += len(chunk)
+        return chunk
 
     async def __aenter__(self):
         return self
@@ -198,14 +205,63 @@ class TestWadoUri:
         assert resp.status_code == 400
         assert 'requestType' in resp.text
 
-    def test_missing_object_uid_returns_400(self):
+    def test_missing_all_uids_returns_400(self):
         user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
         client = TestClient(self._make_app(user))
 
-        resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6')
+        resp = client.get('/wado?requestType=WADO')
 
         assert resp.status_code == 400
         assert 'studyUID' in resp.text
+
+    def test_study_level_returns_multipart(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_mini_dicom()
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(return_value={
+            'id': 1, 'type': 'local', 'location': '/data/files',
+            'master': True, 'delay': 0, 'status': 'ok',
+            'total': 100, 'meta': '{}',
+        })
+        conn.fetch = AsyncMock(return_value=[
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                    resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6')
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'].startswith('multipart/related')
+        assert b'WADO_BOUNDARY' in resp.content
+
+    def test_object_uid_cross_checked_against_study_uid(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            None,
+        ])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=9.9.9.9.9.9.9.9'
+            )
+
+        assert resp.status_code == 400
+        assert 'STUDY_UID_MISMATCH' in resp.text
 
     def test_requires_dicomweb_read_permission(self):
         user = User({'id': 1, 'permissions': []})
@@ -246,3 +302,107 @@ class TestWadoUri:
         assert resp.status_code == 200
         assert resp.headers['content-type'] == 'application/dicom'
         conn.fetch.assert_not_called()
+
+
+class TestWadoMetadata:
+    def _make_conn(self):
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{"sop_instance_uid": "1.2.3.4.5.6.7.8", "patient_name": "Test^Patient"}',
+             'replica_meta': '{}'},
+        ])
+        return conn
+
+    def test_accept_dicom_json_returns_metadata(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+        conn = self._make_conn()
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8',
+                headers={'Accept': 'application/dicom+json'},
+            )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/dicom+json'
+        payload = resp.json()
+        assert isinstance(payload, list) and len(payload) == 1
+        assert payload[0]['00080018']['vr'] == 'UI'
+        assert payload[0]['00080018']['Value'] == ['1.2.3.4.5.6.7.8']
+
+    def test_transfer_syntax_star_returns_dicom(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+        dcm_bytes = _make_mini_dicom()
+        conn = self._make_conn()
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                    resp = client.get(
+                        '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8?transferSyntax=*'
+                    )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/dicom'
+
+    def test_unsupported_transfer_syntax_returns_406(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        resp = client.get(
+            '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8?transferSyntax=1.2.840.10008.1.2'
+        )
+
+        assert resp.status_code == 406
+        assert 'NOT_ACCEPTABLE' in resp.text
+
+
+class TestWadoDelete:
+    @pytest.mark.asyncio
+    async def test_delete_instance_soft_deletes_and_audits(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ', 'DICOMWEB_WRITE']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.execute = AsyncMock(return_value='UPDATE 1')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.AuditLog') as mock_audit:
+                mock_audit.return_value.log_event = AsyncMock()
+                resp = client.delete(
+                    '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8'
+                )
+
+        assert resp.status_code == 204
+        sql = conn.execute.call_args_list[0][0][0]
+        assert 'sop_instance_uid' in sql
+        assert 'deleted = true' in sql
+        mock_audit.return_value.log_event.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_study_soft_deletes_all_instances(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ', 'DICOMWEB_WRITE']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.execute = AsyncMock(return_value='UPDATE 3')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.AuditLog') as mock_audit:
+                mock_audit.return_value.log_event = AsyncMock()
+                resp = client.delete('/dicomweb/studies/1.2.3.4.5.6')
+
+        assert resp.status_code == 204
+        sql = conn.execute.call_args_list[0][0][0]
+        assert 'study_instance_uid' in sql
+        assert 'deleted = true' in sql
+        mock_audit.return_value.log_event.assert_awaited_once()

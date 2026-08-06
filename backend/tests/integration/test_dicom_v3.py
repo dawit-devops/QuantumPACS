@@ -64,6 +64,7 @@ class TestDicomCoreStoreIntegration:
                 with patch('dcm.store.Files') as mock_files_cls:
                     mock_files = MagicMock()
                     mock_files.insert_or_select = AsyncMock(return_value={'id': 42})
+                    mock_files.get_by_sop_uid = AsyncMock(return_value=None)
                     mock_files.get_by_hash = AsyncMock(return_value=None)
                     mock_files_cls.return_value = mock_files
 
@@ -103,6 +104,7 @@ class TestDicomCoreStoreIntegration:
                 with patch('dcm.store.Files') as mock_files_cls:
                     mock_files = MagicMock()
                     mock_files.insert_or_select = AsyncMock(return_value={'id': 42})
+                    mock_files.get_by_sop_uid = AsyncMock(return_value=None)
                     mock_files_cls.return_value = mock_files
 
                     with patch('dcm.store.Log') as mock_log_cls:
@@ -178,14 +180,14 @@ class TestDicomJsonSerialization:
 
 class TestDicomCoreWorklistMatch:
     @pytest.mark.asyncio
-    async def test_match_worklist_performed_skips_without_accession(self):
-        from dcm.store import match_worklist_performed
+    async def test_match_worklist_in_progress_skips_without_accession(self):
+        from dcm.store import match_worklist_in_progress
         meta = {'patient_id': 'P001', 'study_instance_uid': '1.2.3.4.5.6'}
-        result = await match_worklist_performed(meta)
+        result = await match_worklist_in_progress(meta)
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_match_worklist_performed_calls_mark_performed(self):
+    async def test_match_worklist_in_progress_calls_mark_in_progress(self):
         mock_conn = MagicMock()
         mock_conn.fetchrow = AsyncMock(return_value={
             'id': 'uuid-1', 'accession_number': 'ACC001', 'status': 'scheduled',
@@ -196,8 +198,8 @@ class TestDicomCoreWorklistMatch:
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
             mock_get_conn.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from dcm.store import match_worklist_performed
-            await match_worklist_performed({
+            from dcm.store import match_worklist_in_progress
+            await match_worklist_in_progress({
                 'accession_number': 'ACC001',
                 'study_instance_uid': '1.2.3.4.5.6',
             })
@@ -229,6 +231,7 @@ class TestPhase3Pipeline:
                 with patch('dcm.store.Files') as mock_files_cls:
                     mock_files = MagicMock()
                     mock_files.get_by_hash = AsyncMock(return_value=None)
+                    mock_files.get_by_sop_uid = AsyncMock(return_value=None)
                     mock_files.insert_or_select = AsyncMock(return_value={'id': 42})
                     mock_files_cls.return_value = mock_files
 
@@ -250,7 +253,7 @@ class TestPhase3Pipeline:
                                 result = await store_instance(ds, buf)
 
         assert result is True
-        assert mock_files.get_by_hash.called
+        assert mock_files.get_by_sop_uid.called
         assert mock_files.insert_or_select.called
         assert mock_storage.copy.call_count == 2
         assert mock_rf.add.call_count == 2

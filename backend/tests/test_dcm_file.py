@@ -69,6 +69,8 @@ class TestGetMeta:
             'study_instance_uid', 'series_instance_uid',
             'sop_instance_uid', 'sop_class_uid', 'instance_number',
             'accession_number',
+            'referring_physician',
+            'performing_physician',
             'cleaned',
         }
         assert set(meta.keys()) == expected

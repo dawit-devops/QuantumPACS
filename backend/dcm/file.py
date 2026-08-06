@@ -53,6 +53,8 @@ def get_meta(data):
         # against the originals.
         'study_instance_uid': clean(getattr(data, 'StudyInstanceUID', '')),
         'accession_number': clean(getattr(data, 'AccessionNumber', '')),
+        'referring_physician': clean(getattr(data, 'ReferringPhysicianName', '')),
+        'performing_physician': clean(getattr(data, 'PerformingPhysicianName', '')),
         'series_number': clean(getattr(data, 'SeriesNumber', ''), strict=True),
         'series_instance_uid': clean(getattr(data, 'SeriesInstanceUID', '')),
         'modality': clean(getattr(data, 'Modality', '')),

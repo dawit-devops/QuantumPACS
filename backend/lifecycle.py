@@ -61,10 +61,8 @@ def _run_dicom():
         from pynetdicom.presentation import build_context
         from pynetdicom.sop_class import (
             ModalityWorklistInformationFind,
-            PatientRootQueryRetrieveInformationModelMove,
-            StudyRootQueryRetrieveInformationModelMove,
-            PatientRootQueryRetrieveInformationModelGet,
-            StudyRootQueryRetrieveInformationModelGet,
+            PatientRootQueryRetrieveInformationModelFind,
+            StudyRootQueryRetrieveInformationModelFind,
         )
         import dcm.server as _dcm_server
         try:
@@ -78,10 +76,12 @@ def _run_dicom():
             StoragePresentationContexts
             + [build_context(ModalityWorklistInformationFind)]
             + [
-                build_context(PatientRootQueryRetrieveInformationModelMove),
-                build_context(StudyRootQueryRetrieveInformationModelMove),
-                build_context(PatientRootQueryRetrieveInformationModelGet),
-                build_context(StudyRootQueryRetrieveInformationModelGet),
+                # Q/R C-FIND only. C-MOVE/C-GET are NOT advertised: the old
+                # handlers answered 0x0000 (Success) without transferring any
+                # data, which silently breaks SCUs — refusing the association
+                # is the honest behaviour until retrieval is implemented.
+                build_context(PatientRootQueryRetrieveInformationModelFind),
+                build_context(StudyRootQueryRetrieveInformationModelFind),
             ]
         )
         port = int(config.get('dicom_cstore_port', '11112'))

@@ -27,8 +27,12 @@ class TestDefaultConfig:
     def test_has_dicom_config_keys(self):
         assert default_config['dicom_ae_title'] == 'QUANTUMPACS'
         assert default_config['dicom_cstore_port'] == '11112'
-        assert default_config['dicom_mwl_port'] == '11113'
-        assert default_config['dicom_cmove_port'] == '11114'
+
+    def test_dead_dicom_ports_removed(self):
+        # ME-07: mwl/c-move listeners were never started; only the C-STORE
+        # port remains.
+        assert 'dicom_mwl_port' not in default_config
+        assert 'dicom_cmove_port' not in default_config
 
     def test_secret_falls_back_to_dev_default(self):
         cfg = load_config(overrides={'secret': 'default', 'db_password': 'pa55w0rd'})

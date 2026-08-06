@@ -104,8 +104,10 @@ class TestHandleFindAsync:
 
             with patch('db.worklist.Worklist') as mock_wl_cls:
                 mock_wl = MagicMock()
+                # search() returns (rows, total) — a bare list here masked a
+                # tuple-unpacking regression in handle_find_async (CR-01).
                 mock_wl.search = AsyncMock(
-                    return_value=[{'patient_id': 'P001', 'modality': 'CT'}]
+                    return_value=([{'patient_id': 'P001', 'modality': 'CT'}], 1)
                 )
                 mock_wl_cls.return_value = mock_wl
                 results = await handle_find_async(query_ds)

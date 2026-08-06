@@ -230,3 +230,24 @@ class TestStowRs:
 
         assert resp.status_code == 400
         mock_store.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_413_when_part_exceeds_cap(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ', 'DICOMWEB_WRITE']})
+        client = TestClient(_make_app(user))
+
+        boundary = 'STOW_CAP_BOUNDARY'
+        body = (
+            f'--{boundary}\r\n'
+            'Content-Type: application/dicom\r\n\r\n'
+        ).encode('latin-1') + b'X' * (2 * 1024 * 1024) + f'\r\n--{boundary}--\r\n'.encode('latin-1')
+
+        with patch('config.config', {'max_stow_size_mb': '1'}):
+            resp = client.post(
+                '/dicomweb/studies',
+                content=body,
+                headers={'Content-Type': f'multipart/related; type=application/dicom; boundary={boundary}'},
+            )
+
+        assert resp.status_code == 413
+        assert 'PAYLOAD_TOO_LARGE' in resp.text

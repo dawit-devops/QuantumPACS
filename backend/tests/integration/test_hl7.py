@@ -73,6 +73,13 @@ SAMPLE_ORM_O01 = (
     'OBR|1|ORD001|RP001|CT CHEST^Chest CT^L|||202607260800|||||||||||CT_SCANNER||||||CT\r'
 )
 
+SAMPLE_ORU_R01 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607261200||ORU^R01|MSG010|P|2.5\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'OBR|1|ORD001|ORD001|CT CHEST^Chest CT^L|||202607260800|||||||||||CT_SCANNER||||||CT|F\r'
+    'OBX|1|ST|1234^FINDINGS^L||Normal study|Normal|||F\r'
+)
+
 
 MLLP_START = b'\x0b'
 MLLP_END = b'\x1c\x0d'
@@ -294,6 +301,15 @@ class TestHl7MessageParsing:
         assert result['scheduled_time'] == '0800'
         assert result['modality'] == 'CT'
         assert result['station_ae_title'] == 'CT_SCANNER'
+
+    def test_parse_oru_r01_extracts_accession_from_obr(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ORU_R01)
+        assert result['message_type'] == 'ORU'
+        assert result['event_type'] == 'R01'
+        assert result['patient_id'] == 'PID001'
+        assert result['accession_number'] == 'ORD001'
+        assert result['result_status'] == 'F'
 
     def test_parse_adt_a02_extracts_patient_fields(self):
         from services.ingestion.hl7_server import parse_hl7_message
@@ -635,6 +651,103 @@ class TestHl7OrmHandler:
         assert result is True
         assert mock_conn.fetchval.called
         assert mock_conn.fetchval.call_count == 1
+
+
+class TestHl7OruHandler:
+    @pytest.mark.asyncio
+    async def test_oru_marks_worklist_entry_performed(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-123")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_wl = MagicMock()
+            mock_wl.get_by_accession = AsyncMock(return_value={
+                'id': 'uuid-1', 'accession_number': 'ORD001', 'status': 'in_progress',
+            })
+            mock_wl.mark_performed = AsyncMock()
+            with patch('services.ingestion.hl7_server.Worklist') as mock_wl_cls:
+                mock_wl_cls.return_value = mock_wl
+
+                from services.ingestion.hl7_server import handle_oru_message
+                result = await handle_oru_message({
+                    'message_type': 'ORU',
+                    'event_type': 'R01',
+                    'patient_id': 'PID001',
+                    'patient_name': 'Smith^John',
+                    'birth_date': '19800101',
+                    'sex': 'M',
+                    'accession_number': 'ORD001',
+                    'result_status': 'F',
+                })
+
+        assert result is True
+        mock_wl.mark_performed.assert_awaited_once_with('ORD001')
+
+    @pytest.mark.asyncio
+    async def test_oru_skips_performed_entry(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-123")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_wl = MagicMock()
+            mock_wl.get_by_accession = AsyncMock(return_value={
+                'id': 'uuid-1', 'accession_number': 'ORD001', 'status': 'performed',
+            })
+            mock_wl.mark_performed = AsyncMock()
+            with patch('services.ingestion.hl7_server.Worklist') as mock_wl_cls:
+                mock_wl_cls.return_value = mock_wl
+
+                from services.ingestion.hl7_server import handle_oru_message
+                result = await handle_oru_message({
+                    'message_type': 'ORU',
+                    'event_type': 'R01',
+                    'patient_id': 'PID001',
+                    'accession_number': 'ORD001',
+                    'result_status': 'F',
+                })
+
+        assert result is True
+        mock_wl.mark_performed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_oru_missing_accession_returns_false(self):
+        from services.ingestion.hl7_server import handle_oru_message
+        result = await handle_oru_message({
+            'message_type': 'ORU',
+            'event_type': 'R01',
+            'patient_id': 'PID001',
+        })
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_default_handler_processes_oru(self):
+        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-123")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_patient = MagicMock()
+            mock_patient.insert_or_select = AsyncMock(return_value={'id': 42})
+            with patch('services.ingestion.hl7_server.Patient') as mock_pat_cls:
+                mock_pat_cls.return_value = mock_patient
+
+                mock_wl = MagicMock()
+                mock_wl.get_by_accession = AsyncMock(return_value=None)
+                with patch('services.ingestion.hl7_server.Worklist') as mock_wl_cls:
+                    mock_wl_cls.return_value = mock_wl
+
+                    from services.ingestion.hl7_server import default_handler
+                    resp = await default_handler(SAMPLE_ORU_R01.encode('utf-8'))
+
+        assert resp == b'ACK'
 
 class TestHl7HttpEndpoint:
     def test_post_hl7_message_returns_ack(self):

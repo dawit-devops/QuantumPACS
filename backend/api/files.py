@@ -244,11 +244,13 @@ class DownloadFiles(HTTPEndpoint):
                 file = await ReplicaFiles(conn).get_file_from_replica(master['id'], d)
                 tmp = await storage.fetch(file)
                 file['tmp'] = tmp
-                file['arcname'] = '_'.join([
-                    str(file['patient_id']),
-                    str(file['study_id']) or 'empty',
-                    str(file['series_number']) or 'empty',
-                    file['name'],
+                # Name by UID, not DB ids: the archive is reproducible and
+                # self-describing for external DICOM tools (ME-07).
+                meta = file.get('meta') or {}
+                file['arcname'] = '/'.join([
+                    meta.get('study_instance_uid') or str(file['study_id']),
+                    meta.get('series_instance_uid') or str(file['series_id']),
+                    meta.get('sop_instance_uid') or file['name'],
                 ])
                 files.append(file)
 

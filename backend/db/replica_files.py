@@ -45,7 +45,7 @@ class ReplicaFiles(Table):
             ]
             q = self.insert().columns(
                 'replica_id', 'file_id', 'location', 'status', 'meta'
-            ).insert(*data).on_conflict('replica_id, file_id').do_nothing()
+            ).insert(*data).on_conflict('replica_id', 'file_id').do_nothing()
 
             await self.exec(q)
 
@@ -57,7 +57,7 @@ class ReplicaFiles(Table):
 
                 q = self.insert().columns(
                     'replica_id', 'file_id', 'location', 'status',
-                ).insert(*data).on_conflict('replica_id, file_id').do_nothing()
+                ).insert(*data).on_conflict('replica_id', 'file_id').do_nothing()
 
                 await self.exec(q)
 

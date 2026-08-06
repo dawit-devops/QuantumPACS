@@ -183,6 +183,7 @@ class TestStoreHandler:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -238,6 +239,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -259,12 +261,14 @@ class TestStoreInstance:
     @pytest.mark.asyncio
     async def test_store_instance_uses_hash_for_dedup(self):
         ds = _make_minimal_dicom()
+        del ds.SOPInstanceUID
         data = BytesIO(b'dicom data')
 
         mock_conn = _make_mock_conn()
         existing_file = {'id': 99, 'name': 'existing.dcm', 'hash': 'abc123'}
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=existing_file)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_replica_cls = MagicMock()
         mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
@@ -279,6 +283,36 @@ class TestStoreInstance:
             result = await store_instance(ds, data)
             assert result is True
             mock_files_cls.return_value.get_by_hash.assert_called_once_with('abc123')
+            mock_files_cls.return_value.get_by_sop_uid.assert_not_called()
+            mock_files_cls.return_value.insert_or_select.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_store_instance_dedups_by_sop_uid(self):
+        ds = _make_minimal_dicom()
+        data = BytesIO(b'dicom data')
+
+        mock_conn = _make_mock_conn()
+        existing_file = {'id': 77, 'name': 'existing.dcm', 'hash': 'abc123'}
+        mock_files_cls = MagicMock()
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=existing_file)
+        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+
+        mock_replica_cls = MagicMock()
+        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
+
+        with patch('dcm.store.Replica', new=mock_replica_cls), \
+             patch('dcm.store.Files', new=mock_files_cls), \
+             patch('dcm.store.hash_file', return_value='abc123'), \
+             patch('dcm.store.get_conn') as mock_get_conn:
+            mock_get_conn.return_value.__aenter__.return_value = mock_conn
+
+            from dcm.store import store_instance
+            result = await store_instance(ds, data)
+            assert result is True
+            mock_files_cls.return_value.get_by_sop_uid.assert_called_once_with(
+                '1.2.840.113619.2.55.1.1760426491.1234.3',
+            )
+            mock_files_cls.return_value.get_by_hash.assert_not_called()
             mock_files_cls.return_value.insert_or_select.assert_not_called()
 
     @pytest.mark.asyncio
@@ -300,6 +334,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -311,7 +346,7 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()) as mock_match, \
+             patch('dcm.store.match_worklist_in_progress', new=AsyncMock()) as mock_match, \
              patch('dcm.store.get_conn') as mock_get_conn:
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
@@ -320,7 +355,7 @@ class TestStoreInstance:
             assert mock_match.called
 
     @pytest.mark.asyncio
-    async def test_match_worklist_performed_uses_accession(self):
+    async def test_match_worklist_marks_in_progress_on_store(self):
         from db.worklist import Worklist
 
         class _FakeAc:
@@ -334,17 +369,37 @@ class TestStoreInstance:
 
             mock_entry = {'status': 'scheduled', 'accession_number': 'ACC001'}
             with patch.object(Worklist, 'get_by_accession', new=AsyncMock(return_value=mock_entry)) as mock_get_acc:
-                with patch.object(Worklist, 'mark_performed', new=AsyncMock()) as mock_mark:
-                    from dcm.store import match_worklist_performed
-                    await match_worklist_performed({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
+                with patch.object(Worklist, 'mark_in_progress', new=AsyncMock()) as mock_mark:
+                    from dcm.store import match_worklist_in_progress
+                    await match_worklist_in_progress({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
                     mock_get_acc.assert_called_once_with('ACC001')
                     mock_mark.assert_called_once_with('ACC001', '1.2.3')
 
     @pytest.mark.asyncio
+    async def test_match_worklist_in_progress_does_not_mark_performed(self):
+        from db.worklist import Worklist
+
+        class _FakeAc:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+
+        with patch('dcm.store.get_conn') as mock_get_conn:
+            mock_get_conn.return_value = _FakeAc()
+
+            mock_entry = {'status': 'scheduled', 'accession_number': 'ACC001'}
+            with patch.object(Worklist, 'get_by_accession', new=AsyncMock(return_value=mock_entry)):
+                with patch.object(Worklist, 'mark_performed', new=AsyncMock()) as mock_mark:
+                    from dcm.store import match_worklist_in_progress
+                    await match_worklist_in_progress({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
+                    mock_mark.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_match_worklist_no_action_when_no_accession(self):
-        from dcm.store import match_worklist_performed
+        from dcm.store import match_worklist_in_progress
         with patch('db.worklist.Worklist') as mock_wl_cls:
-            await match_worklist_performed({'accession_number': '', 'study_instance_uid': '1.2.3'})
+            await match_worklist_in_progress({'accession_number': '', 'study_instance_uid': '1.2.3'})
             assert not mock_wl_cls.called
 
     @pytest.mark.asyncio
@@ -363,6 +418,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_master_storage = MagicMock()
         mock_master_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -377,7 +433,7 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', side_effect=[mock_master_storage, mock_remote_storage]), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()), \
+             patch('dcm.store.match_worklist_in_progress', new=AsyncMock()), \
              patch('dcm.store.evaluate_routing_rules', new=AsyncMock(return_value=[
                  {'rule_id': '1', 'rule_name': 'CT route', 'destination': '2'},
              ])), \
@@ -407,6 +463,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage_copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})

@@ -70,12 +70,16 @@ class TestDicomLifecycleFunctions:
         lifecycle = _setup_lifecycle_state()
         lifecycle._stop_dicom()
 
-    def test_dcm_server_handlers_include_cmove_cget(self):
+    def test_dcm_server_handlers_no_cmove_cget(self):
         from pynetdicom import evt
         import dcm.server
         handler_events = [h[0] for h in dcm.server.handlers]
-        assert evt.EVT_C_MOVE in handler_events
-        assert evt.EVT_C_GET in handler_events
+        assert evt.EVT_C_FIND in handler_events
+        # C-MOVE/C-GET are intentionally not handled (CR-02): advertising a
+        # context we answer with 0x0000 while transferring nothing would
+        # silently break SCUs, so the association must be refused instead.
+        assert evt.EVT_C_MOVE not in handler_events
+        assert evt.EVT_C_GET not in handler_events
 
     def test_start_dicom_sets_dcm_server_loop(self):
         lifecycle = _setup_lifecycle_state()
@@ -109,8 +113,10 @@ class TestDicomLifecycleFunctions:
                     for pc in mock_ae_instance.supported_contexts
                 )
 
-    def test_start_dicom_includes_move_get_contexts(self):
+    def test_start_dicom_includes_qr_find_contexts(self):
         from pynetdicom.sop_class import (
+            PatientRootQueryRetrieveInformationModelFind,
+            StudyRootQueryRetrieveInformationModelFind,
             PatientRootQueryRetrieveInformationModelMove,
             StudyRootQueryRetrieveInformationModelMove,
             PatientRootQueryRetrieveInformationModelGet,
@@ -128,12 +134,21 @@ class TestDicomLifecycleFunctions:
                 lifecycle._run_dicom()
 
                 for sop_class in (
+                    PatientRootQueryRetrieveInformationModelFind,
+                    StudyRootQueryRetrieveInformationModelFind,
+                ):
+                    assert any(
+                        pc.abstract_syntax == sop_class
+                        for pc in mock_ae_instance.supported_contexts
+                    )
+                # C-MOVE/C-GET must not be advertised (CR-02).
+                for sop_class in (
                     PatientRootQueryRetrieveInformationModelMove,
                     StudyRootQueryRetrieveInformationModelMove,
                     PatientRootQueryRetrieveInformationModelGet,
                     StudyRootQueryRetrieveInformationModelGet,
                 ):
-                    assert any(
+                    assert not any(
                         pc.abstract_syntax == sop_class
                         for pc in mock_ae_instance.supported_contexts
                     )

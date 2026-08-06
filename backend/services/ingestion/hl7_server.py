@@ -154,6 +154,13 @@ async def default_handler(msg_bytes: bytes) -> bytes:
         log.info('ORM-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
         return b'ACK'
 
+    if msg_type == 'ORU':
+        success = await handle_oru_message(parsed)
+        if not success:
+            return b'ERR ORU processing failed'
+        log.info('ORU-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
+        return b'ACK'
+
     msg_control_id = parsed.get('message_control_id', '?')
     log.warning('Unknown message type: %s^%s id=%s', msg_type, event_type, msg_control_id)
     return b'ACK'
@@ -221,16 +228,23 @@ def parse_hl7_message(data) -> dict | None:
     orc = segments.get('ORC')
     if orc is not None:
         result['accession_number'] = _seg_field(orc, 2, 0, 0)
+        result['order_control'] = _seg_field(orc, 1, 0, 0)
 
     obr = segments.get('OBR')
     if obr is not None:
         result['requested_procedure_id'] = _seg_field(obr, 3, 0, 0)
         result['requested_procedure_desc'] = _seg_field_raw(obr, 4)
+        result['requesting_physician'] = _seg_field_raw(obr, 16)
         result['modality'] = _seg_field(obr, 24, 0, 0)
         result['station_ae_title'] = _seg_field(obr, 18, 0, 0)
         start_dt = _seg_field(obr, 7, 0, 0)
         result['scheduled_date'] = start_dt[:8] if start_dt else ''
         result['scheduled_time'] = start_dt[8:14] if len(start_dt) >= 14 else (start_dt[8:12] if len(start_dt) >= 12 else '')
+        # ORU^R01 carries no ORC segment; the accession rides in OBR-3
+        # (filler order number) or OBR-2 (placer order number).
+        if not result.get('accession_number'):
+            result['accession_number'] = _seg_field(obr, 3, 0, 0) or _seg_field(obr, 2, 0, 0)
+        result['result_status'] = _seg_field(obr, 25, 0, 0)
 
     return result
 
@@ -387,10 +401,7 @@ async def handle_orm_message(parsed: dict) -> bool:
 
             wl = Worklist(conn)
             existing = await wl.get_by_accession(accession)
-            if existing:
-                return True
-
-            await wl.create({
+            entry_data = {
                 'patient_id': patient_id,
                 'patient_name': patient_name,
                 'patient_birth_date': birth_date,
@@ -398,12 +409,68 @@ async def handle_orm_message(parsed: dict) -> bool:
                 'accession_number': accession,
                 'requested_procedure_id': parsed.get('requested_procedure_id', ''),
                 'requested_procedure_desc': parsed.get('requested_procedure_desc', ''),
+                'requesting_physician': parsed.get('requesting_physician', ''),
                 'modality': parsed.get('modality', ''),
                 'station_ae_title': parsed.get('station_ae_title', ''),
                 'scheduled_date': parsed.get('scheduled_date', ''),
                 'scheduled_time': parsed.get('scheduled_time', ''),
-            })
+            }
+
+            # ORC-1 order control: CA (cancel) / OC (order canceled) / DC
+            # (discontinue) cancel a previously scheduled entry. Re-sends
+            # (NW/SC/RO) update the existing scheduling data instead of being
+            # silently dropped.
+            order_control = parsed.get('order_control', '')
+            if existing:
+                if order_control in ('CA', 'OC', 'DC') and existing.get('status') == 'scheduled':
+                    await wl.cancel(existing['id'])
+                    log.info('ORM-%s cancelled worklist entry %s', order_control, existing['id'])
+                elif existing.get('status') == 'scheduled':
+                    await wl.update_entry(existing['id'], entry_data)
+                    log.info('ORM-%s updated worklist entry %s', order_control or 'RE', existing['id'])
+                return True
+
+            await wl.create(entry_data)
         return True
     except Exception:
         log.exception('ORM processing failed')
+        return False
+
+
+async def handle_oru_message(parsed: dict) -> bool:
+    """ORU^R01 — results reported: the study is complete.
+
+    ME-05: ORU messages were ACKed and dropped. A results message is the
+    authoritative 'performed' signal — a partial study (instances stored
+    but no results) must not flip the MWL entry to performed, so this
+    handler, not C-STORE, is the only path that marks it performed.
+    """
+    accession = parsed.get('accession_number', '')
+    patient_id = parsed.get('patient_id', '')
+    if not accession:
+        return False
+
+    try:
+        async with get_conn() as conn:
+            if patient_id:
+                p = Patient(conn)
+                await p.insert_or_select({
+                    'patient_id': patient_id,
+                    'patient_name': parsed.get('patient_name', ''),
+                    'patient_birth_date': parsed.get('birth_date', ''),
+                    'patient_sex': parsed.get('sex', ''),
+                })
+
+            wl = Worklist(conn)
+            existing = await wl.get_by_accession(accession)
+            if not existing:
+                log.info('ORU for unknown accession %s (no MWL entry)', accession)
+                return True
+            if existing.get('status') in ('performed', 'cancelled'):
+                return True
+            await wl.mark_performed(accession)
+            log.info('ORU marked worklist entry %s performed', accession)
+        return True
+    except Exception:
+        log.exception('ORU processing failed')
         return False
