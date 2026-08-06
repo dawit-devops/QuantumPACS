@@ -2,11 +2,6 @@ import sys
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# PIL is not installed — mock before importing api.files
-pil_mock = MagicMock()
-sys.modules['PIL'] = pil_mock
-sys.modules['PIL.Image'] = pil_mock.Image
-
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware

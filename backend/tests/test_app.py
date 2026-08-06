@@ -218,7 +218,7 @@ def _make_app():
         ],
         middleware=[
             Middleware(_FakeAuth),
-            Middleware(CORSMiddleware, allow_origins=app_config.get('cors_origins', '*').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),
+            Middleware(CORSMiddleware, allow_origins=app_config.get('cors_origins', '*').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token', 'X-Tenant-ID'], allow_credentials=True),
             Middleware(CustomMiddleware),
         ],
     )

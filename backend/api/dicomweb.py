@@ -618,6 +618,96 @@ class DicomWebWadoUri(HTTPEndpoint):
             return await _wado_retrieve_study(conn, master, study_uid, metadata)
 
 
+class DicomWebWadoFrames(HTTPEndpoint):
+    """WADO-RS single-frame retrieval (PS3.18 §11.4.3).
+
+    Returns the requested frame as a single-part application/octet-stream
+    body. Multi-frame and compressed transfer syntaxes are decoded with the
+    pydicom + pylibjpeg stack (same codecs as the thumbnail pipeline), so
+    the full instance never needs to reach the client (H6 closure).
+    """
+
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        study_uid = request.path_params.get('study_uid')
+        series_uid = request.path_params.get('series_uid')
+        instance_uid = request.path_params.get('instance_uid')
+        frame_number = request.path_params.get('frame_number')
+
+        try:
+            frame_index = int(frame_number) - 1  # PS3.18: frames are 1-based
+        except (TypeError, ValueError):
+            err_body = {'error': {'code': 'INVALID_FRAME', 'message': 'frame_number must be an integer'}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=400)
+
+        async with get_conn() as conn:
+            master = await Replica(conn).master()
+            if not master:
+                err_body = {'error': {'code': 'NO_STORAGE', 'message': 'No storage available'}}
+                return DicomJsonResponse(json.dumps(err_body), status_code=503)
+
+            row = await conn.fetchrow("""
+                SELECT rf.id, rf.location, f.name, f.meta, rf.meta AS replica_meta,
+                       p.patient_id, st.study_id, ser.number AS series_number
+                FROM replica_files rf
+                JOIN files f ON f.id = rf.file_id
+                JOIN patients p ON p.id = f.patient_id
+                JOIN series ser ON ser.id = f.series_id
+                JOIN studies st ON st.id = ser.study_id
+                WHERE f.sop_instance_uid = $1 AND rf.replica_id = $2 AND f.deleted = false
+                  AND ser.series_instance_uid = $3 AND st.study_instance_uid = $4
+                LIMIT 1
+            """, instance_uid, master['id'], series_uid, study_uid)
+            if not row:
+                err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Instance not found'}}
+                return DicomJsonResponse(json.dumps(err_body), status_code=404)
+
+            file_data = dict(row)
+            file_data['meta'] = json.loads(file_data.get('meta') or '{}')
+            file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
+            storage = await Storage.get(master)
+            path = await storage.fetch(file_data)
+
+        # DICOM decode is synchronous CPU work (decompression); run it in
+        # the thread pool so the event loop stays responsive.
+        try:
+            frame_bytes = await asyncio.to_thread(_extract_frame, path, frame_index)
+        except FrameOutOfRange:
+            err_body = {'error': {'code': 'FRAME_OUT_OF_RANGE', 'message': f'frame_number {frame_number} out of range'}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=404)
+        except ValueError as exc:
+            err_body = {'error': {'code': 'NOT_ACCEPTABLE', 'message': str(exc)}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=406)
+
+        return Response(frame_bytes, media_type='application/octet-stream')
+
+
+class FrameOutOfRange(Exception):
+    pass
+
+
+def _extract_frame(path, frame_index):
+    """Decode a single frame of an instance to raw pixel bytes.
+
+    Uses the pydicom decode stack (pylibjpeg for compressed transfer
+    syntaxes). Raises FrameOutOfRange for out-of-range indexes and
+    ValueError when the instance has no Pixel Data or cannot decode.
+    """
+    ds = dcmread(path)
+    if getattr(ds, 'PixelData', None) is None:
+        raise ValueError('Instance has no Pixel Data')
+    try:
+        nframes = int(getattr(ds, 'NumberOfFrames', 1) or 1)
+    except (TypeError, ValueError):
+        nframes = 1
+    if frame_index < 0 or frame_index >= nframes:
+        raise FrameOutOfRange()
+    pixels = ds.pixel_array
+    if nframes == 1:
+        return pixels.tobytes()
+    return pixels[frame_index].tobytes()
+
+
 async def _wado_retrieve_instance(conn, master, instance_uid, metadata=False, study_uid=None):
     _WADO_COLS = (
         'rf.id, rf.location, f.name, '

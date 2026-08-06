@@ -217,7 +217,7 @@ app = Starlette(
         Middleware(FhirAuditMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
-        Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),
+        Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token', 'X-Tenant-ID'], allow_credentials=True),
         Middleware(SecurityHeadersMiddleware),
         Middleware(CSRFMiddleware),
         Middleware(CustomMiddleware),

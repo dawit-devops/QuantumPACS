@@ -15,11 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# PIL is not installed — mock before importing api.files (same as test_files.py)
-pil_mock = MagicMock()
-sys.modules['PIL'] = pil_mock
-sys.modules['PIL.Image'] = pil_mock.Image
-
 from starlette.applications import Starlette
 from starlette.authentication import UnauthenticatedUser
 from starlette.endpoints import HTTPEndpoint

@@ -406,3 +406,160 @@ class TestWadoDelete:
         assert 'study_instance_uid' in sql
         assert 'deleted = true' in sql
         mock_audit.return_value.log_event.assert_awaited_once()
+
+
+def _make_pixel_dicom(sop_uid=None, multiframes=1, rows=8, cols=8, value=100):
+    """Minimal DICOM with real Pixel Data; frames filled with value+i so
+    frame extraction is verifiable (frame i is all value+i)."""
+    import numpy as np
+
+    sop_uid = sop_uid or generate_uid()
+    ds = Dataset()
+    ds.PatientName = 'Test^Patient'
+    ds.PatientID = 'P001'
+    ds.StudyInstanceUID = '1.2.3.4.5.6'
+    ds.SeriesInstanceUID = '1.2.3.4.5.6.7'
+    ds.SOPInstanceUID = sop_uid
+    ds.Modality = 'CT'
+    ds.StudyDate = '20260725'
+    ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+    ds.Rows = rows
+    ds.Columns = cols
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = 'MONOCHROME2'
+    ds.BitsAllocated = 16
+    ds.BitsStored = 16
+    ds.HighBit = 15
+    ds.PixelRepresentation = 0
+    if multiframes > 1:
+        ds.NumberOfFrames = str(multiframes)
+    frames = [np.full((rows, cols), value + i, dtype=np.uint16) for i in range(multiframes)]
+    pixels = np.concatenate(frames) if multiframes > 1 else frames[0]
+    ds.PixelData = pixels.tobytes()
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+    file_meta.MediaStorageSOPInstanceUID = sop_uid
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    fd = FileDataset('test.dcm', ds, file_meta=file_meta, preamble=b'\0' * 128)
+    buf = BytesIO()
+    fd.save_as(buf, enforce_file_format=False)
+    return buf.getvalue()
+
+
+class TestWadoFrames:
+    def _make_app(self, user=None):
+        from api.dicomweb import DicomWebWadoFrames
+        return Starlette(
+            routes=[
+                Route(
+                    '/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}',
+                    endpoint=DicomWebWadoFrames,
+                ),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def _make_conn(self, found=True):
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'meta': '{}', 'replica_meta': '{}', 'patient_id': 'P001',
+             'study_id': 5, 'series_number': 1}
+            if found else None,
+        ])
+        return conn
+
+    def _get(self, client, conn, dcm_bytes, frame='1', tmp_path=None):
+        target = tmp_path / 'frame_test.dcm'
+        target.write_bytes(dcm_bytes)
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value=str(target))
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                return client.get(
+                    '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8/frames/' + frame
+                )
+
+    @pytest.mark.asyncio
+    async def test_returns_single_frame_as_octet_stream(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=7)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, '1', tmp_path)
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/octet-stream'
+        import numpy as np
+        assert np.frombuffer(resp.content, dtype=np.uint16).tolist() == [7] * 16
+
+    @pytest.mark.asyncio
+    async def test_multiframe_frame_indexing(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(multiframes=3, rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, '2', tmp_path)
+
+        assert resp.status_code == 200
+        import numpy as np
+        assert np.frombuffer(resp.content, dtype=np.uint16).tolist() == [2] * 16
+
+    @pytest.mark.asyncio
+    async def test_frame_out_of_range_404(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, '2', tmp_path)
+
+        assert resp.status_code == 404
+        assert 'FRAME_OUT_OF_RANGE' in resp.text
+
+    @pytest.mark.asyncio
+    async def test_frame_zero_is_out_of_range(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, '0', tmp_path)
+
+        assert resp.status_code == 404
+        assert 'FRAME_OUT_OF_RANGE' in resp.text
+
+    @pytest.mark.asyncio
+    async def test_non_integer_frame_400(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, 'abc', tmp_path)
+
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_missing_instance_404(self, tmp_path):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(found=False), dcm_bytes, '1', tmp_path)
+
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_requires_dicomweb_read_permission(self, tmp_path):
+        user = User({'id': 1, 'permissions': []})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_pixel_dicom(rows=4, cols=4, value=1)
+
+        resp = self._get(client, self._make_conn(), dcm_bytes, '1', tmp_path)
+
+        assert resp.status_code == 403

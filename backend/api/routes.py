@@ -23,7 +23,7 @@ from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
-from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebArchive
+from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
@@ -180,6 +180,7 @@ _V1_ROUTES = [
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}', endpoint=DicomWebWadoFrames)),
     # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
     # a study. POST /dicomweb/studies stores without a pre-specified study.
     v2(Route('/dicomweb/studies/{study_uid}/instances', endpoint=DicomWebStudies, methods=['POST'])),
