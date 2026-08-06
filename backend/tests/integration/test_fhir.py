@@ -64,9 +64,11 @@ class TestFhirMetadata:
 class TestFhirPatient:
     def test_read_patient_found(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetchrow = AsyncMock(return_value={
             'id': 1, 'patient_id': 'PID001', 'name': 'Smith^John',
             'birth_date': '19800101', 'sex': 'M', 'meta': None,
+            'updated_at': None,
         })
         mock_conn.fetch = AsyncMock(return_value=[])
 
@@ -82,10 +84,11 @@ class TestFhirPatient:
         assert body['resourceType'] == 'Patient'
         assert body['id'] == 'PID001'
         assert body['identifier'][0]['value'] == 'PID001'
-        assert body['gender'] == 'm'
+        assert body['gender'] == 'male'
 
     def test_read_patient_not_found(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=None)
         mock_conn.fetchrow = AsyncMock(return_value=None)
 
         with patch('api.fhir.get_conn') as mock_get:
@@ -100,6 +103,7 @@ class TestFhirPatient:
 
     def test_search_patient_by_identifier(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetch = AsyncMock(return_value=[{
             'id': 1, 'patient_id': 'PID001', 'name': 'Smith^John',
             'birth_date': '19800101', 'sex': 'M', 'meta': None,
@@ -120,6 +124,7 @@ class TestFhirPatient:
 
     def test_search_patient_by_name(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetch = AsyncMock(return_value=[{
             'id': 2, 'patient_id': 'PID002', 'name': 'Doe^Jane',
             'birth_date': '19900215', 'sex': 'F', 'meta': None,
@@ -138,6 +143,7 @@ class TestFhirPatient:
 
     def test_search_patient_empty(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=0)
         mock_conn.fetch = AsyncMock(return_value=[])
 
         with patch('api.fhir.get_conn') as mock_get:
@@ -210,6 +216,7 @@ class TestFhirImagingStudy:
 
     def test_search_study_by_patient(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetch = AsyncMock(return_value=[_study_row()])
         mock_conn.fetchrow = AsyncMock(return_value=_study_row())
 
@@ -229,6 +236,7 @@ class TestFhirImagingStudy:
 
     def test_search_study_by_accession(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetch = AsyncMock(return_value=[_study_row()])
         mock_conn.fetchrow = AsyncMock(return_value=_study_row())
 
@@ -282,6 +290,7 @@ class TestFhirDocumentReference:
 
     def test_search_doc_by_patient(self):
         mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
         mock_conn.fetch = AsyncMock(return_value=[{
             'id': 456, '_patient_logical_id': 'PID001',
             'share_url': 'http://example.com/share/xyz',
@@ -331,7 +340,7 @@ class TestFhirPatientNameParsing:
 class TestFhirPatientWrite:
     def test_create_patient_success(self):
         mock_conn = MagicMock()
-        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetchval = AsyncMock(side_effect=[None, 42, 42])
         mock_conn.fetch = AsyncMock(return_value=[])
         mock_conn.fetchrow = AsyncMock(return_value={
             'id': 1, 'patient_id': 'PID-NEW', 'name': 'Smith^John',
@@ -357,9 +366,54 @@ class TestFhirPatientWrite:
             })
 
         assert resp.status_code == 201
+        assert resp.headers['location'].endswith('/Patient/PID-NEW')
         body = resp.json()
         assert body['resourceType'] == 'Patient'
         assert body['id'] == 'PID-NEW'
+
+    def test_create_patient_duplicate_returns_existing(self):
+        mock_conn = MagicMock()
+        mock_conn.fetchval = AsyncMock(side_effect=[42, 42])
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'id': 1, 'patient_id': 'PID-NEW', 'name': 'Smith^John',
+            'birth_date': '19800101', 'sex': 'M', 'meta': None,
+        })
+
+        with patch('api.fhir.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from api.fhir import FhirPatientRoot
+            app = Starlette(
+                routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
+                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
+            )
+            client = TestClient(app)
+            resp = client.post('/fhir/Patient', json={
+                'resourceType': 'Patient',
+                'identifier': [{'value': 'PID-NEW'}],
+                'name': [{'family': 'Smith', 'given': ['John']}],
+                'gender': 'male',
+            })
+
+        assert resp.status_code == 200
+        assert resp.headers['location'].endswith('/Patient/PID-NEW')
+
+    def test_create_patient_invalid_gender(self):
+        from api.fhir import FhirPatientRoot
+        app = Starlette(
+            routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
+            middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
+        )
+        client = TestClient(app)
+        resp = client.post('/fhir/Patient', json={
+            'resourceType': 'Patient',
+            'identifier': [{'value': 'PID-X'}],
+            'gender': 'banana',
+        })
+        assert resp.status_code == 422
+        assert resp.json()['issue'][0]['code'] == 'value'
 
     def test_create_patient_missing_identifier(self):
         from api.fhir import FhirPatientRoot
@@ -438,7 +492,7 @@ class TestFhirPatientWrite:
     def test_delete_patient_success(self):
         mock_conn = MagicMock()
         mock_conn.execute = AsyncMock()
-        mock_conn.fetchval = AsyncMock(return_value=42)
+        mock_conn.fetchval = AsyncMock(side_effect=[42, False])
 
         with patch('api.fhir.get_conn') as mock_get:
             mock_get.return_value.__aenter__.return_value = mock_conn
@@ -453,6 +507,56 @@ class TestFhirPatientWrite:
             resp = client.delete('/fhir/Patient/PID001')
 
         assert resp.status_code == 204
+
+    def test_delete_patient_with_studies_conflict(self):
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(side_effect=[42, True])
+
+        with patch('api.fhir.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from api.fhir import FhirPatientResource
+            app = Starlette(
+                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
+                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
+            )
+            client = TestClient(app)
+            resp = client.delete('/fhir/Patient/PID001')
+
+        assert resp.status_code == 409
+        assert resp.json()['issue'][0]['code'] == 'conflict'
+
+    def test_update_patient_if_match_mismatch(self):
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'id': 1, 'patient_id': 'PID001', 'name': 'Smith^Jane',
+            'birth_date': '19800101', 'sex': 'F', 'meta': None,
+            'updated_at': '2026-08-06T00:00:00+00:00',
+        })
+        mock_conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.fhir.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            from api.fhir import FhirPatientResource
+            app = Starlette(
+                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
+                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
+            )
+            client = TestClient(app)
+            resp = client.put(
+                '/fhir/Patient/PID001',
+                json={'resourceType': 'Patient', 'name': [{'family': 'X'}]},
+                headers={'If-Match': 'W/"99"'},
+            )
+
+        assert resp.status_code == 412
+        assert resp.json()['issue'][0]['code'] == 'conflict'
 
     def test_delete_patient_not_found(self):
         mock_conn = MagicMock()

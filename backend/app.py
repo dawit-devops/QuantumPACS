@@ -113,14 +113,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         if request.method in ('POST', 'PUT', 'DELETE') and path.startswith('/api'):
-            # DICOMweb is a machine-to-machine API (modalities, RIS, other
-            # PACS) authenticated by bearer token — browsers don't drive it,
-            # so the anti-CSRF cookie dance does not apply (it would break
-            # plain STOW-RS clients that cannot mint an X-CSRF-Token).
-            is_dicomweb = (
+            # DICOMweb and FHIR are machine-to-machine APIs (modalities, RIS,
+            # other PACS, SMART apps) authenticated by bearer token — browsers
+            # don't drive them, so the anti-CSRF cookie dance does not apply
+            # (it would break plain STOW-RS and FHIR clients that cannot mint
+            # an X-CSRF-Token).
+            is_machine = (
                 path.startswith('/api/dicomweb') or path.startswith('/api/v2/dicomweb')
+                or path.startswith('/api/fhir') or path.startswith('/api/v2/fhir')
             )
-            if path not in self._PUBLIC_PATHS and not is_dicomweb:
+            if path not in self._PUBLIC_PATHS and not is_machine:
                 if request.headers.get('X-CSRF-Token') != '1':
                     from api.response import forbidden
                     return forbidden('CSRF token missing or invalid')
