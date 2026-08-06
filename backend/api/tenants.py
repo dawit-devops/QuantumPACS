@@ -9,19 +9,69 @@ from config import config
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.tenant_provisioner import TenantProvisioner
-from db.tenants import Tenants
+from db.tenants import Tenants, TenantConnectionPool
 from log import request_id_var
+
+# Audit events emitted on tenant status transitions via PUT.
+_STATUS_EVENTS = {
+    'active': 'tenant.activated',
+    'suspended': 'tenant.suspended',
+    'quarantined': 'tenant.quarantined',
+    'decommissioned': 'tenant.decommissioned',
+}
+# Statuses that must drop the tenant's live connection pools immediately.
+_GATING_STATUSES = frozenset({'suspended', 'quarantined', 'decommissioned'})
+# Fields that re-point the tenant's data store or gate access — changing these
+# requires the platform super admin, never a tenant-scoped admin.
+_ADMIN_ONLY_FIELDS = frozenset(
+    {'status', 'db_name', 'db_host', 'db_port', 'db_user', 'db_password'}
+)
+
+
+def _is_platform_admin(user) -> bool:
+    """Platform admins (super_admin / legacy admin flag) manage all tenants;
+    every other TENANT_* holder is confined to their own tenant."""
+    return bool(getattr(user, 'admin', False))
+
+
+def _owns_tenant(user, slug) -> bool:
+    if _is_platform_admin(user):
+        return True
+    return bool(slug) and getattr(user, 'tenant', None) == slug
+
+
+def _tenant_scoped_403(message='You do not have access to this tenant'):
+    return api_error('FORBIDDEN', message, status=403)
 
 
 class TenantsHandler(HTTPEndpoint):
     @requires_permission(Permission.TENANT_READ)
     async def get(self, request):
+        include_decommissioned = request.query_params.get('include_decommissioned') == 'true'
+        if include_decommissioned and not _is_platform_admin(request.user):
+            # Decommissioned tenants are invisible to everyone but the
+            # platform super admin.
+            return api_error(
+                'FORBIDDEN',
+                'Only super admins may list decommissioned tenants',
+                status=403,
+            )
         async with get_conn() as conn:
-            tenants = await Tenants(conn).get_all()
+            tenants = await Tenants(conn).get_all(
+                include_decommissioned=include_decommissioned,
+            )
+        if not _is_platform_admin(request.user):
+            # Tenant-scoped admins only ever see their own tenant.
+            own = getattr(request.user, 'tenant', None)
+            tenants = [t for t in tenants if t.get('slug') == own]
         return ok({'data': tenants})
 
     @requires_permission(Permission.TENANT_ADMIN)
     async def post(self, request):
+        if not _is_platform_admin(request.user):
+            # Provisioning creates a real database and an initial admin —
+            # a platform-level action, never a tenant-scoped one.
+            return _tenant_scoped_403('Only platform admins may provision tenants')
         body = await parse_body(CreateTenantRequest, request)
         async with get_conn() as conn:
             existing = await Tenants(conn).get_by_slug(body.slug)
@@ -35,6 +85,7 @@ class TenantsHandler(HTTPEndpoint):
             db_user=body.db_user, db_password=body.db_password,
             storage_quota_bytes=body.storage_quota_bytes,
             admin_email=body.admin_email,
+            plan=body.plan,
         )
 
         async with get_conn() as conn:
@@ -61,24 +112,55 @@ class TenantHandler(HTTPEndpoint):
             tenant = await Tenants(conn).get(tenant_id)
         if not tenant:
             return not_found('Tenant not found')
+        if not _owns_tenant(request.user, tenant.get('slug')):
+            return _tenant_scoped_403()
         return ok(tenant)
 
     @requires_permission(Permission.TENANT_ADMIN)
     async def put(self, request):
         tenant_id = request.path_params['id']
         body = await parse_body(UpdateTenantRequest, request)
+        status = None
         async with get_conn() as conn:
             tenant = await Tenants(conn).get(tenant_id)
             if not tenant:
                 return not_found('Tenant not found')
+            data = body.model_dump(exclude_none=True)
+            if not _owns_tenant(request.user, tenant.get('slug')):
+                return _tenant_scoped_403()
+            if not _is_platform_admin(request.user) and (
+                set(data) & _ADMIN_ONLY_FIELDS
+            ):
+                # Status transitions and DB endpoint re-pointing are
+                # platform-level; a tenant-scoped admin may only touch
+                # name/domain/plan/quota on their own tenant.
+                return _tenant_scoped_403(
+                    'Status and database settings require platform admin'
+                )
             await Tenants(conn).patch(
                 tenant_id,
-                body.model_dump(exclude_none=True),
+                data,
             )
+            status = data.get('status')
+            if status and status != tenant.get('status'):
+                await AuditLog(conn).log_event(
+                    event_type=_STATUS_EVENTS.get(status, 'tenant.status_changed'),
+                    actor_id=request.user.id,
+                    resource_type='tenant',
+                    resource_id=tenant_id,
+                    details={'from': tenant.get('status'), 'to': status},
+                    tenant=tenant.get('slug'),
+                    request_id=request_id_var.get(),
+                )
+        if status in _GATING_STATUSES:
+            await TenantConnectionPool.close(tenant['slug'])
         return ok({})
 
     @requires_permission(Permission.TENANT_ADMIN)
     async def delete(self, request):
+        if not _is_platform_admin(request.user):
+            # Decommissioning a tenant (even your own) is a platform action.
+            return _tenant_scoped_403('Only platform admins may decommission tenants')
         tenant_id = request.path_params['id']
         async with get_conn() as conn:
             tenant = await Tenants(conn).get(tenant_id)
@@ -105,7 +187,11 @@ class TenantStatsHandler(HTTPEndpoint):
             tenant = await Tenants(conn).get(tenant_id)
             if not tenant:
                 return not_found('Tenant not found')
+            if not _owns_tenant(request.user, tenant.get('slug')):
+                return _tenant_scoped_403()
             slug = tenant['slug']
+            # Internal accessor only — db_password must never leave it into a
+            # handler response; get_stats() below returns an explicit dict.
             info = await Tenants(conn).get_connection_info(tenant_id)
         pool_info = {
             'db_name': info.get('db_name', slug.replace('-', '_')) if info else slug.replace('-', '_'),

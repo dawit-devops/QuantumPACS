@@ -19,6 +19,7 @@ from api.tokens import create_token as gen_token
 from api.utils import get_id
 from api.validate import parse_body
 from api.schemas.files import FileUpdateRequest, ShareRequest
+from api.notify import notify_role
 from config import config as app_config
 from db.conn import get_conn
 from db.file_changes import FileChange
@@ -27,11 +28,15 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
 from db.notifications import Notifications
+from db.tenants import Tenants
 from api.ws import broadcast_to_user
 from dcm.file import parse_dcm
 from es import es
 from storage.storage import Storage
 from utils import hash_file
+from log import get_logger
+
+log = get_logger(__name__)
 
 
 _DICOM_MAGIC = b'\x00' * 4 + b'\x08\x00\x00\x00'
@@ -42,6 +47,67 @@ def _is_dicom(content: bytes) -> bool:
 
 
 _REQUIRED_DICOM_TAGS = ['PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'SOPInstanceUID']
+
+
+async def _tenant_storage_used(request, tenant_info):
+    """Current storage usage for the active tenant, in bytes.
+
+    Prefers a live SUM over files.size on the tenant pool; falls back to the
+    storage_used_bytes registry column when the pool is unavailable or the
+    live query fails (e.g. tenant DB not yet migrated).
+    """
+    acquire = getattr(request.state, 'tenant_conn', None)
+    if acquire is not None:
+        try:
+            async with acquire() as tconn:
+                used = await tconn.fetchval(
+                    'SELECT COALESCE(SUM(size), 0)::bigint FROM files'
+                )
+            return int(used or 0)
+        except Exception:
+            log.warning('Live tenant storage SUM failed; falling back to registry column', exc_info=True)
+    return int(tenant_info.get('storage_used_bytes') or 0)
+
+
+async def _persist_storage_used(conn, tenant_slug, used_bytes):
+    """Record the tenant's new total storage usage in the tenants registry.
+
+    Prefers Tenants.persist_storage_used; falls back to a direct UPDATE so the
+    quota bookkeeping never blocks an upload.
+    """
+    try:
+        persist = getattr(Tenants(conn), 'persist_storage_used', None)
+        if persist is not None:
+            await persist(tenant_slug, used_bytes)
+            return
+    except Exception:
+        log.warning('persist_storage_used failed for tenant %s; using direct UPDATE', tenant_slug, exc_info=True)
+    try:
+        await conn.execute(
+            'UPDATE tenants SET storage_used_bytes = $1, updated_at = now() WHERE slug = $2',
+            used_bytes, tenant_slug,
+        )
+    except Exception:
+        log.warning('Direct storage_used_bytes UPDATE failed for tenant %s', tenant_slug, exc_info=True)
+
+
+async def _notify_quota_breach(conn, tenant_slug, quota_bytes, used_bytes):
+    """Notify super admins when a tenant crosses 90% of its storage quota.
+
+    Deliberately non-throwing: notifications must never break an upload.
+    """
+    try:
+        pct = round(used_bytes / quota_bytes * 100, 1)
+        await notify_role(
+            conn,
+            'super_admin',
+            'storage.quota_breach',
+            f'Tenant "{tenant_slug}" at {pct}% of storage quota',
+            f'Storage usage reached {used_bytes} of {quota_bytes} bytes ({pct}%)',
+            '/tenants',
+        )
+    except Exception:
+        log.warning('Quota breach notification failed for tenant %s', tenant_slug, exc_info=True)
 
 
 class Upload(HTTPEndpoint):
@@ -82,6 +148,25 @@ class Upload(HTTPEndpoint):
 
         hsh = hash_file(buf)
 
+        new_bytes = len(content)
+        tenant_slug = getattr(request.state, 'tenant_slug', None)
+        tenant_info = getattr(request.state, 'tenant', None) or {}
+        quota_bytes = int(tenant_info.get('storage_quota_bytes') or 0)
+        current_used = None
+
+        # Quota enforcement only applies when a tenant is active (X-Tenant-ID
+        # resolved by TenantMiddleware). Platform users have no tenant and are
+        # not throttled.
+        if tenant_slug:
+            current_used = await _tenant_storage_used(request, tenant_info)
+            if quota_bytes > 0 and current_used + new_bytes > quota_bytes:
+                return api_error(
+                    'QUOTA_EXCEEDED',
+                    f'Upload of {new_bytes} bytes would exceed tenant storage quota of {quota_bytes} bytes '
+                    f'(currently using {current_used} bytes). Free up space or contact an administrator.',
+                    status=403,
+                )
+
         async with get_conn() as conn:
             async with conn.transaction():
                 master = await Replica(conn).master()
@@ -98,6 +183,9 @@ class Upload(HTTPEndpoint):
                     'hash': hsh,
                 }
                 file_data.update(ds)
+                # Byte count is authoritative — set after DICOM tags merge so a
+                # tag named `size` can never shadow it.
+                file_data['size'] = new_bytes
                 filedata = await Files(conn).insert_or_select(file_data)
 
                 buf.seek(0)
@@ -111,6 +199,13 @@ class Upload(HTTPEndpoint):
                     master['id'],
                     [{'id': filedata['id'], **ret}],
                 )
+
+                if tenant_slug and current_used is not None:
+                    new_total = current_used + new_bytes
+                    await _persist_storage_used(conn, tenant_slug, new_total)
+                    if quota_bytes > 0 and new_total / quota_bytes >= 0.9:
+                        await _notify_quota_breach(conn, tenant_slug, quota_bytes, new_total)
+
                 user_id = request.user.id
                 patient_name = ds.get('patient_name', ds.get('patientname', 'Unknown'))
                 await Notifications(conn).create(

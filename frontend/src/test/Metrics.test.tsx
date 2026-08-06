@@ -20,6 +20,8 @@ vi.mock("../helpers", () => ({
   clearTokens: () => {},
   startRefreshTimer: () => {},
   stopRefreshTimer: () => {},
+  emit: vi.fn(),
+  subscribe: vi.fn(() => undefined),
 }));
 
 vi.mock("../common/QuantumLogo", () => ({
@@ -276,5 +278,28 @@ describe("Metrics per-panel isolation", () => {
 
     expect(screen.getByText("System Health")).toBeInTheDocument();
     expect(screen.getByText("Database")).toBeInTheDocument();
+  });
+
+  it("shows the active tenant tag in the header when scoped", async () => {
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(null);
+    localStorage.setItem("tenant_id", "main");
+    localStorage.setItem("tenant_name", "Main Hospital");
+    renderWithAuth(<Metrics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tenant: Main Hospital")).toBeInTheDocument();
+    });
+  });
+
+  it("omits the tenant tag when no tenant is active", async () => {
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(null);
+    renderWithAuth(<Metrics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Patients")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Tenant:/)).not.toBeInTheDocument();
   });
 });

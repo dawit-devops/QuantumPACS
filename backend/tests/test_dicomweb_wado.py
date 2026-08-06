@@ -124,6 +124,28 @@ class TestWadoInstance:
         assert len(resp.content) > 0
 
 
+class TestWadoDeleted:
+    @pytest.mark.asyncio
+    async def test_instance_retrieve_excludes_deleted_files(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            None,  # deleted file → no row returned
+        ])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8')
+
+        assert resp.status_code == 404
+        sql = conn.fetchrow.call_args_list[1][0][0]
+        assert 'f.deleted = false' in sql
+
+
 class TestWadoUri:
     def _make_conn(self, instance_uid='1.2.3.4.5.6.7.8'):
         conn = _FakeConn()

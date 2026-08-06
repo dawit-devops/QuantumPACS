@@ -72,6 +72,7 @@ export interface CreateUserInput {
   username: string;
   admin?: boolean;
   role_id?: number;
+  tenant?: string;
 }
 
 export const createUser = (

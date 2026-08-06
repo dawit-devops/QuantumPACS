@@ -1,6 +1,6 @@
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found
+from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from db.conn import get_conn
 from db.api_keys import ApiKeys
@@ -15,6 +15,23 @@ class CreateApiKeyRequest(BaseModel):
     expires_in_days: int | None = None
 
 
+def _validate_key_permissions(user, requested: list[str]) -> tuple[bool, str]:
+    """Service keys must never out-scope their creator.
+
+    The legacy '*' wildcard means full platform super-admin — no API key may
+    carry it. Non-platform admins may only grant a subset of their own
+    effective permissions (rbac.py honors the same set).
+    """
+    if '*' in requested:
+        return False, 'Wildcard permissions are not allowed on API keys'
+    if getattr(user, 'admin', False):
+        return True, ''
+    allowed = set(getattr(user, 'permissions', None) or [])
+    if not set(requested) <= allowed:
+        return False, 'Requested permissions exceed your own grants'
+    return True, ''
+
+
 class ApiKeysHandler(HTTPEndpoint):
     @requires_permission(Permission.SERVICE_KEY_READ)
     async def get(self, request):
@@ -26,6 +43,9 @@ class ApiKeysHandler(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(CreateApiKeyRequest, request)
         user = request.user
+        valid, message = _validate_key_permissions(user, body.permissions)
+        if not valid:
+            return api_error('FORBIDDEN', message, status=403)
         created_by = user.id if hasattr(user, 'id') and not str(user.id).startswith('svc_') else None
         generated = ApiKeys.generate(
             service_name=body.service_name,

@@ -13,7 +13,10 @@ from jwt import PyJWKClient
 from starlette.responses import RedirectResponse, JSONResponse
 
 from api.response import ok, api_error, unauthorized
-from api.tokens import create_token, create_token_pair, verify_token
+from api.tokens import (
+    create_token, create_token_pair,
+    verify_refresh_token, block_token, is_blocked,
+)
 from config import config
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -308,12 +311,38 @@ async def oauth_token_exchange(request):
         return api_error('INVALID_STATE', 'Use the callback endpoint for authorization_code flow', status=400)
 
     if grant_type == 'refresh_token' and refresh_token:
-        payload = verify_token(refresh_token)
-        if not payload:
+        # Only a real refresh token (type claim, verified signature) may be
+        # exchanged. Access tokens are rejected here; the presented token is
+        # blocked (rotation) and user status + token_version are re-read from
+        # the DB so deactivated/demoted users cannot keep minting credentials.
+        try:
+            payload = verify_refresh_token(refresh_token)
+        except jwt.ExpiredSignatureError:
+            return api_error('TOKEN_EXPIRED', 'Refresh token expired', status=401)
+        except jwt.InvalidTokenError:
             return unauthorized('Invalid or expired refresh token')
-        user_data = {'id': payload['id'], 'admin': payload.get('admin', False)}
+
+        if await is_blocked(payload.get('jti', '')):
+            return unauthorized('Refresh token revoked')
+
+        await block_token(refresh_token)
+
+        try:
+            async with get_conn() as conn:
+                user_row = await Users(conn).get_user_row(payload['id'])
+        except RuntimeError:
+            user_row = None
+        if not user_row or user_row.get('status') != 'active':
+            return unauthorized('Account unavailable')
+
+        user_data = {'id': payload['id'], 'admin': bool(user_row.get('admin', False))}
+        if user_row.get('tenant'):
+            user_data['tenant'] = user_row['tenant']
         role = payload.get('role')
-        access, new_refresh = create_token_pair(user_data, role=role)
+        token_version = user_row.get('token_version') or 0
+        access, new_refresh = create_token_pair(
+            user_data, role=role, token_version=token_version,
+        )
         return ok({
             'access_token': access,
             'refresh_token': new_refresh,

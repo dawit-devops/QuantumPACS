@@ -149,6 +149,14 @@ export const request = async <T = any>(
   if (token) {
     options.headers.set("X-Auth-Pacs", token);
   }
+  // Per-request tenant scoping: the backend TenantMiddleware gates every
+  // request on X-Tenant-ID. Reading localStorage here (instead of importing
+  // AuthContext) keeps the api layer free of React deps and avoids circular
+  // imports; AuthContext/TenantSelector already write the same keys.
+  const tenantId = localStorage.getItem("tenant_id");
+  if (tenantId) {
+    options.headers.set("X-Tenant-ID", tenantId);
+  }
   if (options.data) {
     // Default to POST for payloads, but honor an explicit method — the
     // legacy helper overwrote PUT/DELETE with POST whenever data was

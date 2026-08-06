@@ -25,6 +25,10 @@ vi.mock("../api/roles", () => ({
   listRoles: mockListRoles,
 }));
 
+vi.mock("../api/tenants", () => ({
+  listSessionTenants: vi.fn(() => Promise.resolve([])),
+}));
+
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),

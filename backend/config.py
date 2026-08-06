@@ -8,6 +8,17 @@ _DEFAULT_SECRET = 'quantumpacs-default-secret-32-bytes-long!!'
 _DEFAULT_DB_PASSWORD = 'pa55w0rd'
 _DEFAULT_SUPERADMIN_PASS = 'pa55w0rd'
 
+# Any of these grants full admin-token forgery — none may ever run in any
+# environment. Values that shipped in the repo are known to attackers.
+_KNOWN_INSECURE_SECRETS = frozenset({
+    'default',
+    'pa55w0rd',
+    _DEFAULT_SECRET,
+    'quantumpacs-dev-secret-replace-in-production-32b',
+    'quantum-local-dev-secret-replace-in-prod-2026-07-28',
+    'quantumpacs-docker-compose-dev-secret-change-me',
+})
+
 default_config = {
     'secret': _DEFAULT_SECRET,
     'superadmin_pass': _DEFAULT_SUPERADMIN_PASS,
@@ -23,6 +34,7 @@ default_config = {
     'redis_port': '6379',
     'redis_password': '',
     'db_pool_size': '8',
+    'tenant_default_quota_bytes': '0',
     'sentry_dsn': '',
     'sentry_traces_sample_rate': '1.0',
     'oauth_issuer': '',
@@ -58,6 +70,7 @@ default_config = {
     'ingestion_poll_block_ms': '5000',
     'ingestion_max_retries': '3',
     'oauth_secret_encryption_key': '',
+    'tenant_usage_retention_days': '365',
 }
 
 
@@ -91,9 +104,15 @@ config = load_config()
 
 
 def assert_production_secret():
-    if config['secret'] in ('default', 'pa55w0rd', _DEFAULT_SECRET):
+    if config['secret'] in _KNOWN_INSECURE_SECRETS:
         raise ConfigurationError(
-            'SECURITY: Using default secret. Set SECRET env var or config.local.yaml secret.'
+            'SECURITY: Using a known/committed secret. Set SECRET env var or '
+            'config.local.yaml secret to a fresh random value.'
+        )
+    if config['superadmin_pass'] in ('pa55w0rd', _DEFAULT_SUPERADMIN_PASS):
+        raise ConfigurationError(
+            'SECURITY: Using the default superadmin password. Set SUPERADMIN_PASS '
+            'env var or config.local.yaml superadmin_pass to a fresh random value.'
         )
 
 

@@ -96,7 +96,8 @@ class Tenants(Table):
 
     async def create(self, name, slug, domain=None, db_name=None,
                      db_host=None, db_port=None, db_user=None,
-                     db_password=None, storage_quota_bytes=0):
+                     db_password=None, storage_quota_bytes=0,
+                     status='active', plan='free'):
         if db_name is None:
             db_name = slug.replace('-', '_')
         q = self.insert().columns(
@@ -104,6 +105,7 @@ class Tenants(Table):
             self.table.db_name, self.table.db_host, self.table.db_port,
             self.table.db_user, self.table.db_password,
             self.table.storage_quota_bytes,
+            self.table.status, self.table.plan,
         ).insert(
             name, slug, domain, db_name,
             db_host or config['db_host'],
@@ -111,8 +113,26 @@ class Tenants(Table):
             db_user or config['db_user'],
             db_password or config['db_password'],
             storage_quota_bytes,
+            status, plan,
         ).returning(self.table.id)
         return await self.fetchval(q)
+
+    async def set_status(self, slug, status):
+        """Transition a tenant's status (active/suspended/quarantined/
+        decommissioned) by slug — used by the provisioner lifecycle.
+        UPDATE..RETURNING via fetchval keeps provisioning's only conn-level
+        execute as CREATE DATABASE (a committed test asserts that order)."""
+        q = self.update().where(self.table.slug == slug).set(
+            self.table.status, status,
+        ).set(self.table.updated_at, 'NOW()').returning(self.table.id)
+        await self.fetchval(q)
+
+    async def persist_storage_used(self, slug, bytes_used):
+        """Persist the measured storage footprint for a tenant (bytes)."""
+        q = self.update().where(self.table.slug == slug).set(
+            self.table.storage_used_bytes, int(bytes_used),
+        ).set(self.table.updated_at, 'NOW()')
+        await self.exec(q)
 
     async def patch(self, tenant_id, data):
         q = self.update().where(self.table.id == tenant_id)
@@ -124,7 +144,12 @@ class Tenants(Table):
         await self.exec(q)
 
     async def delete(self, tenant_id):
-        await TenantConnectionPool.close(str(tenant_id))
+        # Pools are keyed by slug (TenantConnectionPool.get), so resolve the
+        # row before closing — closing by id would leave the pool alive and
+        # serving a decommissioned tenant until LRU eviction.
+        row = await self.get(tenant_id)
+        if row:
+            await TenantConnectionPool.close(row['slug'])
         q = self.update().where(self.table.id == tenant_id).set(
             self.table.status, 'decommissioned',
         ).set(
@@ -137,7 +162,7 @@ class Tenants(Table):
     async def hard_delete(self, slug: str):
         row = await self.get_by_slug(slug)
         if row:
-            await TenantConnectionPool.close(str(row['id']))
+            await TenantConnectionPool.close(row['slug'])
         q = self.query().where(self.table.slug == slug).delete()
         await self.exec(q)
 
@@ -153,7 +178,7 @@ class Tenants(Table):
             study_count = await conn.fetchval('SELECT COUNT(*) FROM studies')
             file_count = await conn.fetchval('SELECT COUNT(*) FROM files')
             storage_used = await conn.fetchval(
-                "SELECT COALESCE(SUM(COALESCE(size, 0)), 0) FROM files"
+                "SELECT COALESCE(SUM(size), 0) FROM files"
             ) or 0
             last_activity = await conn.fetchval(
                 "SELECT MAX(created) FROM files"

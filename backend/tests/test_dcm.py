@@ -79,11 +79,10 @@ class TestGetMeta:
         assert isinstance(meta['cleaned'], dict)
         assert 'Patient\'s Name' in meta['cleaned']
 
-    def test_get_meta_includes_raw_dict(self):
+    def test_get_meta_raw_not_exposed(self):
         ds = _make_minimal_dicom()
         meta = get_meta(ds)
-        assert 'raw' in meta
-        assert isinstance(meta['raw'], dict)
+        assert 'raw' not in meta
 
     def test_get_meta_missing_optional_fields(self):
         ds = Dataset()

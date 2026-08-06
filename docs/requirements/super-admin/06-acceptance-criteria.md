@@ -9,8 +9,8 @@ test or visual evidence.
 
 | AC ID | Links to | Criteria (Given/When/Then) | Verification Method | Validator Gate |
 |-------|----------|----------------------------|---------------------|----------------|
-| AC-R01-01 | FR-R01-01, NFR-R01-05 | Given super admin opens Tenants, when a tenant is provisioned successfully, then the tenant appears in the list AND an audit entry `tenant.provisioned` exists with actor/resource/timestamp | API test (POST + audit query) + component test | Pass — observable via API state + audit row |
-| AC-R01-02 | FR-R01-01 | Given the provision dialog is open, when I close it before confirming "I saved the password", then the one-time password is not retrievable afterwards (no second display) | Component test + visual check | Pass — state verified by UI test; visual: panel absent on reopen |
+| AC-R01-01 | FR-R01-01, NFR-R01-05 | Given super admin opens Tenants, when a tenant is provisioned successfully, then the tenant appears in the list AND an audit entry `tenant.provisioned` exists with actor/resource/timestamp AND a live alembic-migrated tenant DB + registry admin user (`users.tenant = slug`) exist | API test (POST + audit query) + integration test (tenant lifecycle roundtrip) | Pass — observable via API state + audit row + tenant DB probe |
+| AC-R01-02 | FR-R01-01 | Given the provision dialog is open, when I close it before confirming "I saved the password", then the one-time password is not retrievable afterwards (no second display) | Component test + visual check + Playwright (provision → one-time password panel → copy → "I saved it" → panel gone) | Pass — state verified by UI test; visual: panel absent on reopen |
 | AC-R01-03 | FR-R01-01 | Given a duplicate slug, when I submit, then an inline error on the slug field appears and the form values are preserved | Component test with mocked 409 | Pass — observable inline field error |
 | AC-R01-04 | FR-R01-02, NFR-R01-09 | Given multi-tenant super admin, when I switch tenant via switcher, then all admin lists refetch tenant-scoped data within 1s and header shows the new tenant | E2E (Playwright) with 2 tenants | Pass — measurable: network calls scoped, header text |
 | AC-R01-05 | FR-R01-03, FR-R01-19 | Given super admin creates a user, when the API returns success, then the user row appears with assigned role AND audit entry recorded | API + component test | Pass — API state + audit row |
@@ -65,9 +65,12 @@ From the verification evidence, I observe:
 - **Achieved**: 37 of 41 ACs are verifiable today against the existing API surface
   (`backend/api/routes.py`) and frontend screens (tenants, users, roles, replicas,
   routing, service keys, webhooks, station AEs, logs, metrics, fhir, hl7, oauth,
-  notifications, system health).
-- **Partially achieved**: AC-R01-02/14/22 (secret one-time display) are specified but
+  notifications, system health). Post-ADR-026, tenant provisioning exercises the
+  real DB-per-tenant lifecycle (AC-R01-01) and the tenant switcher routes requests
+  end-to-end via JWT claim / `X-Tenant-ID` (AC-R01-04).
+- **Partially achieved**: AC-R01-14/22 (secret one-time display) are specified but
   require frontend implementation to confirm; the API already returns secrets once.
+  AC-R01-02 (tenant one-time password panel) is now E2E-covered via Playwright.
 - **Not achieved (gated)**: AC-R01-38 (backup/restore — no implementation exists).
   This remains a flagged gap.
 - **Risk noted**: notification-creation rules for admin events (US-R01-14) depend on

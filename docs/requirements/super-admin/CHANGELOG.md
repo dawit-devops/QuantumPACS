@@ -3,6 +3,16 @@
 All notable changes to this requirements package follow
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## [1.4.0] — 2026-08-06
+### Added
+- ADR-026 (Tenant Data-Plane Wiring) closes the dormant DB-per-tenant architecture: contextvar-routed `get_conn()`, JWT claim → `X-Tenant-ID` → platform resolution precedence, `default` tenant seed, status lifecycle gating (403/404), quota enforcement (`QUOTA_EXCEEDED` + 90% breach notification), `tenant_usage_daily` metering, per-tenant backup, tenant health endpoint; external billing explicitly out of scope (backlog)
+- Integration roundtrip (`backend/tests/integration/test_tenant_lifecycle.py`): provision → registry row + tenant DB + admin, JWT tenant claim login, routed-request isolation, suspend/decommission gating, metering, health
+- Playwright coverage for the one-time admin password panel, provisioned card grid, and lifecycle status updates (`frontend/e2e/tenant-provisioning.spec.ts`)
+### Changed
+- README Flagged Gaps: storage tiering / quota enforcement UI resolved (metering + health feed the usage dashboard); per-tenant backup noted; external billing listed as explicit out-of-scope backlog
+- Artifacts 01/06: FR-R01-01 (real DB + registry admin + status lifecycle) and FR-R01-02 (switcher functional end-to-end via routed connections) notes; AC-R01-01/02/04 verification methods updated
+- FR-R01-18 (backup/restore of full system state) remains GATED / backlog — AC-R01-38 untouched
+
 ## [1.3.0] — 2026-08-05
 ### Added
 - FR-R01-17 closed: `GET /v2/dashboard/health` (METRICS_READ) aggregates db, es, redis, storage, dicom_listener, ingestion_service, hl7, fhir, auth component status

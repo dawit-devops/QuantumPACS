@@ -1,4 +1,4 @@
-import { useDocumentTitle } from "../hooks";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Layout,
@@ -74,6 +74,9 @@ function ReadingWorklist() {
     const timer = setInterval(fetchList, REFRESH_MS);
     return () => clearInterval(timer);
   }, [fetchList]);
+
+  // Tenant switch → refetch immediately (interval may be up to 30s away).
+  useTenantRefetch(fetchList);
 
   const modalities = [...new Set(data.map((e) => e.modality).filter(Boolean))];
 

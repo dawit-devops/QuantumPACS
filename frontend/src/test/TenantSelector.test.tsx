@@ -7,12 +7,15 @@ import { AuthProvider } from "../auth/AuthContext";
 import TenantSelector from "../auth/TenantSelector";
 
 const mockListSessionTenants = vi.hoisted(() => vi.fn());
+const mockEmit = vi.hoisted(() => vi.fn());
 vi.mock("../api/tenants", () => ({
   listSessionTenants: mockListSessionTenants,
 }));
 vi.mock("../helpers", () => ({
   request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
+  emit: mockEmit,
+  subscribe: vi.fn(() => undefined),
 }));
 
 vi.mock("../hooks", () => ({
@@ -22,6 +25,7 @@ vi.mock("../hooks", () => ({
 
 afterEach(() => {
   localStorage.clear();
+  mockEmit.mockClear();
 });
 
 const mockTenants = [
@@ -75,6 +79,23 @@ describe("TenantSelector", () => {
     expect(screen.queryByText("Main Hospital")).not.toBeInTheDocument();
   });
 
+  it("renders nothing (no dead Tenant label) when authenticated without a tenant", async () => {
+    initAuth();
+    localStorage.removeItem("tenant_id");
+    localStorage.removeItem("tenant_name");
+    mockListSessionTenants.mockResolvedValue(mockTenants);
+
+    renderWithApp(
+      <MemoryRouter>
+        <AuthProvider>
+          <TenantSelector />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Tenant")).not.toBeInTheDocument();
+  });
+
   it("displays tenant list in Select dropdown", async () => {
     initAuth();
     mockListSessionTenants.mockResolvedValue(mockTenants);
@@ -97,7 +118,7 @@ describe("TenantSelector", () => {
     });
   });
 
-  it("switches active tenant via dropdown", async () => {
+  it("switches active tenant via dropdown and emits tenant:changed", async () => {
     initAuth();
     mockListSessionTenants.mockResolvedValue(mockTenants);
 
@@ -122,6 +143,8 @@ describe("TenantSelector", () => {
     });
 
     expect(localStorage.getItem("tenant_name")).toBe("North Clinic");
+    // Screens subscribed via useTenantRefetch() depend on this event.
+    expect(mockEmit).toHaveBeenCalledWith("tenant:changed", "north");
     const northElements = screen.getAllByText("North Clinic");
     expect(northElements.length).toBeGreaterThanOrEqual(1);
   });

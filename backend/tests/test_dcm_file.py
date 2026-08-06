@@ -64,11 +64,12 @@ class TestGetMeta:
         meta = get_meta(dataset)
         expected = {
             'patient_id', 'patient_name', 'patient_birth_date',
-            'patient_sex', 'study_id', 'study_description',
+            'patient_sex', 'study_id', 'study_description', 'study_date',
             'series_number', 'modality', 'series_description',
             'study_instance_uid', 'series_instance_uid',
-            'sop_instance_uid', 'accession_number',
-            'cleaned', 'raw',
+            'sop_instance_uid', 'sop_class_uid', 'instance_number',
+            'accession_number',
+            'cleaned',
         }
         assert set(meta.keys()) == expected
 
@@ -109,10 +110,11 @@ class TestGetMeta:
         assert 'Patient ID' in meta['cleaned']
         assert "Patient's Name" in meta['cleaned']
 
-    def test_raw_is_dict_of_tag_to_element(self, dataset):
+    def test_raw_not_exposed(self, dataset):
+        # raw held non-serializable DataElement objects and was unused in
+        # production; it must not be part of the returned metadata.
         meta = get_meta(dataset)
-        assert isinstance(meta['raw'], dict)
-        assert len(meta['raw']) > 0
+        assert 'raw' not in meta
 
     def test_modality_cleaned(self, dataset):
         meta = get_meta(dataset)
@@ -121,6 +123,55 @@ class TestGetMeta:
     def test_patient_name_unmodified(self, dataset):
         meta = get_meta(dataset)
         assert meta['patient_name'] == 'Smith^John'
+
+    @pytest.mark.filterwarnings('ignore:Invalid value for VR UI')
+    def test_get_meta_preserves_slash_in_uids_and_accession(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P/001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        ds.StudyInstanceUID = '1.2.840.113619/2.55.1/1760426491.1234.1'
+        ds.SeriesInstanceUID = '1.2.840.113619/2.55.1/1760426491.1234.2'
+        ds.SOPInstanceUID = '1.2.840.113619/2.55.1/1760426491.1234.3'
+        ds.AccessionNumber = 'ACC/001'
+        meta = get_meta(ds)
+        # UIDs and accessions are identity keys and must survive verbatim.
+        assert meta['study_instance_uid'] == '1.2.840.113619/2.55.1/1760426491.1234.1'
+        assert meta['series_instance_uid'] == '1.2.840.113619/2.55.1/1760426491.1234.2'
+        assert meta['sop_instance_uid'] == '1.2.840.113619/2.55.1/1760426491.1234.3'
+        assert meta['accession_number'] == 'ACC/001'
+        # Free-text IDs stay sanitized (path-safety).
+        assert meta['patient_id'] == 'P-001'
+
+    def test_cleaned_skips_binary_other_vrs(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        # Full C-STORE datasets carry PixelData (OB/OW) — binary payloads
+        # must not appear in the persisted `cleaned` metadata.
+        ds.add(DataElement(Tag(0x7FE0, 0x0010), 'OB', b'\x00' * 4096))
+        ds.add(DataElement(Tag(0x0019, 0x1000), 'LO', 'alpha'))
+        meta = get_meta(ds)
+        assert 'Pixel Data' not in meta['cleaned']
+        assert 'Private tag data' in meta['cleaned']
+
+    def test_cleaned_keys_collision_safe_for_private_tags(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        # Two distinct private tags both have the name 'Private tag data'.
+        ds.add(DataElement(Tag(0x0019, 0x1000), 'LO', 'alpha'))
+        ds.add(DataElement(Tag(0x0019, 0x1001), 'LO', 'beta'))
+        meta = get_meta(ds)
+        private = {k: v for k, v in meta['cleaned'].items() if 'Private tag data' in k}
+        assert len(private) == 2
+        assert 'alpha' in private.values()
+        assert 'beta' in private.values()
 
     def test_get_meta_returns_study_instance_uid(self):
         ds = pydicom.Dataset()
@@ -137,6 +188,20 @@ class TestGetMeta:
         assert meta['series_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.2'
         assert meta['sop_instance_uid'] == '1.2.840.113619.2.55.1.1760426491.1234.3'
         assert meta['accession_number'] == 'ACC001'
+
+    def test_get_meta_extracts_dicomweb_index_fields(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        ds.StudyDate = '20260725'
+        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+        ds.InstanceNumber = '7'
+        meta = get_meta(ds)
+        assert meta['study_date'] == '20260725'
+        assert meta['sop_class_uid'] == '1.2.840.10008.5.1.4.1.1.2'
+        assert meta['instance_number'] == '7'
 
     def test_get_meta_uids_default_to_empty_when_missing(self):
         ds = pydicom.Dataset()
@@ -190,5 +255,5 @@ class TestParseDcm:
 
         result = parse_dcm('/f.dcm')
         assert 'cleaned' in result
-        assert 'raw' in result
+        assert 'raw' not in result
         assert 'patient_id' in result

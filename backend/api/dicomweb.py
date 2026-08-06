@@ -42,6 +42,25 @@ class _Pagination:
         self.offset = int(offset) if offset and offset.isdigit() else 0
 
 
+def _apply_includefield(rows, params):
+    """Filter DICOMweb rows to the tags requested via `includefield`.
+
+    Per PS3.18 QIDO-RS, `includefield` is a comma-separated list of DICOM
+    tags (or `all`). An empty/absent value returns the full default field
+    set. Unknown tags are ignored.
+    """
+    raw = params.get('includefield') or params.get('includefields')
+    if not raw or raw.lower() == 'all':
+        return rows
+    wanted = {t.strip() for t in raw.split(',') if t.strip()}
+    if not wanted:
+        return rows
+    filtered = []
+    for row in rows:
+        filtered.append({k: v for k, v in row.items() if k in wanted})
+    return filtered
+
+
 class DicomWebStudies(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
@@ -52,35 +71,82 @@ class DicomWebStudies(HTTPEndpoint):
 
         if series_uid:
             rows = await self._query_instances(params, study_uid, series_uid)
+            rows = _apply_includefield(rows, params)
             return DicomJsonResponse(json.dumps(rows))
         if study_uid:
             rows = await self._query_series(params, study_uid)
+            rows = _apply_includefield(rows, params)
             return DicomJsonResponse(json.dumps(rows))
 
         rows, total = await self._query_studies(params, pagination)
+        rows = _apply_includefield(rows, params)
         resp = DicomJsonResponse(json.dumps(rows))
         resp.headers['X-Total-Count'] = str(total)
         return resp
 
     async def _query_studies(self, params, pagination):
-        patient_id = params.get('PatientID')
-        accession = params.get('AccessionNumber')
-        study_uid = params.get('StudyInstanceUID')
-
         where_clauses = []
         args = []
         idx = 1
+
+        patient_id = params.get('PatientID')
         if patient_id:
             where_clauses.append(f"p.patient_id = ${idx}")
             args.append(patient_id)
             idx += 1
+
+        patient_name = params.get('PatientName')
+        if patient_name:
+            # DICOMweb uses '*' wildcards; translate to SQL ILIKE. Leading
+            # and trailing '*' become partial matches; a bare '*' matches all.
+            like = patient_name.replace('*', '%')
+            if like.strip('%') == '':
+                like = '%'
+            where_clauses.append(f"p.name ILIKE ${idx}")
+            args.append(like)
+            idx += 1
+
+        accession = params.get('AccessionNumber')
         if accession:
             where_clauses.append(f"s.accession_number = ${idx}")
             args.append(accession)
             idx += 1
+
+        study_uid = params.get('StudyInstanceUID')
         if study_uid:
             where_clauses.append(f"s.study_instance_uid = ${idx}")
             args.append(study_uid)
+            idx += 1
+
+        study_description = params.get('StudyDescription')
+        if study_description:
+            like = study_description.replace('*', '%')
+            where_clauses.append(f"s.description ILIKE ${idx}")
+            args.append(like)
+            idx += 1
+
+        modality = params.get('Modality')
+        if modality:
+            where_clauses.append(f"""EXISTS (
+                SELECT 1 FROM series ser WHERE ser.study_id = s.id AND ser.modality = ${idx}
+            )""")
+            args.append(modality)
+            idx += 1
+
+        study_date = params.get('StudyDate')
+        if study_date and '-' in study_date:
+            start, _, end = study_date.partition('-')
+            if start:
+                where_clauses.append(f"s.study_date >= ${idx}")
+                args.append(start)
+                idx += 1
+            if end:
+                where_clauses.append(f"s.study_date <= ${idx}")
+                args.append(end)
+                idx += 1
+        elif study_date:
+            where_clauses.append(f"s.study_date = ${idx}")
+            args.append(study_date)
             idx += 1
 
         where = ' AND '.join(where_clauses) if where_clauses else 'TRUE'
@@ -97,7 +163,7 @@ class DicomWebStudies(HTTPEndpoint):
             sql = f"""
                 SELECT p.patient_id, p.name AS patient_name, p.birth_date AS patient_birth_date,
                        p.sex AS patient_sex, s.id AS study_db_id, s.study_id, s.description AS study_description,
-                       s.study_instance_uid, s.accession_number
+                       s.study_instance_uid, s.accession_number, s.study_date
                 FROM studies s
                 JOIN patients p ON p.id = s.patient_id
                 WHERE {where}
@@ -127,24 +193,17 @@ class DicomWebStudies(HTTPEndpoint):
     async def _query_instances(self, params, study_uid, series_uid):
         async with get_conn() as conn:
             sql = """
-                SELECT f.sop_instance_uid, f.meta
+                SELECT f.sop_instance_uid, f.sop_class_uid, f.instance_number
                 FROM files f
                 JOIN series ser ON ser.id = f.series_id
                 JOIN studies s ON s.id = ser.study_id
                 WHERE s.study_instance_uid = $1 AND ser.series_instance_uid = $2
+                  AND f.deleted = false
                 ORDER BY f.name
             """
             rows = await conn.fetch(sql, study_uid, series_uid)
             from dcm.dicom_json import row_to_instance_json
-            result = []
-            for r in rows:
-                row = dict(r)
-                if row.get('meta'):
-                    meta = json.loads(row['meta'])
-                    row['sop_class_uid'] = meta.get('SOPClassUID', '')
-                    row['instance_number'] = meta.get('InstanceNumber', '')
-                result.append(row_to_instance_json(row))
-            return result
+            return [row_to_instance_json(dict(r)) for r in rows]
 
     @requires_permission(Permission.DICOMWEB_WRITE)
     async def post(self, request):
@@ -152,7 +211,15 @@ class DicomWebStudies(HTTPEndpoint):
         content_type = request.headers.get('content-type', '')
 
         parts = _parse_multipart_related(body, content_type)
-        stored = []
+        if not parts:
+            err_body = {'error': {'code': 'EMPTY_REQUEST', 'message': 'No DICOM instances in request body'}}
+            return DicomJsonResponse(json.dumps(err_body), status_code=400)
+
+        # STOW-RS success report (PS3.18 §10.5): 00081190 RetrieveURL,
+        # 00081198 Referenced SOP Sequence with 00081150/00081155 per stored
+        # instance, 00081199 Failed SOP Sequence for any store failures.
+        referenced = []
+        failed = []
         for part_bytes in parts:
             try:
                 buf = BytesIO(part_bytes)
@@ -161,16 +228,43 @@ class DicomWebStudies(HTTPEndpoint):
             except Exception:
                 err_body = {'error': {'code': 'PARSE_ERROR', 'message': 'Malformed DICOM instance'}}
                 return DicomJsonResponse(json.dumps(err_body), status_code=400)
+
+            sop_uid = getattr(ds, 'SOPInstanceUID', None)
+            if not sop_uid:
+                err_body = {
+                    'error': {'code': 'MISSING_SOP_INSTANCE_UID', 'message': 'Instance lacks SOPInstanceUID'},
+                }
+                return DicomJsonResponse(json.dumps(err_body), status_code=400)
+            sop_class = str(getattr(ds, 'SOPClassUID', ''))
+
             modality = getattr(ds, 'Modality', '')
             if modality and not validate_modality(modality):
                 err_body = {'error': {'code': 'INVALID_MODALITY', 'message': f'Invalid modality: {modality}'}}
                 return DicomJsonResponse(json.dumps(err_body), status_code=400)
 
             ok = await store_instance(ds, buf)
+            ref_sop = {
+                '00081150': {'vr': 'UI', 'Value': [sop_class]},
+                '00081155': {'vr': 'UI', 'Value': [str(sop_uid)]},
+            }
             if ok:
-                stored.append(str(ds.SOPInstanceUID))
+                referenced.append(ref_sop)
+            else:
+                failed.append(ref_sop)
 
-        return DicomJsonResponse(json.dumps(stored))
+        report = {}
+        if referenced:
+            retrieve_url = str(request.base_url).rstrip('/') + '/dicomweb/studies'
+            report['00081190'] = {'vr': 'UR', 'Value': [retrieve_url]}
+            report['00081198'] = {'vr': 'SQ', 'Value': referenced}
+        if failed:
+            report['00081199'] = {'vr': 'SQ', 'Value': failed}
+
+        if not referenced and failed:
+            status_code = 409
+        else:
+            status_code = 200
+        return DicomJsonResponse(json.dumps(report), status_code=status_code)
 
 
 class DicomWebWado(HTTPEndpoint):
@@ -236,7 +330,7 @@ async def _wado_retrieve_instance(conn, master, instance_uid):
                f.meta, rf.meta AS replica_meta
         FROM replica_files rf
         JOIN files f ON f.id = rf.file_id
-        WHERE f.sop_instance_uid = $1 AND rf.replica_id = $2
+        WHERE f.sop_instance_uid = $1 AND rf.replica_id = $2 AND f.deleted = false
         LIMIT 1
     """, instance_uid, master['id'])
     if not row:
@@ -264,6 +358,7 @@ async def _wado_retrieve_series(conn, master, study_uid, series_uid):
         WHERE st.study_instance_uid = $1
           AND s.series_instance_uid = $2
           AND rf.replica_id = $3
+          AND f.deleted = false
     """, study_uid, series_uid, master['id'])
     if not rows:
         err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Series not found'}}
@@ -278,7 +373,7 @@ async def _wado_retrieve_study(conn, master, study_uid):
         FROM replica_files rf
         JOIN files f ON f.id = rf.file_id
         JOIN studies st ON st.id = f.study_id
-        WHERE st.study_instance_uid = $1 AND rf.replica_id = $2
+        WHERE st.study_instance_uid = $1 AND rf.replica_id = $2 AND f.deleted = false
     """, study_uid, master['id'])
     if not rows:
         err_body = {'error': {'code': 'NOT_FOUND', 'message': 'Study not found'}}
@@ -329,10 +424,16 @@ def _parse_multipart_related(body, content_type):
         raw = raw.strip(b'\r\n').strip()
         if raw == b'' or raw == b'--':
             continue
+        # Header terminator may be CRLFCRLF or LFLF depending on the client;
+        # only the DICOM part body follows the blank line.
         header_end = raw.find(b'\r\n\r\n')
+        sep_len = 4
+        if header_end == -1:
+            header_end = raw.find(b'\n\n')
+            sep_len = 2
         if header_end == -1:
             continue
-        part_body = raw[header_end + 4:]
+        part_body = raw[header_end + sep_len:]
         if b'Content-Type: application/dicom' in raw[:header_end]:
             parts.append(part_body)
 

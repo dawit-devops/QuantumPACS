@@ -4,8 +4,8 @@
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-R01-01 | The system SHALL allow the super admin to list, create, update, and delete tenants, with tenant provisioning creating the tenant database, admin user, and storage quota. | Must | `GET/POST /tenants`, `GET/PUT/DELETE /tenants/{id}`; provisioning dialog per IMPLEMENTATION_PLAN-v3 F6.2 |
-| FR-R01-02 | The system SHALL allow the super admin to switch tenant context from a tenant switcher and scope all subsequent admin views to the selected tenant. | Must | F6.2 Tenant Switcher |
+| FR-R01-01 | The system SHALL allow the super admin to list, create, update, and delete tenants, with tenant provisioning creating the tenant database, admin user, and storage quota. | Must | `GET/POST /tenants`, `GET/PUT/DELETE /tenants/{id}`; provisioning creates a real alembic-migrated tenant DB, a registry admin user (`users.tenant = slug`, main DB), plan, and storage quota; status lifecycle provisioning/active/suspended/quarantined/decommissioned (ADR-026) |
+| FR-R01-02 | The system SHALL allow the super admin to switch tenant context from a tenant switcher and scope all subsequent admin views to the selected tenant. | Must | Tenant switcher functional end-to-end: JWT `tenant` claim / `X-Tenant-ID` header resolution (admin override) with contextvar-routed tenant DB connections via `get_conn()` (ADR-026) |
 | FR-R01-03 | The system SHALL allow the super admin to manage users: list, create, deactivate, reset passwords, and change roles. | Must | `GET/POST /users`, `POST /users/deactivate`, `POST /users/new_password`, `POST /users/role` |
 | FR-R01-04 | The system SHALL allow the super admin to bulk-import users from CSV with validation report before commit. | Should | Existing `BulkImport.tsx` screen |
 | FR-R01-05 | The system SHALL allow the super admin to manage RBAC roles: list, create, edit, delete, view role users, and assign fine-grained permissions from the permission catalog. | Must | `GET/POST /roles`, `GET/PUT/DELETE /roles/{id}`, `GET /roles/{id}/users`, `GET /permissions` |

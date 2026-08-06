@@ -85,6 +85,13 @@ class TestTenants:
     @pytest.mark.asyncio
     async def test_delete_soft_deletes_tenant(self):
         conn = AsyncMock()
+        # delete() resolves the row first (so the pool closes by slug); the
+        # soft-delete UPDATE is then asserted on the real executed SQL.
+        conn.fetchrow.return_value = {
+            'id': 'tenant-1', 'slug': 'tenant-1', 'name': 'T1',
+            'db_password': 'secret',
+            'created_at': '2026-01-01', 'updated_at': '2026-01-01',
+        }
         t = Tenants(conn=conn)
         await t.delete('tenant-1')
         sql = conn.execute.call_args[0][0]

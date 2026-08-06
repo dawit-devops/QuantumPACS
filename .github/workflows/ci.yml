@@ -90,6 +90,7 @@ jobs:
       - run: docker compose up -d
         env:
           SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
       - name: Wait for backend health
         run: |
           for i in $(seq 1 90); do

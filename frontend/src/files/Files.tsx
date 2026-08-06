@@ -23,6 +23,7 @@ import { PageState } from "../common/PageState";
 import { AdminFiles } from "./AdminFiles";
 import AdvancedSearch from "./AdvancedSearch";
 import { PAGINATION } from "../config";
+import { useTenantRefetch } from "../hooks";
 import "./Files.css";
 
 const Content = Layout.Content;
@@ -230,6 +231,10 @@ function Files() {
     fetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
+
+  // Tenant switch → refetch: the QIDO search is scoped server-side via the
+  // X-Tenant-ID header, so results must not linger from the old tenant.
+  useTenantRefetch(fetch);
 
   // No second mount effect for PAGINATION.limit — it is a module constant,
   // so a separate effect would fire once on mount and duplicate the first

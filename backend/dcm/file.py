@@ -20,8 +20,25 @@ def _safe_repval(v):
 
 
 def get_meta(data):
-    data_dict = dict(data)
-    cleaned = dict((v.name, _safe_repval(v)) for v in data_dict.values())
+    # Binary "Other" VRs carry pixel/encapsulated payloads, never searchable
+    # metadata. Skip them so C-STORE datasets (full pixel data) don't leak
+    # noise into `cleaned` → meta JSONB/ES.
+    _BINARY_VRS = frozenset({'OB', 'OD', 'OF', 'OL', 'OV', 'OW', 'UN'})
+
+    # Explicit iteration keeps this stable across pydicom majors (dict(ds)
+    # semantics changed); iterating a Dataset yields DataElements in 2.x–3.x.
+    cleaned = {}
+    for elem in data:
+        if elem.VR in _BINARY_VRS:
+            continue
+        key = elem.name
+        if key in cleaned:
+            # Element names are not unique — every private tag is named
+            # 'Private tag data'. Disambiguate by tag so no metadata is
+            # silently dropped from the persisted `cleaned` dict.
+            key = f'{key} ({elem.tag})'
+        cleaned[key] = _safe_repval(elem)
+
     ret = {
         'patient_id': clean(getattr(data, 'PatientID', ''), strict=True),
         'patient_name': clean(getattr(data, 'PatientName', '')),
@@ -29,15 +46,21 @@ def get_meta(data):
         'patient_sex': clean(getattr(data, 'PatientSex', '')),
         'study_id': clean(getattr(data, 'StudyID', ''), strict=True),
         'study_description': clean(getattr(data, 'StudyDescription', '')),
-        'study_instance_uid': clean(getattr(data, 'StudyInstanceUID', ''), strict=True),
-        'accession_number': clean(getattr(data, 'AccessionNumber', ''), strict=True),
+        'study_date': clean(getattr(data, 'StudyDate', '')),
+        # UIDs and accession numbers are identity keys — preserve them
+        # verbatim. Non-conformant values containing '/' occur in the wild;
+        # rewriting them breaks WADO-RS/QIDO lookups and worklist matching
+        # against the originals.
+        'study_instance_uid': clean(getattr(data, 'StudyInstanceUID', '')),
+        'accession_number': clean(getattr(data, 'AccessionNumber', '')),
         'series_number': clean(getattr(data, 'SeriesNumber', ''), strict=True),
-        'series_instance_uid': clean(getattr(data, 'SeriesInstanceUID', ''), strict=True),
+        'series_instance_uid': clean(getattr(data, 'SeriesInstanceUID', '')),
         'modality': clean(getattr(data, 'Modality', '')),
         'series_description': clean(getattr(data, 'SeriesDescription', '')),
-        'sop_instance_uid': clean(getattr(data, 'SOPInstanceUID', ''), strict=True),
+        'sop_instance_uid': clean(getattr(data, 'SOPInstanceUID', '')),
+        'sop_class_uid': clean(getattr(data, 'SOPClassUID', '')),
+        'instance_number': clean(getattr(data, 'InstanceNumber', '')),
         'cleaned': cleaned,
-        'raw': data_dict,
     }
     return ret
 

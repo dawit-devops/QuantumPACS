@@ -1,4 +1,4 @@
-import { useDocumentTitle } from "../hooks";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, {
   useState,
   useEffect,
@@ -50,6 +50,7 @@ import {
 } from "chart.js";
 import withSidebar from "../common/base";
 import { useTheme } from "../common/ThemeProvider";
+import { useAuth } from "../auth/AuthContext";
 import {
   getDashboardMetrics,
   getHealth,
@@ -208,6 +209,7 @@ function Metrics() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Metrics");
   const { isDark } = useTheme();
+  const { activeTenant } = useAuth();
 
   // Dashboard metrics and system health are fetched independently so one
   // panel's failure never blocks the other (AC-R01-19).
@@ -255,6 +257,11 @@ function Metrics() {
     fetchMetrics();
     fetchHealth();
   }, [fetchMetrics, fetchHealth]);
+
+  // Totals are scoped server-side via the X-Tenant-ID header (client.ts);
+  // a tenant switch must refetch so the cards never show the old tenant's
+  // numbers.
+  useTenantRefetch(refreshAll);
 
   useEffect(() => {
     fetchMetrics();
@@ -409,6 +416,11 @@ function Metrics() {
         >
           <Col>
             <Space>
+              {activeTenant && (
+                <Tag color="blue" style={{ fontSize: 12 }}>
+                  Tenant: {activeTenant.name}
+                </Tag>
+              )}
               <Radio.Group
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}

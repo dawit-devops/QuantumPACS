@@ -252,7 +252,35 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
 
             await Roles(conn).seed_built_in_roles()
             await Users(conn).add_superadmin()
+            await _ensure_default_tenant(conn)
             log.info('Database schema synced')
+
+
+async def _ensure_default_tenant(conn):
+    """Seed the `default` tenant when the registry is empty. Its data store IS
+    the main database, so db_* fields mirror the main config; the middleware
+    short-circuits to the main pool for it. Existing users are NOT reassigned."""
+    from db.tenants import Tenants
+    try:
+        count = await conn.fetchval('SELECT COUNT(*) FROM tenants')
+        if count:
+            return
+        await Tenants(conn).create(
+            name='Default',
+            slug='default',
+            db_name=config['db_database'],
+            db_host=config['db_host'],
+            db_port=int(config.get('db_port', '5432')),
+            db_user=config['db_user'],
+            db_password=config['db_password'],
+            storage_quota_bytes=int(config.get('tenant_default_quota_bytes', '0')),
+            status='active',
+            plan='free',
+        )
+        log.info('Seeded default tenant (slug=default, data store=main database)')
+    except Exception:
+        # tenants table may not exist yet (migrations not run) — non-fatal.
+        log.warning('Could not seed default tenant', exc_info=True)
 
 
 async def teardown():

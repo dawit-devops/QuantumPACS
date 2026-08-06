@@ -87,6 +87,8 @@ from api.portal import (
     PortalFollowUpStatusHandler,
 )
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
+from api.metering import MeteringUsageHandler, PlatformUsageHandler
+from api.tenant_health import TenantHealthHandler
 from api.rbac import guard_endpoint_method
 from api.permissions import Permission
 from api.ws import WSToken, WebsocketHandler
@@ -162,8 +164,11 @@ _V1_ROUTES = [
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
     v2(Route('/tenants', endpoint=TenantsHandler)),
+    v2(Route('/tenants/health', endpoint=TenantHealthHandler)),
     v2(Route('/tenants/{id}', endpoint=TenantHandler)),
     v2(Route('/tenants/{id}/stats', endpoint=TenantStatsHandler)),
+    v2(Route('/tenants/{id}/usage', endpoint=MeteringUsageHandler)),
+    v2(Route('/usage', endpoint=PlatformUsageHandler)),
     v2(Route('/api-keys', endpoint=ApiKeysHandler)),
     v2(Route('/api-keys/{id}', endpoint=ApiKeyHandler)),
     v2(Route('/oauth/providers', endpoint=OAuthProvidersHandler)),
@@ -175,8 +180,10 @@ _V1_ROUTES = [
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
+    # a study. POST /dicomweb/studies stores without a pre-specified study.
+    v2(Route('/dicomweb/studies/{study_uid}/instances', endpoint=DicomWebStudies, methods=['POST'])),
     v2(Route('/wado', endpoint=DicomWebWadoUri)),
-    Route('/api/v2/wado', endpoint=DicomWebWadoUri),
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
     v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),

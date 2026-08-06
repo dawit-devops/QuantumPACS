@@ -91,7 +91,8 @@ services:
       - DB_DATABASE=${POSTGRES_DB:-quantumpacs}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - SECRET=${SECRET:-quantumpacs-docker-compose-dev-secret-change-me}
+      - SECRET=${SECRET:?Set SECRET in .env — see .env.example (any known/committed value is refused)}
+      - SUPERADMIN_PASS=${SUPERADMIN_PASS:?Set SUPERADMIN_PASS in .env — see .env.example (default pa55w0rd is refused)}
       - QUANTUMPACS_DOCKER=true
     ports:
       - "8080:8080"

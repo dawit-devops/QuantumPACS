@@ -281,13 +281,23 @@ async def _upsert_patient(data: dict) -> bool:
             pid = data.get('patient_id', '')
             if pid:
                 facility = data.get('sending_facility', '')
-                meta_updates = '"sync_source": "hl7"'
+                # Parameterized everywhere: facility comes from the wire
+                # (MSH-4) and must never be interpolated into SQL.
                 if facility:
-                    meta_updates += f', "tenant_id": "{facility}"'
-                await conn.execute(
-                    f"UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{{}}'), '{{}}', '{{{meta_updates}}}') WHERE patient_id = $1",
-                    pid,
-                )
+                    await conn.execute(
+                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
+                        "jsonb_build_object('sync_source', 'hl7', 'tenant_id', $2)) "
+                        "WHERE patient_id = $1",
+                        pid,
+                        facility,
+                    )
+                else:
+                    await conn.execute(
+                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
+                        "jsonb_build_object('sync_source', 'hl7')) "
+                        "WHERE patient_id = $1",
+                        pid,
+                    )
         return True
     except Exception:
         log.exception('patient upsert failed')

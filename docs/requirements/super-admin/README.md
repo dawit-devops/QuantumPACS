@@ -81,6 +81,11 @@ Works from an ops/IT office; reacts to incidents; rarely uses the clinical viewe
 
 ## Flagged Gaps (not yet in API surface — must be raised with backend)
 
-- Storage tiering / quota enforcement UI (tenant provision accepts `storage_quota_bytes`; no usage dashboard)
-- Backup & restore of full system state (DB + files) — roadmap feature, not yet implemented (FR-R01-18)
+- Backup & restore of full system state (DB + files) — roadmap feature, not yet implemented (FR-R01-18); per-tenant DB backup via `pg_dump` exists (ADR-026, `scripts/backup_db.sh`)
 - Global notification preferences administration (only per-user bell exists)
+- External subscription billing (Stripe etc.) — explicitly out of scope for v3.0 (ADR-026); per-tenant usage metering (`tenant_usage_daily`) is the foundation billing will consume
+
+Resolved 2026-08-06 (ADR-026): storage tiering / quota enforcement UI — storage
+quota is enforced on upload (`QUOTA_EXCEEDED`, 90% breach notification), and the
+per-tenant usage dashboard is fed by `tenant_usage_daily` metering plus the
+tenant health endpoint (`GET /v2/tenants/health`).

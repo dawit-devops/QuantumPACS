@@ -13,10 +13,15 @@ from api.schemas.auth import LoginRequest
 from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
 from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRoleRequest
+from db.audit_log import AuditLog
 from db.conn import get_conn
+from db.roles import Roles
 from db.users import Users
 from exceptions import ApiException
+from log import get_logger, request_id_var
 from services.interfaces import AuthService
+
+log = get_logger(__name__)
 
 
 def _extract_token(request):
@@ -30,6 +35,22 @@ def _extract_token(request):
     if not auth:
         auth = request.cookies.get('token')
     return auth
+
+
+async def _can_assign_role(user, conn, role_id) -> tuple[bool, str]:
+    """A non-platform-admin may only grant a role whose permission set is a
+    subset of their own — otherwise USER_WRITE escalates to super_admin."""
+    caller_perms = set(getattr(user, 'permissions', None) or [])
+    role = await Roles(conn).get(role_id)
+    if not role:
+        return False, 'Role not found'
+    target = role.get('permissions') or []
+    if isinstance(target, str):
+        import json
+        target = json.loads(target)
+    if not set(target) <= caller_perms:
+        return False, 'Target role exceeds your own grants'
+    return True, ''
 
 
 class Login(HTTPEndpoint):
@@ -57,18 +78,53 @@ class Login(HTTPEndpoint):
                     data = await Users(conn).login(body.username, body.password)
                 except ApiException as e:
                     await login_bucket.record_db(ip, conn, success=False)
-                    return api_error('AUTH_FAILED', str(e), status=401)
+                    await AuditLog(conn).log_event(
+                        event_type='auth.login_failed',
+                        actor_id=None,
+                        resource_type='user',
+                        resource_id=body.username,
+                        details={'reason': type(e).__name__},
+                        request_id=request_id_var.get(),
+                    )
+                    # Generic message — the server-side distinction stays in
+                    # the audit log, never in the 401 body (enumeration).
+                    return api_error('AUTH_FAILED', 'Invalid credentials', status=401)
 
         async with get_conn() as conn:
             await login_bucket.record_db(ip, conn, success=True)
             await Users(conn).update_last_login(data['id'])
             role_slug, permissions = await Users(conn).get_user_role(data['id'])
-            access, refresh = create_token_pair(data, role=role_slug, permissions=permissions)
+            token_version = await Users(conn).get_token_version(data['id'])
+            tenant_id = None
+            tenant_name = None
+            if data.get('tenant'):
+                # Registry lookup on the MAIN pool (login is un-scoped) so the
+                # frontend can populate the tenant switcher without a round trip.
+                from db.tenants import Tenants
+                tenant_row = await Tenants(conn).get_by_slug(data['tenant'])
+                if tenant_row:
+                    tenant_id = str(tenant_row.get('id'))
+                    tenant_name = tenant_row.get('name')
+            access, refresh = create_token_pair(
+                data, role=role_slug, permissions=permissions,
+                token_version=token_version,
+            )
+            await AuditLog(conn).log_event(
+                event_type='auth.login_success',
+                actor_id=data['id'],
+                resource_type='user',
+                resource_id=str(data['id']),
+                details={'username': body.username},
+                request_id=request_id_var.get(),
+            )
             resp = ok({
                 'id': data['id'],
                 'admin': data['admin'],
                 'role': role_slug or '',
                 'permissions': permissions or [],
+                'tenant': data.get('tenant'),
+                'tenant_id': tenant_id,
+                'tenant_name': tenant_name,
                 'token': access,
                 'access_token': access,
                 'refresh_token': refresh,
@@ -115,6 +171,13 @@ class ChangePassword(HTTPEndpoint):
             token = _extract_token(request)
             if token:
                 await block_token(token)
+            await AuditLog(conn).log_event(
+                event_type='user.password_changed',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=str(request.user.id),
+                request_id=request_id_var.get(),
+            )
 
             return ok({})
 
@@ -138,6 +201,19 @@ class RevokeToken(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(RevokeTokenRequest, request)
         await block_token(body.token)
+        try:
+            async with get_conn() as conn:
+                await AuditLog(conn).log_event(
+                    event_type='auth.token_revoked',
+                    actor_id=request.user.id,
+                    resource_type='token',
+                    resource_id=body.token[:16],
+                    request_id=request_id_var.get(),
+                )
+        except Exception:
+            # Revocation itself already happened — an audit write failure must
+            # never turn a successful revoke into a 500.
+            log.warning('audit write failed for auth.token_revoked', exc_info=True)
         return ok({'message': 'Token revoked'})
 
 
@@ -161,9 +237,31 @@ class UsersHandler(HTTPEndpoint):
     @requires_permission(Permission.USER_WRITE)
     async def post(self, request):
         body = await parse_body(CreateUserRequest, request)
+        if body.admin and not request.user.admin:
+            # The admin flag is a second super-admin channel (JWT claim that
+            # bypasses tenant gates) — only platform admins may grant it.
+            return api_error(
+                'FORBIDDEN',
+                'Only platform admins may create admin users',
+                status=403,
+            )
 
         async with get_conn() as conn:
+            if body.role_id and not request.user.admin:
+                # Role assignment is capped to the caller's own grant set —
+                # otherwise USER_WRITE is a backdoor to super_admin.
+                ok_role, msg = await _can_assign_role(request.user, conn, body.role_id)
+                if not ok_role:
+                    return api_error('FORBIDDEN', msg, status=403)
             result = await Users(conn).add_user(body.username, body.admin, role_id=body.role_id)
+            await AuditLog(conn).log_event(
+                event_type='user.created',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=body.username,
+                details={'admin': body.admin, 'role_id': body.role_id},
+                request_id=request_id_var.get(),
+            )
 
         return ok({'password': result['password'], 'username': body.username})
 
@@ -175,6 +273,13 @@ class UsersDeactivate(HTTPEndpoint):
 
         async with get_conn() as conn:
             await Users(conn).deactivate(body.id)
+            await AuditLog(conn).log_event(
+                event_type='user.deactivated',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=str(body.id),
+                request_id=request_id_var.get(),
+            )
 
         resp = ok({})
         resp.headers['X-API-Deprecated'] = 'true'
@@ -190,6 +295,13 @@ class UsersNewPassword(HTTPEndpoint):
 
         async with get_conn() as conn:
             result = await Users(conn).new_pswd(body.id)
+            await AuditLog(conn).log_event(
+                event_type='user.password_reset',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=str(body.id),
+                request_id=request_id_var.get(),
+            )
 
         resp = ok({'password': result})
         resp.headers['X-API-Deprecated'] = 'true'
@@ -204,7 +316,19 @@ class UserRoleUpdate(HTTPEndpoint):
         body = await parse_body(UpdateUserRoleRequest, request)
 
         async with get_conn() as conn:
+            if not request.user.admin:
+                ok_role, msg = await _can_assign_role(request.user, conn, body.role_id)
+                if not ok_role:
+                    return api_error('FORBIDDEN', msg, status=403)
             await Users(conn).update_role(body.user_id, body.role_id)
+            await AuditLog(conn).log_event(
+                event_type='user.role_changed',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=str(body.user_id),
+                details={'role_id': body.role_id},
+                request_id=request_id_var.get(),
+            )
 
         return ok({})
 

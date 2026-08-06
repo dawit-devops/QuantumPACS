@@ -48,7 +48,10 @@ class Files(Table):
             updated TIMESTAMP NOT NULL DEFAULT (now() at time zone 'utc'),
             deleted BOOLEAN NOT NULL DEFAULT FALSE,
             meta JSONB,
-            tools_state JSONB
+            tools_state JSONB,
+            size BIGINT NOT NULL DEFAULT 0,
+            sop_class_uid TEXT,
+            instance_number TEXT
         );
         """)
         await self.exec('CREATE INDEX IF NOT EXISTS files_name on files(name);')
@@ -77,9 +80,12 @@ class Files(Table):
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
                 'indexed', 'hash', 'sop_instance_uid', 'created', 'updated',
+                'size', 'sop_class_uid', 'instance_number',
             ).insert((
                 filedata['name'], patient['id'], study['id'], series['id'], json.dumps(filedata['cleaned']),
                 False, filedata['hash'], filedata.get('sop_instance_uid', ''), now, now,
+                filedata.get('size', 0),
+                filedata.get('sop_class_uid', ''), filedata.get('instance_number', ''),
             ), ).returning('id')
 
             file_id = await self.fetchval(q)
@@ -156,7 +162,7 @@ class Files(Table):
             PatientT.patient_id,
             StudyT.study_id,
             SeriesT.number.as_('series_number'),
-            table.meta, table.tools_state, table.deleted,
+            table.meta, table.tools_state, table.deleted, table.size,
         ).join(PatientT).on(
             PatientT.id == table.patient_id
         ).join(StudyT).on(
@@ -180,7 +186,7 @@ class Files(Table):
             PatientT.patient_id,
             StudyT.study_id,
             SeriesT.number.as_('series_number'),
-            table.meta, table.tools_state, table.deleted,
+            table.meta, table.tools_state, table.deleted, table.size,
             ReplicaT.id.as_('replica_id'),
             ReplicaT.replica_id.as_('replica_replica_id'),
             ReplicaT.file_id.as_('replica_file_id'),

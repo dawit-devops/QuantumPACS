@@ -198,6 +198,28 @@ class TestTableAsync:
         assert result['id'] == 42
 
     @pytest.mark.asyncio
+    async def test_study_insert_uses_patient_db_id(self):
+        conn = AsyncMock()
+        conn.fetchval.return_value = 7
+        from db.study import Study
+        s = Study(conn)
+        result = await s.insert_or_select({
+            'patient_db_id': 3,
+            'study_id': 'S1',
+            'study_description': 'Chest',
+            'study_instance_uid': '1.2.3',
+            'accession_number': 'ACC1',
+            'study_date': '20260725',
+        })
+        sql = conn.fetchval.call_args[0][0]
+        assert result['id'] == 7
+        # Regression: Files.add() sets patient_db_id BEFORE Study insert;
+        # the patient_id column must bind that value, not the not-yet-set
+        # study_db_id (previously raised KeyError on fresh study inserts).
+        assert "INSERT INTO \"studies\"" in sql
+        assert "patient_id" in sql
+
+    @pytest.mark.asyncio
     async def test_files_delete_calls_storage_delete(self):
         tx = _AsyncContextMock()
         conn = AsyncMock()

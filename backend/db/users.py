@@ -2,7 +2,7 @@ import binascii
 import hashlib
 import hmac
 import os
-import random
+import secrets
 import string
 from datetime import datetime, timezone
 
@@ -14,7 +14,10 @@ from pypika.functions import Count
 
 
 def rand_pswd(length=12):
-    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    # CSPRNG output with a full alphabet; 'random' is fine for shuffles,
+    # not for credentials.
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 def hash_password(pswd, salt=None):
@@ -43,6 +46,13 @@ class Users(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS users_username on users(username);
         """)
+        # Migration 011 adds users.tenant; keep sync-only databases aligned.
+        await self.exec(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant TEXT"
+        )
+        await self.exec(
+            "CREATE INDEX IF NOT EXISTS users_tenant on users(tenant)"
+        )
 
     @staticmethod
     def to_json(data):
@@ -94,6 +104,11 @@ class Users(Table):
                 )
                 await self.exec(q)
 
+    async def get_user_row(self, user_id):
+        """Full user row (password hash included) for auth-state re-reads."""
+        q = self.select('*').where(self.table.id == user_id)
+        return await self.fetchone(q)
+
     async def get_user_role(self, user_id):
         from db.roles import Roles
         q = self.select('role_id').where(self.table.id == user_id)
@@ -124,9 +139,17 @@ class Users(Table):
         pswd = hash_password(new_password)
         q = self.update().where(self.table.id == user.id).set(self.table.password, pswd)
         await self.exec(q)
+        # Invalidate every other session: a password change must kill
+        # previously issued access + refresh tokens, not just the current one.
+        await self.increment_token_version(user.id)
 
-    async def add_user(self, username, is_admin, role_id=None):
-        q = self.insert().columns('username', 'password', 'admin', 'role_id').insert(username, '', is_admin, role_id).returning('id')
+    async def add_user(self, username, is_admin, role_id=None, tenant=None):
+        if tenant:
+            q = (self.insert().columns('username', 'password', 'admin', 'role_id', 'tenant')
+                 .insert(username, '', is_admin, role_id, tenant).returning('id'))
+        else:
+            q = (self.insert().columns('username', 'password', 'admin', 'role_id')
+                 .insert(username, '', is_admin, role_id).returning('id'))
         user_id = await self.fetchval(q)
         pswd = rand_pswd()
         ph = hash_password(pswd)
@@ -170,6 +193,8 @@ class Users(Table):
         ph = hash_password(pswd)
         q = self.update().where(self.table.id == user_id).set(self.table.password, ph)
         await self.exec(q)
+        # Admin-initiated reset invalidates all existing sessions.
+        await self.increment_token_version(user_id)
         return pswd
 
     async def update_role(self, user_id, role_id):
