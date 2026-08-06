@@ -11,6 +11,7 @@ import {
   Tabs,
   Empty,
   Badge,
+  Statistic,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -19,13 +20,20 @@ import {
   SearchOutlined,
   DownloadOutlined,
   UploadOutlined,
+  DatabaseOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { getDicomwebAdmin } from "../api/dicomweb-admin";
+import { Typography } from "antd";
+import {
+  getDicomwebAdmin,
+  getDicomwebMetrics,
+  DicomwebMetrics,
+} from "../api/dicomweb-admin";
 import { PageState } from "../common/PageState";
 import "./DicomWebAdmin.css";
 
 const { Content } = Layout;
+const { Text } = Typography;
 
 const serviceIcons: Record<string, React.ReactNode> = {
   qido: <SearchOutlined />,
@@ -35,6 +43,7 @@ const serviceIcons: Record<string, React.ReactNode> = {
 
 function DicomWebAdmin(props: any) {
   const [info, setInfo] = useState<any>(null);
+  const [metrics, setMetrics] = useState<DicomwebMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,8 +55,12 @@ function DicomWebAdmin(props: any) {
     setLoading(true);
     setError(null);
     try {
-      const res = await getDicomwebAdmin();
+      const [res, m] = await Promise.all([
+        getDicomwebAdmin(),
+        getDicomwebMetrics(),
+      ]);
       setInfo(res);
+      setMetrics(m);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -232,6 +245,63 @@ function DicomWebAdmin(props: any) {
                     {m}
                   </Tag>
                 ))}
+              </Card>
+            ),
+          },
+          {
+            key: "metrics",
+            label: "Metrics",
+            children: (
+              <Card size="small">
+                {metrics ? (
+                  <>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic
+                          title={`Studies stored (${metrics.period})`}
+                          value={metrics.studies_stored || 0}
+                          prefix={<DatabaseOutlined />}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title={`Instances stored (${metrics.period})`}
+                          value={metrics.files_stored || 0}
+                        />
+                      </Col>
+                    </Row>
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={8}>
+                        <Statistic
+                          title="Total studies"
+                          value={metrics.totals?.studies || 0}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="Total series"
+                          value={metrics.totals?.series || 0}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="Total instances"
+                          value={metrics.totals?.files || 0}
+                        />
+                      </Col>
+                    </Row>
+                    {metrics.metrics_note && (
+                      <Text
+                        type="secondary"
+                        style={{ display: "block", marginTop: 16 }}
+                      >
+                        {metrics.metrics_note}
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Empty description="No metrics available" />
+                )}
               </Card>
             ),
           },

@@ -84,12 +84,28 @@ class DicomWebMetricsHandler(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
         async with get_conn() as conn:
-            total = await conn.fetchval(
+            day = timedelta(hours=24)
+            files_day = await conn.fetchval(
                 "SELECT COUNT(*) FROM files WHERE created > now() - $1::interval",
-                timedelta(hours=24)
+                day
+            )
+            studies_day = await conn.fetchval(
+                "SELECT COUNT(*) FROM studies WHERE created_at > now() - $1::interval",
+                day
+            )
+            totals = await conn.fetchrow(
+                "SELECT (SELECT COUNT(*) FROM studies) AS studies,"
+                "       (SELECT COUNT(*) FROM series) AS series,"
+                "       (SELECT COUNT(*) FROM files) AS files"
             )
         return ok({
             'period': '24h',
-            'files_stored': total or 0,
+            'files_stored': files_day or 0,
+            'studies_stored': studies_day or 0,
+            'totals': {
+                'studies': totals['studies'] or 0,
+                'series': totals['series'] or 0,
+                'files': totals['files'] or 0,
+            },
             'metrics_note': 'Dedicated DICOMweb request logging not yet implemented',
         })

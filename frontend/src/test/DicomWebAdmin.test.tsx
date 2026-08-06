@@ -9,8 +9,10 @@ import { ThemeProvider } from "../common/ThemeProvider";
 import DicomWebAdmin from "../dicomweb/DicomWebAdmin";
 
 const mockGetDicomwebAdmin = vi.hoisted(() => vi.fn());
+const mockGetDicomwebMetrics = vi.hoisted(() => vi.fn());
 vi.mock("../api/dicomweb-admin", () => ({
   getDicomwebAdmin: mockGetDicomwebAdmin,
+  getDicomwebMetrics: mockGetDicomwebMetrics,
 }));
 vi.mock("../helpers", () => ({
   request: vi.fn(() => Promise.resolve({})),
@@ -63,10 +65,19 @@ async function waitForReady() {
   await screen.findByText("DICOMweb Server");
 }
 
+const mockMetrics = {
+  period: "24h",
+  files_stored: 7,
+  studies_stored: 2,
+  totals: { studies: 12, series: 20, files: 34 },
+  metrics_note: "no request logging",
+};
+
 describe("DicomWebAdmin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetDicomwebAdmin.mockResolvedValue(mockInfo);
+    mockGetDicomwebMetrics.mockResolvedValue(mockMetrics);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -93,13 +104,40 @@ describe("DicomWebAdmin", () => {
     expect(enabledTags.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("renders four tabs", async () => {
+  it("renders five tabs", async () => {
     renderWithAuth(<DicomWebAdmin />);
     await waitForReady();
-    expect(screen.getByText("Endpoints")).toBeInTheDocument();
-    expect(screen.getByText("Search Parameters")).toBeInTheDocument();
-    expect(screen.getByText("Modalities")).toBeInTheDocument();
-    expect(screen.getByText("Missing Features")).toBeInTheDocument();
+    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
+    for (const label of [
+      "Endpoints",
+      "Search Parameters",
+      "Modalities",
+      "Metrics",
+      "Missing Features",
+    ]) {
+      expect(tabs).toContain(label);
+    }
+  });
+
+  it("fetches metrics on mount", async () => {
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    expect(mockGetDicomwebMetrics).toHaveBeenCalled();
+  });
+
+  it("renders metrics tab statistics", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    const metricsTab = screen
+      .getAllByRole("tab")
+      .find((t) => t.textContent === "Metrics");
+    expect(metricsTab).toBeDefined();
+    await user.click(metricsTab!);
+    expect(await screen.findByText("Total studies")).toBeInTheDocument();
+    expect(await screen.findByText("12")).toBeInTheDocument();
+    expect(await screen.findByText("Total instances")).toBeInTheDocument();
+    expect(await screen.findByText("34")).toBeInTheDocument();
   });
 
   it("renders modality tags in modalities tab", async () => {

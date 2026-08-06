@@ -107,3 +107,91 @@ export function wadoRsUrl(
 ): string {
   return `wadors:${API_URL}/dicomweb/studies/${studyUid}/series/${seriesUid}/instances/${instanceUid}`;
 }
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-CSRF-Token": "1",
+  };
+  const token = localStorage.getItem("access_token");
+  if (token) headers["X-Auth-Pacs"] = token;
+  const tenantId = localStorage.getItem("tenant_id");
+  if (tenantId) headers["X-Tenant-ID"] = tenantId;
+  return headers;
+}
+
+export interface StowResult {
+  referenced?: unknown[];
+  failed?: unknown[];
+  [key: string]: unknown;
+}
+
+/**
+ * STOW-RS upload of raw DICOM files. The backend parses multipart parts
+ * directly from the request stream, so the boundary is assembled by hand
+ * (FormData would force multipart/form-data and re-encode the files).
+ */
+export async function storeInstances(files: File[]): Promise<StowResult> {
+  const boundary = `stow-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const parts: BlobPart[] = [];
+  for (const file of files) {
+    parts.push(
+      new Blob([
+        `--${boundary}\r\nContent-Type: application/dicom\r\nContent-Length: ${file.size}\r\n\r\n`,
+      ]),
+    );
+    parts.push(file);
+    parts.push(new Blob(["\r\n"]));
+  }
+  parts.push(new Blob([`--${boundary}--\r\n`]));
+  const resp = await fetch(`${API_URL}/dicomweb/studies`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+      "Content-Type": `multipart/related; type=application/dicom; boundary=${boundary}`,
+    },
+    body: new Blob(parts),
+  });
+  if (!resp.ok) {
+    let message = `STOW-RS failed (${resp.status})`;
+    try {
+      const err = await resp.json();
+      message = err?.error?.message || message;
+    } catch {
+      // non-JSON error body; keep the status-based message
+    }
+    throw new Error(message);
+  }
+  return resp.json();
+}
+
+/** Archive download URL for a study (GET with auth headers via fetch). */
+export function archiveStudyUrl(studyUid: string): string {
+  return `${API_URL}/dicomweb/studies/${studyUid}/archive`;
+}
+
+export async function downloadStudyArchive(studyUid: string): Promise<void> {
+  const resp = await fetch(archiveStudyUrl(studyUid), {
+    headers: authHeaders(),
+  });
+  if (!resp.ok) {
+    let message = `Archive download failed (${resp.status})`;
+    try {
+      const err = await resp.json();
+      message = err?.error?.message || message;
+    } catch {
+      // keep status-based message
+    }
+    throw new Error(message);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `study-${studyUid}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

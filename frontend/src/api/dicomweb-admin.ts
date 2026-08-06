@@ -12,3 +12,18 @@ export interface DicomwebAdminInfo {
 
 export const getDicomwebAdmin = (): Promise<DicomwebAdminInfo> =>
   request<DicomwebAdminInfo>("dicomweb/admin");
+
+export interface DicomwebMetrics {
+  period: string;
+  files_stored: number;
+  studies_stored: number;
+  totals: {
+    studies: number;
+    series: number;
+    files: number;
+  };
+  metrics_note?: string;
+}
+
+export const getDicomwebMetrics = (): Promise<DicomwebMetrics> =>
+  request<DicomwebMetrics>("dicomweb/admin/metrics");

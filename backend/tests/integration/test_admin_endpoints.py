@@ -448,11 +448,17 @@ class TestDicomWebAdmin:
     def test_get_metrics(self):
         mock_conn = _mock_conn()
         mock_conn.fetchval = AsyncMock(return_value=10)
+        mock_conn.fetchrow = AsyncMock(
+            return_value={'studies': 30, 'series': 45, 'files': 120}
+        )
         with _patch_get_conn('api.dicomweb_admin', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/dicomweb/admin/metrics')
         assert resp.status_code == 200
-        assert resp.json()['files_stored'] == 10
+        body = resp.json()
+        assert body['files_stored'] == 10
+        assert body['studies_stored'] == 10
+        assert body['totals'] == {'studies': 30, 'series': 45, 'files': 120}
 
     def test_missing_permission(self):
         user = _make_admin_user(permissions=['LOG_READ'])
