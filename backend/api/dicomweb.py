@@ -93,13 +93,17 @@ _HEX_TAG_TO_KEYWORD = {
     '00080016': 'SOPClassUID',
     '00080018': 'SOPInstanceUID',
     '00080020': 'StudyDate',
+    '00080030': 'StudyTime',
     '00080050': 'AccessionNumber',
     '00080060': 'Modality',
     '00081030': 'StudyDescription',
+    '0008103E': 'SeriesDescription',
     '00081050': 'PerformingPhysicianName',
     '00081090': 'ReferringPhysicianName',
     '00100010': 'PatientName',
     '00100020': 'PatientID',
+    '00100030': 'PatientBirthDate',
+    '00180015': 'BodyPartExamined',
     '0020000D': 'StudyInstanceUID',
     '0020000E': 'SeriesInstanceUID',
     '00200011': 'SeriesNumber',
@@ -294,12 +298,78 @@ class DicomWebStudies(HTTPEndpoint):
             args.append(series_description.replace('*', '%'))
             idx += 1
 
+        # BodyPartExamined and StudyTime are persisted in the files meta JSONB
+        # under their DICOM element names (the `cleaned` map is merged into
+        # meta top-level by Files.add); a series matches when any of its
+        # instances carries the value. Series-level attributes in DICOM are
+        # shared by all instances, so an EXISTS over the series' files is the
+        # correct series-level semantic (ME-01).
+        body_part = params.get('BodyPartExamined')
+        if body_part:
+            where += f''' AND EXISTS (
+                SELECT 1 FROM files f WHERE f.series_id = ser.id
+                AND f.deleted = false
+                AND f.meta->>'Body Part Examined' = ${idx}
+            )'''
+            args.append(body_part)
+            idx += 1
+
+        study_time = params.get('StudyTime')
+        if study_time:
+            where += f''' AND EXISTS (
+                SELECT 1 FROM files f WHERE f.series_id = ser.id
+                AND f.deleted = false
+                AND f.meta->>'Study Time' = ${idx}
+            )'''
+            args.append(study_time)
+            idx += 1
+
+        # SOPClassUID varies per instance (e.g. presentation states inside a
+        # series); match any instance of the series.
+        sop_class = params.get('SOPClassUID')
+        if sop_class:
+            where += f''' AND EXISTS (
+                SELECT 1 FROM files f WHERE f.series_id = ser.id
+                AND f.sop_class_uid = ${idx}
+            )'''
+            args.append(sop_class)
+            idx += 1
+
+        birth_date = params.get('PatientBirthDate')
+        if birth_date and '-' in birth_date:
+            start, _, end = birth_date.partition('-')
+            if start:
+                where += f' AND p.birth_date >= ${idx}'
+                args.append(start)
+                idx += 1
+            if end:
+                where += f' AND p.birth_date <= ${idx}'
+                args.append(end)
+                idx += 1
+        elif birth_date:
+            where += f' AND p.birth_date = ${idx}'
+            args.append(birth_date)
+            idx += 1
+
+        # Referrer is captured per file (get_meta), so the studies column —
+        # set once at study creation — can be stale for later instances;
+        # filter the per-file snake_case meta key instead.
+        referring = params.get('ReferringPhysicianName')
+        if referring:
+            where += f''' AND EXISTS (
+                SELECT 1 FROM files f WHERE f.series_id = ser.id
+                AND f.meta->>'referring_physician' ILIKE ${idx}
+            )'''
+            args.append(referring.replace('*', '%'))
+            idx += 1
+
         async with get_conn() as conn:
             sql = f"""
                 SELECT ser.number AS series_number, ser.modality, ser.description AS series_description,
                        ser.series_instance_uid
                 FROM series ser
                 JOIN studies s ON s.id = ser.study_id
+                JOIN patients p ON p.id = s.patient_id
                 WHERE {where}
                 ORDER BY ser.number
             """
@@ -330,12 +400,50 @@ class DicomWebStudies(HTTPEndpoint):
             args.append(instance_number)
             idx += 1
 
+        # Instance-level filters read the persisted meta JSONB (element-name
+        # keys merged into meta top-level by Files.add) for attributes without
+        # dedicated columns (ME-01).
+        body_part = params.get('BodyPartExamined')
+        if body_part:
+            where += f""" AND f.meta->>'Body Part Examined' = ${idx}"""
+            args.append(body_part)
+            idx += 1
+
+        study_time = params.get('StudyTime')
+        if study_time:
+            where += f""" AND f.meta->>'Study Time' = ${idx}"""
+            args.append(study_time)
+            idx += 1
+
+        birth_date = params.get('PatientBirthDate')
+        if birth_date and '-' in birth_date:
+            start, _, end = birth_date.partition('-')
+            if start:
+                where += f' AND p.birth_date >= ${idx}'
+                args.append(start)
+                idx += 1
+            if end:
+                where += f' AND p.birth_date <= ${idx}'
+                args.append(end)
+                idx += 1
+        elif birth_date:
+            where += f' AND p.birth_date = ${idx}'
+            args.append(birth_date)
+            idx += 1
+
+        referring = params.get('ReferringPhysicianName')
+        if referring:
+            where += f""" AND f.meta->>'referring_physician' ILIKE ${idx}"""
+            args.append(referring.replace('*', '%'))
+            idx += 1
+
         async with get_conn() as conn:
             sql = f"""
                 SELECT f.sop_instance_uid, f.sop_class_uid, f.instance_number
                 FROM files f
                 JOIN series ser ON ser.id = f.series_id
                 JOIN studies s ON s.id = ser.study_id
+                JOIN patients p ON p.id = s.patient_id
                 WHERE {where}
                 ORDER BY f.name
             """
@@ -467,6 +575,18 @@ def _wants_metadata(accept):
     return 'dicom+json' in accept
 
 
+def _wants_multipart(accept):
+    """Accept-header negotiation: multipart/related → multipart response.
+
+    PS3.18 §11.4.1: a WADO-RS instance request that lists multipart/related
+    must be answered with a multipart/related body (single part here), not a
+    bare application/dicom stream. Metadata (dicom+json) takes precedence when
+    both appear.
+    """
+    accept = (accept or '').lower()
+    return 'multipart/related' in accept
+
+
 def _instance_metadata(file_data):
     """Compact PS3.18 metadata object for a stored instance.
 
@@ -514,6 +634,7 @@ class DicomWebWado(HTTPEndpoint):
             return DicomJsonResponse(json.dumps(err_body), status_code=406)
 
         metadata = _wants_metadata(request.headers.get('accept', ''))
+        multipart = not metadata and _wants_multipart(request.headers.get('accept', ''))
 
         async with get_conn() as conn:
             master = await Replica(conn).master()
@@ -524,7 +645,9 @@ class DicomWebWado(HTTPEndpoint):
                 )
 
             if instance_uid:
-                return await _wado_retrieve_instance(conn, master, instance_uid, metadata)
+                return await _wado_retrieve_instance(
+                    conn, master, instance_uid, metadata, multipart=multipart,
+                )
 
             if series_uid:
                 return await _wado_retrieve_series(conn, master, study_uid, series_uid, metadata)
@@ -708,7 +831,7 @@ def _extract_frame(path, frame_index):
     return pixels[frame_index].tobytes()
 
 
-async def _wado_retrieve_instance(conn, master, instance_uid, metadata=False, study_uid=None):
+async def _wado_retrieve_instance(conn, master, instance_uid, metadata=False, study_uid=None, multipart=False):
     _WADO_COLS = (
         'rf.id, rf.location, f.name, '
         'p.patient_id, st.study_id, '
@@ -765,6 +888,30 @@ async def _wado_retrieve_instance(conn, master, instance_uid, metadata=False, st
 
     storage = await Storage.get(master)
     path = await storage.fetch(file_data)
+
+    if multipart:
+        # A single-instance multipart/related response (PS3.18 §11.4.1):
+        # same framing as study/series retrieval so clients that always
+        # request multipart get a uniform body shape.
+        boundary = 'WADO_BOUNDARY'
+
+        async def _iter_single_part():
+            yield (
+                f'--{boundary}\r\n'
+                f'Content-Type: application/dicom\r\n\r\n'
+            ).encode('latin-1')
+            async with aiofiles.open(path, 'rb') as f:
+                while True:
+                    chunk = await f.read(_WADO_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    yield chunk
+            yield f'\r\n--{boundary}--\r\n'.encode('latin-1')
+
+        return StreamingResponse(
+            _iter_single_part(),
+            media_type=f'multipart/related; type=application/dicom; boundary={boundary}',
+        )
 
     async def _iter_file():
         async with aiofiles.open(path, 'rb') as f:

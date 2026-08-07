@@ -257,6 +257,175 @@ class TestQidoFilters:
         assert set(body[0].keys()) == {'0020000D', '00080050'}
 
 
+class TestQidoSeriesFilters:
+    @pytest.mark.asyncio
+    async def test_series_filter_by_body_part_examined(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series?BodyPartExamined=Chest')
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'Body Part Examined'" in sql
+        assert 'EXISTS' in sql
+        assert args == ('1.2.3.4.5.6', 'Chest')
+
+    @pytest.mark.asyncio
+    async def test_series_filter_by_study_time(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series?StudyTime=093000')
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'Study Time'" in sql
+        assert args == ('1.2.3.4.5.6', '093000')
+
+    @pytest.mark.asyncio
+    async def test_series_filter_by_patient_birth_date_range(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series?PatientBirthDate=20200101-20201231')
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert 'p.birth_date >=' in sql
+        assert 'p.birth_date <=' in sql
+        assert args == ('1.2.3.4.5.6', '20200101', '20201231')
+
+    @pytest.mark.asyncio
+    async def test_series_filter_by_referring_physician_wildcard(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series?ReferringPhysicianName=Smith*')
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'referring_physician' ILIKE" in sql
+        assert args == ('1.2.3.4.5.6', 'Smith%')
+
+    @pytest.mark.asyncio
+    async def test_series_filter_by_sop_class_uid(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series?SOPClassUID=1.2.840.10008.5.1.4.1.1.2',
+            )
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert 'f.sop_class_uid' in sql
+        assert args == ('1.2.3.4.5.6', '1.2.840.10008.5.1.4.1.1.2')
+
+    @pytest.mark.asyncio
+    async def test_series_filter_accepts_hex_tag_params(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series?00180015=Chest')
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'Body Part Examined'" in sql
+        assert args == ('1.2.3.4.5.6', 'Chest')
+
+
+class TestQidoInstanceFilters:
+    @pytest.mark.asyncio
+    async def test_instances_filter_by_body_part_and_study_time(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances'
+                '?BodyPartExamined=Chest&StudyTime=093000',
+            )
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'Body Part Examined'" in sql
+        assert "f.meta->>'Study Time'" in sql
+        assert args == ('1.2.3.4.5.6', '1.2.3.4.5.6.7', 'Chest', '093000')
+
+    @pytest.mark.asyncio
+    async def test_instances_filter_by_patient_birth_date(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances?PatientBirthDate=19900101',
+            )
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert 'p.birth_date =' in sql
+        assert args == ('1.2.3.4.5.6', '1.2.3.4.5.6.7', '19900101')
+
+    @pytest.mark.asyncio
+    async def test_instances_filter_by_referring_physician(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances?ReferringPhysicianName=Jones*',
+            )
+
+        assert resp.status_code == 200
+        sql = conn.fetch.call_args[0][0]
+        args = conn.fetch.call_args[0][1:]
+        assert "f.meta->>'referring_physician' ILIKE" in sql
+        assert args == ('1.2.3.4.5.6', '1.2.3.4.5.6.7', 'Jones%')
+
+
 class TestQidoInstancesDeleted:
     @pytest.mark.asyncio
     async def test_instance_query_excludes_deleted_files(self):

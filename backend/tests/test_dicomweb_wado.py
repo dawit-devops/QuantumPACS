@@ -304,6 +304,64 @@ class TestWadoUri:
         conn.fetch.assert_not_called()
 
 
+class TestWadoMultipart:
+    def test_instance_accept_multipart_returns_multipart_related(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        dcm_bytes = _make_mini_dicom()
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                    resp = client.get(
+                        '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8',
+                        headers={'Accept': 'multipart/related; type="application/dicom"'},
+                    )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'].startswith('multipart/related')
+        assert 'WADO_BOUNDARY' in resp.headers['content-type']
+        assert b'WADO_BOUNDARY' in resp.content
+        assert dcm_bytes in resp.content
+
+    def test_metadata_takes_precedence_over_multipart(self):
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{"sop_instance_uid": "1.2.3.4.5.6.7.8"}',
+             'replica_meta': '{}'},
+        ])
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            resp = client.get(
+                '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8',
+                headers={'Accept': 'multipart/related; type="application/dicom", application/dicom+json'},
+            )
+
+        assert resp.status_code == 200
+        assert resp.headers['content-type'] == 'application/dicom+json'
+
+
 class TestWadoMetadata:
     def _make_conn(self):
         conn = _FakeConn()
