@@ -54,7 +54,27 @@ class LifecycleState:
     mllp_task: Optional[asyncio.Task] = None
 
 
-def _run_dicom():
+def _run_dicom_mwl_scp(port):
+    """Serve the MWL C-FIND model on a dedicated port.
+
+    Runs in its own thread with its own AE. It must NOT touch
+    dcm.server._loop — the main DICOM thread owns the (running) loop and the
+    MWL handler bridges onto it via run_coroutine_threadsafe.
+    """
+    from pynetdicom import AE
+    from pynetdicom.presentation import build_context
+    from pynetdicom.sop_class import ModalityWorklistInformationFind
+    import dcm.server as _dcm_server
+    ae = AE()
+    ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+    _dcm_server.apply_association_policy(ae)
+    ae.supported_contexts = [build_context(ModalityWorklistInformationFind)]
+    server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers, block=False)
+    log.info('DICOM MWL server started on port %s', port)
+    server.serve_forever()
+
+
+def _run_dicom(loop=None):
     state = get_app_state()
     try:
         from pynetdicom import AE, StoragePresentationContexts
@@ -65,9 +85,17 @@ def _run_dicom():
             StudyRootQueryRetrieveInformationModelFind,
         )
         import dcm.server as _dcm_server
-        try:
-            _dcm_server._loop = asyncio.get_running_loop()
-        except RuntimeError:
+        # The event handlers bridge into the async app with
+        # asyncio.run_coroutine_threadsafe(coro, _dcm_server._loop). The
+        # asyncpg pool / redis / ES clients are all bound to uvicorn's MAIN
+        # loop — scheduling the coroutine on a second, foreign loop raises
+        # "Future attached to a different loop", and a never-run loop makes
+        # every C-FIND/C-STORE time out silently. So _start_dicom passes the
+        # main loop in; tests may call _run_dicom() directly and get a
+        # throwaway loop.
+        if loop is not None:
+            _dcm_server._loop = loop
+        else:
             _dcm_server._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(_dcm_server._loop)
         ae = AE()
@@ -86,10 +114,22 @@ def _run_dicom():
             ]
         )
         port = int(config.get('dicom_cstore_port', '11112'))
-        server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers)
+        # block=False returns the server immediately; the subsequent
+        # serve_forever() keeps this thread alive and lets _stop_dicom() call
+        # shutdown() (block=True would block inside start_server, never set
+        # state.dicom_scp and make graceful shutdown impossible).
+        server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers, block=False)
         if state:
             state.dicom_scp = server
         log.info('DICOM C-STORE server started on port %s', port)
+
+        # Optional dedicated MWL listener: some modalities expect the
+        # worklist on a separate port (e.g. 11113) while C-STORE stays on
+        # 11112. Daemon thread dies with the process.
+        mwl_port = config.get('dicom_mwl_port', '')
+        if mwl_port and int(mwl_port) != port:
+            threading.Thread(target=_run_dicom_mwl_scp, args=(int(mwl_port),), daemon=True).start()
+
         server.serve_forever()
     except Exception:
         log.warning('Failed to start DICOM server', exc_info=True)
@@ -97,7 +137,14 @@ def _run_dicom():
 
 def _start_dicom():
     state = get_app_state()
-    thread = threading.Thread(target=_run_dicom, daemon=True)
+    try:
+        # Hand the uvicorn main loop to the SCP thread so DB pool / redis /
+        # ES lookups inside the DICOM handlers run on the loop that owns
+        # those clients.
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(target=_run_dicom, args=(main_loop,), daemon=True)
     if state:
         state.dicom_thread = thread
     thread.start()

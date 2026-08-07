@@ -29,9 +29,11 @@ class TestDefaultConfig:
         assert default_config['dicom_cstore_port'] == '11112'
 
     def test_dead_dicom_ports_removed(self):
-        # ME-07: mwl/c-move listeners were never started; only the C-STORE
-        # port remains.
-        assert 'dicom_mwl_port' not in default_config
+        # ME-07: the c-move listener was never started and remains removed;
+        # dicom_mwl_port is live again (ME-03) as an optional dedicated MWL
+        # listener (empty default = MWL on the C-STORE port).
+        assert 'dicom_mwl_port' in default_config
+        assert default_config['dicom_mwl_port'] == ''
         assert 'dicom_cmove_port' not in default_config
 
     def test_secret_falls_back_to_dev_default(self):

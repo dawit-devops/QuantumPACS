@@ -66,27 +66,72 @@ def handle_store(event):
     return 0x0000
 
 
+def _mwl_like(value):
+    """Translate DICOM C-FIND wildcards to SQL LIKE patterns.
+
+    DICOM matching allows '*' (any sequence) and '?' (single char). Literal
+    '%'/'_' in query values would otherwise inject pattern syntax, so they
+    are stripped before mapping.
+    """
+    return value.replace('%', '').replace('_', '').replace('*', '%').replace('?', '_')
+
+
+def _mwl_range(value):
+    """Split a DICOM range value ('20260701-20260731') into (low, high)."""
+    if '-' in value:
+        low, _, high = value.partition('-')
+        return low or None, high or None
+    return value, value
+
+
+def _fmt_date(value):
+    if not value:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime('%Y%m%d')
+    return str(value).replace('-', '')
+
+
+def _fmt_time(value):
+    if not value:
+        return ''
+    if hasattr(value, 'strftime'):
+        return value.strftime('%H%M%S')
+    return str(value).replace(':', '')
+
+
 async def handle_find_async(query_ds):
     try:
         from db.conn import get_conn
         from db.worklist import Worklist
 
         filters = {}
+        # Raw values only — Worklist.search() translates DICOM wildcards to
+        # SQL LIKE itself. Pre-translating here would double-escape the '%'.
         if hasattr(query_ds, 'PatientID') and query_ds.PatientID:
-            filters['search'] = str(query_ds.PatientID)
+            filters['patient_id'] = str(query_ds.PatientID)
+        if hasattr(query_ds, 'PatientName') and query_ds.PatientName:
+            filters['patient_name'] = str(query_ds.PatientName)
         if hasattr(query_ds, 'Modality') and query_ds.Modality:
             filters['modality'] = str(query_ds.Modality)
+        if hasattr(query_ds, 'RequestedProcedureID') and query_ds.RequestedProcedureID:
+            filters['requested_procedure_id'] = str(query_ds.RequestedProcedureID)
         if hasattr(query_ds, 'ScheduledProcedureStepSequence') and query_ds.ScheduledProcedureStepSequence:
             sps = query_ds.ScheduledProcedureStepSequence[0]
             if hasattr(sps, 'ScheduledStationAETitle') and sps.ScheduledStationAETitle:
                 filters['station_ae_title'] = str(sps.ScheduledStationAETitle)
             if hasattr(sps, 'ScheduledProcedureStepStartDate') and sps.ScheduledProcedureStepStartDate:
-                filters['date_from'] = str(sps.ScheduledProcedureStepStartDate)
-                filters['date_to'] = str(sps.ScheduledProcedureStepStartDate)
+                date_from, date_to = _mwl_range(str(sps.ScheduledProcedureStepStartDate))
+                filters['date_from'] = date_from
+                filters['date_to'] = date_to
+            if hasattr(sps, 'ScheduledProcedureStepStartTime') and sps.ScheduledProcedureStepStartTime:
+                time_from, time_to = _mwl_range(str(sps.ScheduledProcedureStepStartTime))
+                filters['time_from'] = time_from
+                filters['time_to'] = time_to
             if hasattr(sps, 'Modality') and sps.Modality and 'modality' not in filters:
                 filters['modality'] = str(sps.Modality)
         if hasattr(query_ds, 'AccessionNumber') and query_ds.AccessionNumber:
-            filters['search'] = filters.get('search', str(query_ds.AccessionNumber))
+            filters['search'] = str(query_ds.AccessionNumber)
 
         async with get_conn() as conn:
             # search() returns (rows, total) — the tuple must be unpacked or
@@ -115,26 +160,48 @@ def _entry_to_dataset(entry):
     ds.PatientID = entry.get('patient_id', '') or ''
     ds.PatientBirthDate = entry.get('patient_birth_date', '') or ''
     ds.PatientSex = entry.get('patient_sex', '') or ''
-    ds.ReferringPhysicianName = ''
+    ds.ReferringPhysicianName = entry.get('referring_physician', '') or ''
     ds.RequestingPhysician = entry.get('requesting_physician', '') or ''
     ds.StudyInstanceUID = entry.get('study_uid', '') or ''
     ds.RequestedProcedureID = entry.get('requested_procedure_id', '') or ''
     ds.RequestedProcedureDescription = entry.get('requested_procedure_desc', '') or ''
+    ds.RequestedProcedurePriority = entry.get('requested_procedure_priority', '') or ''
+    # Universal service ID from the ORM OBR-4 components (ME-03): emitted as
+    # a code sequence only when a code value was actually captured.
+    if entry.get('requested_procedure_code'):
+        code_ds = Dataset()
+        code_ds.CodeValue = entry.get('requested_procedure_code', '') or ''
+        code_ds.CodingSchemeDesignator = entry.get('requested_procedure_code_scheme', '') or ''
+        code_ds.CodeMeaning = entry.get('requested_procedure_code_meaning', '') or ''
+        ds.RequestedProcedureCodeSequence = [code_ds]
 
     sps_ds = Dataset()
     sps_ds.Modality = entry.get('modality', '') or ''
     sps_ds.ScheduledStationAETitle = entry.get('station_ae_title', '') or ''
-    sps_ds.ScheduledProcedureStepStartDate = str(entry.get('scheduled_date', '') or '')
-    sps_ds.ScheduledProcedureStepStartTime = str(entry.get('scheduled_time', '') or '')
-    sps_ds.ScheduledPerformingPhysicianName = ''
+    sps_ds.ScheduledStationName = entry.get('scheduled_station_name', '') or ''
+    # asyncpg returns DATE/TIME columns as date/time objects — str() would
+    # emit '2026-07-25'/'10:30:00', which is not valid DICOM (YYYYMMDD/HHMMSS).
+    sps_ds.ScheduledProcedureStepStartDate = _fmt_date(entry.get('scheduled_date', ''))
+    sps_ds.ScheduledProcedureStepStartTime = _fmt_time(entry.get('scheduled_time', ''))
+    sps_ds.ScheduledPerformingPhysicianName = entry.get('scheduled_performing_physician', '') or ''
     sps_ds.ScheduledProcedureStepDescription = entry.get('requested_procedure_desc', '') or ''
     sps_ds.ScheduledProcedureStepID = entry.get('scheduled_procedure_step_id', '') or ''
     sps_ds.ProtocolName = entry.get('protocol_name', '') or ''
+    # (0040,1002) Reason for the Requested Procedure lives inside the SPS.
+    sps_ds.ReasonForTheRequestedProcedure = entry.get('reason_for_requested_procedure', '') or ''
+    sps_ds.ScheduledProcedureStepStatus = {
+        'scheduled': 'SCHEDULED',
+        'in_progress': 'STARTED',
+        'performed': 'COMPLETED',
+        'cancelled': 'CANCELLED',
+    }.get(entry.get('status', ''), 'SCHEDULED')
     ds.ScheduledProcedureStepSequence = [sps_ds]
 
     ds.file_meta = Dataset()
     ds.file_meta.MediaStorageSOPClassUID = ModalityWorklistInformationFind
-    ds.file_meta.MediaStorageSOPInstanceUID = entry.get('id', '') or ''
+    # The id column is a UUID — asyncpg returns a uuid.UUID object which
+    # pydicom UID() refuses ("A UID must be created from a string").
+    ds.file_meta.MediaStorageSOPInstanceUID = str(entry.get('id', '') or '')
     ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
     return ds
 

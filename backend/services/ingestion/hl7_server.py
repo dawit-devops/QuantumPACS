@@ -234,9 +234,27 @@ def parse_hl7_message(data) -> dict | None:
     if obr is not None:
         result['requested_procedure_id'] = _seg_field(obr, 3, 0, 0)
         result['requested_procedure_desc'] = _seg_field_raw(obr, 4)
+        # Universal service ID components → RequestedProcedureCodeSequence
+        # (0008,0100 CodeValue / 0008,0102 Scheme / 0008,0104 CodeMeaning).
+        # NOTE: this hl7 lib indexes field[comp] as repetitions and
+        # rep[sub] as components — component 0/1/2 = (field, 0, 0/1/2).
+        result['requested_procedure_code'] = _seg_field(obr, 4, 0, 0)
+        result['requested_procedure_code_meaning'] = _seg_field(obr, 4, 0, 1)
+        result['requested_procedure_code_scheme'] = _seg_field(obr, 4, 0, 2)
         result['requesting_physician'] = _seg_field_raw(obr, 16)
+        # Ordering provider doubles as the referring physician in most RIS
+        # integrations; ZDS-level separation is a later refinement.
+        result['referring_physician'] = _seg_field_raw(obr, 16)
         result['modality'] = _seg_field(obr, 24, 0, 0)
         result['station_ae_title'] = _seg_field(obr, 18, 0, 0)
+        result['scheduled_station_name'] = _seg_field(obr, 18, 0, 1)
+        # OBR-32 principal result interpreter → ScheduledPerformingPhysician.
+        result['scheduled_performing_physician'] = _seg_field_raw(obr, 32)
+        # OBR-31 reason for study → ReasonForTheRequestedProcedure (0040,1002).
+        result['reason_for_requested_procedure'] = _seg_field(obr, 31, 0, 0)
+        # OBR-27 Quantity/Timing component 7 (priority: R routine, A ASAP,
+        # S stat) → RequestedProcedurePriority (0040,1003).
+        result['requested_procedure_priority'] = _seg_field(obr, 27, 0, 5)
         start_dt = _seg_field(obr, 7, 0, 0)
         result['scheduled_date'] = start_dt[:8] if start_dt else ''
         result['scheduled_time'] = start_dt[8:14] if len(start_dt) >= 14 else (start_dt[8:12] if len(start_dt) >= 12 else '')
@@ -409,7 +427,15 @@ async def handle_orm_message(parsed: dict) -> bool:
                 'accession_number': accession,
                 'requested_procedure_id': parsed.get('requested_procedure_id', ''),
                 'requested_procedure_desc': parsed.get('requested_procedure_desc', ''),
+                'requested_procedure_priority': parsed.get('requested_procedure_priority', ''),
+                'reason_for_requested_procedure': parsed.get('reason_for_requested_procedure', ''),
+                'requested_procedure_code': parsed.get('requested_procedure_code', ''),
+                'requested_procedure_code_meaning': parsed.get('requested_procedure_code_meaning', ''),
+                'requested_procedure_code_scheme': parsed.get('requested_procedure_code_scheme', ''),
                 'requesting_physician': parsed.get('requesting_physician', ''),
+                'referring_physician': parsed.get('referring_physician', ''),
+                'scheduled_station_name': parsed.get('scheduled_station_name', ''),
+                'scheduled_performing_physician': parsed.get('scheduled_performing_physician', ''),
                 'modality': parsed.get('modality', ''),
                 'station_ae_title': parsed.get('station_ae_title', ''),
                 'scheduled_date': parsed.get('scheduled_date', ''),

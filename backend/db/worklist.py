@@ -3,6 +3,11 @@ from datetime import datetime, timezone
 from db.table import Table
 
 
+def _mwl_like(value):
+    """Translate DICOM C-FIND wildcards to SQL LIKE patterns."""
+    return value.replace('%', '').replace('_', '').replace('*', '%').replace('?', '_')
+
+
 class Worklist(Table):
     name = 'worklist_entries'
 
@@ -17,9 +22,17 @@ class Worklist(Table):
             accession_number TEXT DEFAULT '',
             requested_procedure_id TEXT DEFAULT '',
             requested_procedure_desc TEXT DEFAULT '',
+            requested_procedure_priority TEXT DEFAULT '',
+            reason_for_requested_procedure TEXT DEFAULT '',
+            requested_procedure_code TEXT DEFAULT '',
+            requested_procedure_code_meaning TEXT DEFAULT '',
+            requested_procedure_code_scheme TEXT DEFAULT '',
             scheduled_procedure_step_id TEXT DEFAULT '',
             protocol_name TEXT DEFAULT '',
             requesting_physician TEXT DEFAULT '',
+            referring_physician TEXT DEFAULT '',
+            scheduled_station_name TEXT DEFAULT '',
+            scheduled_performing_physician TEXT DEFAULT '',
             scheduled_date DATE,
             scheduled_time TIME,
             modality TEXT DEFAULT '',
@@ -51,7 +64,12 @@ class Worklist(Table):
         q = self.insert().columns(
             'patient_id', 'patient_name', 'patient_birth_date', 'patient_sex',
             'accession_number', 'requested_procedure_id', 'requested_procedure_desc',
+            'requested_procedure_priority', 'reason_for_requested_procedure',
+            'requested_procedure_code', 'requested_procedure_code_meaning',
+            'requested_procedure_code_scheme',
             'scheduled_procedure_step_id', 'protocol_name', 'requesting_physician',
+            'referring_physician', 'scheduled_station_name',
+            'scheduled_performing_physician',
             'scheduled_date', 'scheduled_time', 'modality', 'station_ae_title',
             'status', 'created_by', 'created_at', 'updated_at',
         ).insert((
@@ -62,9 +80,17 @@ class Worklist(Table):
             data.get('accession_number', ''),
             data.get('requested_procedure_id', ''),
             data.get('requested_procedure_desc', ''),
+            data.get('requested_procedure_priority', ''),
+            data.get('reason_for_requested_procedure', ''),
+            data.get('requested_procedure_code', ''),
+            data.get('requested_procedure_code_meaning', ''),
+            data.get('requested_procedure_code_scheme', ''),
             data.get('scheduled_procedure_step_id', ''),
             data.get('protocol_name', ''),
             data.get('requesting_physician', ''),
+            data.get('referring_physician', ''),
+            data.get('scheduled_station_name', ''),
+            data.get('scheduled_performing_physician', ''),
             data.get('scheduled_date'),
             data.get('scheduled_time'),
             data.get('modality', ''),
@@ -87,7 +113,12 @@ class Worklist(Table):
         allowed = {
             'patient_id', 'patient_name', 'patient_birth_date', 'patient_sex',
             'accession_number', 'requested_procedure_id', 'requested_procedure_desc',
+            'requested_procedure_priority', 'reason_for_requested_procedure',
+            'requested_procedure_code', 'requested_procedure_code_meaning',
+            'requested_procedure_code_scheme',
             'scheduled_procedure_step_id', 'protocol_name', 'requesting_physician',
+            'referring_physician', 'scheduled_station_name',
+            'scheduled_performing_physician',
             'scheduled_date', 'scheduled_time', 'modality', 'station_ae_title',
         }
         updates = {k: v for k, v in data.items() if k in allowed and v is not None}
@@ -102,8 +133,11 @@ class Worklist(Table):
             entry_id, *values,
         )
 
-    async def search(self, status=None, modality=None, date_from=None, date_to=None,
-                     search=None, page=1, per_page=20):
+    async def search(self, status=None, modality=None, station_ae_title=None,
+                     date_from=None, date_to=None,
+                     time_from=None, time_to=None, search=None, patient_id=None,
+                     patient_name=None, requested_procedure_id=None,
+                     page=1, per_page=20):
         from pypika import Order, Query as PypikaQuery, functions as fn
 
         conditions = []
@@ -111,12 +145,28 @@ class Worklist(Table):
             conditions.append(self.table.status == status)
         if modality:
             conditions.append(self.table.modality == modality)
+        if station_ae_title:
+            conditions.append(self.table.station_ae_title == station_ae_title)
         if date_from:
             conditions.append(self.table.scheduled_date >= date_from)
         if date_to:
             conditions.append(self.table.scheduled_date <= date_to)
+        if time_from:
+            conditions.append(self.table.scheduled_time >= time_from)
+        if time_to:
+            conditions.append(self.table.scheduled_time <= time_to)
+        if patient_id:
+            conditions.append(self.table.patient_id.ilike(_mwl_like(patient_id)))
+        if patient_name:
+            # DICOM MWL matching treats a bare name as a leading wildcard.
+            name_pattern = _mwl_like(patient_name.strip())
+            if not name_pattern.endswith('%'):
+                name_pattern += '%'
+            conditions.append(self.table.patient_name.ilike(name_pattern))
+        if requested_procedure_id:
+            conditions.append(self.table.requested_procedure_id == requested_procedure_id)
         if search:
-            like = f'%{search}%'
+            like = f'%{_mwl_like(search)}%'
             conditions.append(
                 (self.table.patient_name.ilike(like)) |
                 (self.table.patient_id.ilike(like)) |

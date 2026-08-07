@@ -47,6 +47,10 @@ default_config = {
     'oauth_scope': 'openid email profile',
     'dicom_ae_title': 'QUANTUMPACS',
     'dicom_cstore_port': '11112',
+    # Optional dedicated MWL listener port. Empty = MWL served on the
+    # C-STORE port (single SCP). Non-empty + different = a second AE serves
+    # Modality Worklist C-FIND on this port (lifecycle._run_dicom).
+    'dicom_mwl_port': '',
     'dicom_aet_allowed': '',
     'dicom_allowed_ips': '',
     'dicom_require_called_aet': 'false',

@@ -70,7 +70,7 @@ SAMPLE_ORM_O01 = (
     'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ORM^O01|MSG004|P|2.5\r'
     'PID|1||PID001||Smith^John||19800101|M\r'
     'ORC|NW|ORD001|||CM|||||||202607251030\r'
-    'OBR|1|ORD001|RP001|CT CHEST^Chest CT^L|||202607260800|||||||||||CT_SCANNER||||||CT\r'
+    'OBR|1|ORD001|RP001|CT CHEST^Chest CT^L|||202607260800|||||||||||CT_SCANNER^CT Room 1||||||CT|||1^CM^30^Q^30^A||||Routine screening|Lee^Kim\r'
 )
 
 SAMPLE_ORU_R01 = (
@@ -301,6 +301,22 @@ class TestHl7MessageParsing:
         assert result['scheduled_time'] == '0800'
         assert result['modality'] == 'CT'
         assert result['station_ae_title'] == 'CT_SCANNER'
+
+    def test_parse_orm_o01_extracts_mwl_extended_fields(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+        result = parse_hl7_message(SAMPLE_ORM_O01)
+        # OBR-4 components → RequestedProcedureCodeSequence (ME-03).
+        assert result['requested_procedure_code'] == 'CT CHEST'
+        assert result['requested_procedure_code_meaning'] == 'Chest CT'
+        assert result['requested_procedure_code_scheme'] == 'L'
+        # OBR-18.1 station name, OBR-32 performing physician.
+        assert result['scheduled_station_name'] == 'CT Room 1'
+        assert result['scheduled_performing_physician'] == 'Lee^Kim'
+        # OBR-27 component 7 priority, OBR-31 reason for study.
+        assert result['requested_procedure_priority'] == 'A'
+        assert result['reason_for_requested_procedure'] == 'Routine screening'
+        # OBR-16 ordering provider (empty in the sample) → referring.
+        assert result['referring_physician'] == ''
 
     def test_parse_oru_r01_extracts_accession_from_obr(self):
         from services.ingestion.hl7_server import parse_hl7_message
