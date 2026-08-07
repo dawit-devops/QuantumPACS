@@ -19,9 +19,9 @@ class DashboardMetricsHandler(HTTPEndpoint):
             total_series = await conn.fetchval('SELECT COUNT(*) FROM series') or 0
             total_files = await conn.fetchval('SELECT COUNT(*) FROM files WHERE deleted = FALSE') or 0
             total_users = await conn.fetchval('SELECT COUNT(*) FROM users') or 0
-            # the files table has no size column (not tracked on ingest), so
-            # storage is reported as 0 until sizes are recorded at upload time
-            storage_bytes = 0
+            storage_bytes = await conn.fetchval(
+                'SELECT COALESCE(SUM(size), 0)::bigint FROM files WHERE deleted = FALSE'
+            ) or 0
 
             modality_rows = await conn.fetch(
                 "SELECT s.modality, COUNT(*) as count FROM files f "

@@ -451,14 +451,34 @@ class TestDicomWebAdmin:
         mock_conn.fetchrow = AsyncMock(
             return_value={'studies': 30, 'series': 45, 'files': 120}
         )
+        mock_conn.fetch = AsyncMock(
+            return_value=[{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}]
+        )
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/metrics?period=7d')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['period'] == '7d'
+        assert body['files_stored'] == 10
+        assert body['studies_stored'] == 10
+        assert body['failed_stores'] == 10
+        assert body['storage_bytes'] == 10
+        assert body['by_modality'] == [{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}]
+        assert body['totals'] == {'studies': 30, 'series': 45, 'files': 120}
+
+    def test_metrics_defaults_to_24h(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        mock_conn.fetchrow = AsyncMock(
+            return_value={'studies': 0, 'series': 0, 'files': 0}
+        )
+        mock_conn.fetch = AsyncMock(return_value=[])
         with _patch_get_conn('api.dicomweb_admin', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/dicomweb/admin/metrics')
         assert resp.status_code == 200
-        body = resp.json()
-        assert body['files_stored'] == 10
-        assert body['studies_stored'] == 10
-        assert body['totals'] == {'studies': 30, 'series': 45, 'files': 120}
+        assert resp.json()['period'] == '24h'
 
     def test_missing_permission(self):
         user = _make_admin_user(permissions=['LOG_READ'])

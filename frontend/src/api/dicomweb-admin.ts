@@ -13,10 +13,18 @@ export interface DicomwebAdminInfo {
 export const getDicomwebAdmin = (): Promise<DicomwebAdminInfo> =>
   request<DicomwebAdminInfo>("dicomweb/admin");
 
+export interface DicomwebModalityCount {
+  modality: string;
+  count: number;
+}
+
 export interface DicomwebMetrics {
   period: string;
   files_stored: number;
   studies_stored: number;
+  failed_stores: number;
+  storage_bytes: number;
+  by_modality?: DicomwebModalityCount[];
   totals: {
     studies: number;
     series: number;
@@ -25,5 +33,9 @@ export interface DicomwebMetrics {
   metrics_note?: string;
 }
 
-export const getDicomwebMetrics = (): Promise<DicomwebMetrics> =>
-  request<DicomwebMetrics>("dicomweb/admin/metrics");
+export const getDicomwebMetrics = (
+  period: string = "24h",
+): Promise<DicomwebMetrics> =>
+  request<DicomwebMetrics>("dicomweb/admin/metrics", {
+    query: { period },
+  });

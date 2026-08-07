@@ -12,6 +12,8 @@ import {
   Empty,
   Badge,
   Statistic,
+  Radio,
+  Switch,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -21,6 +23,7 @@ import {
   DownloadOutlined,
   UploadOutlined,
   DatabaseOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { Typography } from "antd";
@@ -41,14 +44,57 @@ const serviceIcons: Record<string, React.ReactNode> = {
   stow: <UploadOutlined />,
 };
 
+const PERIOD_OPTIONS = [
+  { label: "24h", value: "24h" },
+  { label: "7d", value: "7d" },
+  { label: "30d", value: "30d" },
+];
+
+function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  const value = v.toFixed(1).replace(/\.0$/, "");
+  return `${value} ${units[i]}`;
+}
+
 function DicomWebAdmin(props: any) {
   const [info, setInfo] = useState<any>(null);
   const [metrics, setMetrics] = useState<DicomwebMetrics | null>(null);
+  const [period, setPeriod] = useState("24h");
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchMetrics = async (p: string) => {
+    try {
+      setMetrics(await getDicomwebMetrics(p));
+    } catch {
+      // keep stale metrics on a failed refresh; the info fetch owns the
+      // page-level error state
+    }
+  };
+
+  useEffect(() => {
+    fetchMetrics(period);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const t = setInterval(() => fetchMetrics(period), 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, period]);
+
   useEffect(() => {
     fetchInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchInfo = async () => {
@@ -57,7 +103,7 @@ function DicomWebAdmin(props: any) {
     try {
       const [res, m] = await Promise.all([
         getDicomwebAdmin(),
-        getDicomwebMetrics(),
+        getDicomwebMetrics(period),
       ]);
       setInfo(res);
       setMetrics(m);
@@ -255,18 +301,59 @@ function DicomWebAdmin(props: any) {
               <Card size="small">
                 {metrics ? (
                   <>
+                    <Row
+                      justify="space-between"
+                      align="middle"
+                      style={{ marginBottom: 16 }}
+                    >
+                      <Radio.Group
+                        size="small"
+                        options={PERIOD_OPTIONS}
+                        value={period}
+                        onChange={(e) => setPeriod(e.target.value)}
+                      />
+                      <span>
+                        <Switch
+                          size="small"
+                          checked={autoRefresh}
+                          onChange={setAutoRefresh}
+                          style={{ marginRight: 8 }}
+                        />
+                        Auto-refresh (30s)
+                      </span>
+                    </Row>
                     <Row gutter={16}>
-                      <Col span={8}>
+                      <Col span={6}>
                         <Statistic
                           title={`Studies stored (${metrics.period})`}
                           value={metrics.studies_stored || 0}
                           prefix={<DatabaseOutlined />}
                         />
                       </Col>
-                      <Col span={8}>
+                      <Col span={6}>
                         <Statistic
                           title={`Instances stored (${metrics.period})`}
                           value={metrics.files_stored || 0}
+                          prefix={<UploadOutlined />}
+                        />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic
+                          title={`Failed stores (${metrics.period})`}
+                          value={metrics.failed_stores || 0}
+                          prefix={<InboxOutlined />}
+                          valueStyle={
+                            metrics.failed_stores
+                              ? { color: "#cf1322" }
+                              : undefined
+                          }
+                        />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic
+                          title="Storage used"
+                          value={formatBytes(metrics.storage_bytes || 0)}
+                          prefix={<DatabaseOutlined />}
                         />
                       </Col>
                     </Row>
@@ -290,6 +377,28 @@ function DicomWebAdmin(props: any) {
                         />
                       </Col>
                     </Row>
+                    {metrics.by_modality?.length ? (
+                      <Table
+                        style={{ marginTop: 16 }}
+                        size="small"
+                        rowKey="modality"
+                        pagination={false}
+                        dataSource={metrics.by_modality}
+                        columns={[
+                          {
+                            title: "Modality",
+                            dataIndex: "modality",
+                            key: "modality",
+                            render: (m: string) => <Tag>{m}</Tag>,
+                          },
+                          {
+                            title: `Instances (${metrics.period})`,
+                            dataIndex: "count",
+                            key: "count",
+                          },
+                        ]}
+                      />
+                    ) : null}
                     {metrics.metrics_note && (
                       <Text
                         type="secondary"

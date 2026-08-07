@@ -1,5 +1,11 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -69,6 +75,12 @@ const mockMetrics = {
   period: "24h",
   files_stored: 7,
   studies_stored: 2,
+  failed_stores: 1,
+  storage_bytes: 2048,
+  by_modality: [
+    { modality: "CT", count: 5 },
+    { modality: "MR", count: 2 },
+  ],
   totals: { studies: 12, series: 20, files: 34 },
   metrics_note: "no request logging",
 };
@@ -138,6 +150,57 @@ describe("DicomWebAdmin", () => {
     expect(await screen.findByText("12")).toBeInTheDocument();
     expect(await screen.findByText("Total instances")).toBeInTheDocument();
     expect(await screen.findByText("34")).toBeInTheDocument();
+    expect(await screen.findByText("Storage used")).toBeInTheDocument();
+    expect(await screen.findByText("2 KB")).toBeInTheDocument();
+    expect(await screen.findByText("Failed stores (24h)")).toBeInTheDocument();
+  });
+
+  it("renders modality breakdown in metrics tab", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Metrics")!,
+    );
+    expect(await screen.findByText("Instances (24h)")).toBeInTheDocument();
+    expect(await screen.findByText("CT")).toBeInTheDocument();
+  });
+
+  it("refetches metrics when the period changes", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Metrics")!,
+    );
+    await screen.findByText("Total studies");
+    await user.click(screen.getByRole("radio", { name: "7d" }));
+    await waitFor(() => {
+      expect(mockGetDicomwebMetrics).toHaveBeenCalledWith("7d");
+    });
+  });
+
+  it("refetches metrics on auto-refresh interval", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Metrics")!,
+    );
+    await screen.findByText("Total studies");
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("switch"));
+      const callsBefore = mockGetDicomwebMetrics.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(30000);
+      });
+      expect(mockGetDicomwebMetrics.mock.calls.length).toBeGreaterThan(
+        callsBefore,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders modality tags in modalities tab", async () => {

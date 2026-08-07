@@ -1,11 +1,11 @@
 from starlette.endpoints import HTTPEndpoint
-from datetime import timedelta
 
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok
 from api.dicomweb import VALID_MODALITIES
 from db.conn import get_conn
+from db.hl7_message import period_to_interval
 from log import get_logger
 
 log = get_logger(__name__)
@@ -81,17 +81,45 @@ class DicomWebAdminHandler(HTTPEndpoint):
 
 
 class DicomWebMetricsHandler(HTTPEndpoint):
+    """DICOM ingest/archive metrics for the admin dashboard.
+
+    `period=24h|7d|30d` scopes the stored counters; the error counter reads
+    the store-failure log rows written by dcm/store.py (dicom.store_error).
+    """
+
+    _PERIODS = {'24h': '24 hours', '7d': '7 days', '30d': '30 days'}
+
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        period_key = request.query_params.get('period', '24h')
+        interval = period_to_interval(self._PERIODS.get(period_key, '24 hours'))
+
         async with get_conn() as conn:
-            day = timedelta(hours=24)
-            files_day = await conn.fetchval(
-                "SELECT COUNT(*) FROM files WHERE created > now() - $1::interval",
-                day
+            files_period = await conn.fetchval(
+                "SELECT COUNT(*) FROM files"
+                " WHERE deleted = FALSE AND created > now() - $1::interval",
+                interval,
             )
-            studies_day = await conn.fetchval(
-                "SELECT COUNT(*) FROM studies WHERE created_at > now() - $1::interval",
-                day
+            studies_period = await conn.fetchval(
+                "SELECT COUNT(*) FROM studies"
+                " WHERE created_at > now() - $1::interval",
+                interval,
+            )
+            failed_stores = await conn.fetchval(
+                "SELECT COUNT(*) FROM logs"
+                " WHERE created > now() - $1::interval"
+                " AND log LIKE '%dicom.store_error%'",
+                interval,
+            )
+            storage_bytes = await conn.fetchval(
+                "SELECT COALESCE(SUM(size), 0)::bigint FROM files WHERE deleted = FALSE"
+            ) or 0
+            modality_rows = await conn.fetch(
+                "SELECT s.modality, COUNT(*) AS count FROM files f"
+                " JOIN series s ON s.id = f.series_id"
+                " WHERE f.deleted = FALSE AND f.created > now() - $1::interval"
+                " GROUP BY s.modality ORDER BY count DESC",
+                interval,
             )
             totals = await conn.fetchrow(
                 "SELECT (SELECT COUNT(*) FROM studies) AS studies,"
@@ -99,9 +127,12 @@ class DicomWebMetricsHandler(HTTPEndpoint):
                 "       (SELECT COUNT(*) FROM files) AS files"
             )
         return ok({
-            'period': '24h',
-            'files_stored': files_day or 0,
-            'studies_stored': studies_day or 0,
+            'period': period_key,
+            'files_stored': files_period or 0,
+            'studies_stored': studies_period or 0,
+            'failed_stores': failed_stores or 0,
+            'storage_bytes': storage_bytes,
+            'by_modality': [dict(r) for r in modality_rows],
             'totals': {
                 'studies': totals['studies'] or 0,
                 'series': totals['series'] or 0,
