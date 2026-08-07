@@ -9,7 +9,6 @@ Canonical codes from RBAC_matrix_spec.md §7 are asserted as strings so the
 suite stays green while Stream 1 adds the new Permission enum members.
 """
 import asyncio
-import sys
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 

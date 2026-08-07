@@ -24,7 +24,7 @@ class TestMwlCFindHandler:
             coro.close()
             return mock_future
 
-        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine) as mock_run:
+        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine):
             mock_future = MagicMock()
             mock_future.result.return_value = []
 
@@ -45,7 +45,7 @@ class TestMwlCFindHandler:
             coro.close()
             return mock_future
 
-        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine) as mock_run:
+        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine):
             mock_future = MagicMock()
             mock_future.result.return_value = [mock_ds]
 

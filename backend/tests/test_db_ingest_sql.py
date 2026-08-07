@@ -8,7 +8,6 @@ while mocked-unit tests stayed green.
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from db.patient import Patient
 from db.replica_files import ReplicaFiles

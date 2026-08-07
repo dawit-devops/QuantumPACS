@@ -702,8 +702,10 @@ async def _fetch_instances_for_series(conn, series_db_id):
             fl.table.meta,
         )
         .where(fl.table.series_id == series_db_id)
-        .where(fl.table.deleted == False)
-        .where(fl.table.indexed == True)
+        # noqa: E712 — pypika Field == bool is a SQL comparison (deleted = false),
+        # not a Python identity check; is_(False) does not exist on pypika fields.
+        .where(fl.table.deleted == False)  # noqa: E712
+        .where(fl.table.indexed == True)  # noqa: E712
     )
     rows = await fl.fetch(q)
     out = []

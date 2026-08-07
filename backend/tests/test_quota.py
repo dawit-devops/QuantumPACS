@@ -1,4 +1,3 @@
-import sys
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import StudyBrowser from "../dicomweb/StudyBrowser";
@@ -7,7 +7,7 @@ import StudyBrowser from "../dicomweb/StudyBrowser";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-function mockDicomJsonResponse(data: any) {
+function mockDicomJsonResponse(data: unknown) {
   return { ok: true, json: () => Promise.resolve(data) };
 }
 
@@ -97,7 +97,9 @@ describe("StudyBrowser", () => {
     const create = vi
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:mock");
-    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const revoke = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
 
     renderWithApp(<StudyBrowser />);
     fireEvent.click(screen.getByText("Search"));

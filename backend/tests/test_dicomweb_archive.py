@@ -2,10 +2,8 @@ from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 import zipfile
 
-import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
