@@ -652,3 +652,55 @@ class TestStoreInstance:
         assert _TxTracker.copy_call_count == 1
         assert not _TxTracker.copy_called_in_tx, \
             "storage.copy must NOT be called inside a DB transaction"
+
+
+class TestStudyCompleteness:
+    """ME-05: study-level completeness tracking on the ingest path."""
+
+    def test_status_stays_receiving_when_expected_unknown(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(3, 0, 'receiving') == 'receiving'
+
+    def test_status_complete_when_expected_reached(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(3, 3, 'receiving') == 'complete'
+        assert _next_study_status(4, 3, 'receiving') == 'complete'
+
+    def test_status_incomplete_when_expected_not_reached(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(2, 3, 'receiving') == 'incomplete'
+
+    def test_status_never_regresses_from_complete(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(1, 5, 'complete') == 'complete'
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_increments_and_transitions(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(return_value={
+            'received_instances': 2, 'expected_instances': 3, 'study_status': 'receiving',
+        })
+        conn.execute = AsyncMock()
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})
+        conn.execute.assert_awaited_once_with(
+            "UPDATE studies SET received_instances = $1, study_status = $2 "
+            "WHERE study_instance_uid = $3",
+            3, 'complete', '1.2.3',
+        )
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_survives_missing_study(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        conn.execute = AsyncMock()
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})
+        conn.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_never_raises(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(side_effect=RuntimeError('db down'))
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})

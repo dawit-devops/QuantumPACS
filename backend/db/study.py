@@ -17,11 +17,18 @@ class Study(Table):
             study_date TEXT,
             referring_physician TEXT,
             performing_physician TEXT,
+            received_instances INTEGER NOT NULL DEFAULT 0,
+            expected_instances INTEGER NOT NULL DEFAULT 0,
+            study_status TEXT NOT NULL DEFAULT 'receiving'
+                CHECK (study_status IN ('receiving', 'complete', 'incomplete')),
             UNIQUE(patient_id, study_id)
         );
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS studies_study_id ON studies(study_id);
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_studies_study_status ON studies(study_status)
         """)
         # Parity with migrations 017/040.
         await self.exec("""

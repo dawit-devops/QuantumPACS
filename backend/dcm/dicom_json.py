@@ -10,6 +10,22 @@ def _str(value):
     return [str(value)]
 
 
+# Internal study_status values (receiving/complete/incomplete) map onto the
+# DICOM StudyStatus codes (PARTIAL/COMPLETE/INCOMPLETE) so QIDO consumers
+# get standard vocabulary.
+def _study_status(value):
+    if not value:
+        return None
+    return [_STUDY_STATUS_TO_DICOM.get(value, str(value))]
+
+
+_STUDY_STATUS_TO_DICOM = {
+    'receiving': 'PARTIAL',
+    'complete': 'COMPLETE',
+    'incomplete': 'INCOMPLETE',
+}
+
+
 def _da(value):
     if not value:
         return None
@@ -21,7 +37,7 @@ _STUDY_TAGS = {
     '00080020': ('DA', 'study_date', _da),
     '00080030': ('TM', 'study_time', _str),
     '00080050': ('SH', 'accession_number', _str),
-    '00080056': ('CS', 'study_status', _str),
+    '00080056': ('CS', 'study_status', _study_status),
     '00080061': ('CS', 'modalities_in_study', _str),
     '00080090': ('PN', 'referring_physician', _pn),
     '00081030': ('LO', 'study_description', _str),

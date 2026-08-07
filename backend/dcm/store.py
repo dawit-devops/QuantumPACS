@@ -64,6 +64,50 @@ async def match_worklist_in_progress(meta):
         log.warning('Worklist match failed: %s', traceback.format_exc())
 
 
+def _next_study_status(received, expected, current):
+    """Study status after `received` instances are on disk (ME-05).
+
+    Status only moves forward: receiving -> complete/incomplete. A study is
+    complete when an expected count is known and reached; once complete it
+    stays complete (retransmits/dedup must not regress it).
+    """
+    if current == 'complete':
+        return 'complete'
+    if expected > 0:
+        return 'complete' if received >= expected else 'incomplete'
+    return 'receiving'
+
+
+async def _bump_study_counts(conn, meta):
+    """Count a newly stored instance against its study (ME-05).
+
+    Deliberately non-throwing: completeness bookkeeping must never fail an
+    ingest (same contract as `_persist_usage`).
+    """
+    try:
+        study_uid = meta.get('study_instance_uid', '')
+        if not study_uid:
+            return
+        row = await conn.fetchrow(
+            "SELECT received_instances, expected_instances, study_status "
+            "FROM studies WHERE study_instance_uid = $1",
+            study_uid,
+        )
+        if not row:
+            return
+        received = row['received_instances'] + 1
+        status = _next_study_status(
+            received, row['expected_instances'], row['study_status'],
+        )
+        await conn.execute(
+            "UPDATE studies SET received_instances = $1, study_status = $2 "
+            "WHERE study_instance_uid = $3",
+            received, status, study_uid,
+        )
+    except Exception:
+        log.warning('Study count bump failed: %s', traceback.format_exc())
+
+
 async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=None):
     async with get_conn() as conn:
         try:
@@ -127,6 +171,7 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
                 await _persist_usage(conn, tenant_slug, size)
 
             await match_worklist_in_progress(ds)
+            await _bump_study_counts(conn, ds)
             routes = await evaluate_routing_rules(ds, tenant_id=tenant_id)
             if routes:
                 log.info(

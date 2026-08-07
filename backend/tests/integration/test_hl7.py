@@ -954,3 +954,71 @@ class TestHl7StructuredLogging:
             assert any('SIU' in msg for msg in caplog.messages)
             assert any('S12' in msg for msg in caplog.messages)
             assert any('MSG001' in msg for msg in caplog.messages)
+
+
+class TestOruStudyCompletion:
+    """ME-05: ORU results flip the matching study to complete."""
+
+    @pytest.mark.asyncio
+    async def test_oru_marks_study_complete(self):
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value="uuid-123")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_wl = MagicMock()
+            mock_wl.get_by_accession = AsyncMock(return_value={
+                'id': 'uuid-1', 'accession_number': 'ORD001', 'status': 'in_progress',
+            })
+            mock_wl.mark_performed = AsyncMock()
+            with patch('services.ingestion.hl7_server.Worklist') as mock_wl_cls:
+                mock_wl_cls.return_value = mock_wl
+
+                from services.ingestion.hl7_server import handle_oru_message
+                result = await handle_oru_message({
+                    'message_type': 'ORU',
+                    'event_type': 'R01',
+                    'patient_id': 'PID001',
+                    'accession_number': 'ORD001',
+                    'result_status': 'F',
+                })
+
+        assert result is True
+        assert any(
+            'study_status' in str(call.args[0])
+            and 'complete' in str(call.args[0])
+            for call in mock_conn.execute.await_args_list
+        ), 'ORU must update the study status to complete'
+
+    @pytest.mark.asyncio
+    async def test_oru_study_complete_survives_db_error(self):
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock(side_effect=[RuntimeError('db down'), None])
+        mock_conn.fetchval = AsyncMock(return_value="uuid-123")
+
+        with patch('services.ingestion.hl7_server.get_conn') as mock_get:
+            mock_get.return_value.__aenter__.return_value = mock_conn
+            mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            mock_wl = MagicMock()
+            mock_wl.get_by_accession = AsyncMock(return_value={
+                'id': 'uuid-1', 'accession_number': 'ORD001', 'status': 'in_progress',
+            })
+            mock_wl.mark_performed = AsyncMock()
+            with patch('services.ingestion.hl7_server.Worklist') as mock_wl_cls:
+                mock_wl_cls.return_value = mock_wl
+
+                from services.ingestion.hl7_server import handle_oru_message
+                result = await handle_oru_message({
+                    'message_type': 'ORU',
+                    'event_type': 'R01',
+                    'patient_id': 'PID001',
+                    'accession_number': 'ORD001',
+                    'result_status': 'F',
+                })
+
+        assert result is True
+        mock_wl.mark_performed.assert_awaited_once_with('ORD001')

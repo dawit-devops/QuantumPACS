@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import traceback
 
 import hl7
 
@@ -478,6 +479,18 @@ async def handle_oru_message(parsed: dict) -> bool:
 
     try:
         async with get_conn() as conn:
+            # ME-05: a results message is the authoritative 'study complete'
+            # signal — flip any study carrying this accession before the MWL
+            # bookkeeping (which may legitimately have no entry at all).
+            try:
+                await conn.execute(
+                    "UPDATE studies SET study_status = 'complete' "
+                    "WHERE accession_number = $1 AND study_status != 'complete'",
+                    accession,
+                )
+            except Exception:
+                log.warning('Study complete update failed: %s', traceback.format_exc())
+
             if patient_id:
                 p = Patient(conn)
                 await p.insert_or_select({

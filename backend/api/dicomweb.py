@@ -256,7 +256,8 @@ class DicomWebStudies(HTTPEndpoint):
                 SELECT p.patient_id, p.name AS patient_name, p.birth_date AS patient_birth_date,
                        p.sex AS patient_sex, s.id AS study_db_id, s.study_id, s.description AS study_description,
                        s.study_instance_uid, s.accession_number, s.study_date,
-                       s.referring_physician, s.performing_physician
+                       s.referring_physician, s.performing_physician,
+                       s.received_instances, s.expected_instances, s.study_status
                 FROM studies s
                 JOIN patients p ON p.id = s.patient_id
                 WHERE {where}
