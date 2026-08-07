@@ -55,6 +55,13 @@ def get_meta(data):
         'accession_number': clean(getattr(data, 'AccessionNumber', '')),
         'referring_physician': clean(getattr(data, 'ReferringPhysicianName', '')),
         'performing_physician': clean(getattr(data, 'PerformingPhysicianName', '')),
+        # ME-04: capture the reading physician and the MWL priority code when
+        # a C-STORE dataset carries them (rare; (0040,1003) travels with
+        # requested-procedure/SPS objects). Stored in files.meta JSONB.
+        'reading_physician': clean(getattr(data, 'ReadingPhysicianName', '')),
+        'requested_procedure_priority': clean(
+            getattr(data, 'RequestedProcedurePriority', ''),
+        ),
         'series_number': clean(getattr(data, 'SeriesNumber', ''), strict=True),
         'series_instance_uid': clean(getattr(data, 'SeriesInstanceUID', '')),
         'modality': clean(getattr(data, 'Modality', '')),

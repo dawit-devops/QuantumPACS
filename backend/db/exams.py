@@ -35,6 +35,8 @@ class Exams(Table):
             status TEXT NOT NULL DEFAULT 'ready'
                 CHECK (status IN ('ready', 'in_progress', 'completed', 'cancelled')),
             assigned_technologist TEXT DEFAULT '',
+            assigned_radiologist TEXT DEFAULT '',
+            referring_physician TEXT DEFAULT '',
             identity_confirmed_at TIMESTAMPTZ,
             started_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
@@ -52,6 +54,9 @@ class Exams(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_exams_accession ON exams(accession_number)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_exams_radiologist ON exams(assigned_radiologist)
+        """)
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -59,7 +64,8 @@ class Exams(Table):
             'worklist_entry_id', 'patient_id', 'patient_name', 'patient_birth_date',
             'patient_sex', 'accession_number', 'requested_procedure_desc', 'modality',
             'station_ae_title', 'priority', 'protocol_name', 'status',
-            'assigned_technologist', 'created_by', 'created_at', 'updated_at',
+            'assigned_technologist', 'assigned_radiologist', 'referring_physician',
+            'created_by', 'created_at', 'updated_at',
         ).insert((
             data.get('worklist_entry_id'),
             data['patient_id'],
@@ -74,6 +80,8 @@ class Exams(Table):
             data.get('protocol_name', ''),
             'ready',
             data.get('assigned_technologist', ''),
+            data.get('assigned_radiologist', ''),
+            data.get('referring_physician', ''),
             data.get('created_by', ''),
             now, now,
         )).returning('id')
@@ -81,6 +89,19 @@ class Exams(Table):
         if not row:
             raise RuntimeError('Failed to create exam')
         exam_id = row['id']
+        return await self.get(exam_id)
+
+    async def assign_radiologist(self, exam_id, radiologist_id):
+        """Claim an exam for a radiologist (per-physician reading worklist).
+
+        Unassignment is an explicit empty string, so callers pass the value
+        they want persisted rather than None.
+        """
+        await self.conn.execute(
+            "UPDATE exams SET assigned_radiologist = $2, updated_at = now() "
+            "WHERE id = $1",
+            exam_id, radiologist_id,
+        )
         return await self.get(exam_id)
 
     async def get(self, exam_id):

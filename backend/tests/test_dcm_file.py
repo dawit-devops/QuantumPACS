@@ -71,9 +71,23 @@ class TestGetMeta:
             'accession_number',
             'referring_physician',
             'performing_physician',
+            'reading_physician',
+            'requested_procedure_priority',
             'cleaned',
         }
         assert set(meta.keys()) == expected
+
+    def test_extracts_mwl_priority_and_reading_physician(self):
+        ds = pydicom.Dataset()
+        ds.PatientID = 'P001'
+        ds.StudyID = 'S001'
+        ds.SeriesNumber = '1'
+        ds.Modality = 'CT'
+        ds.RequestedProcedurePriority = 'A'
+        ds.ReadingPhysicianName = 'Radiologist^Rita'
+        meta = get_meta(ds)
+        assert meta['requested_procedure_priority'] == 'A'
+        assert meta['reading_physician'] == 'Radiologist^Rita'
 
     def test_patient_id_is_strict_cleaned(self, dataset):
         meta = get_meta(dataset)

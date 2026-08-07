@@ -125,6 +125,22 @@ async def _notify_role(conn, role_slug, event_type, title, body, link):
 
 
 class ExamsHandler(HTTPEndpoint):
+    """Adopt a worklist entry (or create an exam) and drive its lifecycle."""
+
+    @staticmethod
+    def _hl7_priority_to_exam(hl7_priority):
+        """Map HL7 OBR-27.7 priority codes onto the exam priority scale.
+
+        The worklist stores the raw HL7 code (S/A/U/R...); exams use
+        routine/urgent/stat (ME-04 priority flow: ORM -> worklist -> exam).
+        """
+        code = (hl7_priority or '').upper().strip()
+        if code in ('S', 'STAT'):
+            return 'stat'
+        if code in ('A', 'ASAP', 'U', 'URGENT', 'T'):
+            return 'urgent'
+        return 'routine'
+
     @requires_permission(Permission.EXAM_READ)
     async def get(self, request):
         status = request.query_params.get('status')
@@ -164,6 +180,13 @@ class ExamsHandler(HTTPEndpoint):
                         'Worklist entry already adopted into exam ' + str(existing['id']),
                     )
                 entry = dict(row)
+            # ME-04 priority flow: a default-routine exam adopted from a
+            # worklist entry inherits the HL7 priority (OBR-27.7) the ORM
+            # message carried, mapped onto the exam scale.
+            exam_priority = body.priority
+            entry_priority = (entry or {}).get('requested_procedure_priority', '')
+            if exam_priority == 'routine' and entry_priority:
+                exam_priority = self._hl7_priority_to_exam(entry_priority)
             exam = await Exams(conn).create({
                 'worklist_entry_id': body.worklist_entry_id,
                 'patient_id': body.patient_id or (entry or {}).get('patient_id', ''),
@@ -174,8 +197,11 @@ class ExamsHandler(HTTPEndpoint):
                 'requested_procedure_desc': body.requested_procedure_desc or (entry or {}).get('requested_procedure_desc', ''),
                 'modality': body.modality or (entry or {}).get('modality', ''),
                 'station_ae_title': body.station_ae_title or (entry or {}).get('station_ae_title', ''),
-                'priority': body.priority,
+                'priority': exam_priority,
                 'protocol_name': body.protocol_name,
+                # Denormalize the referring physician from the adopted entry
+                # (OBR-16) so the reading worklist can filter on it.
+                'referring_physician': body.referring_physician or (entry or {}).get('referring_physician', ''),
                 'assigned_technologist': str(request.user.id),
                 'created_by': str(request.user.id),
             })

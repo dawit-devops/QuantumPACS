@@ -13,6 +13,7 @@ class CreateExamRequest(BaseModel):
     station_ae_title: str = Field('', description="Station AE title")
     priority: str = Field('routine', description="routine/urgent/stat")
     protocol_name: str = Field('', description="Selected protocol name")
+    referring_physician: str = Field('', description="Referring/ordering physician (ME-04)")
 
     @field_validator('priority')
     @classmethod

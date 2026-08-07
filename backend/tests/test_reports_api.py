@@ -34,12 +34,14 @@ class _FakeAuth(BaseHTTPMiddleware):
 def _make_app(user=None):
     from api.reports import (
         ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
+        ExamAssignHandler,
         ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
         PeerReviewHandler, PeerReviewSubmitHandler,
     )
     return Starlette(
         routes=[
             Route('/reports/reading-list', endpoint=ReadingListHandler),
+            Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler),
             Route('/reports/templates', endpoint=ReportTemplatesHandler),
             Route('/reports/{exam_id}', endpoint=ExamReportHandler),
             Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler),
@@ -114,6 +116,7 @@ def _reading_row(exam_id='exam-1', priority='stat'):
         'accession_number': 'ACC1', 'requested_procedure_desc': '',
         'modality': 'CT', 'priority': priority, 'protocol_name': '',
         'completed_at': None, 'assigned_technologist': '',
+        'assigned_radiologist': '', 'referring_physician': '',
         'report_id': None, 'report_status': None, 'signed_by': None, 'signed_at': None,
     }
 
@@ -135,6 +138,94 @@ class TestReadingList:
         # STAT sorts first.
         assert data[0]['exam_id'] == 'exam-2'
         assert data[1]['exam_id'] == 'exam-1'
+
+    def test_me_resolves_to_requesting_user(self):
+        """radiologist=me must resolve to the requesting user server-side."""
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = client.get(
+                    '/reports/reading-list'
+                    '?radiologist=me&physician=Lee&date_from=2026-08-01&date_to=2026-08-31',
+                )
+        assert resp.status_code == 200
+        kwargs = reports.reading_list.await_args.kwargs
+        assert kwargs['radiologist'] == '50'  # RAD user id
+        assert kwargs['physician'] == 'Lee'
+        assert kwargs['date_from'] == '2026-08-01'
+        assert kwargs['date_to'] == '2026-08-31'
+
+    def test_assigned_radiologist_rows_include_physicians(self):
+        client = TestClient(_make_app(RAD))
+        async def fake_fetch(q, *a):
+            row = _reading_row(exam_id='exam-9')
+            row['assigned_radiologist'] = '50'
+            row['referring_physician'] = 'Lee^Kim'
+            return [row]
+        with _conn(fetch=fake_fetch):
+            resp = client.get('/reports/reading-list?radiologist=50')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data[0]['assigned_radiologist'] == '50'
+        assert data[0]['referring_physician'] == 'Lee^Kim'
+
+
+class TestExamAssign:
+    def test_assign_requires_report_write(self):
+        client = TestClient(_make_app(READ_ONLY))
+        resp = client.post('/reports/reading-list/exam-1/assign', json={})
+        assert resp.status_code == 403
+
+    def test_assign_defaults_to_requesting_user(self):
+        """An empty radiologist_id assigns the exam to the requesting user."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            return _exam_row(exam_id='exam-1', status='completed')
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=fake_fetchrow), _audit_ok():
+            exams = AsyncMock()
+            exams.get = AsyncMock(return_value=_exam_row(
+                exam_id='exam-1', status='completed'))
+            exams.assign_radiologist = AsyncMock(return_value=_exam_row(
+                exam_id='exam-1', status='completed'))
+            exams_cls.return_value = exams
+            resp = client.post('/reports/reading-list/exam-1/assign', json={})
+        assert resp.status_code == 200
+        args = exams.assign_radiologist.await_args.args
+        assert args == ('exam-1', '50')  # RAD user id
+
+    def test_assign_explicit_radiologist(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=lambda q, *a: _exam_row(status='completed')), _audit_ok():
+            exams = AsyncMock()
+            exams.get = AsyncMock(return_value=_exam_row(status='completed'))
+            exams.assign_radiologist = AsyncMock(return_value=_exam_row())
+            exams_cls.return_value = exams
+            resp = client.post('/reports/reading-list/exam-1/assign',
+                               json={'radiologist_id': 'user-77'})
+        assert resp.status_code == 200
+        assert exams.assign_radiologist.await_args.args == ('exam-1', 'user-77')
+
+    def test_assign_404_when_exam_missing(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=lambda q, *a: None), _audit_ok():
+            exams_cls.return_value.get = AsyncMock(return_value=None)
+            resp = client.post('/reports/reading-list/exam-1/assign', json={})
+        assert resp.status_code == 404
+
+    def test_assign_rejects_exam_not_completed(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=lambda q, *a: _exam_row(status='in_progress')), _audit_ok():
+            exams_cls.return_value.get = AsyncMock(
+                return_value=_exam_row(status='in_progress'))
+            resp = client.post('/reports/reading-list/exam-1/assign', json={})
+        assert resp.status_code == 400
 
 
 class TestExamReport:

@@ -53,6 +53,7 @@ from api.exams import (
 )
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
+    ExamAssignHandler,
     ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
 )
@@ -223,6 +224,7 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
     v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
+    v2(Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler)),
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
     v2(Route('/reports/{exam_id}', endpoint=ExamReportHandler)),
     v2(Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler)),

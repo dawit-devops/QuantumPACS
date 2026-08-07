@@ -10,6 +10,7 @@ import {
   Alert,
   Spin,
   Badge,
+  Checkbox,
 } from "antd";
 import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
@@ -50,6 +51,9 @@ function ReadingWorklist() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [modalityFilter, setModalityFilter] = useState<string | undefined>();
   const [search, setSearch] = useState("");
+  const [assignedToMe, setAssignedToMe] = useState(false);
+  const [physicianFilter, setPhysicianFilter] = useState("");
+  const [assigning, setAssigning] = useState<string | null>(null);
 
   const fetchList = useCallback(() => {
     setLoading(true);
@@ -58,6 +62,8 @@ function ReadingWorklist() {
     if (statusFilter) query.status = statusFilter;
     if (modalityFilter) query.modality = modalityFilter;
     if (search) query.search = search;
+    if (assignedToMe) query.radiologist = "me";
+    if (physicianFilter) query.physician = physicianFilter;
     request("reports/reading-list", { query })
       .then((res: any) => {
         setLoading(false);
@@ -67,7 +73,7 @@ function ReadingWorklist() {
         setLoading(false);
         setError(e.message);
       });
-  }, [statusFilter, modalityFilter, search]);
+  }, [statusFilter, modalityFilter, search, assignedToMe, physicianFilter]);
 
   useEffect(() => {
     fetchList();
@@ -134,23 +140,49 @@ function ReadingWorklist() {
       render: (v: string) => (v ? new Date(v).toLocaleString() : "—"),
     },
     {
+      title: "Assigned",
+      dataIndex: "assigned_radiologist",
+      key: "assigned_radiologist",
+      width: 90,
+      render: (v: string) => (v ? "Claimed" : "—"),
+    },
+    {
       title: "",
       key: "action",
-      width: 130,
+      width: 210,
       render: (_: unknown, r: any) => (
-        <Button
-          size="small"
-          type="primary"
-          ghost
-          onClick={() => navigate(`/reading/${r.exam_id}`)}
-        >
-          {r.report_status && r.report_status !== "none"
-            ? "Continue"
-            : "Read Study"}
-        </Button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button
+            size="small"
+            type="primary"
+            ghost
+            onClick={() => navigate(`/reading/${r.exam_id}`)}
+          >
+            {r.report_status && r.report_status !== "none"
+              ? "Continue"
+              : "Read Study"}
+          </Button>
+          {!r.assigned_radiologist && (
+            <Button
+              size="small"
+              loading={assigning === r.exam_id}
+              onClick={() => takeExam(r.exam_id)}
+            >
+              Take
+            </Button>
+          )}
+        </div>
       ),
     },
   ];
+
+  const takeExam = (examId: string) => {
+    setAssigning(examId);
+    request(`reports/reading-list/${examId}/assign`, { method: "POST" })
+      .then(() => fetchList())
+      .catch((e: any) => setError(e.message))
+      .finally(() => setAssigning(null));
+  };
 
   return (
     <Content style={{ padding: 24 }} role="main" id="main-content">
@@ -209,6 +241,20 @@ function ReadingWorklist() {
           onChange={(e) => setSearch(e.target.value)}
           onSearch={() => fetchList()}
         />
+        <Input.Search
+          placeholder="Referring physician"
+          allowClear
+          style={{ width: 200 }}
+          value={physicianFilter}
+          onChange={(e) => setPhysicianFilter(e.target.value)}
+          onSearch={() => fetchList()}
+        />
+        <Checkbox
+          checked={assignedToMe}
+          onChange={(e) => setAssignedToMe(e.target.checked)}
+        >
+          Assigned to me
+        </Checkbox>
       </div>
 
       {error && (
