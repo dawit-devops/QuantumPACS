@@ -114,6 +114,16 @@ async def _notify_quota_breach(conn, tenant_slug, quota_bytes, used_bytes):
 class Upload(HTTPEndpoint):
     @requires_permission(Permission.FILE_WRITE)
     async def post(self, request):
+        form = await request.form()
+        up = form['file']
+        try:
+            return await self._process_upload(request, up)
+        finally:
+            # Starlette spools the body to a temp file; close it explicitly so
+            # it does not linger until GC (ResourceWarning in tests).
+            await up.close()
+
+    async def _process_upload(self, request, up):
         max_mb = int(app_config.get('max_upload_size_mb', '500'))
         max_bytes = max_mb * 1024 * 1024
 
@@ -121,8 +131,6 @@ class Upload(HTTPEndpoint):
         if size_hint and int(size_hint) > max_bytes:
             return api_error('FILE_TOO_LARGE', f'File exceeds {max_mb}MB limit', status=413)
 
-        form = await request.form()
-        up = form['file']
         filename = up.filename
         file = up.file
 

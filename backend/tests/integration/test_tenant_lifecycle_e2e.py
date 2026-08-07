@@ -140,7 +140,7 @@ async def tenant_env():
     slug = f'e2e_{int(time.time())}'
     db_name = slug.replace('-', '_')
 
-    info = {'slug': slug, 'db_name': db_name, 'name': f'E2E {slug}', 'provisioner_error': None}
+    info = {'slug': slug, 'db_name': db_name, 'name': f'E2E {slug}', 'provisioner_error': None, 'provisioned_via': 'provisioner'}
     try:
         result = await TenantProvisioner.provision(
             slug=slug, name=info['name'], domain=f'{slug}.example.test',
@@ -153,6 +153,7 @@ async def tenant_env():
         # (db/tenant_provisioner.py), which this deployment lacks; replicate
         # its steps with config['db_user'] so the lifecycle still runs
         # end-to-end. Fixed upstream -> provision path used.
+        info['provisioned_via'] = 'fallback'
         info['provisioner_error'] = f'{type(e).__name__}: {e}'
         async with get_conn() as conn:
             # A failed provision leaves a decommissioned registry row behind;
@@ -172,6 +173,11 @@ async def tenant_env():
     try:
         yield info
     finally:
+        try:
+            from api.redis_client import close_client
+            await close_client()
+        except Exception:
+            pass
         try:
             await TenantConnectionPool.close(slug)
         except Exception:
@@ -234,11 +240,11 @@ def _make_app(user=None):
 
 class TestProvision:
     def test_provisioner_gap_canary(self, tenant_env):
-        """Provision() must succeed; today it trips over env gaps (see module docstring)."""
-        if tenant_env['provisioner_error'] is None:
-            pytest.skip('provision() succeeded — provisioning path is fixed')
-        err = tenant_env['provisioner_error']
-        assert 'postgres' in err or 'Migration failed' in err
+        """Provision() must succeed through the provisioner (not the fixture's
+        manual fallback); if it trips over env gaps again, fail with its error."""
+        assert tenant_env['provisioned_via'] == 'provisioner', (
+            f'TenantProvisioner.provision() failed: {tenant_env["provisioner_error"]}'
+        )
 
     @pytest.mark.asyncio(loop_scope='module')
     async def test_registry_row_and_tenant_database_exist(self, tenant_env):

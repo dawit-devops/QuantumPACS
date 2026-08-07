@@ -19,6 +19,14 @@ def _safe_repval(v):
         return ''
 
 
+def _join_names(value):
+    # (0008,1060) PhysiciansReadingStudy is VM 1-n; normalize a list of
+    # PersonNames (str subclasses) to a single backslash-joined string.
+    if isinstance(value, (list, tuple)):
+        return '\\'.join(str(n) for n in value)
+    return value or ''
+
+
 def get_meta(data):
     # Binary "Other" VRs carry pixel/encapsulated payloads, never searchable
     # metadata. Skip them so C-STORE datasets (full pixel data) don't leak
@@ -58,7 +66,10 @@ def get_meta(data):
         # ME-04: capture the reading physician and the MWL priority code when
         # a C-STORE dataset carries them (rare; (0040,1003) travels with
         # requested-procedure/SPS objects). Stored in files.meta JSONB.
-        'reading_physician': clean(getattr(data, 'ReadingPhysicianName', '')),
+        # (0008,1060) is VM 1-n — join multiple names the DICOM way.
+        'reading_physician': clean(
+            _join_names(data.get('NameOfPhysiciansReadingStudy')),
+        ),
         'requested_procedure_priority': clean(
             getattr(data, 'RequestedProcedurePriority', ''),
         ),

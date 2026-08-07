@@ -13,36 +13,59 @@ pytest.importorskip('testcontainers')
 pytest.importorskip('docker')
 
 
-@pytest.mark.skip(reason='testcontainers E2E — requires docker and testcontainers-py')
-class TestDicomWebE2E:
-    @pytest.fixture(scope='class')
-    def postgres_container(self):
-        from testcontainers.postgres import PostgresContainer
-        with PostgresContainer('postgres:16-alpine') as pg:
-            yield pg
+@pytest.fixture(scope='class')
+def postgres_container():
+    from testcontainers.community.postgres import PostgresContainer
+    with PostgresContainer('postgres:16-alpine') as pg:
+        yield pg
 
-    @pytest.fixture(scope='class')
-    def db_url(self, postgres_container):
-        return postgres_container.get_connection_url()
 
-    @pytest.fixture(scope='class')
-    def app(self, db_url, monkeypatch):
-        monkeypatch.setenv('DATABASE_URL', db_url)
+@pytest.fixture(scope='class')
+def app(postgres_container):
+    # Point config at the container DB *before* importing the app — config
+    # reads DB_* env vars once at import time (config.py load_config).
+    import os
+    port = postgres_container.get_exposed_port(5432)
+    managed = {
+        'DB_HOST': '127.0.0.1',
+        'DB_PORT': str(port),
+        'DB_USER': 'test',
+        'DB_PASSWORD': 'test',
+        'DB_NAME': 'test',
+        # lifecycle.setup() exits unless it is Docker mode or a redis password
+        # is configured — either satisfies the guard; Docker mode is accurate
+        # here since the DB under test runs in a container.
+        'QUANTUMPACS_DOCKER': '1',
+    }
+    old = {k: os.environ.get(k) for k in managed}
+    os.environ.update(managed)
+    try:
         from app import app
-        return app
+        yield app
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
-    @pytest.fixture(scope='class')
-    def client(self, app):
-        from starlette.testclient import TestClient
-        with TestClient(app) as c:
-            yield c
 
+@pytest.fixture(scope='class')
+def client(app):
+    from starlette.testclient import TestClient
+    # TrustedHostMiddleware only allows configured hosts; `testserver` (the
+    # TestClient default) is not one of them.
+    with TestClient(app, base_url='http://localhost') as c:
+        yield c
+
+
+class TestDicomWebE2E:
     def test_store_study(self, client):
-        resp = client.options('/dicomweb/studies')
+        resp = client.options('/api/v2/dicomweb/studies')
         assert resp.status_code == 200
 
     def test_api_health(self, client):
-        resp = client.get('/api/health')
+        resp = client.get('/api/v2/health')
         assert resp.status_code in (200, 404)
 
     def test_store_search_retrieve_flow(self, client):
@@ -77,18 +100,18 @@ class TestDicomWebE2E:
         ).encode() + dcm_bytes + f'\r\n--{boundary}--\r\n'.encode()
 
         store_resp = client.post(
-            '/dicomweb/studies',
+            '/api/v2/dicomweb/studies/2.25.1.1.1/instances',
             content=body,
             headers={'Content-Type': f'multipart/related; type=application/dicom; boundary={boundary}'},
         )
         assert store_resp.status_code in (200, 401, 403)
 
     def test_search_returns_json(self, client):
-        resp = client.get('/dicomweb/studies', headers={'Accept': 'application/dicom+json'})
+        resp = client.get('/api/v2/dicomweb/studies', headers={'Accept': 'application/dicom+json'})
         assert resp.status_code in (200, 401, 403)
         if resp.status_code == 200:
             assert resp.headers.get('content-type', '').startswith('application/dicom+json')
 
     def test_retrieve_study(self, client):
-        resp = client.get('/dicomweb/studies/2.25.1.1.1')
+        resp = client.get('/api/v2/dicomweb/studies/2.25.1.1.1')
         assert resp.status_code in (200, 401, 403, 404)

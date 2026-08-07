@@ -49,6 +49,35 @@ def mock_conn():
     return AsyncMock()
 
 
+@pytest.fixture(scope='session', autouse=True)
+def _close_background_clients():
+    """Close the sentry transport at session end (not loop-bound). The redis
+    pool is loop-bound and is closed per-test by _close_redis_pool instead."""
+    yield
+    try:
+        import sentry_sdk
+
+        sentry_sdk.get_client().close()
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+async def _close_redis_pool():
+    """Close the process-wide redis pool on the test's own event loop.
+
+    Connections are bound to the loop that created them; closing them from a
+    different loop (or asyncio.run) leaks the sockets and pytest reports them
+    as ResourceWarnings when GC runs during later tests."""
+    yield
+    try:
+        from api.redis_client import close_client
+
+        await close_client()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _reset_otel_tracer():
     from opentelemetry import trace

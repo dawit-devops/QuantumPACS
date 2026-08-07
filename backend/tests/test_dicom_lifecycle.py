@@ -2,6 +2,8 @@ from unittest.mock import MagicMock, patch
 
 import asyncio
 
+import pytest
+
 
 def _setup_lifecycle_state():
     import lifecycle
@@ -9,6 +11,21 @@ def _setup_lifecycle_state():
     lifecycle.set_app(app)
     app.state.lifecycle = lifecycle.LifecycleState()
     return lifecycle
+
+
+@pytest.fixture(autouse=True)
+def _close_throwaway_dicom_loop():
+    """_run_dicom() with loop=None creates a throwaway event loop for tests
+    (lifecycle.py) that nothing ever closes; close it so pytest does not
+    report an unclosed event loop ResourceWarning at GC."""
+    yield
+    try:
+        from dcm import server as dcm_server
+        if dcm_server._loop is not None and not dcm_server._loop.is_closed():
+            dcm_server._loop.close()
+            dcm_server._loop = None
+    except Exception:
+        pass
 
 
 class TestDicomLifecycleFunctions:
@@ -89,11 +106,17 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
+            # dcm.server is patched away, so the loop created inside
+            # _run_dicom would be unreachable (and unclosable) afterwards;
+            # hand it a real loop we own and close explicitly.
+            real_loop = asyncio.new_event_loop()
             with patch('dcm.server') as mock_dcm_server:
-                lifecycle._run_dicom()
+                with patch('lifecycle.asyncio.new_event_loop', return_value=real_loop):
+                    lifecycle._run_dicom()
 
-                assert mock_dcm_server._loop is not None
-                assert isinstance(mock_dcm_server._loop, asyncio.AbstractEventLoop)
+                    assert mock_dcm_server._loop is not None
+                    assert isinstance(mock_dcm_server._loop, asyncio.AbstractEventLoop)
+            real_loop.close()
 
     def test_start_dicom_includes_mwl_context(self):
         from pynetdicom.sop_class import ModalityWorklistInformationFind
@@ -105,13 +128,18 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
+            # dcm.server is patched away — hand _run_dicom a real loop we own
+            # so the one it would create is not leaked (see the loop test).
+            real_loop = asyncio.new_event_loop()
             with patch('dcm.server'):
-                lifecycle._run_dicom()
+                with patch('lifecycle.asyncio.new_event_loop', return_value=real_loop):
+                    lifecycle._run_dicom()
+            real_loop.close()
 
-                assert any(
-                    pc.abstract_syntax == ModalityWorklistInformationFind
-                    for pc in mock_ae_instance.supported_contexts
-                )
+            assert any(
+                pc.abstract_syntax == ModalityWorklistInformationFind
+                for pc in mock_ae_instance.supported_contexts
+            )
 
     def test_start_dicom_includes_qr_find_contexts(self):
         from pynetdicom.sop_class import (
@@ -130,25 +158,30 @@ class TestDicomLifecycleFunctions:
             mock_scp = MagicMock()
             mock_ae_instance.start_server.return_value = mock_scp
 
+            # dcm.server is patched away — hand _run_dicom a real loop we own
+            # so the one it would create is not leaked (see the loop test).
+            real_loop = asyncio.new_event_loop()
             with patch('dcm.server'):
-                lifecycle._run_dicom()
+                with patch('lifecycle.asyncio.new_event_loop', return_value=real_loop):
+                    lifecycle._run_dicom()
+            real_loop.close()
 
-                for sop_class in (
-                    PatientRootQueryRetrieveInformationModelFind,
-                    StudyRootQueryRetrieveInformationModelFind,
-                ):
-                    assert any(
-                        pc.abstract_syntax == sop_class
-                        for pc in mock_ae_instance.supported_contexts
-                    )
-                # C-MOVE/C-GET must not be advertised (CR-02).
-                for sop_class in (
-                    PatientRootQueryRetrieveInformationModelMove,
-                    StudyRootQueryRetrieveInformationModelMove,
-                    PatientRootQueryRetrieveInformationModelGet,
-                    StudyRootQueryRetrieveInformationModelGet,
-                ):
-                    assert not any(
-                        pc.abstract_syntax == sop_class
-                        for pc in mock_ae_instance.supported_contexts
-                    )
+            for sop_class in (
+                PatientRootQueryRetrieveInformationModelFind,
+                StudyRootQueryRetrieveInformationModelFind,
+            ):
+                assert any(
+                    pc.abstract_syntax == sop_class
+                    for pc in mock_ae_instance.supported_contexts
+                )
+            # C-MOVE/C-GET must not be advertised (CR-02).
+            for sop_class in (
+                PatientRootQueryRetrieveInformationModelMove,
+                StudyRootQueryRetrieveInformationModelMove,
+                PatientRootQueryRetrieveInformationModelGet,
+                StudyRootQueryRetrieveInformationModelGet,
+            ):
+                assert not any(
+                    pc.abstract_syntax == sop_class
+                    for pc in mock_ae_instance.supported_contexts
+                )

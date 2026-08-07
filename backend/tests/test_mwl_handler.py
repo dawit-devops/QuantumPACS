@@ -18,10 +18,15 @@ class TestMwlCFindHandler:
         event = MagicMock()
         event.identifier = Dataset()
 
-        with patch('dcm.server.asyncio.run_coroutine_threadsafe') as mock_run:
+        def _discard_coroutine(coro, loop):
+            # The real scheduler would await `coro` on the DICOM thread loop;
+            # here we close it so it is not left un-awaited (RuntimeWarning).
+            coro.close()
+            return mock_future
+
+        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine) as mock_run:
             mock_future = MagicMock()
             mock_future.result.return_value = []
-            mock_run.return_value = mock_future
 
             with patch('dcm.server._loop'):
                 statuses = [s for s, _ in handle_find(event)]
@@ -34,10 +39,15 @@ class TestMwlCFindHandler:
         mock_ds = Dataset()
         mock_ds.PatientID = 'P001'
 
-        with patch('dcm.server.asyncio.run_coroutine_threadsafe') as mock_run:
+        def _discard_coroutine(coro, loop):
+            # See test_handle_find_returns_success_status — close the un-run
+            # coroutine instead of leaking it un-awaited.
+            coro.close()
+            return mock_future
+
+        with patch('dcm.server.asyncio.run_coroutine_threadsafe', side_effect=_discard_coroutine) as mock_run:
             mock_future = MagicMock()
             mock_future.result.return_value = [mock_ds]
-            mock_run.return_value = mock_future
 
             with patch('dcm.server._loop'):
                 results = list(handle_find(event))
@@ -151,9 +161,12 @@ class TestEntryToDataset:
         assert ds.PatientID == ''
         assert ds.PatientName == ''
 
+    @pytest.mark.filterwarnings('ignore:Invalid value for VR UI:UserWarning')
     def test_accepts_uuid_id(self):
         # asyncpg returns the id column as a uuid.UUID object; pydicom's UID
         # rejects non-str values, so _entry_to_dataset must stringify it.
+        # pydicom still warns that a UUID is not a valid DICOM UI — expected,
+        # the point of the test is that we tolerate such ids in the wild.
         import uuid
         uid = uuid.uuid4()
         ds = _entry_to_dataset({'id': uid})

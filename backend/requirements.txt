@@ -29,6 +29,9 @@ httpx<1.0
 prometheus_client>=0.20,<1.0
 hl7>=0.4,<1.0
 cryptography>=50.0.0,<51.0
+# Test-only: container-backed E2E suite (tests/integration/test_e2e.py)
+testcontainers>=4.0
+docker>=7.0
 
 Pillow>=10.0.0,<13.0.0
 numpy>=1.21,<3.0

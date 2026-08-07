@@ -84,7 +84,7 @@ class TestGetMeta:
         ds.SeriesNumber = '1'
         ds.Modality = 'CT'
         ds.RequestedProcedurePriority = 'A'
-        ds.ReadingPhysicianName = 'Radiologist^Rita'
+        ds.NameOfPhysiciansReadingStudy = 'Radiologist^Rita'
         meta = get_meta(ds)
         assert meta['requested_procedure_priority'] == 'A'
         assert meta['reading_physician'] == 'Radiologist^Rita'
