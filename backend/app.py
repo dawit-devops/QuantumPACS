@@ -23,6 +23,7 @@ from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
 from api.tracing_middleware import TracingMiddleware
+from api.dicomweb_logging import DicomWebLogMiddleware
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
 from exceptions import ConfigurationError
@@ -212,6 +213,7 @@ app = Starlette(
     routes=routes,
     middleware=[
         Middleware(TracingMiddleware),
+        Middleware(DicomWebLogMiddleware),
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TenantMiddleware),
         Middleware(FhirAuditMiddleware),

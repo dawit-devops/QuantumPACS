@@ -18,19 +18,27 @@ export interface DicomwebModalityCount {
   count: number;
 }
 
+export interface DicomwebRequestCount {
+  kind: string;
+  total: number;
+  errors: number;
+}
+
 export interface DicomwebMetrics {
   period: string;
   files_stored: number;
   studies_stored: number;
   failed_stores: number;
   storage_bytes: number;
+  requests_total: number;
+  requests_failed: number;
+  requests_by_kind?: DicomwebRequestCount[];
   by_modality?: DicomwebModalityCount[];
   totals: {
     studies: number;
     series: number;
     files: number;
   };
-  metrics_note?: string;
 }
 
 export const getDicomwebMetrics = (

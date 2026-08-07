@@ -26,7 +26,6 @@ import {
   InboxOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { Typography } from "antd";
 import {
   getDicomwebAdmin,
   getDicomwebMetrics,
@@ -36,7 +35,6 @@ import { PageState } from "../common/PageState";
 import "./DicomWebAdmin.css";
 
 const { Content } = Layout;
-const { Text } = Typography;
 
 const serviceIcons: Record<string, React.ReactNode> = {
   qido: <SearchOutlined />,
@@ -377,6 +375,60 @@ function DicomWebAdmin(props: any) {
                         />
                       </Col>
                     </Row>
+                    <Row gutter={16} style={{ marginTop: 16 }}>
+                      <Col span={6}>
+                        <Statistic
+                          title={`Requests (${metrics.period})`}
+                          value={metrics.requests_total || 0}
+                          prefix={<ApiOutlined />}
+                        />
+                      </Col>
+                      <Col span={6}>
+                        <Statistic
+                          title={`Failed requests (${metrics.period})`}
+                          value={metrics.requests_failed || 0}
+                          prefix={<CloseCircleOutlined />}
+                          valueStyle={
+                            metrics.requests_failed
+                              ? { color: "#cf1322" }
+                              : undefined
+                          }
+                        />
+                      </Col>
+                    </Row>
+                    {metrics.requests_by_kind?.length ? (
+                      <Table
+                        style={{ marginTop: 16 }}
+                        size="small"
+                        rowKey="kind"
+                        pagination={false}
+                        dataSource={metrics.requests_by_kind}
+                        columns={[
+                          {
+                            title: "Kind",
+                            dataIndex: "kind",
+                            key: "kind",
+                            render: (k: string) => <Tag>{k.toUpperCase()}</Tag>,
+                          },
+                          {
+                            title: `Requests (${metrics.period})`,
+                            dataIndex: "total",
+                            key: "total",
+                          },
+                          {
+                            title: "Errors",
+                            dataIndex: "errors",
+                            key: "errors",
+                            render: (e: number) =>
+                              e > 0 ? (
+                                <span style={{ color: "#cf1322" }}>{e}</span>
+                              ) : (
+                                e
+                              ),
+                          },
+                        ]}
+                      />
+                    ) : null}
                     {metrics.by_modality?.length ? (
                       <Table
                         style={{ marginTop: 16 }}
@@ -399,14 +451,6 @@ function DicomWebAdmin(props: any) {
                         ]}
                       />
                     ) : null}
-                    {metrics.metrics_note && (
-                      <Text
-                        type="secondary"
-                        style={{ display: "block", marginTop: 16 }}
-                      >
-                        {metrics.metrics_note}
-                      </Text>
-                    )}
                   </>
                 ) : (
                   <Empty description="No metrics available" />

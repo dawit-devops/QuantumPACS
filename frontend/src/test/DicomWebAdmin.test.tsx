@@ -77,12 +77,18 @@ const mockMetrics = {
   studies_stored: 2,
   failed_stores: 1,
   storage_bytes: 2048,
+  requests_total: 42,
+  requests_failed: 3,
+  requests_by_kind: [
+    { kind: "qido", total: 20, errors: 1 },
+    { kind: "wado", total: 15, errors: 1 },
+    { kind: "stow", total: 7, errors: 1 },
+  ],
   by_modality: [
     { modality: "CT", count: 5 },
     { modality: "MR", count: 2 },
   ],
   totals: { studies: 12, series: 20, files: 34 },
-  metrics_note: "no request logging",
 };
 
 describe("DicomWebAdmin", () => {
@@ -164,6 +170,26 @@ describe("DicomWebAdmin", () => {
     );
     expect(await screen.findByText("Instances (24h)")).toBeInTheDocument();
     expect(await screen.findByText("CT")).toBeInTheDocument();
+  });
+
+  it("renders request volume in metrics tab", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Metrics")!,
+    );
+    expect(
+      (await screen.findAllByText("Requests (24h)")).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByText("42")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Failed requests (24h)"),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("3")).toBeInTheDocument();
+    expect(await screen.findByText("QIDO")).toBeInTheDocument();
+    expect(await screen.findByText("WADO")).toBeInTheDocument();
+    expect(await screen.findByText("STOW")).toBeInTheDocument();
   });
 
   it("refetches metrics when the period changes", async () => {

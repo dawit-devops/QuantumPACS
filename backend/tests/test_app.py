@@ -73,6 +73,7 @@ class TestMiddlewareStack:
         mw_names = [m.cls.__name__ for m in real_app.user_middleware]
         expected_order = [
             'TracingMiddleware',
+            'DicomWebLogMiddleware',
             'AuthenticationMiddleware',
             'TenantMiddleware',
             'FhirAuditMiddleware',

@@ -73,7 +73,6 @@ class DicomWebAdminHandler(HTTPEndpoint):
                 'Study metadata (GET /studies/{uid}/metadata)',
                 'Series metadata (GET .../series/{uid}/metadata)',
                 'Instance metadata (GET .../instances/{uid}/metadata)',
-                'Frame retrieval (GET .../instances/{uid}/frames/{frames})',
                 'Bulk data URI support',
                 'Transfer syntax negotiation',
             ],
@@ -121,11 +120,22 @@ class DicomWebMetricsHandler(HTTPEndpoint):
                 " GROUP BY s.modality ORDER BY count DESC",
                 interval,
             )
+            request_rows = await conn.fetch(
+                "SELECT (l.log::json -> 'detail') ->> 'kind' AS kind,"
+                "       COUNT(*) AS total,"
+                "       COUNT(*) FILTER (WHERE (l.log::json -> 'detail' ->> 'status')::int >= 400) AS errors"
+                " FROM logs l"
+                " WHERE l.log LIKE '%dicomweb.request%'"
+                "   AND l.created > now() - $1::interval"
+                " GROUP BY kind ORDER BY total DESC",
+                interval,
+            )
             totals = await conn.fetchrow(
                 "SELECT (SELECT COUNT(*) FROM studies) AS studies,"
                 "       (SELECT COUNT(*) FROM series) AS series,"
                 "       (SELECT COUNT(*) FROM files) AS files"
             )
+        request_rows = [dict(r) for r in request_rows]
         return ok({
             'period': period_key,
             'files_stored': files_period or 0,
@@ -133,10 +143,12 @@ class DicomWebMetricsHandler(HTTPEndpoint):
             'failed_stores': failed_stores or 0,
             'storage_bytes': storage_bytes,
             'by_modality': [dict(r) for r in modality_rows],
+            'requests_total': sum(r['total'] for r in request_rows),
+            'requests_failed': sum(r['errors'] for r in request_rows),
+            'requests_by_kind': request_rows,
             'totals': {
                 'studies': totals['studies'] or 0,
                 'series': totals['series'] or 0,
                 'files': totals['files'] or 0,
             },
-            'metrics_note': 'Dedicated DICOMweb request logging not yet implemented',
         })

@@ -451,9 +451,10 @@ class TestDicomWebAdmin:
         mock_conn.fetchrow = AsyncMock(
             return_value={'studies': 30, 'series': 45, 'files': 120}
         )
-        mock_conn.fetch = AsyncMock(
-            return_value=[{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}]
-        )
+        mock_conn.fetch = AsyncMock(side_effect=[
+            [{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}],
+            [{'kind': 'qido', 'total': 5, 'errors': 1}],
+        ])
         with _patch_get_conn('api.dicomweb_admin', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/dicomweb/admin/metrics?period=7d')
@@ -465,6 +466,9 @@ class TestDicomWebAdmin:
         assert body['failed_stores'] == 10
         assert body['storage_bytes'] == 10
         assert body['by_modality'] == [{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}]
+        assert body['requests_by_kind'] == [{'kind': 'qido', 'total': 5, 'errors': 1}]
+        assert body['requests_total'] == 5
+        assert body['requests_failed'] == 1
         assert body['totals'] == {'studies': 30, 'series': 45, 'files': 120}
 
     def test_metrics_defaults_to_24h(self):
