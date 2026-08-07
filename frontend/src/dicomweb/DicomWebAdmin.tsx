@@ -14,6 +14,8 @@ import {
   Statistic,
   Radio,
   Switch,
+  Select,
+  Button,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -24,12 +26,15 @@ import {
   UploadOutlined,
   DatabaseOutlined,
   InboxOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import {
   getDicomwebAdmin,
   getDicomwebMetrics,
+  getDicomwebRequests,
   DicomwebMetrics,
+  DicomwebRequestLog,
 } from "../api/dicomweb-admin";
 import { PageState } from "../common/PageState";
 import "./DicomWebAdmin.css";
@@ -47,6 +52,25 @@ const PERIOD_OPTIONS = [
   { label: "7d", value: "7d" },
   { label: "30d", value: "30d" },
 ];
+
+const KIND_OPTIONS = [
+  "qido",
+  "wado",
+  "stow",
+  "frames",
+  "archive",
+  "wado_uri",
+].map((k) => ({ label: k.toUpperCase(), value: k }));
+
+function formatDuration(ms: number | null): string {
+  if (ms === null || ms === undefined) return "-";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
+}
+
+function formatTime(iso: string | null): string {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString();
+}
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -68,6 +92,36 @@ function DicomWebAdmin(props: any) {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<DicomwebRequestLog[]>([]);
+  const [requestsCursor, setRequestsCursor] = useState<number | null>(null);
+  const [requestsHasMore, setRequestsHasMore] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestKind, setRequestKind] = useState<string | undefined>(undefined);
+  const [requestPeriod, setRequestPeriod] = useState("24h");
+
+  const fetchRequests = async (reset = false) => {
+    setRequestsLoading(true);
+    try {
+      const res = await getDicomwebRequests({
+        limit: 50,
+        cursor: reset ? undefined : (requestsCursor ?? undefined),
+        kind: requestKind,
+        period: requestPeriod,
+      });
+      setRequests((prev) => (reset ? res.data : [...prev, ...res.data]));
+      setRequestsCursor(res.next_cursor);
+      setRequestsHasMore(res.has_more);
+    } catch {
+      // the page-level error state is owned by the info fetch
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKind, requestPeriod]);
 
   const fetchMetrics = async (p: string) => {
     try {
@@ -454,6 +508,114 @@ function DicomWebAdmin(props: any) {
                   </>
                 ) : (
                   <Empty description="No metrics available" />
+                )}
+              </Card>
+            ),
+          },
+          {
+            key: "requests",
+            label: "Requests",
+            children: (
+              <Card size="small">
+                <Row
+                  justify="space-between"
+                  align="middle"
+                  style={{ marginBottom: 16 }}
+                >
+                  <span>
+                    <Select
+                      size="small"
+                      placeholder="All kinds"
+                      allowClear
+                      options={KIND_OPTIONS}
+                      value={requestKind}
+                      onChange={setRequestKind}
+                      style={{ width: 140, marginRight: 8 }}
+                    />
+                    <Radio.Group
+                      size="small"
+                      options={PERIOD_OPTIONS}
+                      value={requestPeriod}
+                      onChange={(e) => setRequestPeriod(e.target.value)}
+                    />
+                  </span>
+                  <Button
+                    size="small"
+                    onClick={() => fetchRequests(true)}
+                    icon={<ReloadOutlined />}
+                  >
+                    Refresh
+                  </Button>
+                </Row>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  loading={requestsLoading}
+                  pagination={false}
+                  dataSource={requests}
+                  columns={[
+                    {
+                      title: "Time",
+                      dataIndex: "created_at",
+                      key: "created_at",
+                      render: formatTime,
+                      width: 180,
+                    },
+                    {
+                      title: "Kind",
+                      dataIndex: "kind",
+                      key: "kind",
+                      render: (k: string) => <Tag>{k?.toUpperCase()}</Tag>,
+                      width: 100,
+                    },
+                    {
+                      title: "Method",
+                      dataIndex: "method",
+                      key: "method",
+                      width: 80,
+                    },
+                    {
+                      title: "Path",
+                      dataIndex: "path",
+                      key: "path",
+                      ellipsis: true,
+                    },
+                    {
+                      title: "Status",
+                      dataIndex: "status",
+                      key: "status",
+                      width: 80,
+                      render: (s: number) =>
+                        s >= 400 ? (
+                          <Tag color="red">{s}</Tag>
+                        ) : (
+                          <Tag color="green">{s}</Tag>
+                        ),
+                    },
+                    {
+                      title: "Duration",
+                      dataIndex: "duration_ms",
+                      key: "duration_ms",
+                      render: formatDuration,
+                      width: 100,
+                    },
+                    {
+                      title: "Actor",
+                      dataIndex: "actor",
+                      key: "actor",
+                      render: (a: unknown) => (a == null ? "-" : String(a)),
+                      width: 90,
+                    },
+                  ]}
+                />
+                {requestsHasMore && (
+                  <Button
+                    size="small"
+                    style={{ marginTop: 12 }}
+                    onClick={() => fetchRequests(false)}
+                  >
+                    Load more
+                  </Button>
                 )}
               </Card>
             ),

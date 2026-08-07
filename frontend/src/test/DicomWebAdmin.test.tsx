@@ -16,9 +16,11 @@ import DicomWebAdmin from "../dicomweb/DicomWebAdmin";
 
 const mockGetDicomwebAdmin = vi.hoisted(() => vi.fn());
 const mockGetDicomwebMetrics = vi.hoisted(() => vi.fn());
+const mockGetDicomwebRequests = vi.hoisted(() => vi.fn());
 vi.mock("../api/dicomweb-admin", () => ({
   getDicomwebAdmin: mockGetDicomwebAdmin,
   getDicomwebMetrics: mockGetDicomwebMetrics,
+  getDicomwebRequests: mockGetDicomwebRequests,
 }));
 vi.mock("../helpers", () => ({
   request: vi.fn(() => Promise.resolve({})),
@@ -91,11 +93,46 @@ const mockMetrics = {
   totals: { studies: 12, series: 20, files: 34 },
 };
 
+const mockRequestsPage = {
+  data: [
+    {
+      id: 11,
+      created_at: "2026-08-07T03:00:00Z",
+      kind: "qido",
+      method: "GET",
+      path: "/api/dicomweb/studies",
+      status: 200,
+      duration_ms: 12,
+      actor: 1,
+      tenant: null,
+      request_id: "req-11",
+      trace_id: "trace-11",
+    },
+    {
+      id: 10,
+      created_at: "2026-08-07T02:59:00Z",
+      kind: "stow",
+      method: "POST",
+      path: "/api/dicomweb/studies",
+      status: 409,
+      duration_ms: 812,
+      actor: null,
+      tenant: null,
+      request_id: "req-10",
+      trace_id: "trace-10",
+    },
+  ],
+  next_cursor: null,
+  has_more: false,
+  total: 2,
+};
+
 describe("DicomWebAdmin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetDicomwebAdmin.mockResolvedValue(mockInfo);
     mockGetDicomwebMetrics.mockResolvedValue(mockMetrics);
+    mockGetDicomwebRequests.mockResolvedValue(mockRequestsPage);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -190,6 +227,47 @@ describe("DicomWebAdmin", () => {
     expect(await screen.findByText("QIDO")).toBeInTheDocument();
     expect(await screen.findByText("WADO")).toBeInTheDocument();
     expect(await screen.findByText("STOW")).toBeInTheDocument();
+  });
+
+  it("renders recent requests in the requests tab", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Requests")!,
+    );
+    expect(
+      (await screen.findAllByText("/api/dicomweb/studies")).length,
+    ).toBeGreaterThan(0);
+    expect(mockGetDicomwebRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, period: "24h" }),
+    );
+    const qidoRow = screen.getByText("QIDO");
+    expect(qidoRow).toBeInTheDocument();
+    expect(screen.getByText("STOW")).toBeInTheDocument();
+    expect(screen.getByText("812ms")).toBeInTheDocument();
+    expect(screen.getByText("-")).toBeInTheDocument();
+  });
+
+  it("refetches requests when the kind filter changes", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DicomWebAdmin />);
+    await waitForReady();
+    await user.click(
+      screen.getAllByRole("tab").find((t) => t.textContent === "Requests")!,
+    );
+    await screen.findAllByText("/api/dicomweb/studies");
+    await user.click(screen.getByRole("combobox"));
+    await user.click(
+      await screen.findByText("STOW", {
+        selector: ".ant-select-item-option-content",
+      }),
+    );
+    await waitFor(() => {
+      expect(mockGetDicomwebRequests).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "stow" }),
+      );
+    });
   });
 
   it("refetches metrics when the period changes", async () => {

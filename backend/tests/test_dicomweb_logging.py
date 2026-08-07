@@ -45,6 +45,7 @@ def _make_app(reject=False):
             Route('/api/dicomweb/studies/{uid}/archive', endpoint=_ok),
             Route('/api/wado', endpoint=_ok),
             Route('/api/dicomweb/admin/metrics', endpoint=_ok),
+            Route('/api/dicomweb/admin/requests', endpoint=_ok),
             Route('/api/other', endpoint=_ok),
             Route('/api/dicomweb/studies', endpoint=_created, methods=['POST']),
         ],
@@ -154,8 +155,9 @@ class TestDicomWebLogMiddleware:
 
     def test_skips_admin_metrics(self, captured_conn):
         client = TestClient(_make_app())
-        resp = client.get('/api/dicomweb/admin/metrics')
-        assert resp.status_code == 200
+        for path in ('/api/dicomweb/admin/metrics', '/api/dicomweb/admin/requests'):
+            resp = client.get(path)
+            assert resp.status_code == 200
         assert captured_conn.execute.await_count == 0
 
     def test_skips_non_dicomweb_paths(self, captured_conn):

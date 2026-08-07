@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from starlette.applications import Starlette
@@ -16,7 +17,7 @@ from api.hl7_admin import (
     Hl7MessagesHandler, Hl7MessageHandler,
     Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
 )
-from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
+from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.validate import validation_exception_handler, _ValidationException
 
@@ -432,6 +433,7 @@ class TestDicomWebAdmin:
         return _make_app([
             Route('/dicomweb/admin', endpoint=DicomWebAdminHandler),
             Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler),
+            Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler),
         ], user)
 
     def test_get_status(self):
@@ -489,6 +491,58 @@ class TestDicomWebAdmin:
         client = TestClient(self._make_app(user=user))
         resp = client.get('/dicomweb/admin')
         assert resp.status_code == 403
+
+    def test_get_requests(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetch = AsyncMock(return_value=[{
+            'id': 42,
+            'created': '2026-08-07 03:00:00+00',
+            'log': json.dumps({
+                'event': 'dicomweb.request',
+                'actor': 1,
+                'resource': {'type': 'dicomweb', 'id': 'qido'},
+                'detail': {
+                    'method': 'GET', 'path': '/api/dicomweb/studies',
+                    'status': 200, 'duration_ms': 12, 'kind': 'qido',
+                },
+                'tenant': None,
+            }),
+            'tenant': None,
+            'request_id': 'req-1',
+            'trace_id': 'trace-1',
+        }])
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/requests?limit=50')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['total'] == 1
+        assert body['has_more'] is False
+        assert body['next_cursor'] is None
+        row = body['data'][0]
+        assert row['id'] == 42
+        assert row['kind'] == 'qido'
+        assert row['method'] == 'GET'
+        assert row['path'] == '/api/dicomweb/studies'
+        assert row['status'] == 200
+        assert row['duration_ms'] == 12
+        assert row['actor'] == 1
+        assert row['request_id'] == 'req-1'
+
+    def test_get_requests_passes_kind_and_cursor(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/requests?kind=stow&cursor=41')
+        assert resp.status_code == 200
+        sql = mock_conn.fetch.await_args.args[0]
+        assert "(l.log::json -> 'detail') ->> 'kind' = $1" in sql
+        assert 'l.id < $2' in sql
+        args = mock_conn.fetch.await_args.args[1:]
+        assert args == ('stow', 41, 50)
 
 
 # ===========================================================================

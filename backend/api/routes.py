@@ -24,7 +24,7 @@ from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
-from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
+from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
     FhirMetadata,
@@ -190,6 +190,7 @@ _V1_ROUTES = [
     v2(Route('/wado', endpoint=DicomWebWadoUri)),
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
+    v2(Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler)),
     v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),
     v2(Route('/webhooks', endpoint=WebhooksHandler)),
     v2(Route('/webhooks/{id}', endpoint=WebhookHandler)),
