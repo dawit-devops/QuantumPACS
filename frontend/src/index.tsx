@@ -57,6 +57,8 @@ const FhirMonitoring = React.lazy(() => import("./fhir/FhirMonitoring"));
 const FhirDocs = React.lazy(() => import("./fhir/FhirDocs"));
 const Hl7Dashboard = React.lazy(() => import("./hl7/Hl7Dashboard"));
 const DicomWebAdmin = React.lazy(() => import("./dicomweb/DicomWebAdmin"));
+const StowUpload = React.lazy(() => import("./dicomweb/StowUpload"));
+const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
@@ -317,6 +319,22 @@ function ThemedApp() {
                       element={
                         <PermissionRoute permission="DICOMWEB_READ">
                           <DicomWebAdmin />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/dicomweb/store"
+                      element={
+                        <PermissionRoute permission="DICOMWEB_READ">
+                          <StowUpload />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/dicomweb/browser"
+                      element={
+                        <PermissionRoute permission="DICOMWEB_READ">
+                          <StudyBrowser />
                         </PermissionRoute>
                       }
                     />

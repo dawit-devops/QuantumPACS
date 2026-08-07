@@ -1,4 +1,4 @@
-import { useDocumentTitle } from "../hooks";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, {
   useState,
   useEffect,
@@ -27,6 +27,8 @@ import {
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { listLogs, listLogActors } from "../api/logs";
+import { listSessionTenants } from "../api/tenants";
+import { useAuth } from "../auth/AuthContext";
 import { PageState } from "../common/PageState";
 
 const { Text } = Typography;
@@ -131,6 +133,7 @@ const MAX_STREAMED_ROWS = 500;
 
 function Logs() {
   const { message } = App.useApp();
+  const { hasPermission } = useAuth();
   useDocumentTitle("QuantumPACS - Audit Logs");
 
   const [data, setData] = useState<any[]>([]);
@@ -152,20 +155,45 @@ function Logs() {
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
   const [newEventsAvailable, setNewEventsAvailable] = useState(false);
 
+  // Tenant filter is admin-only: LOG_READ gates the page, TENANT_READ gates
+  // cross-tenant filtering (platform admins see slugs; tenant-scoped users
+  // only ever see their own rows anyway via X-Tenant-ID).
+  const canFilterTenant = hasPermission("TENANT_READ");
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>();
+  const [tenantOptions, setTenantOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const latestIdRef = useRef<number | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const actorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!canFilterTenant) return;
+    listSessionTenants()
+      .then((tenants) =>
+        setTenantOptions(
+          tenants
+            .filter((t) => t.slug)
+            .map((t) => ({
+              value: t.slug as string,
+              label: t.name || (t.slug as string),
+            })),
+        ),
+      )
+      .catch(() => {});
+  }, [canFilterTenant]);
+
+  useEffect(() => {
     setPage(1);
     setCursorMap({ 1: null });
     setCursor(null);
-  }, [eventTypeFilter, dateRange, actorFilter]);
+  }, [eventTypeFilter, dateRange, actorFilter, tenantFilter]);
 
   useEffect(() => {
     fetch({ cursor: cursorMap[page] || null, page });
-  }, [page, eventTypeFilter, dateRange, actorFilter]);
+  }, [page, eventTypeFilter, dateRange, actorFilter, tenantFilter]);
 
   useEffect(() => {
     if (streaming) {
@@ -178,7 +206,12 @@ function Logs() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [streaming, eventTypeFilter, dateRange, actorFilter]);
+  }, [streaming, eventTypeFilter, dateRange, actorFilter, tenantFilter]);
+
+  useTenantRefetch(() => {
+    setPage(1);
+    fetch({ cursor: null });
+  });
 
   const buildQuery = useCallback(
     (extra: Record<string, any> = {}) => {
@@ -189,10 +222,11 @@ function Logs() {
         q.date_to = dateRange[1];
       }
       if (actorFilter) q.actor = actorFilter;
+      if (tenantFilter) q.tenant = tenantFilter;
       Object.assign(q, extra);
       return q;
     },
-    [eventTypeFilter, dateRange, actorFilter],
+    [eventTypeFilter, dateRange, actorFilter, tenantFilter],
   );
 
   const fetch = async (extra: Record<string, any> = {}) => {
@@ -352,6 +386,13 @@ function Logs() {
         a === "system" ? <Tag color="default">system</Tag> : a,
     },
     {
+      title: "Tenant",
+      dataIndex: "tenant",
+      width: "10%",
+      render: (t: string | null) =>
+        t ? <Tag style={{ fontSize: 11 }}>{t}</Tag> : "-",
+    },
+    {
       title: "Event Type",
       dataIndex: "event_type",
       width: "16%",
@@ -457,6 +498,18 @@ function Logs() {
           }}
         >
           <RangePicker size="small" onChange={handleDateRange} allowClear />
+          {canFilterTenant && (
+            <Select
+              size="small"
+              placeholder="Filter by tenant..."
+              value={tenantFilter}
+              onChange={setTenantFilter}
+              options={tenantOptions}
+              style={{ width: 160 }}
+              allowClear
+              onClear={() => setTenantFilter(undefined)}
+            />
+          )}
           <Input
             size="small"
             placeholder="Filter by actor..."

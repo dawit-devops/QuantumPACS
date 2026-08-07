@@ -12,6 +12,7 @@ log = get_logger(__name__)
 INGESTION_STREAM = config.get('ingestion_stream', 'events:ingestion')
 INGESTION_GROUP = config.get('ingestion_group', 'ingestion-service')
 INGESTION_CONSUMER = config.get('ingestion_consumer', 'worker-1')
+INGESTION_DLQ = config.get('ingestion_dlq', 'events:ingestion:dlq')
 POLL_COUNT = int(config.get('ingestion_poll_count', '10'))
 POLL_BLOCK_MS = int(config.get('ingestion_poll_block_ms', '5000'))
 MAX_RETRIES = int(config.get('ingestion_max_retries', '3'))
@@ -64,6 +65,8 @@ class IngestionWorker:
                 success = await self._process_with_retry(event_type, data, msg_id)
                 if success:
                     await self.consumer.ack(INGESTION_STREAM, self.group, msg_id)
+                else:
+                    await self._quarantine(msg_id, msg_data, event_type)
             except Exception:
                 log.exception('failed to process message %s', msg_id)
         return len(messages)
@@ -86,6 +89,34 @@ class IngestionWorker:
             msg_id, self.max_retries, event_type,
         )
         return False
+
+    async def _quarantine(self, msg_id: str, msg_data: dict[bytes, bytes], event_type: str) -> None:
+        """Move a poison message to the dead-letter stream (ME-05).
+
+        The original is acked so it stops redelivering forever; the DLQ copy
+        keeps the raw payload plus provenance for inspection and replay.
+        """
+        try:
+            # redis-py returns stream fields as bytes keys/values; the
+            # producer JSON-serializes with str keys only.
+            normalized = {
+                k.decode('utf-8', errors='replace') if isinstance(k, bytes) else str(k):
+                v.decode('utf-8', errors='replace') if isinstance(v, bytes) else v
+                for k, v in msg_data.items()
+            }
+            await self.producer.publish(
+                INGESTION_DLQ,
+                {
+                    'original_id': msg_id,
+                    'original_stream': INGESTION_STREAM,
+                    'event_type': event_type,
+                    'data': normalized,
+                },
+            )
+            await self.consumer.ack(INGESTION_STREAM, self.group, msg_id)
+            log.error('message %s quarantined to %s', msg_id, INGESTION_DLQ)
+        except Exception:
+            log.exception('failed to quarantine message %s', msg_id)
 
     async def run(self) -> None:
         await self.start()

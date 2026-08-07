@@ -20,6 +20,11 @@ class Series(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS series_number ON series(number);
         """)
+        # Parity with migration 017.
+        await self.exec("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_series_series_instance_uid
+        ON series(series_instance_uid) WHERE series_instance_uid IS NOT NULL
+        """)
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
@@ -27,8 +32,8 @@ class Series(Table):
         ).insert((
             data['study_db_id'], data['series_number'], data.get('modality', ''),
             data.get('series_description', ''), data.get('series_instance_uid', ''),
-        ),).on_conflict(
-            'study_id, number'
+        ),        ).on_conflict(
+            'study_id', 'number'
         ).do_update(
             self.table.description, PseudoColumn('EXCLUDED.description')
         ).returning('id')

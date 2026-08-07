@@ -281,8 +281,9 @@ flowchart LR
 ```
 
 ### Friction & Cognitive Load Points
-- GAP: no aggregate health endpoint exists — dashboard currently must compose from
-  `GET /dashboard/metrics` + per-area metrics. Flagged for backend.
+- Aggregate health endpoint implemented (`GET /v2/dashboard/health`, METRICS_READ) —
+  dashboard composes storage/DICOM/HL7/FHIR/auth status from a single call.
+  Drill-down links carry the time scope to area dashboards where supported.
 - Correlating an incident across logs, metrics, and replicas requires window-switching;
   requirement: time-scoped links from dashboard to filtered logs.
 

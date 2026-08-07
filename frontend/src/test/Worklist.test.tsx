@@ -42,6 +42,7 @@ vi.mock("../helpers", () => ({
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
+  useTenantRefetch: () => {},
 }));
 
 const mockOnConfirm = vi.hoisted(() => vi.fn());

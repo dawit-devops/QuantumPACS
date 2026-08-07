@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import StudyBrowser from "../dicomweb/StudyBrowser";
@@ -7,7 +7,7 @@ import StudyBrowser from "../dicomweb/StudyBrowser";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-function mockDicomJsonResponse(data: any) {
+function mockDicomJsonResponse(data: unknown) {
   return { ok: true, json: () => Promise.resolve(data) };
 }
 
@@ -79,5 +79,47 @@ describe("StudyBrowser", () => {
       // request() retries GETs with exponential backoff (1s+2s+4s)
       { timeout: 12000 },
     );
+  });
+
+  it("downloads a study archive via the Export ZIP button", async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockDicomJsonResponse([
+        {
+          "0020000D": { vr: "UI", Value: ["1.2.3"] },
+          "00100010": { vr: "PN", Value: [{ Alphabetic: "Test^Patient" }] },
+        },
+      ]),
+    );
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["zip"])),
+    });
+    const create = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:mock");
+    const revoke = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+
+    renderWithApp(<StudyBrowser />);
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(screen.getByText("1.2.3")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Export ZIP"));
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/dicomweb/studies/1.2.3/archive"),
+        expect.objectContaining({
+          headers: expect.objectContaining({ "X-Auth-Pacs": "test" }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Archive downloaded")).toBeInTheDocument();
+    expect(create).toHaveBeenCalled();
+    expect(revoke).toHaveBeenCalled();
+    create.mockRestore();
+    revoke.mockRestore();
   });
 });

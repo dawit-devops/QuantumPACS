@@ -16,10 +16,18 @@ export async function loginAsAdmin(page: Page) {
   await page.getByPlaceholder("Username").fill("admin");
   await page.getByPlaceholder("Password").fill("pa55w0rd");
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page
-    .getByText("Search Studies")
-    .first()
-    .waitFor({ state: "visible", timeout: 20000 });
+  // super_admin lands on the role-scoped platform workspace (/users) since the
+  // navigator change, not the files page — wait for the authenticated shell
+  // (sidebar) instead of a files-page string.
+  await page.locator(".ant-layout-sider").first().waitFor({ state: "visible", timeout: 30000 });
+  // The onboarding tour mounts at App level and covers every route with a
+  // full-screen overlay (zIndex 9999) until dismissed once per browser profile
+  // — dismiss it so specs can click through the UI on any page.
+  const tourDismiss = page.getByRole("button", { name: "Dismiss tour" });
+  await tourDismiss.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+  if (await tourDismiss.isVisible().catch(() => false)) {
+    await tourDismiss.click();
+  }
   await page.waitForTimeout(2000);
 }
 

@@ -12,8 +12,10 @@ import {
   Modal,
   Form,
   Input,
+  Select,
+  Drawer,
+  Table,
   Popconfirm,
-  Space,
   Typography,
   Spin,
   Alert,
@@ -25,6 +27,13 @@ import {
   UserOutlined,
   DatabaseOutlined,
   HddOutlined,
+  BarChartOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  ExclamationCircleOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import {
@@ -32,7 +41,10 @@ import {
   createTenant,
   updateTenant,
   deleteTenant,
+  getTenantHealth,
+  getTenantUsage,
   type Tenant,
+  type TenantUsageRow,
 } from "../api/tenants";
 import { PageState } from "../common/PageState";
 
@@ -42,9 +54,19 @@ const Content = Layout.Content;
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   provisioning: { color: "processing", label: "Provisioning" },
   active: { color: "green", label: "Active" },
+  suspended: { color: "gold", label: "Suspended" },
   quarantined: { color: "orange", label: "Quarantined" },
   decommissioned: { color: "default", label: "Decommissioned" },
 };
+
+const PLAN_COLORS: Record<string, string> = {
+  free: "default",
+  pro: "blue",
+  growth: "cyan",
+  enterprise: "purple",
+};
+
+const PLAN_OPTIONS = ["free", "pro", "growth", "enterprise"];
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -56,6 +78,67 @@ function formatBytes(bytes: number): string {
     i++;
   }
   return `${val.toFixed(1)} ${units[i]}`;
+}
+
+// One-time panel after provisioning: the admin password exists only in the
+// create response, so it must be copied here or never seen again.
+function AdminPasswordPanel({
+  password,
+  slug,
+  onDone,
+}: {
+  password: string;
+  slug: string;
+  onDone: () => void;
+}) {
+  const { message } = App.useApp();
+  return (
+    <Modal
+      open
+      title="Tenant Admin Credentials"
+      footer={null}
+      closable={false}
+      maskClosable={false}
+    >
+      <div style={{ marginBottom: 16 }}>
+        <Text>
+          Tenant <Text strong>{slug}</Text> was provisioned. Share the admin
+          password below with the tenant administrator.
+        </Text>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <code
+          style={{
+            fontSize: 14,
+            background: "#f5f5f5",
+            padding: "4px 8px",
+            borderRadius: 4,
+          }}
+        >
+          {password}
+        </code>
+        <Button
+          size="small"
+          icon={<CopyOutlined />}
+          onClick={() => {
+            navigator.clipboard.writeText(password);
+            message.success("Password copied");
+          }}
+        >
+          Copy
+        </Button>
+      </div>
+      <Text
+        type="secondary"
+        style={{ display: "block", marginTop: 12, fontSize: 12 }}
+      >
+        This password will not be shown again.
+      </Text>
+      <Button type="primary" block style={{ marginTop: 16 }} onClick={onDone}>
+        I saved it
+      </Button>
+    </Modal>
+  );
 }
 
 function Tenants() {
@@ -70,9 +153,24 @@ function Tenants() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
+  const [provisionPassword, setProvisionPassword] = useState<{
+    password: string;
+    slug: string;
+  } | null>(null);
+
+  // Health probes are optional: fetch once, map by slug, and never let a
+  // failure (404 before the endpoint lands) block the tenant list.
+  const [health, setHealth] = useState<Record<string, { status: string }>>({});
+
+  const [usageTenant, setUsageTenant] = useState<Tenant | null>(null);
+  const [usageRows, setUsageRows] = useState<TenantUsageRow[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
 
   useEffect(() => {
     fetch();
+    getTenantHealth()
+      .then(setHealth)
+      .catch(() => {});
   }, []);
 
   const fetch = () => {
@@ -96,13 +194,23 @@ function Tenants() {
       .then((values: any) => {
         const data: any = { name: values.name, slug: values.slug };
         if (values.domain) data.domain = values.domain;
+        if (values.admin_email) data.admin_email = values.admin_email;
+        if (values.plan) data.plan = values.plan;
         if (values.storage_quota_gb)
           data.storage_quota_bytes = values.storage_quota_gb * 1073741824;
         createTenant(data)
-          .then(() => {
+          .then((res: any) => {
             createForm.resetFields();
             setCreateVisible(false);
             fetch();
+            // admin_password is returned exactly once; surface it before
+            // anything else can steal the user's attention.
+            if (res?.admin_password) {
+              setProvisionPassword({
+                password: res.admin_password,
+                slug: values.slug,
+              });
+            }
           })
           .catch((e: any) => {
             message.error(e.message);
@@ -154,6 +262,18 @@ function Tenants() {
       .catch(() => {});
   };
 
+  // Status transitions are plain PUT /tenants/{id} updates: suspended →
+  // active → quarantined round-trips through the same patch endpoint.
+  const handleStatusChange = (tenant: Tenant, status: string) => {
+    updateTenant(tenant.id, { status })
+      .then(() => {
+        fetch();
+      })
+      .catch((e: any) => {
+        message.error(e.message);
+      });
+  };
+
   const handleDecommission = (tenant: any) => {
     deleteTenant(tenant.id)
       .then(() => {
@@ -164,11 +284,26 @@ function Tenants() {
       });
   };
 
+  const openUsage = (tenant: Tenant) => {
+    setUsageTenant(tenant);
+    setUsageRows([]);
+    setUsageLoading(true);
+    getTenantUsage(tenant.id)
+      .then(setUsageRows)
+      .catch((e: any) => {
+        message.error(e.message);
+      })
+      .finally(() => setUsageLoading(false));
+  };
+
   const storageBarColor = (pct: number) => {
     if (pct > 75) return "#ef4444";
     if (pct > 50) return "#f59e0b";
     return "#22c55e";
   };
+
+  const healthStatus = (tenant: Tenant): string | undefined =>
+    health[tenant.slug || ""]?.status || health[tenant.id]?.status;
 
   return (
     <Content style={{ padding: 50 }}>
@@ -220,11 +355,60 @@ function Tenants() {
             const isDecommissioned = tenant.status === "decommissioned";
             const isProvisioning = tenant.status === "provisioning";
             const isQuarantined = tenant.status === "quarantined";
+            const isSuspended = tenant.status === "suspended";
             const usedBytes = tenant.storage_used_bytes || 0;
             const quotaBytes = tenant.storage_quota_bytes || 0;
             const pct = quotaBytes
               ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100))
               : 0;
+            const hStatus = healthStatus(tenant);
+            const statusPopconfirm = (
+              target: string,
+              label: string,
+              title: string,
+              desc: string,
+            ) => (
+              <Popconfirm
+                key={target}
+                title={title}
+                description={desc}
+                onConfirm={() => handleStatusChange(tenant, target)}
+              >
+                <Button type="link" size="small">
+                  {label}
+                </Button>
+              </Popconfirm>
+            );
+            const lifecycleActions: React.ReactNode[] = [];
+            if (!isProvisioning && !isDecommissioned) {
+              if (isSuspended || isQuarantined) {
+                lifecycleActions.push(
+                  statusPopconfirm(
+                    "active",
+                    "Activate",
+                    `Activate ${tenant.name}?`,
+                    "Restores full access for this tenant.",
+                  ),
+                );
+              } else {
+                lifecycleActions.push(
+                  statusPopconfirm(
+                    "suspended",
+                    "Suspend",
+                    `Suspend ${tenant.name}?`,
+                    "Tenant users will be blocked from all scoped requests.",
+                  ),
+                );
+                lifecycleActions.push(
+                  statusPopconfirm(
+                    "quarantined",
+                    "Quarantine",
+                    `Quarantine ${tenant.name}?`,
+                    "Suspicious activity detected — tenant becomes read-only.",
+                  ),
+                );
+              }
+            }
 
             return (
               <Col xs={24} sm={12} lg={8} xl={6} key={tenant.id}>
@@ -243,10 +427,23 @@ function Tenants() {
                             icon={<EditOutlined />}
                             onClick={() => handleEdit(tenant)}
                             disabled={isProvisioning || isQuarantined}
+                            key="edit"
                           >
                             Edit
                           </Button>,
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<BarChartOutlined />}
+                            onClick={() => openUsage(tenant)}
+                            disabled={isProvisioning}
+                            key="usage"
+                          >
+                            Usage
+                          </Button>,
+                          ...lifecycleActions,
                           <Popconfirm
+                            key="decommission"
                             title="Decommission this tenant?"
                             description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
                             onConfirm={() => handleDecommission(tenant)}
@@ -297,6 +494,27 @@ function Tenants() {
                         <Tag style={{ marginLeft: 6, fontSize: 10 }}>
                           {tenant.slug}
                         </Tag>
+                        {hStatus ? (
+                          hStatus === "ok" || hStatus === "healthy" ? (
+                            <CheckCircleOutlined
+                              style={{ color: "#22c55e", marginLeft: 6 }}
+                              aria-label="Healthy"
+                            />
+                          ) : (
+                            <CloseCircleOutlined
+                              style={{ color: "#ef4444", marginLeft: 6 }}
+                              aria-label="Unhealthy"
+                            />
+                          )
+                        ) : null}
+                        {tenant.plan && (
+                          <Tag
+                            color={PLAN_COLORS[tenant.plan] || "default"}
+                            style={{ marginLeft: 6, fontSize: 10 }}
+                          >
+                            {tenant.plan}
+                          </Tag>
+                        )}
                       </div>
                       {tenant.domain && (
                         <div style={{ marginBottom: 8 }}>
@@ -346,6 +564,7 @@ function Tenants() {
                           gap: 12,
                           fontSize: 12,
                           color: "#888",
+                          flexWrap: "wrap",
                         }}
                       >
                         <span>
@@ -357,6 +576,14 @@ function Tenants() {
                           {tenant.study_count ?? "?"} studies
                         </span>
                       </div>
+                      {tenant.last_activity && (
+                        <div
+                          style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}
+                        >
+                          Last activity:{" "}
+                          {new Date(tenant.last_activity).toLocaleString()}
+                        </div>
+                      )}
                     </>
                   )}
                 </Card>
@@ -386,6 +613,14 @@ function Tenants() {
           </Form.Item>
           <Form.Item name="domain" label="Custom Domain">
             <Input placeholder="e.g., pacs.memorialwest.com" />
+          </Form.Item>
+          <Form.Item name="admin_email" label="Admin Email">
+            <Input placeholder="e.g., admin@memorialwest.com" />
+          </Form.Item>
+          <Form.Item name="plan" label="Plan" initialValue="free">
+            <Select
+              options={PLAN_OPTIONS.map((p) => ({ value: p, label: p }))}
+            />
           </Form.Item>
           <Form.Item name="storage_quota_gb" label="Storage Quota (GB)">
             <Input type="number" placeholder="Leave empty for system default" />
@@ -419,6 +654,34 @@ function Tenants() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Drawer
+        title={`Usage — ${usageTenant?.name || ""}`}
+        open={usageTenant !== null}
+        onClose={() => setUsageTenant(null)}
+        width={480}
+      >
+        <Table
+          rowKey="date"
+          size="small"
+          loading={usageLoading}
+          pagination={false}
+          dataSource={usageRows}
+          columns={[
+            { title: "Date", dataIndex: "date" },
+            { title: "API calls", dataIndex: "api_calls", align: "right" },
+          ]}
+          locale={{ emptyText: "No usage data for this tenant" }}
+        />
+      </Drawer>
+
+      {provisionPassword && (
+        <AdminPasswordPanel
+          password={provisionPassword.password}
+          slug={provisionPassword.slug}
+          onDone={() => setProvisionPassword(null)}
+        />
+      )}
     </Content>
   );
 }

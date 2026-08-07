@@ -1,11 +1,17 @@
 import React, { useState } from "react";
-import { Card, Table, Input, Button, Space, message, App } from "antd";
-import { SearchOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Card, Table, Input, Button, Space, message, App, Tag } from "antd";
+import {
+  SearchOutlined,
+  ReloadOutlined,
+  DownloadOutlined,
+  InboxOutlined,
+} from "@ant-design/icons";
 import {
   searchStudies,
   getSeries,
   getInstances,
   wadoRsUrl,
+  downloadStudyArchive,
   Study,
   Series,
   Instance,
@@ -24,6 +30,19 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
   const [selectedStudy, setSelectedStudy] = useState<string | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (studyUid: string) => {
+    setExporting(studyUid);
+    try {
+      await downloadStudyArchive(studyUid);
+      message.success("Archive downloaded");
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const handleSearch = async () => {
     setLoading(true);
@@ -136,8 +155,32 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
             key: "studyDate",
             width: 100,
           },
+          {
+            title: "",
+            key: "actions",
+            width: 100,
+            render: (_: unknown, record: Study) => (
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                loading={exporting === record.studyInstanceUid}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExport(record.studyInstanceUid);
+                }}
+              >
+                Export ZIP
+              </Button>
+            ),
+          },
         ]}
       />
+
+      {selectedStudy && series.length === 0 && !loading && (
+        <Tag icon={<InboxOutlined />} color="default" style={{ marginTop: 12 }}>
+          No series in this study
+        </Tag>
+      )}
 
       {selectedStudy && (
         <Table

@@ -1,4 +1,4 @@
-import { useDocumentTitle } from "../hooks";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   App,
@@ -163,6 +163,12 @@ function Worklist() {
       })
       .catch(() => {});
   }, [fetch]);
+
+  // Tenant switch → refetch list and per-status tab totals together.
+  useTenantRefetch(() => {
+    fetch({ page: 1, per_page: 20 });
+    fetchTabTotals();
+  });
 
   const stationOptionsFromEntries = useMemo(() => {
     const stations = new Set(

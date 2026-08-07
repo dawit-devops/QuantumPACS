@@ -14,7 +14,11 @@ from migrations.tenant_url import get_tenant_url, _tenant_slug
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False keeps application loggers (backend.log
+    # module loggers) alive when alembic runs in-process during tenant
+    # provisioning — otherwise they are silently disabled and pytest caplog
+    # stops seeing their records.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 
 def run_migrations_offline() -> None:

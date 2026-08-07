@@ -10,6 +10,11 @@ class TestTenantSoftDelete:
     @pytest.mark.asyncio
     async def test_soft_delete_marks_decommissioned(self):
         conn = AsyncMock()
+        conn.fetchrow.return_value = {
+            'id': 'tenant-1', 'slug': 'tenant-1', 'name': 'T1',
+            'db_password': 'secret',
+            'created_at': '2026-01-01', 'updated_at': '2026-01-01',
+        }
         t = Tenants(conn=conn)
         await t.delete('tenant-1')
         sql = conn.execute.call_args[0][0]

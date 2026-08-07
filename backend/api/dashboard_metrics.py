@@ -1,8 +1,13 @@
+import asyncio
+import time
+
 from starlette.endpoints import HTTPEndpoint
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok
 from db.conn import get_conn
+
+from api import telemetry
 
 
 class DashboardMetricsHandler(HTTPEndpoint):
@@ -14,9 +19,9 @@ class DashboardMetricsHandler(HTTPEndpoint):
             total_series = await conn.fetchval('SELECT COUNT(*) FROM series') or 0
             total_files = await conn.fetchval('SELECT COUNT(*) FROM files WHERE deleted = FALSE') or 0
             total_users = await conn.fetchval('SELECT COUNT(*) FROM users') or 0
-            # the files table has no size column (not tracked on ingest), so
-            # storage is reported as 0 until sizes are recorded at upload time
-            storage_bytes = 0
+            storage_bytes = await conn.fetchval(
+                'SELECT COALESCE(SUM(size), 0)::bigint FROM files WHERE deleted = FALSE'
+            ) or 0
 
             modality_rows = await conn.fetch(
                 "SELECT s.modality, COUNT(*) as count FROM files f "
@@ -53,3 +58,29 @@ class DashboardMetricsHandler(HTTPEndpoint):
                 for r in latest_files
             ],
         })
+
+
+class DashboardHealthHandler(HTTPEndpoint):
+    @requires_permission(Permission.METRICS_READ)
+    async def get(self, request):
+        results = await asyncio.gather(
+            telemetry._check_db(), telemetry._check_es(), telemetry._check_redis(),
+            telemetry._check_storage(), telemetry._check_dicom_listener(),
+            telemetry._check_ingestion_service(), telemetry._check_hl7_listener(),
+            telemetry._check_fhir(), telemetry._check_auth(),
+        )
+        names = ('database', 'elasticsearch', 'redis', 'storage', 'dicom_listener',
+                 'ingestion_service', 'hl7', 'fhir', 'auth')
+        components = dict(zip(names, results))
+        all_ok = all(c.get('status') == 'ok' for c in components.values())
+        state = telemetry._get_state()
+        uptime = int(time.time() - (state.start_time if state is not None else time.time()))
+        body = {
+            'status': 'ok' if all_ok else 'degraded',
+            'uptime_seconds': uptime,
+            'components': components,
+        }
+        # mirror health_endpoint: only a failed database probe flips the
+        # HTTP status; the body is the same shape in both cases
+        http_status = 503 if components['database'].get('status') != 'ok' else 200
+        return ok(body, status=http_status)

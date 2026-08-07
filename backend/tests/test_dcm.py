@@ -79,11 +79,10 @@ class TestGetMeta:
         assert isinstance(meta['cleaned'], dict)
         assert 'Patient\'s Name' in meta['cleaned']
 
-    def test_get_meta_includes_raw_dict(self):
+    def test_get_meta_raw_not_exposed(self):
         ds = _make_minimal_dicom()
         meta = get_meta(ds)
-        assert 'raw' in meta
-        assert isinstance(meta['raw'], dict)
+        assert 'raw' not in meta
 
     def test_get_meta_missing_optional_fields(self):
         ds = Dataset()
@@ -172,6 +171,170 @@ class _TxTracker:
 
         return tracked_copy
 
+class _FakeAE:
+    def __init__(self):
+        self.require_called_aet = False
+        self.require_calling_aet = []
+
+
+def _config_mock(values):
+    cfg = MagicMock()
+    cfg.get.side_effect = lambda key, default='': values.get(key, default)
+    return cfg
+
+
+class TestAssociationPolicy:
+    def test_empty_config_accepts_any_calling_aet(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_called_aet is False
+        assert ae.require_calling_aet == []
+
+    def test_called_aet_enforced_when_enabled(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({'dicom_require_called_aet': 'true'})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_called_aet is True
+
+    def test_calling_aet_allowlist_applied(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({'dicom_aet_allowed': 'MODALITY-A, MODALITY-B'})):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_calling_aet == ['MODALITY-A', 'MODALITY-B']
+
+    def test_ip_allowed_matches_cidr(self):
+        from dcm.server import _ip_allowed
+        assert _ip_allowed('10.0.0.5', ['10.0.0.0/8'])
+        assert not _ip_allowed('192.168.1.5', ['10.0.0.0/8'])
+        assert not _ip_allowed('not-an-ip', ['10.0.0.0/8'])
+
+    def test_handle_accept_aborts_disallowed_ip(self):
+        mock_assoc = MagicMock()
+        mock_assoc.requestor.address = '203.0.113.9'
+        event = MagicMock()
+        event.assoc = mock_assoc
+        with patch('dcm.server.config', _config_mock({'dicom_allowed_ips': '10.0.0.0/8'})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        mock_assoc.abort.assert_called_once()
+
+    def test_handle_accept_allows_matching_ip(self):
+        mock_assoc = MagicMock()
+        mock_assoc.requestor.address = '10.0.0.9'
+        event = MagicMock()
+        event.assoc = mock_assoc
+        with patch('dcm.server.config', _config_mock({'dicom_allowed_ips': '10.0.0.0/8'})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        mock_assoc.abort.assert_not_called()
+
+    def test_handle_accept_noop_when_ips_unset(self):
+        event = MagicMock()
+        with patch('dcm.server.config', _config_mock({})):
+            from dcm.server import _handle_accept
+            _handle_accept(event)
+        event.assoc.abort.assert_not_called()
+
+
+class TestRenderPreview:
+    def _ct_dataset(self):
+        ds = Dataset()
+        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+        ds.Rows = 16
+        ds.Columns = 16
+        ds.BitsAllocated = 16
+        ds.BitsStored = 12
+        ds.HighBit = 11
+        ds.PixelRepresentation = 1
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = 'MONOCHROME2'
+        ds.RescaleSlope = 1
+        ds.RescaleIntercept = -1024
+        ds.WindowCenter = 40
+        ds.WindowWidth = 400
+        ds.file_meta = FileMetaDataset()
+        ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        import numpy as np
+        ds.PixelData = np.arange(256, dtype=np.int16).tobytes()
+        return ds
+
+    def test_render_preview_returns_jpeg(self):
+        from api.files import _render_preview
+        payload = _render_preview(self._ct_dataset())
+        assert payload[:2] == b'\xff\xd8'
+        assert payload.rstrip().endswith(b'\xff\xd9')
+
+    def test_render_preview_respects_voi_window(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        ds.RescaleIntercept = 0
+        ds.RescaleSlope = 1
+        ds.WindowCenter = 40
+        ds.WindowWidth = 400
+        import numpy as np
+        ds.PixelData = np.ones(256, dtype=np.int16).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_min_max_stretch_without_window(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        del ds.WindowCenter
+        del ds.WindowWidth
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_inverts_monochrome1(self):
+        from api.files import _render_preview
+        ds = self._ct_dataset()
+        ds.PhotometricInterpretation = 'MONOCHROME1'
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_rgb(self):
+        from api.files import _render_preview
+        import numpy as np
+        ds = self._ct_dataset()
+        ds.SamplesPerPixel = 3
+        ds.PhotometricInterpretation = 'RGB'
+        ds.BitsAllocated = 8
+        ds.BitsStored = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PlanarConfiguration = 0
+        ds.PixelData = np.zeros((16, 16, 3), dtype=np.uint8).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_uses_middle_frame(self):
+        from api.files import _render_preview
+        import numpy as np
+        ds = self._ct_dataset()
+        ds.NumberOfFrames = 3
+        ds.BitsAllocated = 16
+        ds.BitsStored = 16
+        ds.HighBit = 15
+        ds.PixelRepresentation = 0
+        ds.RescaleSlope = 1
+        ds.RescaleIntercept = 0
+        ds.WindowCenter = 128
+        ds.WindowWidth = 256
+        ds.PixelData = np.zeros((3, 16, 16), dtype=np.uint16).tobytes()
+        payload = _render_preview(ds)
+        assert payload[:2] == b'\xff\xd8'
+
+    def test_render_preview_raises_without_pixel_data(self):
+        from api.files import _render_preview
+        ds = Dataset()
+        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.2'
+        with pytest.raises(Exception):
+            _render_preview(ds)
+
+
 class TestStoreHandler:
     @pytest.mark.asyncio
     async def test_store_success(self):
@@ -184,6 +347,7 @@ class TestStoreHandler:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -239,6 +403,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -260,12 +425,14 @@ class TestStoreInstance:
     @pytest.mark.asyncio
     async def test_store_instance_uses_hash_for_dedup(self):
         ds = _make_minimal_dicom()
+        del ds.SOPInstanceUID
         data = BytesIO(b'dicom data')
 
         mock_conn = _make_mock_conn()
         existing_file = {'id': 99, 'name': 'existing.dcm', 'hash': 'abc123'}
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=existing_file)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_replica_cls = MagicMock()
         mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
@@ -280,6 +447,36 @@ class TestStoreInstance:
             result = await store_instance(ds, data)
             assert result is True
             mock_files_cls.return_value.get_by_hash.assert_called_once_with('abc123')
+            mock_files_cls.return_value.get_by_sop_uid.assert_not_called()
+            mock_files_cls.return_value.insert_or_select.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_store_instance_dedups_by_sop_uid(self):
+        ds = _make_minimal_dicom()
+        data = BytesIO(b'dicom data')
+
+        mock_conn = _make_mock_conn()
+        existing_file = {'id': 77, 'name': 'existing.dcm', 'hash': 'abc123'}
+        mock_files_cls = MagicMock()
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=existing_file)
+        mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+
+        mock_replica_cls = MagicMock()
+        mock_replica_cls.return_value.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/tmp'})
+
+        with patch('dcm.store.Replica', new=mock_replica_cls), \
+             patch('dcm.store.Files', new=mock_files_cls), \
+             patch('dcm.store.hash_file', return_value='abc123'), \
+             patch('dcm.store.get_conn') as mock_get_conn:
+            mock_get_conn.return_value.__aenter__.return_value = mock_conn
+
+            from dcm.store import store_instance
+            result = await store_instance(ds, data)
+            assert result is True
+            mock_files_cls.return_value.get_by_sop_uid.assert_called_once_with(
+                '1.2.840.113619.2.55.1.1760426491.1234.3',
+            )
+            mock_files_cls.return_value.get_by_hash.assert_not_called()
             mock_files_cls.return_value.insert_or_select.assert_not_called()
 
     @pytest.mark.asyncio
@@ -301,6 +498,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -312,7 +510,7 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()) as mock_match, \
+             patch('dcm.store.match_worklist_in_progress', new=AsyncMock()) as mock_match, \
              patch('dcm.store.get_conn') as mock_get_conn:
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
@@ -321,7 +519,7 @@ class TestStoreInstance:
             assert mock_match.called
 
     @pytest.mark.asyncio
-    async def test_match_worklist_performed_uses_accession(self):
+    async def test_match_worklist_marks_in_progress_on_store(self):
         from db.worklist import Worklist
 
         class _FakeAc:
@@ -335,17 +533,37 @@ class TestStoreInstance:
 
             mock_entry = {'status': 'scheduled', 'accession_number': 'ACC001'}
             with patch.object(Worklist, 'get_by_accession', new=AsyncMock(return_value=mock_entry)) as mock_get_acc:
-                with patch.object(Worklist, 'mark_performed', new=AsyncMock()) as mock_mark:
-                    from dcm.store import match_worklist_performed
-                    await match_worklist_performed({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
+                with patch.object(Worklist, 'mark_in_progress', new=AsyncMock()) as mock_mark:
+                    from dcm.store import match_worklist_in_progress
+                    await match_worklist_in_progress({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
                     mock_get_acc.assert_called_once_with('ACC001')
                     mock_mark.assert_called_once_with('ACC001', '1.2.3')
 
     @pytest.mark.asyncio
+    async def test_match_worklist_in_progress_does_not_mark_performed(self):
+        from db.worklist import Worklist
+
+        class _FakeAc:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+
+        with patch('dcm.store.get_conn') as mock_get_conn:
+            mock_get_conn.return_value = _FakeAc()
+
+            mock_entry = {'status': 'scheduled', 'accession_number': 'ACC001'}
+            with patch.object(Worklist, 'get_by_accession', new=AsyncMock(return_value=mock_entry)):
+                with patch.object(Worklist, 'mark_performed', new=AsyncMock()) as mock_mark:
+                    from dcm.store import match_worklist_in_progress
+                    await match_worklist_in_progress({'accession_number': 'ACC001', 'study_instance_uid': '1.2.3'})
+                    mock_mark.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_match_worklist_no_action_when_no_accession(self):
-        from dcm.store import match_worklist_performed
+        from dcm.store import match_worklist_in_progress
         with patch('db.worklist.Worklist') as mock_wl_cls:
-            await match_worklist_performed({'accession_number': '', 'study_instance_uid': '1.2.3'})
+            await match_worklist_in_progress({'accession_number': '', 'study_instance_uid': '1.2.3'})
             assert not mock_wl_cls.called
 
     @pytest.mark.asyncio
@@ -364,6 +582,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_master_storage = MagicMock()
         mock_master_storage.copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -378,7 +597,7 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', side_effect=[mock_master_storage, mock_remote_storage]), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.match_worklist_performed', new=AsyncMock()), \
+             patch('dcm.store.match_worklist_in_progress', new=AsyncMock()), \
              patch('dcm.store.evaluate_routing_rules', new=AsyncMock(return_value=[
                  {'rule_id': '1', 'rule_name': 'CT route', 'destination': '2'},
              ])), \
@@ -408,6 +627,7 @@ class TestStoreInstance:
         mock_files_cls = MagicMock()
         mock_files_cls.return_value.insert_or_select = AsyncMock(return_value={'id': 42})
         mock_files_cls.return_value.get_by_hash = AsyncMock(return_value=None)
+        mock_files_cls.return_value.get_by_sop_uid = AsyncMock(return_value=None)
 
         mock_storage = MagicMock()
         mock_storage_copy = AsyncMock(return_value={'path': '/tmp/file.dcm', 'size': 1024})
@@ -432,3 +652,55 @@ class TestStoreInstance:
         assert _TxTracker.copy_call_count == 1
         assert not _TxTracker.copy_called_in_tx, \
             "storage.copy must NOT be called inside a DB transaction"
+
+
+class TestStudyCompleteness:
+    """ME-05: study-level completeness tracking on the ingest path."""
+
+    def test_status_stays_receiving_when_expected_unknown(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(3, 0, 'receiving') == 'receiving'
+
+    def test_status_complete_when_expected_reached(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(3, 3, 'receiving') == 'complete'
+        assert _next_study_status(4, 3, 'receiving') == 'complete'
+
+    def test_status_incomplete_when_expected_not_reached(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(2, 3, 'receiving') == 'incomplete'
+
+    def test_status_never_regresses_from_complete(self):
+        from dcm.store import _next_study_status
+        assert _next_study_status(1, 5, 'complete') == 'complete'
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_increments_and_transitions(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(return_value={
+            'received_instances': 2, 'expected_instances': 3, 'study_status': 'receiving',
+        })
+        conn.execute = AsyncMock()
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})
+        conn.execute.assert_awaited_once_with(
+            "UPDATE studies SET received_instances = $1, study_status = $2 "
+            "WHERE study_instance_uid = $3",
+            3, 'complete', '1.2.3',
+        )
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_survives_missing_study(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        conn.execute = AsyncMock()
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})
+        conn.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bump_study_counts_never_raises(self):
+        from dcm.store import _bump_study_counts
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(side_effect=RuntimeError('db down'))
+        await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})

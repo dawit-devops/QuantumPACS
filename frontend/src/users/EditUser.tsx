@@ -13,6 +13,8 @@ import {
 import { CopyOutlined } from "@ant-design/icons";
 import { createUser } from "../api/users";
 import { listRoles } from "../api/roles";
+import { listSessionTenants } from "../api/tenants";
+import { useAuth } from "../auth/AuthContext";
 
 const { Text, Paragraph } = Typography;
 
@@ -75,18 +77,29 @@ export function AddUserFinish(props: any) {
 
 export function AddUser(props: any) {
   const { message } = App.useApp();
+  const { hasPermission } = useAuth();
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<any>({});
   const [roles, setRoles] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
   const [form] = Form.useForm();
+
+  // Tenant assignment is a platform-admin capability: only users holding
+  // TENANT_READ may scope a new user to a tenant via the form.
+  const canAssignTenant = hasPermission("TENANT_READ");
 
   useEffect(() => {
     if (visible) {
       listRoles()
         .then(setRoles)
         .catch(() => {});
+      if (canAssignTenant) {
+        listSessionTenants()
+          .then(setTenants)
+          .catch(() => {});
+      }
     }
-  }, [visible]);
+  }, [visible, canAssignTenant]);
 
   const showModal = () => {
     setVisible(true);
@@ -105,6 +118,7 @@ export function AddUser(props: any) {
           admin: values.admin || false,
         };
         if (values.role_id) data.role_id = values.role_id;
+        if (values.tenant) data.tenant = values.tenant;
         createUser(data)
           .then((res: any) => {
             form.resetFields();
@@ -159,6 +173,18 @@ export function AddUser(props: any) {
               }))}
             />
           </Form.Item>
+          {canAssignTenant && (
+            <Form.Item name="tenant" label="Tenant">
+              <Select
+                allowClear
+                placeholder="Platform-wide user (no tenant)"
+                options={tenants.map((t: any) => ({
+                  value: t.slug,
+                  label: t.name,
+                }))}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="admin" valuePropName="checked" initialValue={false}>
             <Checkbox>Admin</Checkbox>
           </Form.Item>

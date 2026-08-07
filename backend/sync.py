@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import random
 import traceback
 
@@ -42,6 +43,14 @@ async def index(replica):
 
             if needs_fetch_for_hash:
                 d['hash'] = hash_file(loc)
+
+            # Sync runs at platform level with no request/tenant context, so
+            # size is recorded for reporting but quota is not enforced here.
+            if loc:
+                try:
+                    d['size'] = os.path.getsize(loc)
+                except OSError:
+                    d['size'] = 0
 
             f = await Files(conn).get(d)
             if not f:

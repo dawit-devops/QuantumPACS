@@ -96,12 +96,17 @@ class Reports(Table):
         )
         return await self.get(report_id)
 
-    async def reading_list(self, status=None, modality=None, search=None):
+    async def reading_list(self, status=None, modality=None, search=None,
+                            radiologist=None, physician=None,
+                            date_from=None, date_to=None):
         """Exams handed off to the reading worklist that lack a final report.
 
         A study is "ready to read" when the technologist completed it (handoff,
         FR-R06-07) and no final report exists yet. Draft/preliminary reports keep
         the study on the list; a signed final report removes it.
+
+        ME-04: the list is filterable per radiologist (assigned_radiologist),
+        by referring physician, and by handoff date range.
         """
         where = [
             "e.status = 'completed'",
@@ -122,12 +127,29 @@ class Reports(Table):
             where.append(f"(e.patient_name ILIKE ${idx} OR e.patient_id ILIKE ${idx} OR e.accession_number ILIKE ${idx})")
             params.extend([like, like, like])
             idx += 3
+        if radiologist:
+            where.append(f"e.assigned_radiologist = ${idx}")
+            params.append(radiologist)
+            idx += 1
+        if physician:
+            where.append(f"e.referring_physician ILIKE ${idx}")
+            params.append(f'%{physician}%')
+            idx += 1
+        if date_from:
+            where.append(f"e.completed_at >= ${idx}::timestamptz")
+            params.append(f'{date_from}T00:00:00+00:00')
+            idx += 1
+        if date_to:
+            where.append(f"e.completed_at <= ${idx}::timestamptz")
+            params.append(f'{date_to}T23:59:59.999+00:00')
+            idx += 1
 
         q = f"""
             SELECT e.id AS exam_id, e.patient_id, e.patient_name, e.patient_birth_date,
                    e.patient_sex, e.accession_number, e.requested_procedure_desc,
                    e.modality, e.priority, e.protocol_name, e.completed_at,
-                   e.assigned_technologist,
+                   e.assigned_technologist, e.assigned_radiologist,
+                   e.referring_physician,
                    r.id AS report_id, r.status AS report_status,
                    r.signed_by, r.signed_at
             FROM exams e

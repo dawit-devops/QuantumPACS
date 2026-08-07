@@ -23,8 +23,8 @@ from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
-from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri
-from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
+from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
+from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
     FhirMetadata,
@@ -53,6 +53,7 @@ from api.exams import (
 )
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
+    ExamAssignHandler,
     ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
 )
@@ -86,7 +87,9 @@ from api.portal import (
     PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
     PortalFollowUpStatusHandler,
 )
-from api.dashboard_metrics import DashboardMetricsHandler
+from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
+from api.metering import MeteringUsageHandler, PlatformUsageHandler
+from api.tenant_health import TenantHealthHandler
 from api.rbac import guard_endpoint_method
 from api.permissions import Permission
 from api.ws import WSToken, WebsocketHandler
@@ -162,8 +165,11 @@ _V1_ROUTES = [
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
     v2(Route('/tenants', endpoint=TenantsHandler)),
+    v2(Route('/tenants/health', endpoint=TenantHealthHandler)),
     v2(Route('/tenants/{id}', endpoint=TenantHandler)),
     v2(Route('/tenants/{id}/stats', endpoint=TenantStatsHandler)),
+    v2(Route('/tenants/{id}/usage', endpoint=MeteringUsageHandler)),
+    v2(Route('/usage', endpoint=PlatformUsageHandler)),
     v2(Route('/api-keys', endpoint=ApiKeysHandler)),
     v2(Route('/api-keys/{id}', endpoint=ApiKeyHandler)),
     v2(Route('/oauth/providers', endpoint=OAuthProvidersHandler)),
@@ -175,10 +181,17 @@ _V1_ROUTES = [
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}', endpoint=DicomWebWadoFrames)),
+    # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
+    # a study. POST /dicomweb/studies stores without a pre-specified study.
+    v2(Route('/dicomweb/studies/{study_uid}/instances', endpoint=DicomWebStudies, methods=['POST'])),
+    # Streamed study/series ZIP export (HI-08).
+    v2(Route('/dicomweb/studies/{study_uid}/archive', endpoint=DicomWebArchive)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/archive', endpoint=DicomWebArchive)),
     v2(Route('/wado', endpoint=DicomWebWadoUri)),
-    Route('/api/v2/wado', endpoint=DicomWebWadoUri),
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
+    v2(Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler)),
     v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),
     v2(Route('/webhooks', endpoint=WebhooksHandler)),
     v2(Route('/webhooks/{id}', endpoint=WebhookHandler)),
@@ -211,6 +224,7 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
     v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
+    v2(Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler)),
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
     v2(Route('/reports/{exam_id}', endpoint=ExamReportHandler)),
     v2(Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler)),
@@ -240,6 +254,7 @@ _V1_ROUTES = [
     v2(Route('/fhir/admin/requests', endpoint=FhirAdminRecentRequestsHandler)),
     v2(Route('/fhir/admin/test', endpoint=FhirAdminTestHandler)),
     Route('/v2/dashboard/metrics', endpoint=DashboardMetricsHandler),
+    Route('/v2/dashboard/health', endpoint=DashboardHealthHandler),
     v2(Route('/visits', endpoint=VisitsHandler)),
     v2(Route('/visits/{id}', endpoint=VisitHandler)),
     v2(Route('/visits/{id}/orders', endpoint=VisitOrdersHandler)),

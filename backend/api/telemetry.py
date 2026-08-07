@@ -241,10 +241,62 @@ async def _check_ingestion_service():
         return {'status': 'error', 'stream_lag': -1, 'message': (str(e) or type(e).__name__)[:200]}
 
 
+async def _check_hl7_listener():
+    from config import config
+    port = int(config.get('hl7_mllp_port', '12579'))
+    try:
+        import socket
+        with socket.create_connection(('127.0.0.1', port), timeout=2):
+            pass
+        return {'status': 'ok', 'port': port, 'latency_ms': 0}
+    except Exception:
+        return {'status': 'degraded', 'port': port, 'latency_ms': 0, 'message': 'HL7 MLLP listener not reachable'}
+
+
+async def _check_fhir():
+    start = time.monotonic()
+    try:
+        from db.conn import get_conn
+        from db.fhir_config import FhirConfig
+        async with get_conn() as conn:
+            raw = await FhirConfig(conn).get_all()
+        latency = int((time.monotonic() - start) * 1000)
+        if raw.get('enabled', 'false') == 'true':
+            return {'status': 'ok', 'latency_ms': latency}
+        return {'status': 'degraded', 'latency_ms': latency, 'message': 'FHIR not enabled (fhir_config.enabled != true)'}
+    except Exception as e:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+
+
+async def _check_auth():
+    start = time.monotonic()
+    try:
+        from config import assert_production_secret
+        assert_production_secret()
+    except Exception:
+        return {'status': 'degraded', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'Auth secret is unset or still the default placeholder'}
+    # The token blocklist degrades gracefully in tokens.py when Redis is
+    # unavailable (is_blocked returns False), so auth stays healthy there.
+    try:
+        from api.redis_client import get_client, is_available
+        if not is_available():
+            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000),
+                    'message': 'Token blocklist disabled (redis unavailable)'}
+        client = await get_client(db=1)
+        if client:
+            await client.ping()
+        return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
+    except Exception as e:
+        return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': f'Token blocklist disabled: {(str(e) or type(e).__name__)[:200]}'}
+
+
 async def health_endpoint(request):
-    db_result, es_result, redis_result, storage_result, dicom_result, ingestion_result = await asyncio.gather(
+    db_result, es_result, redis_result, storage_result, dicom_result, ingestion_result, hl7_result, fhir_result, auth_result = await asyncio.gather(
         _check_db(), _check_es(), _check_redis(), _check_storage(),
         _check_dicom_listener(), _check_ingestion_service(),
+        _check_hl7_listener(), _check_fhir(), _check_auth(),
     )
     components = {
         'database': db_result,
@@ -253,6 +305,9 @@ async def health_endpoint(request):
         'storage': storage_result,
         'dicom_listener': dicom_result,
         'ingestion_service': ingestion_result,
+        'hl7': hl7_result,
+        'fhir': fhir_result,
+        'auth': auth_result,
     }
     all_ok = all(c.get('status') == 'ok' for c in components.values())
     overall_status = 'ok' if all_ok else 'degraded'

@@ -21,6 +21,10 @@ class SignReportRequest(BaseModel):
     confirm: bool = Field(True, description="Explicit sign confirmation")
 
 
+class AssignRadiologistRequest(BaseModel):
+    radiologist_id: str = Field('', description="User id to assign; empty = assign the requesting user")
+
+
 class CreatePeerReviewRequest(BaseModel):
     report_id: str = Field(..., description="Report to review")
     reviewer_id: str = Field(..., description="User id of the peer reviewer")

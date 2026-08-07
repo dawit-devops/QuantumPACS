@@ -1,3 +1,4 @@
+import string
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,7 +25,7 @@ class TestUsersUtils:
 
     def test_rand_pswd_uses_correct_chars(self):
         p = rand_pswd(100)
-        assert all(c in 'abcdefghijklmnopqrstuvwxyz0123456789' for c in p)
+        assert all(c in string.ascii_letters + string.digits for c in p)
 
 
 class TestUsers:

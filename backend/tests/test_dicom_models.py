@@ -13,7 +13,7 @@ class TestStudyUidColumns:
         conn.fetchval.return_value = 1
         s = Study(conn=conn)
         data = {
-            'study_db_id': 1,
+            'patient_db_id': 1,
             'study_id': 'S001',
             'study_description': 'Chest',
             'study_instance_uid': '1.2.3.4.5.6.7.8.1',
@@ -32,7 +32,7 @@ class TestStudyUidColumns:
         conn.fetchval.return_value = 1
         s = Study(conn=conn)
         data = {
-            'study_db_id': 1,
+            'patient_db_id': 1,
             'study_id': 'S001',
             'study_description': 'Chest',
         }

@@ -32,18 +32,56 @@ verify_config() {
         fi
     fi
 
-    # Fix default secret
+    # Fix default/known secrets → random values written to the (gitignored)
+    # config.local.yaml. Never commit a fallback secret: config.py rejects
+    # every value that ever shipped with the repo (assert_production_secret).
     local SECRET
     SECRET=$(grep -E '^secret:' "$CONFIG" 2>/dev/null | awk '{print $2}' | tr -d ' ')
     if [ -z "$SECRET" ] || [ "$SECRET" = "default" ] || [ "$SECRET" = "pa55w0rd" ] || \
        [ "$SECRET" = "quantumpacs-default-secret-32-bytes-long!!" ] || \
-       [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ]; then
-        echo "  fixing default secret → custom dev secret"
+       [ "$SECRET" = "quantumpacs-dev-secret-replace-in-production-32b" ] || \
+       [ "$SECRET" = "quantum-local-dev-secret-replace-in-prod-2026-07-28" ] || \
+       [ "$SECRET" = "quantumpacs-docker-compose-dev-secret-change-me" ]; then
+        local NEW_SECRET
+        NEW_SECRET=$(openssl rand -hex 32)
+        echo "  fixing default secret → random dev secret"
         if grep -q '^secret:' "$CONFIG" 2>/dev/null; then
-            sed -i 's|^secret:.*|secret: quantum-local-dev-secret-replace-in-prod-2026-07-28|' "$CONFIG"
+            sed -i "s|^secret:.*|secret: $NEW_SECRET|" "$CONFIG"
         else
-            echo 'secret: quantum-local-dev-secret-replace-in-prod-2026-07-28' >> "$CONFIG"
+            echo "secret: $NEW_SECRET" >> "$CONFIG"
         fi
+    fi
+
+    # Same for the superadmin bootstrap password (default 'pa55w0rd' is denied
+    # by assert_production_secret now).
+    local SU
+    SU=$(grep -E '^superadmin_pass:' "$CONFIG" 2>/dev/null | awk '{print $2}' | tr -d ' ')
+    if [ -z "$SU" ] || [ "$SU" = "pa55w0rd" ]; then
+        local NEW_SU
+        NEW_SU=$(openssl rand -base64 24 | tr '+/' '_-')
+        echo "  fixing default superadmin_pass → random dev value"
+        if grep -q '^superadmin_pass:' "$CONFIG" 2>/dev/null; then
+            sed -i "s|^superadmin_pass:.*|superadmin_pass: $NEW_SU|" "$CONFIG"
+        else
+            echo "superadmin_pass: $NEW_SU" >> "$CONFIG"
+        fi
+    fi
+
+    # Compose refuses the committed placeholder secrets (docker-compose.yaml
+    # uses ${VAR:?}); bootstrap the gitignored .env when missing or still
+    # carrying the placeholder. Postgres keeps its own default — the volume
+    # already initialized with it.
+    local DOCKER_ENV="$DIR/.env"
+    if [ ! -f "$DOCKER_ENV" ] || \
+       grep -q 'quantumpacs-docker-compose-dev-secret-change-me\|change-me-superadmin' "$DOCKER_ENV" 2>/dev/null; then
+        echo "  bootstrapping $DOCKER_ENV with random secrets"
+        cat > "$DOCKER_ENV" <<EOF
+POSTGRES_USER=quantumpacs
+POSTGRES_PASSWORD=pa55w0rd
+POSTGRES_DB=quantumpacs
+SECRET=$(openssl rand -hex 32)
+SUPERADMIN_PASS=$(openssl rand -base64 24 | tr '+/' '_-')
+EOF
     fi
 }
 

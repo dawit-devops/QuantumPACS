@@ -12,6 +12,7 @@ class CreateTenantRequest(BaseModel):
     db_password: str | None = Field(None, description="Database password for tenant-specific DB")
     storage_quota_bytes: int = Field(0, description="Storage quota in bytes (0 = unlimited)")
     admin_email: str | None = Field(None, description="Tenant admin contact email")
+    plan: str = Field('free', description="Subscription plan slug")
 
 
 class UpdateTenantRequest(BaseModel):
@@ -21,5 +22,6 @@ class UpdateTenantRequest(BaseModel):
     db_port: int | None = Field(None, description="Updated DB port")
     db_user: str | None = Field(None, description="Updated DB user")
     db_password: str | None = Field(None, description="Updated DB password")
-    status: str | None = Field(None, description="Tenant status (active/decommissioned)")
+    status: str | None = Field(None, description="Tenant status (active/suspended/quarantined/decommissioned)")
     storage_quota_bytes: int | None = Field(None, description="Updated storage quota")
+    plan: str | None = Field(None, description="Updated subscription plan slug")

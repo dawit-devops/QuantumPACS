@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
@@ -16,7 +17,7 @@ from api.hl7_admin import (
     Hl7MessagesHandler, Hl7MessageHandler,
     Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
 )
-from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler
+from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.validate import validation_exception_handler, _ValidationException
 
@@ -396,8 +397,12 @@ class TestHl7Config:
             'hl7_mllp_port': '12579',
             'hl7_mllp_allowed_ips': '10.0.0.0/24,192.168.1.0/24',
         }
+        # open() is mocked so the handler never truncates the real
+        # config.local.yaml (which holds the runtime secret) — the PUT
+        # read/dump cycle must stay in-memory during tests.
         with patch('api.hl7_admin.config', fake_cfg), \
-             patch('yaml.safe_load', return_value={}):
+             patch('yaml.safe_load', return_value={}), \
+             patch('builtins.open', mock_open()):
             client = TestClient(self._make_app())
             resp = client.put('/hl7/admin/config', json={'mllp_port': 12580, 'allowed_ips': ['10.0.0.0/24']})
         assert resp.status_code == 200
@@ -428,6 +433,7 @@ class TestDicomWebAdmin:
         return _make_app([
             Route('/dicomweb/admin', endpoint=DicomWebAdminHandler),
             Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler),
+            Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler),
         ], user)
 
     def test_get_status(self):
@@ -444,17 +450,99 @@ class TestDicomWebAdmin:
     def test_get_metrics(self):
         mock_conn = _mock_conn()
         mock_conn.fetchval = AsyncMock(return_value=10)
+        mock_conn.fetchrow = AsyncMock(
+            return_value={'studies': 30, 'series': 45, 'files': 120}
+        )
+        mock_conn.fetch = AsyncMock(side_effect=[
+            [{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}],
+            [{'kind': 'qido', 'total': 5, 'errors': 1}],
+        ])
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/metrics?period=7d')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['period'] == '7d'
+        assert body['files_stored'] == 10
+        assert body['studies_stored'] == 10
+        assert body['failed_stores'] == 10
+        assert body['storage_bytes'] == 10
+        assert body['by_modality'] == [{'modality': 'CT', 'count': 8}, {'modality': 'MR', 'count': 2}]
+        assert body['requests_by_kind'] == [{'kind': 'qido', 'total': 5, 'errors': 1}]
+        assert body['requests_total'] == 5
+        assert body['requests_failed'] == 1
+        assert body['totals'] == {'studies': 30, 'series': 45, 'files': 120}
+
+    def test_metrics_defaults_to_24h(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        mock_conn.fetchrow = AsyncMock(
+            return_value={'studies': 0, 'series': 0, 'files': 0}
+        )
+        mock_conn.fetch = AsyncMock(return_value=[])
         with _patch_get_conn('api.dicomweb_admin', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/dicomweb/admin/metrics')
         assert resp.status_code == 200
-        assert resp.json()['files_stored'] == 10
+        assert resp.json()['period'] == '24h'
 
     def test_missing_permission(self):
         user = _make_admin_user(permissions=['LOG_READ'])
         client = TestClient(self._make_app(user=user))
         resp = client.get('/dicomweb/admin')
         assert resp.status_code == 403
+
+    def test_get_requests(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetch = AsyncMock(return_value=[{
+            'id': 42,
+            'created': '2026-08-07 03:00:00+00',
+            'log': json.dumps({
+                'event': 'dicomweb.request',
+                'actor': 1,
+                'resource': {'type': 'dicomweb', 'id': 'qido'},
+                'detail': {
+                    'method': 'GET', 'path': '/api/dicomweb/studies',
+                    'status': 200, 'duration_ms': 12, 'kind': 'qido',
+                },
+                'tenant': None,
+            }),
+            'tenant': None,
+            'request_id': 'req-1',
+            'trace_id': 'trace-1',
+        }])
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/requests?limit=50')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['total'] == 1
+        assert body['has_more'] is False
+        assert body['next_cursor'] is None
+        row = body['data'][0]
+        assert row['id'] == 42
+        assert row['kind'] == 'qido'
+        assert row['method'] == 'GET'
+        assert row['path'] == '/api/dicomweb/studies'
+        assert row['status'] == 200
+        assert row['duration_ms'] == 12
+        assert row['actor'] == 1
+        assert row['request_id'] == 'req-1'
+
+    def test_get_requests_passes_kind_and_cursor(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        with _patch_get_conn('api.dicomweb_admin', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.get('/dicomweb/admin/requests?kind=stow&cursor=41')
+        assert resp.status_code == 200
+        sql = mock_conn.fetch.await_args.args[0]
+        assert "(l.log::json -> 'detail') ->> 'kind' = $1" in sql
+        assert 'l.id < $2' in sql
+        args = mock_conn.fetch.await_args.args[1:]
+        assert args == ('stow', 41, 50)
 
 
 # ===========================================================================

@@ -109,6 +109,7 @@ function LoginForm(props: any) {
         role: data.role || (data.admin ? "admin" : "user"),
         permissions: data.permissions || [],
         tenant_id: data.tenant_id,
+        tenant_name: data.tenant_name,
       },
       data.refresh_token,
     );

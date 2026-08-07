@@ -24,7 +24,7 @@ of the skill), and moves the item to `resolved` or `deferred` with rationale.
 
 | ID | Affects | Question | Status |
 |----|---------|----------|--------|
-| OQ-R01-01 | 08-implementation-roadmap.md | `FR-R01-17` remains GATED. Global health dashboard aggregate (FR-R01-17) and full backup/restore (FR-R01-18) are the only GATED items; confirm priority for v3.1. | open |
+| OQ-R01-01 | 08-implementation-roadmap.md | `FR-R01-17` remains GATED. Global health dashboard aggregate (FR-R01-17) and full backup/restore (FR-R01-18) are the only GATED items; confirm priority for v3.1. | resolved — FR-R01-17 implemented 2026-08-05 (`GET /v2/dashboard/health`, METRICS_READ); only FR-R01-18 remains GATED (see OQ-R01-02) |
 | OQ-R01-02 | 08-implementation-roadmap.md | `FR-R01-18` remains GATED. Confirm priority / v3.1 scope. | open |
 
 ## Feedback Items

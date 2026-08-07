@@ -65,6 +65,35 @@ function PermissionTestConsumer() {
   );
 }
 
+function TenantSignInTestConsumer() {
+  const { signIn, activeTenant } = useAuth();
+  return (
+    <div>
+      <button
+        data-testid="tenant-signin-btn"
+        onClick={() =>
+          signIn("test-token", {
+            id: "u1",
+            username: "alice",
+            admin: false,
+            role: "user",
+            permissions: [],
+            tenant_id: "memorial-west",
+            tenant_name: "Memorial Hospital West",
+          })
+        }
+      >
+        Sign In With Tenant
+      </button>
+      <div data-testid="tenant-status">
+        {activeTenant
+          ? `${activeTenant.slug}|${activeTenant.name}`
+          : "no-tenant"}
+      </div>
+    </div>
+  );
+}
+
 function SignOutTestConsumer() {
   const { isAuthenticated, user, signOut } = useAuth();
   return (
@@ -118,6 +147,27 @@ describe("AuthProvider", () => {
     expect(localStorage.getItem("username")).toBe("alice");
     expect(localStorage.getItem("access_token")).toBe("test-token");
     expect(localStorage.getItem("refresh_token")).toBeNull();
+  });
+
+  it("signIn activates the tenant from the login response (tenant_id + tenant_name)", async () => {
+    const user = userEvent.setup();
+    renderWithApp(
+      <AuthProvider>
+        <TenantSignInTestConsumer />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByTestId("tenant-status")).toHaveTextContent("no-tenant");
+
+    await user.click(screen.getByTestId("tenant-signin-btn"));
+
+    // The backend returns tenant_id (a slug) + tenant_name after this
+    // branch's backend work; signIn must persist and activate both.
+    expect(localStorage.getItem("tenant_id")).toBe("memorial-west");
+    expect(localStorage.getItem("tenant_name")).toBe("Memorial Hospital West");
+    expect(screen.getByTestId("tenant-status")).toHaveTextContent(
+      "memorial-west|Memorial Hospital West",
+    );
   });
 
   it("signOut clears localStorage and sets isAuthenticated to false", async () => {

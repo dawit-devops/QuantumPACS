@@ -23,6 +23,7 @@ from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
 from api.tracing_middleware import TracingMiddleware
+from api.dicomweb_logging import DicomWebLogMiddleware
 from api.validate import validation_exception_handler, _ValidationException
 from config import is_docker, config, assert_production_secret
 from exceptions import ConfigurationError
@@ -111,8 +112,18 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     })
 
     async def dispatch(self, request, call_next):
-        if request.method in ('POST', 'PUT', 'DELETE') and request.url.path.startswith('/api'):
-            if request.url.path not in self._PUBLIC_PATHS:
+        path = request.url.path
+        if request.method in ('POST', 'PUT', 'DELETE') and path.startswith('/api'):
+            # DICOMweb and FHIR are machine-to-machine APIs (modalities, RIS,
+            # other PACS, SMART apps) authenticated by bearer token — browsers
+            # don't drive them, so the anti-CSRF cookie dance does not apply
+            # (it would break plain STOW-RS and FHIR clients that cannot mint
+            # an X-CSRF-Token).
+            is_machine = (
+                path.startswith('/api/dicomweb') or path.startswith('/api/v2/dicomweb')
+                or path.startswith('/api/fhir') or path.startswith('/api/v2/fhir')
+            )
+            if path not in self._PUBLIC_PATHS and not is_machine:
                 if request.headers.get('X-CSRF-Token') != '1':
                     from api.response import forbidden
                     return forbidden('CSRF token missing or invalid')
@@ -202,12 +213,13 @@ app = Starlette(
     routes=routes,
     middleware=[
         Middleware(TracingMiddleware),
+        Middleware(DicomWebLogMiddleware),
         Middleware(AuthenticationMiddleware, backend=TokenAuth(), on_error=TokenAuth.on_auth_error),
         Middleware(TenantMiddleware),
         Middleware(FhirAuditMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
-        Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token'], allow_credentials=True),
+        Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token', 'X-Tenant-ID'], allow_credentials=True),
         Middleware(SecurityHeadersMiddleware),
         Middleware(CSRFMiddleware),
         Middleware(CustomMiddleware),

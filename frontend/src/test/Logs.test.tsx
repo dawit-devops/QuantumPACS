@@ -10,20 +10,28 @@ import Logs from "../logs/Logs";
 
 const mockListLogs = vi.hoisted(() => vi.fn());
 const mockListLogActors = vi.hoisted(() => vi.fn());
+const mockListSessionTenants = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/logs", () => ({
   listLogs: mockListLogs,
   listLogActors: mockListLogActors,
 }));
 
+vi.mock("../api/tenants", () => ({
+  listSessionTenants: mockListSessionTenants,
+}));
+
 vi.mock("../helpers", () => ({
   request: vi.fn(() => Promise.resolve({})),
   isAdmin: () => true,
+  emit: vi.fn(),
+  subscribe: vi.fn(() => undefined),
 }));
 
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
+  useTenantRefetch: () => {},
 }));
 
 const mockLogs = [
@@ -64,6 +72,10 @@ describe("Logs", () => {
     mockListLogActors.mockImplementation(() =>
       Promise.resolve(["admin", "system"]),
     );
+    mockListSessionTenants.mockResolvedValue([
+      { id: "1", name: "Main Hospital", slug: "main" },
+      { id: "2", name: "North Clinic", slug: "north" },
+    ]);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -118,5 +130,34 @@ describe("Logs", () => {
     await waitFor(() => {
       expect(mockListLogs).toHaveBeenCalled();
     });
+  });
+
+  it("renders the tenant filter and passes tenant to the query for admins", async () => {
+    renderWithAuth(<Logs />);
+    await waitForTable();
+
+    // antd renders the Select placeholder as a div (not a native
+    // placeholder attribute), so query by text; the placeholder div itself
+    // has pointer-events: none, so click the .ant-select wrapper instead.
+    const filter = screen.getByText("Filter by tenant...");
+    expect(filter).toBeInTheDocument();
+
+    await userEvent.click(filter.closest(".ant-select") as HTMLElement);
+    const option = await screen.findByText("North Clinic");
+    await userEvent.click(option);
+
+    await waitFor(() => {
+      const lastCall = mockListLogs.mock.calls[
+        mockListLogs.mock.calls.length - 1
+      ][0] as Record<string, unknown>;
+      expect(lastCall.tenant).toBe("north");
+    });
+  });
+
+  it("renders the Tenant column in the table", async () => {
+    renderWithAuth(<Logs />);
+    await waitForTable();
+    expect(screen.getByText("Tenant")).toBeInTheDocument();
+    expect(screen.getAllByText("default").length).toBeGreaterThanOrEqual(1);
   });
 });

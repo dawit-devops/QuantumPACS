@@ -62,8 +62,8 @@ class LocalStorage(Storage):
         safe_parts = []
         for part in [
             str(patient_id),
-            str(filedata.get('study_id', '')) or 'empty',
-            str(filedata.get('series_number', '')) or 'empty',
+            str(filedata.get('study_id') or '') or 'empty',
+            str(filedata.get('series_number') or '') or 'empty',
             filedata.get('name', ''),
         ]:
             safe = part.replace('\x00', '')

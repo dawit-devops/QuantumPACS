@@ -14,22 +14,46 @@ class Study(Table):
             description TEXT,
             study_instance_uid TEXT,
             accession_number TEXT,
+            study_date TEXT,
+            referring_physician TEXT,
+            performing_physician TEXT,
+            received_instances INTEGER NOT NULL DEFAULT 0,
+            expected_instances INTEGER NOT NULL DEFAULT 0,
+            study_status TEXT NOT NULL DEFAULT 'receiving'
+                CHECK (study_status IN ('receiving', 'complete', 'incomplete')),
             UNIQUE(patient_id, study_id)
         );
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS studies_study_id ON studies(study_id);
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_studies_study_status ON studies(study_status)
+        """)
+        # Parity with migrations 017/040.
+        await self.exec("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_studies_study_instance_uid
+        ON studies(study_instance_uid) WHERE study_instance_uid IS NOT NULL
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_studies_accession_number
+        ON studies(accession_number)
+        """)
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
             'patient_id', 'study_id', 'description',
-            'study_instance_uid', 'accession_number',
+            'study_instance_uid', 'accession_number', 'study_date',
+            'referring_physician', 'performing_physician',
         ).insert((
-            data['study_db_id'], data['study_id'], data.get('study_description', ''),
+            # patient_id column references the patients row created just before
+            # this call — Files.add() sets patient_db_id, not study_db_id.
+            data['patient_db_id'], data['study_id'], data.get('study_description', ''),
             data.get('study_instance_uid', ''), data.get('accession_number', ''),
-        ), ).on_conflict(
-            'patient_id, study_id'
+            data.get('study_date', ''),
+            data.get('referring_physician', ''), data.get('performing_physician', ''),
+        ),         ).on_conflict(
+            'patient_id', 'study_id'
         ).do_update(
             self.table.description, PseudoColumn('EXCLUDED.description'),
         ).returning('id')

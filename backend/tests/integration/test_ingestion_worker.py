@@ -82,7 +82,7 @@ class TestIngestionWorkerIntegration:
         pending = await redis.xpending(INGESTION_STREAM, INGESTION_GROUP)
         assert pending['pending'] == 0
 
-    async def test_worker_retries_on_failure_then_does_not_ack(self, redis):
+    async def test_worker_retries_then_quarantines_failed_messages(self, redis):
         producer = StreamProducer(redis)
         await producer.publish(INGESTION_STREAM, {
             'event_type': 'dicom:stored',
@@ -102,8 +102,12 @@ class TestIngestionWorkerIntegration:
         )
         await worker.start()
         await worker.run_once()
+        assert call_count == 1
+        # Poison messages are quarantined to the DLQ and the original is acked
+        # (ME-05): no message is left redelivering forever.
         pending = await redis.xpending(INGESTION_STREAM, INGESTION_GROUP)
-        assert pending['pending'] > 0
+        assert pending['pending'] == 0
+        assert await redis.xlen('events:ingestion:dlq') == 1
 
     async def test_multiple_messages_processed(self, redis):
         producer = StreamProducer(redis)

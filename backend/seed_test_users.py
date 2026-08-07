@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 
+from config import is_docker
 from db.database import Database
 from db.roles import Roles
 from db.users import hash_password
@@ -17,29 +18,44 @@ PREFIX = 'test.'
 
 
 async def main():
+    if is_docker():
+        # These users share one well-known password — never in any deployed
+        # runtime (docker stack is the prod-like smoke image).
+        print('Refusing to run in a docker/QUANTUMPACS_DOCKER environment.', file=sys.stderr)
+        sys.exit(1)
+
     db = Database()
     await db.setup(pool_size=4)
     created = updated = 0
     try:
         async with db.acquire() as conn:
+            # Guard: users.tenant comes from migration 011; keep the script
+            # runnable on sync-only databases.
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant TEXT"
+            )
             for role in await Roles(conn).get_all():
                 slug = role['slug']
                 username = f'{PREFIX}{slug}'
                 ph = hash_password(TEST_PASSWORD)
+                # Only test.tenant_admin is tenant-scoped (the seeded
+                # `default` tenant); every other test user stays platform-side.
+                tenant = 'default' if slug == 'tenant_admin' else None
                 row = await conn.fetchrow(
                     "SELECT id FROM users WHERE username = $1", username,
                 )
                 await conn.execute(
                     """
-                    INSERT INTO users (username, password, admin, status, role_id, created, updated)
-                    VALUES ($1, $2, $3, 'active', $4, now(), now())
+                    INSERT INTO users (username, password, admin, status, role_id, tenant, created, updated)
+                    VALUES ($1, $2, $3, 'active', $4, $5, now(), now())
                     ON CONFLICT (username) DO UPDATE SET
                         password = EXCLUDED.password,
                         role_id = EXCLUDED.role_id,
                         status = 'active',
+                        tenant = EXCLUDED.tenant,
                         updated = now()
                     """,
-                    username, ph, slug == 'super_admin', role['id'],
+                    username, ph, slug == 'super_admin', role['id'], tenant,
                 )
                 created += 1 if not row else 0
                 updated += 1 if row else 0

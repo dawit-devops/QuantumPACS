@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Version** | 1.2.1 |
+| **Version** | 1.3.0 |
 | **Status** | approved |
 | **Generated** | 2026-08-03 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
@@ -19,10 +19,11 @@ roles (`technologist`, `radiologist`, `qa_team`) and new permission groups (`Exa
 `Reports`, `Peer Review`, `QA` incl. `PROTOCOL_MANAGE`) now appear in the `/roles`
 permission catalog managed by this role.
 
-**Implemented**: all FR-R01-01..16, FR-R01-19/20 (admin CRUD, RBAC, integrations,
-logs, metrics, worklist). **GATED** (kept as v3.0 spec): FR-R01-17 (global health
-aggregate — no endpoint; `/dashboard/health` does not exist), FR-R01-18
-(backup/restore — no API; only `scripts/backup_db.sh`).
+**Implemented**: all FR-R01-01..17, FR-R01-19/20 (admin CRUD, RBAC, integrations,
+logs, metrics, worklist, global health aggregate `GET /v2/dashboard/health` with
+storage/DICOM/HL7/FHIR/auth components + dashboard drill-down links).
+**GATED** (kept as v3.0 spec): FR-R01-18 (backup/restore — no API; only
+`scripts/backup_db.sh`).
 
 ## Role Summary
 
@@ -70,7 +71,7 @@ Works from an ops/IT office; reacts to incidents; rarely uses the clinical viewe
 | Service keys | `GET/POST /api-keys`, `GET/PUT/DELETE /api-keys/{id}` |
 | Webhooks | `GET/POST /webhooks`, `GET/PUT/DELETE /webhooks/{id}`, `POST /webhooks/test` |
 | Logs | `GET /logs`, `GET /logs/event-types`, `GET /logs/actors` |
-| Metrics | `GET /metrics`, `GET /dashboard/metrics`, `GET /dicomweb/admin/metrics`, `GET /hl7/admin/metrics`, `GET /fhir/admin/metrics` |
+| Metrics | `GET /metrics`, `GET /dashboard/metrics`, `GET /v2/dashboard/health`, `GET /dicomweb/admin/metrics`, `GET /hl7/admin/metrics`, `GET /fhir/admin/metrics` |
 | DICOM admin | `GET/POST /dicomweb/admin` (station AEs) |
 | FHIR admin | `GET/PUT /fhir/admin/config`, `GET/POST /fhir/admin/clients`, `GET/PUT/DELETE /fhir/admin/clients/{id}`, `GET /fhir/admin/requests`, `POST /fhir/admin/test` |
 | HL7 admin | `GET /hl7/admin/messages`, `GET /hl7/admin/messages/{id}`, `GET /hl7/admin/metrics`, `GET/PUT /hl7/admin/config`, `GET /hl7/admin/status` |
@@ -80,7 +81,11 @@ Works from an ops/IT office; reacts to incidents; rarely uses the clinical viewe
 
 ## Flagged Gaps (not yet in API surface — must be raised with backend)
 
-- System-wide health/uptime dashboard aggregate (only per-area metrics exist)
-- Storage tiering / quota enforcement UI (tenant provision accepts `storage_quota_bytes`; no usage dashboard)
-- Backup & restore of full system state (DB + files) — roadmap feature, not yet implemented
+- Backup & restore of full system state (DB + files) — roadmap feature, not yet implemented (FR-R01-18); per-tenant DB backup via `pg_dump` exists (ADR-026, `scripts/backup_db.sh`)
 - Global notification preferences administration (only per-user bell exists)
+- External subscription billing (Stripe etc.) — explicitly out of scope for v3.0 (ADR-026); per-tenant usage metering (`tenant_usage_daily`) is the foundation billing will consume
+
+Resolved 2026-08-06 (ADR-026): storage tiering / quota enforcement UI — storage
+quota is enforced on upload (`QUOTA_EXCEEDED`, 90% breach notification), and the
+per-tenant usage dashboard is fed by `tenant_usage_daily` metering plus the
+tenant health endpoint (`GET /v2/tenants/health`).

@@ -252,10 +252,10 @@ accessibility, and performance requirements per the skill's frontend-developer l
 - **Given** the metrics endpoint is down, **when** the page renders, **then** it shows "metrics unavailable" for that panel without failing the page.
 - **Accessibility**: status conveyed by icon + text, not color alone.
 - **Performance**: dashboard LCP ≤ 2.5s.
-- **Note**: aggregate endpoint is a flagged GAP — requires backend addition of `GET /dashboard/health` or equivalent composition.
+- **Note**: aggregate endpoint implemented — `GET /v2/dashboard/health` (METRICS_READ) returns storage, DICOM, HL7, FHIR, and auth component status; System Health card rows link to area dashboards with time-scope passthrough.
 
 ### Dependencies
-- GAP: `GET /dashboard/metrics` + per-area metrics; propose `GET /dashboard/health`
+- `GET /v2/dashboard/health` (implemented) + per-area metrics (`/dicomweb/admin/metrics`, `/hl7/admin/metrics`, `/fhir/admin/metrics`)
 
 ---
 

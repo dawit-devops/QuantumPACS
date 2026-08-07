@@ -20,6 +20,7 @@ export interface AuthUser {
   role: string;
   permissions: string[];
   tenant_id?: string;
+  tenant_name?: string;
 }
 
 export interface Tenant {
@@ -108,6 +109,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("permissions", JSON.stringify(userData.permissions));
       if (userData.tenant_id) {
         localStorage.setItem("tenant_id", userData.tenant_id);
+        localStorage.setItem(
+          "tenant_name",
+          userData.tenant_name || userData.tenant_id,
+        );
+        // Tenant ids are slugs at the API edge (X-Tenant-ID header), so the
+        // tenant object mirrors the id/name/slug shape TenantSelector writes.
+        setActiveTenant({
+          id: userData.tenant_id,
+          name: userData.tenant_name || userData.tenant_id,
+          slug: userData.tenant_id,
+        });
       }
       setTokens(token, refreshToken || token);
       setUser(userData);

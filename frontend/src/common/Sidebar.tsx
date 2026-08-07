@@ -22,6 +22,8 @@ import {
   BookOutlined,
   MessageOutlined,
   CloudServerOutlined,
+  UploadOutlined,
+  SearchOutlined,
   ApiOutlined,
   CalendarOutlined,
   FileDoneOutlined,
@@ -271,11 +273,36 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["HL7_READ"],
       },
       {
+        // DICOMweb is a submenu: the parent gate (DICOMWEB_READ etc.) covers
+        // Server, Store (STOW-RS) and Study Browser — the backend re-checks
+        // DICOMWEB_WRITE on the STOW endpoint itself.
         key: "dicomweb",
-        path: "/dicomweb",
         label: "DICOMweb",
         icon: <CloudServerOutlined />,
         permissions: ["DICOMWEB_READ", "STORAGE_ADMIN", "INTERFACE_ADMIN"],
+        children: [
+          {
+            key: "dicomweb-server",
+            path: "/dicomweb",
+            label: "Server",
+            icon: <CloudServerOutlined />,
+            permissions: [],
+          },
+          {
+            key: "dicomweb-store",
+            path: "/dicomweb/store",
+            label: "Store (STOW-RS)",
+            icon: <UploadOutlined />,
+            permissions: [],
+          },
+          {
+            key: "dicomweb-browser",
+            path: "/dicomweb/browser",
+            label: "Study Browser",
+            icon: <SearchOutlined />,
+            permissions: [],
+          },
+        ],
       },
     ],
   },
@@ -314,6 +341,9 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fhir-docs": "admin",
   hl7: "admin",
   dicomweb: "admin",
+  "dicomweb-server": "admin",
+  "dicomweb-store": "admin",
+  "dicomweb-browser": "admin",
   integrations: "admin",
   worklist: "acquisition",
   exams: "acquisition",

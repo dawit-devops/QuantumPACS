@@ -176,6 +176,28 @@ quantumpacs/
 
 Architecture decisions: 22 ADRs in [docs/decisions/](docs/decisions/).
 
+### Multi-Tenancy
+
+- **DB-per-tenant isolation** (ADR-016): each tenant gets its own PostgreSQL
+  database (created + alembic-migrated at provisioning); a registry DB holds
+  tenant metadata (slug, status, DB connection, storage quota).
+- **Routing** (ADR-026): the tenant middleware resolves the tenant from the JWT
+  `tenant` claim or the `X-Tenant-ID` header (super-admin override) and sets a
+  request-scoped contextvar, so every `get_conn()` call inside a routed request
+  transparently hits the tenant DB. `default` tenant seeds the platform DB.
+- **Status lifecycle**: provisioning / active / suspended / quarantined /
+  decommissioned — the middleware returns 403 (suspended/quarantined) or 404
+  (decommissioned) for non-active tenants.
+- **Quota & metering**: uploads are gated by the tenant's storage quota
+  (`QUOTA_EXCEEDED`, 90% breach notification); `tenant_usage_daily` records
+  per-tenant API calls, storage, and active users — the foundation for future
+  billing (out of scope).
+- **Backup & health**: each tenant DB is backed up independently via
+  `scripts/backup_db.sh`; `GET /api/v2/tenants/health` probes all tenant DBs.
+- Auth stays on the registry DB (`users.tenant = slug`); tenant DBs are clinical
+  data stores only. Ingestion/sync currently run platform-scoped — per-tenant
+  ingest routing is a documented follow-up (ADR-026).
+
 ## Configuration
 
 Settings loaded from `config.local.yaml` + environment variables:

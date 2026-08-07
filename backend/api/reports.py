@@ -12,8 +12,8 @@ from api.permissions import Permission
 from api.response import ok, created, not_found, validation_error, forbidden
 from api.validate import parse_body
 from api.schemas.reports import (
-    SaveReportRequest, SignReportRequest, CreatePeerReviewRequest,
-    SubmitPeerReviewRequest,
+    SaveReportRequest, SignReportRequest, AssignRadiologistRequest,
+    CreatePeerReviewRequest, SubmitPeerReviewRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -105,18 +105,67 @@ async def _seed_report_templates(conn):
 
 
 class ReadingListHandler(HTTPEndpoint):
-    """Priority-sorted reading worklist of handed-off exams (FR-R12-01)."""
+    """Priority-sorted reading worklist of handed-off exams (FR-R12-01).
+
+    Filters (ME-04): radiologist=me resolves to the requesting user so the
+    frontend needs no client-side identity; physician and date_from/date_to
+    bound the queue further.
+    """
 
     @requires_permission(Permission.REPORT_READ)
     async def get(self, request):
         status = request.query_params.get('status')
         modality = request.query_params.get('modality')
         search = request.query_params.get('search')
+        radiologist = request.query_params.get('radiologist')
+        if radiologist == 'me':
+            radiologist = str(request.user.id)
+        physician = request.query_params.get('physician')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
         async with get_conn() as conn:
             items = await Reports(conn).reading_list(
                 status=status, modality=modality, search=search,
+                radiologist=radiologist, physician=physician,
+                date_from=date_from, date_to=date_to,
             )
         return ok({'data': items})
+
+
+class ExamAssignHandler(HTTPEndpoint):
+    """Assign (or unassign) a radiologist to a reading-list exam (ME-04).
+
+    The per-physician worklist pattern: a radiologist claims an exam, and
+    the queue filter radiologist=me narrows the list to their own claims.
+    """
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['exam_id']
+        body = await parse_body(AssignRadiologistRequest, request)
+        radiologist_id = body.radiologist_id or str(request.user.id)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            if exam.get('status') != 'completed':
+                return validation_error(
+                    'Only completed exams on the reading worklist can be assigned',
+                )
+            updated = await Exams(conn).assign_radiologist(exam_id, radiologist_id)
+            await AuditLog(conn).log_event(
+                event_type='exam.radiologist_assigned',
+                actor_id=request.user.id,
+                resource_type='exam',
+                resource_id=str(exam_id),
+                details={
+                    'radiologist_id': radiologist_id,
+                    'accession_number': exam.get('accession_number'),
+                },
+                tenant=request.user.tenant,
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': updated})
 
 
 class ExamReportHandler(HTTPEndpoint):

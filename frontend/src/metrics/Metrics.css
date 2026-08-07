@@ -8,3 +8,18 @@
 [data-theme="dark"] .ant-card {
   border-color: var(--border-color);
 }
+
+.metrics-health-link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 4px;
+}
+
+.metrics-health-link:hover {
+  background: rgba(0, 0, 0, 0.04);
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .metrics-health-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+}

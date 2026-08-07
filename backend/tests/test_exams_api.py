@@ -139,7 +139,9 @@ class TestExamCreate:
             async def fake_fetchrow(q, *a):
                 if 'worklist_entries' in q:
                     return {'patient_id': 'P001', 'patient_name': 'A^B',
-                            'accession_number': 'ACC9', 'modality': 'MR'}
+                            'accession_number': 'ACC9', 'modality': 'MR',
+                            'requested_procedure_priority': 'A',
+                            'referring_physician': 'Lee^Kim'}
                 return None  # no exam already adopted from this entry
             with _conn(fetchrow=fake_fetchrow):
                 resp = client.post('/exams', json={'worklist_entry_id': 'wl-1'})
@@ -147,6 +149,42 @@ class TestExamCreate:
         kwargs = mock_exams.create.await_args.args[0]
         assert kwargs['patient_id'] == 'P001'
         assert kwargs['assigned_technologist'] == '42'
+        # ME-04: HL7 ASAP priority maps to urgent, referring physician
+        # denormalized from the adopted entry (OBR-16).
+        assert kwargs['priority'] == 'urgent'
+        assert kwargs['referring_physician'] == 'Lee^Kim'
+
+    def test_create_maps_stat_priority_from_entry(self):
+        client = TestClient(_make_app(TECH))
+        with patch('api.exams.Exams') as mock_exams_cls, _audit_ok():
+            mock_exams = AsyncMock()
+            mock_exams.create.return_value = {'id': 'exam-uuid'}
+            mock_exams_cls.return_value = mock_exams
+            async def fake_fetchrow(q, *a):
+                if 'worklist_entries' in q:
+                    return {'patient_id': 'P001', 'requested_procedure_priority': 'S'}
+                return None
+            with _conn(fetchrow=fake_fetchrow):
+                resp = client.post('/exams', json={'worklist_entry_id': 'wl-2'})
+        assert resp.status_code == 201
+        assert mock_exams.create.await_args.args[0]['priority'] == 'stat'
+
+    def test_create_keeps_explicit_priority_over_entry(self):
+        """An explicit non-routine priority wins over the adopted entry."""
+        client = TestClient(_make_app(TECH))
+        with patch('api.exams.Exams') as mock_exams_cls, _audit_ok():
+            mock_exams = AsyncMock()
+            mock_exams.create.return_value = {'id': 'exam-uuid'}
+            mock_exams_cls.return_value = mock_exams
+            async def fake_fetchrow(q, *a):
+                if 'worklist_entries' in q:
+                    return {'patient_id': 'P001', 'requested_procedure_priority': 'S'}
+                return None
+            with _conn(fetchrow=fake_fetchrow):
+                resp = client.post('/exams', json={
+                    'worklist_entry_id': 'wl-3', 'priority': 'urgent'})
+        assert resp.status_code == 201
+        assert mock_exams.create.await_args.args[0]['priority'] == 'urgent'
 
     def test_create_rejects_duplicate_adoption(self):
         """A worklist entry already adopted into an exam cannot be adopted again."""

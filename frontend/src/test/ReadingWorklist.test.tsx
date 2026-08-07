@@ -20,6 +20,7 @@ vi.mock("../helpers", () => ({
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
+  useTenantRefetch: () => {},
 }));
 
 function renderWorklist() {
@@ -137,6 +138,67 @@ describe("ReadingWorklist", () => {
         mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
       expect(lastCall[0]).toBe("reports/reading-list");
       expect(lastCall[1].query.modality).toBe("CT");
+    });
+  });
+
+  it("passes the assigned-to-me toggle through as radiologist=me", async () => {
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Assigned to me"));
+
+    await waitFor(() => {
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      expect(lastCall[1].query.radiologist).toBe("me");
+    });
+  });
+
+  it("filters by referring physician", async () => {
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    const physicianSearch = screen.getByPlaceholderText("Referring physician");
+    fireEvent.change(physicianSearch, { target: { value: "Lee" } });
+    fireEvent.keyDown(physicianSearch, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      expect(lastCall[1].query.physician).toBe("Lee");
+    });
+  });
+
+  it("takes an unassigned exam and refetches the list", async () => {
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Take").length).toBeGreaterThan(0);
+    });
+
+    mockRequest.mockResolvedValueOnce({ data: [] });
+    fireEvent.click(screen.getAllByText("Take")[0]);
+
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenCalledWith(
+        "reports/reading-list/e1/assign",
+        { method: "POST" },
+      );
+    });
+    // The refetch fires after the assignment resolves.
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenLastCalledWith("reports/reading-list", {
+        query: {},
+      });
     });
   });
 });

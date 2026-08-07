@@ -1,4 +1,4 @@
-import { useDocumentTitle } from "../hooks";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import { Layout, Table, Tag, Button, Select, Input, Alert, Spin } from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -66,6 +66,9 @@ function TechnologistWorklist() {
     const timer = setInterval(fetchExams, REFRESH_MS);
     return () => clearInterval(timer);
   }, [fetchExams]);
+
+  // Tenant switch → refetch immediately (interval may be up to 30s away).
+  useTenantRefetch(fetchExams);
 
   const modalities = [...new Set(data.map((e) => e.modality).filter(Boolean))];
 

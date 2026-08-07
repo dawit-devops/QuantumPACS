@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import traceback
 
 import hl7
 
@@ -154,6 +155,13 @@ async def default_handler(msg_bytes: bytes) -> bytes:
         log.info('ORM-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
         return b'ACK'
 
+    if msg_type == 'ORU':
+        success = await handle_oru_message(parsed)
+        if not success:
+            return b'ERR ORU processing failed'
+        log.info('ORU-%s processed for accession %s', event_type, parsed.get('accession_number', '?'))
+        return b'ACK'
+
     msg_control_id = parsed.get('message_control_id', '?')
     log.warning('Unknown message type: %s^%s id=%s', msg_type, event_type, msg_control_id)
     return b'ACK'
@@ -221,16 +229,41 @@ def parse_hl7_message(data) -> dict | None:
     orc = segments.get('ORC')
     if orc is not None:
         result['accession_number'] = _seg_field(orc, 2, 0, 0)
+        result['order_control'] = _seg_field(orc, 1, 0, 0)
 
     obr = segments.get('OBR')
     if obr is not None:
         result['requested_procedure_id'] = _seg_field(obr, 3, 0, 0)
         result['requested_procedure_desc'] = _seg_field_raw(obr, 4)
+        # Universal service ID components → RequestedProcedureCodeSequence
+        # (0008,0100 CodeValue / 0008,0102 Scheme / 0008,0104 CodeMeaning).
+        # NOTE: this hl7 lib indexes field[comp] as repetitions and
+        # rep[sub] as components — component 0/1/2 = (field, 0, 0/1/2).
+        result['requested_procedure_code'] = _seg_field(obr, 4, 0, 0)
+        result['requested_procedure_code_meaning'] = _seg_field(obr, 4, 0, 1)
+        result['requested_procedure_code_scheme'] = _seg_field(obr, 4, 0, 2)
+        result['requesting_physician'] = _seg_field_raw(obr, 16)
+        # Ordering provider doubles as the referring physician in most RIS
+        # integrations; ZDS-level separation is a later refinement.
+        result['referring_physician'] = _seg_field_raw(obr, 16)
         result['modality'] = _seg_field(obr, 24, 0, 0)
         result['station_ae_title'] = _seg_field(obr, 18, 0, 0)
+        result['scheduled_station_name'] = _seg_field(obr, 18, 0, 1)
+        # OBR-32 principal result interpreter → ScheduledPerformingPhysician.
+        result['scheduled_performing_physician'] = _seg_field_raw(obr, 32)
+        # OBR-31 reason for study → ReasonForTheRequestedProcedure (0040,1002).
+        result['reason_for_requested_procedure'] = _seg_field(obr, 31, 0, 0)
+        # OBR-27 Quantity/Timing component 7 (priority: R routine, A ASAP,
+        # S stat) → RequestedProcedurePriority (0040,1003).
+        result['requested_procedure_priority'] = _seg_field(obr, 27, 0, 5)
         start_dt = _seg_field(obr, 7, 0, 0)
         result['scheduled_date'] = start_dt[:8] if start_dt else ''
         result['scheduled_time'] = start_dt[8:14] if len(start_dt) >= 14 else (start_dt[8:12] if len(start_dt) >= 12 else '')
+        # ORU^R01 carries no ORC segment; the accession rides in OBR-3
+        # (filler order number) or OBR-2 (placer order number).
+        if not result.get('accession_number'):
+            result['accession_number'] = _seg_field(obr, 3, 0, 0) or _seg_field(obr, 2, 0, 0)
+        result['result_status'] = _seg_field(obr, 25, 0, 0)
 
     return result
 
@@ -281,13 +314,23 @@ async def _upsert_patient(data: dict) -> bool:
             pid = data.get('patient_id', '')
             if pid:
                 facility = data.get('sending_facility', '')
-                meta_updates = '"sync_source": "hl7"'
+                # Parameterized everywhere: facility comes from the wire
+                # (MSH-4) and must never be interpolated into SQL.
                 if facility:
-                    meta_updates += f', "tenant_id": "{facility}"'
-                await conn.execute(
-                    f"UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{{}}'), '{{}}', '{{{meta_updates}}}') WHERE patient_id = $1",
-                    pid,
-                )
+                    await conn.execute(
+                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
+                        "jsonb_build_object('sync_source', 'hl7', 'tenant_id', $2)) "
+                        "WHERE patient_id = $1",
+                        pid,
+                        facility,
+                    )
+                else:
+                    await conn.execute(
+                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
+                        "jsonb_build_object('sync_source', 'hl7')) "
+                        "WHERE patient_id = $1",
+                        pid,
+                    )
         return True
     except Exception:
         log.exception('patient upsert failed')
@@ -377,10 +420,7 @@ async def handle_orm_message(parsed: dict) -> bool:
 
             wl = Worklist(conn)
             existing = await wl.get_by_accession(accession)
-            if existing:
-                return True
-
-            await wl.create({
+            entry_data = {
                 'patient_id': patient_id,
                 'patient_name': patient_name,
                 'patient_birth_date': birth_date,
@@ -388,12 +428,88 @@ async def handle_orm_message(parsed: dict) -> bool:
                 'accession_number': accession,
                 'requested_procedure_id': parsed.get('requested_procedure_id', ''),
                 'requested_procedure_desc': parsed.get('requested_procedure_desc', ''),
+                'requested_procedure_priority': parsed.get('requested_procedure_priority', ''),
+                'reason_for_requested_procedure': parsed.get('reason_for_requested_procedure', ''),
+                'requested_procedure_code': parsed.get('requested_procedure_code', ''),
+                'requested_procedure_code_meaning': parsed.get('requested_procedure_code_meaning', ''),
+                'requested_procedure_code_scheme': parsed.get('requested_procedure_code_scheme', ''),
+                'requesting_physician': parsed.get('requesting_physician', ''),
+                'referring_physician': parsed.get('referring_physician', ''),
+                'scheduled_station_name': parsed.get('scheduled_station_name', ''),
+                'scheduled_performing_physician': parsed.get('scheduled_performing_physician', ''),
                 'modality': parsed.get('modality', ''),
                 'station_ae_title': parsed.get('station_ae_title', ''),
                 'scheduled_date': parsed.get('scheduled_date', ''),
                 'scheduled_time': parsed.get('scheduled_time', ''),
-            })
+            }
+
+            # ORC-1 order control: CA (cancel) / OC (order canceled) / DC
+            # (discontinue) cancel a previously scheduled entry. Re-sends
+            # (NW/SC/RO) update the existing scheduling data instead of being
+            # silently dropped.
+            order_control = parsed.get('order_control', '')
+            if existing:
+                if order_control in ('CA', 'OC', 'DC') and existing.get('status') == 'scheduled':
+                    await wl.cancel(existing['id'])
+                    log.info('ORM-%s cancelled worklist entry %s', order_control, existing['id'])
+                elif existing.get('status') == 'scheduled':
+                    await wl.update_entry(existing['id'], entry_data)
+                    log.info('ORM-%s updated worklist entry %s', order_control or 'RE', existing['id'])
+                return True
+
+            await wl.create(entry_data)
         return True
     except Exception:
         log.exception('ORM processing failed')
+        return False
+
+
+async def handle_oru_message(parsed: dict) -> bool:
+    """ORU^R01 — results reported: the study is complete.
+
+    ME-05: ORU messages were ACKed and dropped. A results message is the
+    authoritative 'performed' signal — a partial study (instances stored
+    but no results) must not flip the MWL entry to performed, so this
+    handler, not C-STORE, is the only path that marks it performed.
+    """
+    accession = parsed.get('accession_number', '')
+    patient_id = parsed.get('patient_id', '')
+    if not accession:
+        return False
+
+    try:
+        async with get_conn() as conn:
+            # ME-05: a results message is the authoritative 'study complete'
+            # signal — flip any study carrying this accession before the MWL
+            # bookkeeping (which may legitimately have no entry at all).
+            try:
+                await conn.execute(
+                    "UPDATE studies SET study_status = 'complete' "
+                    "WHERE accession_number = $1 AND study_status != 'complete'",
+                    accession,
+                )
+            except Exception:
+                log.warning('Study complete update failed: %s', traceback.format_exc())
+
+            if patient_id:
+                p = Patient(conn)
+                await p.insert_or_select({
+                    'patient_id': patient_id,
+                    'patient_name': parsed.get('patient_name', ''),
+                    'patient_birth_date': parsed.get('birth_date', ''),
+                    'patient_sex': parsed.get('sex', ''),
+                })
+
+            wl = Worklist(conn)
+            existing = await wl.get_by_accession(accession)
+            if not existing:
+                log.info('ORU for unknown accession %s (no MWL entry)', accession)
+                return True
+            if existing.get('status') in ('performed', 'cancelled'):
+                return True
+            await wl.mark_performed(accession)
+            log.info('ORU marked worklist entry %s performed', accession)
+        return True
+    except Exception:
+        log.exception('ORU processing failed')
         return False

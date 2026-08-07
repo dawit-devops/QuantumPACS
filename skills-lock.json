@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "dicom-web-query": {
+      "source": "aizech/clinical-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dicom-web-query/SKILL.md",
+      "computedHash": "b9d095ed885b915ac496c213b03655dbdb22ba6d3141e115a0e7088e2953aa8f"
+    },
     "fastapi": {
       "source": "fastapi/fastapi",
       "sourceType": "github",
@@ -24,6 +30,18 @@
       "sourceType": "github",
       "skillPath": "skills/multi-stage-dockerfile/SKILL.md",
       "computedHash": "698bf93a84dae18fd7bd0b1d35c21427307fde78fbdf4624be9726f5f98189ca"
+    },
+    "pacs-workflow": {
+      "source": "aizech/clinical-skills",
+      "sourceType": "github",
+      "skillPath": "skills/pacs-workflow/SKILL.md",
+      "computedHash": "edfba57d1ae454ff29acab2c42b9d305b347b611c33515d45f492cce2bf25710"
+    },
+    "pydicom": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "skillPath": "cli-tool/components/skills/scientific/pydicom/SKILL.md",
+      "computedHash": "262ab2636027457d468c4d8d5486c3e56f705a37b5329b07ab2ccd6af7156612"
     },
     "python-backend": {
       "source": "jiatastic/open-python-skills",
