@@ -55,8 +55,10 @@ describe("Sidebar", () => {
   });
 
   it("renders Files nav item", () => {
-    localStorage.setItem("token", "t");
-    localStorage.setItem("userId", "u1");
+    setSession({
+      role: "referring_physician",
+      permissions: ["FILE_READ"],
+    });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Files")).toBeInTheDocument();
   });
@@ -88,6 +90,7 @@ describe("Sidebar", () => {
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Admin")).toBeInTheDocument();
     await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Tenants")).toBeInTheDocument();
     expect(screen.getByText("Users")).toBeInTheDocument();
     expect(screen.queryByText("Replicas")).not.toBeInTheDocument();
@@ -162,7 +165,7 @@ describe("Sidebar", () => {
   it("renders no PACS sections for a patient role", () => {
     setSession({
       role: "patient",
-      permissions: ["PORTAL_READ", "RESULTS_READ"],
+      permissions: ["FILE_READ", "PORTAL_READ", "RESULTS_READ"],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Files")).toBeInTheDocument();
@@ -184,5 +187,130 @@ describe("Sidebar", () => {
     expect(screen.getByText("Logs")).toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
     expect(screen.queryByText("Replicas")).not.toBeInTheDocument();
+  });
+
+  it("hides clinical sections for a tenant_admin even with clinical grants", () => {
+    setSession({
+      role: "tenant_admin",
+      permissions: [
+        "REPORT_READ",
+        "EXAM_READ",
+        "QA_READ",
+        "WORKLIST_READ",
+        "USER_READ",
+      ],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("hides the Dashboard item from a clinical role even with a dashboard permission", async () => {
+    const user = userEvent.setup();
+    setSession({ role: "radiologist", permissions: ["USER_READ"] });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("Users")).toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+  });
+
+  it("hides clinical sections for the legacy admin role", () => {
+    setSession({ role: "admin", admin: true, permissions: [] });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("shows the Metrics item for a department_manager holding only ANALYTICS_READ", () => {
+    setSession({
+      role: "department_manager",
+      permissions: ["ANALYTICS_READ", "AUDIT_READ", "INTERFACE_MONITOR"],
+    });
+    renderWithAuth(<Sidebar />);
+    // "Metrics" appears twice: the Analytics section title and its item.
+    expect(screen.getAllByText("Metrics").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not advertise Routing or DICOMweb to INTERFACE_ADMIN/STORAGE_ADMIN holders", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "tenant_admin",
+      permissions: ["INTERFACE_ADMIN", "STORAGE_ADMIN", "USER_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    // The /api/routing and /api/dicomweb* guards require ROUTING_READ /
+    // DICOMWEB_READ; tenant_admin holds neither, so the nav must not
+    // advertise pages the route and backend both reject.
+    expect(screen.queryByText("Routing")).not.toBeInTheDocument();
+    expect(screen.queryByText("DICOMweb")).not.toBeInTheDocument();
+  });
+
+  it("shows the Logs item for an AUDIT_READ-only Matrix A admin role", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "imaging_informatics",
+      permissions: ["AUDIT_READ", "INTERFACE_MONITOR"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("Logs")).toBeInTheDocument();
+  });
+
+  it("hides the DICOMweb console from a clinical role even with DICOMWEB_READ", async () => {
+    const user = userEvent.setup();
+    // radiologist and physician carry legacy DICOMWEB_READ; the console is
+    // admin-scoped (adminOnly) so it never appears in clinical nav.
+    setSession({
+      role: "radiologist",
+      permissions: ["DICOMWEB_READ", "REPORT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("DICOMweb")).not.toBeInTheDocument();
+    expect(user).toBeDefined();
+  });
+
+  it("shows the DICOMweb console to an admin-scoped role holding DICOMWEB_READ", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "pacs_admin",
+      permissions: ["DICOMWEB_READ", "REPLICA_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("DICOMweb")).toBeInTheDocument();
+  });
+
+  it("hides the Files item from a role without any viewer permission", () => {
+    // pharmacist / lab_technician hold only EMR grants; the Files route gate
+    // (FILE_READ | STUDY_READ | VIEWER_READ) would bounce them, so the nav
+    // item must not advertise a dead link.
+    setSession({
+      role: "pharmacist",
+      permissions: ["RESULTS_READ", "MED_VERIFY"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
+  });
+
+  it("keeps the Files item for a nurse with FILE_READ", () => {
+    setSession({
+      role: "nurse",
+      permissions: ["FILE_READ", "EXAM_READ", "WORKLIST_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getByText("Acquisition")).toBeInTheDocument();
   });
 });

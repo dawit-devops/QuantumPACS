@@ -10,9 +10,12 @@ non-super_admin role, every role has >= 1 permission, SYSTEM_ADMIN
 from api.permissions import (
     BUILT_IN_ROLES,
     CANONICAL_PERMISSIONS,
+    PERMISSION_KEYS,
     Permission,
     SUPER_ADMIN_PERMISSIONS,
 )
+
+import pytest
 
 CANONICAL_ROLES = [
     'super_admin', 'tenant_admin', 'patient',
@@ -97,11 +100,21 @@ class TestMatrixA:
                 'PRIOR_AUTH_WRITE', 'PATIENT_WRITE'} <= sch
         assert 'REPORT_READ' not in sch
 
-    def test_receptionist_registers_only(self):
+    def test_scheduler_has_front_desk_grants(self):
+        # The scheduler registers patients and reads the waiting queue
+        # (R08 front desk) — mirroring the R08 backend guards.
+        sch = perms('scheduler')
+        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= sch
+
+    def test_receptionist_registers_and_queues(self):
         rec = perms('receptionist')
         assert {'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
                 'SCHEDULE_READ', 'WORKLIST_READ'} <= rec
+        # R08 grants: registration + visits + waiting queue.
+        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= rec
         assert 'REPORT_READ' not in rec
+        # Bookings stay with the scheduler/front_desk (SCHEDULE_WRITE); the
+        # receptionist books visits but not modality slots.
         assert 'SCHEDULE_WRITE' not in rec
 
     def test_ed_physician_full_scope(self):
@@ -210,3 +223,45 @@ class TestDeadPermissions:
             if not holders:
                 dead.append(code)
         assert dead == []
+
+
+class TestPermissionKeys:
+    """Drift guards over PERMISSION_KEYS, the full permission catalog."""
+
+    def test_permission_keys_are_unique_enum_values(self):
+        assert len(PERMISSION_KEYS) == len(set(PERMISSION_KEYS))
+        assert set(PERMISSION_KEYS) == {p.value for p in Permission}
+
+    def test_canonical_catalog_is_a_subset_of_permission_keys(self):
+        assert set(CANONICAL_PERMISSIONS) <= set(PERMISSION_KEYS)
+
+    def test_every_group_code_is_a_valid_permission(self):
+        # PERMISSION_GROUPS is hand-maintained for the roles UI; a typo here
+        # silently renders a dead checkbox group. The enum is the source of
+        # truth, so every group code must resolve to a member.
+        from api.permissions import PERMISSION_GROUPS
+        valid = set(PERMISSION_KEYS)
+        bad = [
+            code for group in PERMISSION_GROUPS.values() for code in group
+            if code not in valid
+        ]
+        assert bad == []
+
+    def test_frontend_permission_labels_do_not_drift_from_the_enum(self):
+        # The frontend keeps a hand-maintained label map (api/roles.ts) for
+        # the permission picker; every label key must be a backend-permitted
+        # code so no UI grant can reference a permission the backend rejects.
+        import re
+        from pathlib import Path
+        roles_ts = (
+            Path(__file__).resolve().parents[2] / 'frontend' / 'src' / 'api' / 'roles.ts'
+        )
+        if not roles_ts.exists():
+            pytest.skip('frontend source not present in this checkout')
+        source = roles_ts.read_text()
+        label_keys = {
+            key for key in re.findall(r'^  ([A-Z][A-Z0-9_]+):', source, re.M)
+            if key != 'PERMISSION_LABELS'
+        }
+        invalid = sorted(label_keys - set(PERMISSION_KEYS))
+        assert invalid == []

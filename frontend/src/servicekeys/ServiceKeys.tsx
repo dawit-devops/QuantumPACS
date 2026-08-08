@@ -22,6 +22,10 @@ import {
   ReloadOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
+import { PageState } from "../common/PageState";
+import RequirePermission from "../auth/RequirePermission";
+import { useAuth } from "../auth/AuthContext";
 import { listApiKeys, createApiKey, deleteApiKey } from "../api/servicekeys";
 
 const Content = Layout.Content;
@@ -74,9 +78,36 @@ function LastUsed({ at }: { at: string | null }) {
 function ServiceKeys() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Service Keys");
+  const { hasPermission, user } = useAuth();
+
+  // SERVICE_KEY_READ gates the page; issuing keys needs SERVICE_KEY_WRITE and
+  // revoking needs SERVICE_KEY_DELETE (backend /api/api-keys guards match).
+  const canWrite = hasPermission("SERVICE_KEY_WRITE");
+  const canDelete = hasPermission("SERVICE_KEY_DELETE");
+
+  // Mirror of api/api_keys.py _validate_key_permissions: a non-platform admin
+  // may only issue a key with permissions from their own effective grant set.
+  // The picker hides everything the operator could not actually grant.
+  const grantablePermissions = useMemo(() => {
+    if (user?.admin) return ALL_PERMISSIONS;
+    const owned = new Set(user?.permissions ?? []);
+    return ALL_PERMISSIONS.filter((p) => owned.has(p));
+  }, [user]);
+
+  const grantableGroups = useMemo(
+    () =>
+      Object.entries(PERMISSION_GROUPS)
+        .map(([group, perms]) => [
+          group,
+          perms.filter((p) => grantablePermissions.includes(p)),
+        ])
+        .filter(([, perms]) => perms.length > 0) as [string, string[]][],
+    [grantablePermissions],
+  );
 
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [showRevoked, setShowRevoked] = useState(false);
@@ -154,7 +185,7 @@ function ServiceKeys() {
       key: "action",
       width: "12%",
       render: (_: any, record: any) =>
-        record.enabled ? (
+        canDelete && record.enabled ? (
           <Popconfirm
             title="Revoke this key?"
             description="Active integrations using this key may be affected."
@@ -174,6 +205,7 @@ function ServiceKeys() {
 
   const fetch = () => {
     setLoading(true);
+    setError(null);
     listApiKeys()
       .then((res) => {
         setLoading(false);
@@ -181,6 +213,7 @@ function ServiceKeys() {
       })
       .catch((e: any) => {
         setLoading(false);
+        setError(e.message);
         message.error(e.message);
       });
   };
@@ -221,34 +254,31 @@ function ServiceKeys() {
   };
 
   return (
-    <Content style={{ padding: 50 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 16,
-          alignItems: "center",
-        }}
-      >
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => {
-              setRawKey(null);
-              setVisible(true);
-            }}
-          >
-            Generate Key
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={fetch}>
-            Refresh
-          </Button>
-        </Space>
-        <Space>
-          <span>Show revoked</span>
-          <Switch checked={showRevoked} onChange={setShowRevoked} />
-        </Space>
-      </div>
+    <Content style={{ padding: 24 }}>
+      <PageHeader
+        title="Service Keys"
+        description="Issue and revoke API credentials for external integrations (RIS, EMR, modalities)."
+        extra={
+          <Space>
+            <RequirePermission permission="SERVICE_KEY_WRITE">
+              <Button
+                type="primary"
+                onClick={() => {
+                  setRawKey(null);
+                  setVisible(true);
+                }}
+              >
+                Generate Key
+              </Button>
+            </RequirePermission>
+            <Button icon={<ReloadOutlined />} onClick={fetch}>
+              Refresh
+            </Button>
+            <span style={{ fontSize: 12 }}>Show revoked</span>
+            <Switch checked={showRevoked} onChange={setShowRevoked} />
+          </Space>
+        }
+      />
 
       {rawKey && (
         <Alert
@@ -284,12 +314,19 @@ function ServiceKeys() {
         />
       )}
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={filteredData}
+      <PageState
         loading={loading}
-      />
+        error={error}
+        onRetry={fetch}
+        empty={!loading && !error && filteredData.length === 0}
+        emptyMessage="No service keys — generate one to issue credentials."
+      >
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={filteredData}
+        />
+      </PageState>
 
       <Modal
         title="Generate New API Key"
@@ -319,7 +356,7 @@ function ServiceKeys() {
           <Form.Item name="permissions" label="Permissions" initialValue={[]}>
             <Checkbox.Group>
               <Space direction="vertical" style={{ width: "100%" }}>
-                {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+                {grantableGroups.map(([group, perms]) => (
                   <div key={group}>
                     <Typography.Text strong style={{ fontSize: 12 }}>
                       {group}
@@ -339,6 +376,11 @@ function ServiceKeys() {
                 ))}
               </Space>
             </Checkbox.Group>
+            {!user?.admin && (
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                Only permissions you hold can be granted to a key.
+              </Typography.Text>
+            )}
           </Form.Item>
         </Form>
       </Modal>

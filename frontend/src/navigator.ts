@@ -32,7 +32,83 @@ export type Workspace =
   | "analytics"
   | "clinical"
   | "files"
-  | "platform";
+  | "platform"
+  | "dashboard"
+  | "frontdesk"
+  | "portal";
+
+/**
+ * Roles scoped to the admin/platform workspaces. These roles operate the
+ * system (users, roles, tenants, storage, interfaces) rather than perform
+ * clinical work, so clinical surfaces — the Reading, Acquisition and QA
+ * workspaces — are hidden for them even when their permission set still
+ * contains the underlying grants (e.g. REPORT_READ on `pacs_admin`).
+ */
+export const ADMIN_SCOPED_ROLES: ReadonlyArray<string> = [
+  "admin",
+  "super_admin",
+  "tenant_admin",
+  "pacs_admin",
+  "radiology_admin",
+  "imaging_informatics",
+];
+
+/**
+ * Roles scoped to the clinical workspaces. These roles perform clinical work
+ * (imaging, reading, EMR care) rather than operate the system, so the admin
+ * console surfaces — the DICOMweb server/STOW/browser routes — are hidden for
+ * them even when their legacy permission set still contains the underlying
+ * grants (e.g. DICOMWEB_READ on `radiologist` and `physician`).
+ */
+export const CLINICAL_SCOPED_ROLES: ReadonlyArray<string> = [
+  "radiologist",
+  "teleradiologist",
+  "resident",
+  "technologist",
+  "qa_team",
+  "physician",
+  "referring_physician",
+  "ed_physician",
+  "nurse",
+  "pharmacist",
+  "lab_technician",
+  "care_coordinator",
+];
+
+/** Workspaces whose surfaces are clinical (queues, exams, QA review). */
+export const CLINICAL_WORKSPACES: ReadonlySet<string> = new Set([
+  "reading",
+  "acquisition",
+  "qa",
+]);
+
+export function isAdminScopedRole(role?: string): boolean {
+  return role !== undefined && ADMIN_SCOPED_ROLES.includes(role);
+}
+
+export function isClinicalScopedRole(role?: string): boolean {
+  return role !== undefined && CLINICAL_SCOPED_ROLES.includes(role);
+}
+
+/**
+ * Gate for the admin dashboard route (kept here, not in PermissionRoute, to
+ * avoid a navigator <-> PermissionRoute import cycle; PermissionRoute imports
+ * it from navigator). No single permission is granted to every admin-scoped
+ * role (admin, super_admin, tenant_admin, pacs_admin, radiology_admin,
+ * imaging_informatics), so the gate is the union of the read permissions each
+ * role carries. Each listed key maps to a section the dashboard surfaces;
+ * sections still render individually-gated and degrade gracefully when a role
+ * lacks some.
+ */
+export const ADMIN_DASHBOARD_PERMISSIONS: ReadonlyArray<string> = [
+  "USER_READ",
+  "LOG_READ",
+  "AUDIT_READ",
+  "INTERFACE_MONITOR",
+  "METRICS_READ",
+  "REPLICA_READ",
+  "DICOMWEB_READ",
+];
 
 export interface WorkspaceUser {
   role?: string;
@@ -56,9 +132,37 @@ const LANDING_STEPS: LandingStep[] = [
   { route: "/exams", workspace: "acquisition", permissions: ["EXAM_READ"] },
   { route: "/qa/queue", workspace: "qa", permissions: ["QA_READ"] },
   { route: "/replicas", workspace: "admin", permissions: ["REPLICA_READ"] },
+  // Front Desk (R08): registration is the front-office home for the
+  // scheduler / receptionist / front_desk roles; the privacy queue and
+  // schedule board are reachable from there. QUEUE_READ unlocks the queue
+  // step for roles that hold it without REGISTRATION_READ.
   {
-    route: "/dicomweb",
+    route: "/frontdesk/registration",
+    workspace: "frontdesk",
+    permissions: ["REGISTRATION_READ"],
+  },
+  {
+    route: "/frontdesk/queue",
+    workspace: "frontdesk",
+    permissions: ["QUEUE_READ"],
+  },
+  // Patient portal (R19): the patient role lands on its own scope-gated
+  // records, never on the admin/clinical surfaces.
+  { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },
+  // The clinical workspace (physician, referring_physician, ed_physician,
+  // care_coordinator) lands on the reading worklist: reports are the shared
+  // clinical read surface for all of them (REPORT_READ on Matrix A/B).
+  {
+    route: "/reading",
     workspace: "clinical",
+    permissions: ["REPORT_READ"],
+  },
+  {
+    // The DICOMweb console is an admin surface: it must never be a clinical
+    // landing (physician previously landed here via legacy DICOMWEB_READ),
+    // and non-admin roles never reach it via fallback (landingStepsFor).
+    route: "/dicomweb",
+    workspace: "admin",
     permissions: ["DICOMWEB_READ"],
   },
   {
@@ -67,8 +171,27 @@ const LANDING_STEPS: LandingStep[] = [
     permissions: ["METRICS_READ", "ANALYTICS_READ"],
   },
   { route: "/users", workspace: "platform", permissions: ["USER_READ"] },
+  {
+    route: "/logs",
+    workspace: "admin",
+    // AUDIT_READ is the canonical alias of LOG_READ (spec §6): the Matrix A
+    // admin roles hold only AUDIT_READ, and the /logs route gate + backend
+    // accept both, so a logs landing step must too.
+    permissions: ["LOG_READ", "AUDIT_READ"],
+  },
   { route: "/", workspace: "files", permissions: ["FILE_READ", "STUDY_READ"] },
 ];
+
+// The dashboard is NOT part of LANDING_STEPS: it sits above every other step
+// for admin-scoped roles, but if a non-admin role (granted USER_READ for
+// example) ever resolved here the PermissionRoute adminOnly guard would bounce
+// them straight back to landingRouteFor — a redirect loop. It is consulted
+// explicitly only for admin-scoped roles below.
+const DASHBOARD_STEP: LandingStep = {
+  route: "/admin",
+  workspace: "dashboard",
+  permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
+};
 
 /**
  * Canonical role slug -> workspace. PACS personas only (persona catalog
@@ -88,7 +211,18 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   physician: "clinical",
   referring_physician: "clinical",
   ed_physician: "clinical",
-  patient: "files",
+  // Nurse lands in acquisition: exams and the worklist are the nursing
+  // operational home (EXAM_READ + WORKLIST_READ), ahead of the REPORT_READ
+  // fallback that would otherwise put them on the reading worklist.
+  nurse: "acquisition",
+  care_coordinator: "clinical",
+  // Front-office roles (RIS P03/P04) work the Front Desk workspace: patient
+  // registration, visits/check-in, booking and the waiting queue. Patient
+  // portal (P12/H21) is the patient's own-data surface.
+  scheduler: "frontdesk",
+  receptionist: "frontdesk",
+  front_desk: "frontdesk",
+  patient: "portal",
   super_admin: "platform",
   tenant_admin: "platform",
   admin: "platform",
@@ -100,7 +234,36 @@ function hasAnyPermission(user: WorkspaceUser, permissions: string[]): boolean {
   return permissions.some((p) => user.permissions.includes(p));
 }
 
+/**
+ * Fallback priority steps for landing/workspace resolution. The scan is
+ * role-scope-aware and bidirectional: admin-scoped roles never land on (or
+ * resolve to) clinical workspaces, clinical roles never land on admin-console
+ * workspaces — even when their legacy grants would pass (e.g. DICOMWEB_READ
+ * on physician) — and unmapped/RIS roles (biller, receptionist, ...) scan the
+ * full priority chain (e.g. AUDIT_READ on biller still reaches /logs).
+ */
+function landingStepsFor(user: WorkspaceUser): LandingStep[] {
+  if (isAdminScopedRole(user.role)) {
+    return LANDING_STEPS.filter(
+      (s) => !CLINICAL_WORKSPACES.has(s.workspace) && s.workspace !== "clinical",
+    );
+  }
+  if (isClinicalScopedRole(user.role)) {
+    return LANDING_STEPS.filter((s) => s.workspace !== "admin");
+  }
+  return LANDING_STEPS;
+}
+
 export function landingRouteFor(user: WorkspaceUser): string {
+  // Admin-scoped roles land on the dashboard first: it is their operational
+  // home, ahead of any single admin surface their role mapping grants
+  // (platform -> /users, admin -> /replicas).
+  if (
+    isAdminScopedRole(user.role) &&
+    hasAnyPermission(user, DASHBOARD_STEP.permissions)
+  ) {
+    return DASHBOARD_STEP.route;
+  }
   const roleWorkspace = ROLE_WORKSPACE[user.role ?? ""];
   if (roleWorkspace) {
     const primary = LANDING_STEPS.find((s) => s.workspace === roleWorkspace);
@@ -111,12 +274,20 @@ export function landingRouteFor(user: WorkspaceUser): string {
   // Role surface blocked (or unmapped): take the first permitted route in
   // priority order, degrading to the auth-only `/account` terminal.
   return (
-    LANDING_STEPS.find((s) => hasAnyPermission(user, s.permissions))?.route ??
-    "/account"
+    landingStepsFor(user).find((s) => hasAnyPermission(user, s.permissions))
+      ?.route ?? "/account"
   );
 }
 
 export function workspaceFor(user: WorkspaceUser): Workspace {
+  // Mirrors landingRouteFor: admin-scoped roles with dashboard access resolve
+  // to the dashboard workspace (the sidebar maps it onto the Admin section).
+  if (
+    isAdminScopedRole(user.role) &&
+    hasAnyPermission(user, DASHBOARD_STEP.permissions)
+  ) {
+    return DASHBOARD_STEP.workspace;
+  }
   const roleWorkspace = ROLE_WORKSPACE[user.role ?? ""];
   if (roleWorkspace) {
     const primary = LANDING_STEPS.find((s) => s.workspace === roleWorkspace);
@@ -127,7 +298,7 @@ export function workspaceFor(user: WorkspaceUser): Workspace {
   // First permitted workspace in priority order; `files` is the default
   // because its landing chain degrades to the always-allowed `/account`.
   return (
-    LANDING_STEPS.find(
+    landingStepsFor(user).find(
       (s) => hasAnyPermission(user, s.permissions) && s.workspace,
     )?.workspace ?? "files"
   );

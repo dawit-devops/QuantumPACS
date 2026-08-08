@@ -286,4 +286,21 @@ describe("Worklist", () => {
 
     expect(await screen.findByText(/delete denied/)).toBeInTheDocument();
   });
+
+  it("hides write affordances for a WORKLIST_READ-only user", async () => {
+    // nurse holds WORKLIST_READ only: no create entry, no row actions, no
+    // batch bar, no row checkboxes — reads stay, writes disappear.
+    localStorage.setItem("admin", "false");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["WORKLIST_READ"]),
+    );
+    renderWithAuth(<Worklist />);
+    await waitForTable();
+
+    expect(screen.queryByText("Create Entry")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+    expect(document.querySelectorAll(".mock-popconfirm").length).toBe(0);
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
+  });
 });

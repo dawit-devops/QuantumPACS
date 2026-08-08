@@ -26,6 +26,7 @@ import {
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { mapLimit } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import {
   listWorklist,
   listStationAes,
@@ -59,6 +60,12 @@ const STATUS_TABS = [
 function Worklist() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Worklist");
+
+  // Create / edit / perform / cancel all hit WORKLIST_WRITE-gated endpoints
+  // (api/worklist.py). View-only holders (WORKLIST_READ — nurse, referring
+  // physician) keep the queue but lose the write affordances.
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("WORKLIST_WRITE");
 
   const [data, setData] = useState<WorklistEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -425,60 +432,63 @@ function Worklist() {
         title: "Action",
         key: "action",
         width: "11%",
-        render: (_: any, record: any) => (
-          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Tooltip title="Edit">
-              <EditOutlined
-                onClick={() => handleEdit(record)}
-                style={{ cursor: "pointer", fontSize: 16 }}
-              />
-            </Tooltip>
-            {record.status === "scheduled" && (
-              <>
-                <Popconfirm
-                  title="Mark as performed?"
-                  onConfirm={() => handleMarkPerformed(record.id)}
-                >
-                  <Tooltip title="Mark performed">
-                    <CheckCircleOutlined
-                      style={{
-                        cursor: "pointer",
-                        color: "#16a34a",
-                        fontSize: 16,
-                      }}
-                    />
-                  </Tooltip>
-                </Popconfirm>
-                <Popconfirm
-                  title="Cancel this entry?"
-                  onConfirm={() => handleCancel(record.id)}
-                >
-                  <Tooltip title="Cancel">
-                    <CloseCircleOutlined
-                      style={{
-                        cursor: "pointer",
-                        color: "#dc2626",
-                        fontSize: 16,
-                      }}
-                    />
-                  </Tooltip>
-                </Popconfirm>
-              </>
-            )}
-            {record.status === "performed" && (
-              <Tooltip
-                title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
-              >
-                <CheckCircleOutlined
-                  style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+        render: (_: any, record: any) =>
+          canWrite ? (
+            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Tooltip title="Edit">
+                <EditOutlined
+                  onClick={() => handleEdit(record)}
+                  style={{ cursor: "pointer", fontSize: 16 }}
                 />
               </Tooltip>
-            )}
-          </span>
-        ),
+              {record.status === "scheduled" && (
+                <>
+                  <Popconfirm
+                    title="Mark as performed?"
+                    onConfirm={() => handleMarkPerformed(record.id)}
+                  >
+                    <Tooltip title="Mark performed">
+                      <CheckCircleOutlined
+                        style={{
+                          cursor: "pointer",
+                          color: "#16a34a",
+                          fontSize: 16,
+                        }}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                  <Popconfirm
+                    title="Cancel this entry?"
+                    onConfirm={() => handleCancel(record.id)}
+                  >
+                    <Tooltip title="Cancel">
+                      <CloseCircleOutlined
+                        style={{
+                          cursor: "pointer",
+                          color: "#dc2626",
+                          fontSize: 16,
+                        }}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                </>
+              )}
+              {record.status === "performed" && (
+                <Tooltip
+                  title={`Performed at ${record.performed_at ? new Date(record.performed_at).toLocaleString() : "unknown"}`}
+                >
+                  <CheckCircleOutlined
+                    style={{ color: "#16a34a", fontSize: 16, opacity: 0.5 }}
+                  />
+                </Tooltip>
+              )}
+            </span>
+          ) : (
+            <span>—</span>
+          ),
       },
     ],
-    [handleEdit, handleCancel, handleMarkPerformed],
+    [canWrite, handleEdit, handleCancel, handleMarkPerformed],
   );
 
   const rowSelection = {
@@ -506,17 +516,19 @@ function Worklist() {
       </div>
 
       <div className="worklist-toolbar">
-        <Button
-          type="primary"
-          onClick={() => {
-            setEditingEntry(null);
-            form.resetFields();
-            setVisible(true);
-          }}
-          aria-label="Create worklist entry"
-        >
-          Create Entry
-        </Button>
+        {canWrite && (
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditingEntry(null);
+              form.resetFields();
+              setVisible(true);
+            }}
+            aria-label="Create worklist entry"
+          >
+            Create Entry
+          </Button>
+        )}
         <Radio.Group
           value={viewMode}
           onChange={(e) => setViewMode(e.target.value)}
@@ -586,7 +598,7 @@ function Worklist() {
         }))}
       />
 
-      {selectedRowKeys.length > 0 && (
+      {canWrite && selectedRowKeys.length > 0 && (
         <div className="worklist-batch-bar">
           <span style={{ fontWeight: 500, marginRight: 8 }}>
             {selectedRowKeys.length} selected
@@ -621,16 +633,18 @@ function Worklist() {
             : "No worklist entries found"
         }
         emptyAction={
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingEntry(null);
-              form.resetFields();
-              setVisible(true);
-            }}
-          >
-            Create Entry
-          </Button>
+          canWrite ? (
+            <Button
+              type="primary"
+              onClick={() => {
+                setEditingEntry(null);
+                form.resetFields();
+                setVisible(true);
+              }}
+            >
+              Create Entry
+            </Button>
+          ) : undefined
         }
       >
         {viewMode === "table" ? (
@@ -641,11 +655,14 @@ function Worklist() {
             loading={loading}
             pagination={pagination}
             onChange={handleTableChange}
-            rowSelection={rowSelection}
+            rowSelection={canWrite ? rowSelection : undefined}
             size="middle"
           />
         ) : (
-          <CalendarView entries={data} onEdit={handleEdit} />
+          <CalendarView
+            entries={data}
+            onEdit={canWrite ? handleEdit : undefined}
+          />
         )}
       </PageState>
 
@@ -653,7 +670,9 @@ function Worklist() {
         title={editingEntry ? "Edit Worklist Entry" : "Create Worklist Entry"}
         open={visible}
         onCancel={handleModalCancel}
-        onOk={editingEntry ? handleUpdate : handleCreate}
+        onOk={
+          canWrite ? (editingEntry ? handleUpdate : handleCreate) : undefined
+        }
         width={560}
         afterOpenChange={(open) => {
           if (open) {

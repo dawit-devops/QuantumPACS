@@ -12,9 +12,11 @@ import {
   InputNumber,
   Switch,
   Popconfirm,
+  Tooltip,
 } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
 import {
   listRoutingRules,
   createRoutingRule,
@@ -23,6 +25,8 @@ import {
   type RoutingRule,
 } from "../api/routing";
 import { PageState } from "../common/PageState";
+import RequirePermission from "../auth/RequirePermission";
+import { useAuth } from "../auth/AuthContext";
 import { RuleConditionBuilder } from "./RuleConditionBuilder";
 
 const Content = Layout.Content;
@@ -30,6 +34,11 @@ const Content = Layout.Content;
 function RoutingRules() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Routing Rules");
+  const { hasPermission } = useAuth();
+
+  // ROUTING_READ gates the page; create/edit/delete are ROUTING_WRITE actions
+  // (backend /api/routing guards match).
+  const canWrite = hasPermission("ROUTING_WRITE");
 
   const [data, setData] = useState<RoutingRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,23 +95,28 @@ function RoutingRules() {
       title: "Action",
       key: "action",
       width: "10%",
-      render: (_: any, record: any) => (
-        <span>
-          <EditOutlined
-            onClick={() => handleEdit(record)}
-            style={{ cursor: "pointer", marginRight: 12, fontSize: 16 }}
-          />
-          <Popconfirm
-            title="Delete this rule?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <DeleteOutlined
-              title="Delete"
-              style={{ cursor: "pointer", color: "#ff4d4f", fontSize: 16 }}
-            />
-          </Popconfirm>
-        </span>
-      ),
+      render: (_: any, record: any) =>
+        canWrite ? (
+          <span>
+            <Tooltip title="Edit rule">
+              <EditOutlined
+                onClick={() => handleEdit(record)}
+                style={{ cursor: "pointer", marginRight: 12, fontSize: 16 }}
+              />
+            </Tooltip>
+            <Popconfirm
+              title="Delete this rule?"
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Tooltip title="Delete rule">
+                <DeleteOutlined
+                  title="Delete"
+                  style={{ cursor: "pointer", color: "#ff4d4f", fontSize: 16 }}
+                />
+              </Tooltip>
+            </Popconfirm>
+          </span>
+        ) : null,
     },
   ];
 
@@ -216,37 +230,37 @@ function RoutingRules() {
     setVisible(false);
   };
 
+  const openCreate = () => {
+    setEditingRule(null);
+    form.resetFields();
+    setConditions({});
+    setVisible(true);
+  };
+
   return (
-    <Content style={{ padding: 50 }}>
-      <Button
-        type="primary"
-        onClick={() => {
-          setEditingRule(null);
-          form.resetFields();
-          setConditions({});
-          setVisible(true);
-        }}
-        style={{ marginBottom: 16 }}
-      >
-        Create Rule
-      </Button>
+    <Content style={{ padding: 24 }}>
+      <PageHeader
+        title="Routing"
+        description="Route incoming studies and messages to destinations by rule."
+        extra={
+          <RequirePermission permission="ROUTING_WRITE">
+            <Button type="primary" onClick={openCreate}>
+              Create Rule
+            </Button>
+          </RequirePermission>
+        }
+      />
       <PageState
         error={error}
         onRetry={() => fetch({ page: 1, per_page: 50 })}
         empty={!loading && !error && data.length === 0}
         emptyMessage="No routing rules configured"
         emptyAction={
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingRule(null);
-              form.resetFields();
-              setConditions({});
-              setVisible(true);
-            }}
-          >
-            Create Rule
-          </Button>
+          <RequirePermission permission="ROUTING_WRITE">
+            <Button type="primary" onClick={openCreate}>
+              Create Rule
+            </Button>
+          </RequirePermission>
         }
       >
         <Table

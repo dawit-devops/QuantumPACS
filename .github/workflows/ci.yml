@@ -46,7 +46,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - run: pip install -r backend/requirements.txt && pip install pytest pytest-asyncio httpx
-      - run: cd backend && python -m pytest tests/ -v --ignore=tests/integration
+      # Integration tests use testcontainers (postgres:16-alpine) which can
+      # pull its own image, so the suite runs fully in CI.
+      - run: cd backend && python -m pytest tests/ -v
         env: { DB_HOST: localhost, DB_PORT: 5432 }
   test-frontend:
     runs-on: ubuntu-latest
@@ -55,6 +57,67 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - run: cd frontend && npm ci && npx vitest run
+  e2e:
+    # Playwright against the real stack: postgres + redis + backend + a
+    # production build served by vite preview (the playwright webServer block
+    # starts/waits for it). Runs the deterministic chromium project only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: quantumpacs_e2e, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
+        ports: ['5432:5432']
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: quantumpacs_e2e
+      DB_USER: quantumpacs
+      DB_PASS: pa55w0rd
+      SECRET: quantumpacs-ci-e2e-secret-not-for-any-prod
+      SUPERADMIN_PASS: quantumpacs-ci-e2e-superadmin-not-for-any-prod
+      QUANTUMPACS_DOCKER: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: pip install -r backend/requirements.txt
+      - name: Init DB + seed roles
+        run: |
+          cd backend
+          python -m alembic upgrade head
+          python -m management.seed_rbac
+      - name: Start backend
+        run: |
+          cd backend
+          nohup uvicorn app:app --host 0.0.0.0 --port 8080 >/tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || true)
+            if [ "$code" = "200" ]; then echo "backend healthy (attempt $i)"; exit 0; fi
+            sleep 2
+          done
+          echo "backend never became healthy" >&2
+          tail -100 /tmp/backend.log
+          exit 1
+      - name: Install browsers
+        run: |
+          cd frontend
+          npm ci
+          npx playwright install --with-deps chromium
+      # The playwright webServer block starts the vite dev server (which
+      # proxies /api to :8080) and waits for it on port 5173.
+      - run: cd frontend && npx playwright test --project=chromium --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
   requirements-validate:
     runs-on: ubuntu-latest
     steps:

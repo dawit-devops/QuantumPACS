@@ -83,6 +83,16 @@ const mockReview = {
 describe("PeerReviewInbox", () => {
   beforeEach(() => {
     localStorage.clear();
+    // A radiologist: view assignments + submit outcomes (PEER_REVIEW_WRITE).
+    // The read-only variant seeds its own session below.
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "radiologist");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["PEER_REVIEW_READ", "PEER_REVIEW_WRITE"]),
+    );
     mockRequest.mockReset();
   });
 
@@ -186,6 +196,40 @@ describe("PeerReviewInbox", () => {
       expect(submitCall).toBeDefined();
       expect(submitCall![1].data.discrepancy_level).toBe("minor");
     });
+  });
+
+  it("shows a read-only review for a PEER_REVIEW_READ-only user", async () => {
+    // A reviewer without PEER_REVIEW_WRITE views the report but cannot close
+    // the review — the submit affordance is replaced by an info notice.
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["PEER_REVIEW_READ"]),
+    );
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "peer-reviews") {
+        return Promise.resolve({ data: [mockReview] });
+      }
+      if (url === "peer-reviews/rev-1") {
+        return Promise.resolve({ data: mockReview });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    renderInbox();
+
+    await waitFor(() => {
+      expect(screen.getByText("Review")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Review"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Original Findings")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /submit review outcome/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/requires the PEER_REVIEW_WRITE permission/i),
+    ).toBeInTheDocument();
   });
 
   it("shows an empty state when no reviews are assigned", async () => {

@@ -18,7 +18,53 @@ import PermissionRoute, {
   VIEWER_ROUTE_PERMISSIONS,
   PATIENT_ROUTE_PERMISSIONS,
   METRICS_ROUTE_PERMISSIONS,
+  ADMIN_DASHBOARD_PERMISSIONS,
 } from "./auth/PermissionRoute";
+import { ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
+
+// Clinical surfaces (Reading / Acquisition / QA) belong to clinical roles.
+// Admin-scoped roles manage the platform and never work clinical queues, so
+// their routes are closed to those roles even when the permission passes —
+// the same scope the sidebar and navigator.ts apply. Redirects land on the
+// best permitted admin/platform route via landingRouteFor.
+function ClinicalRoute({
+  permission,
+  children,
+}: {
+  permission: string | string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <PermissionRoute
+      permission={permission}
+      excludedRoles={[...ADMIN_SCOPED_ROLES]}
+    >
+      {children}
+    </PermissionRoute>
+  );
+}
+
+// Admin-console surfaces (DICOMweb server / STOW / study browser) belong to
+// admin-scoped roles. Clinical roles never operate the platform, so their
+// routes are closed to those roles even when the legacy permission passes
+// (DICOMWEB_READ on radiologist / physician) — the symmetric counterpart of
+// ClinicalRoute, matching the sidebar (adminOnly items) and navigator.ts.
+function AdminConsoleRoute({
+  permission,
+  children,
+}: {
+  permission: string | string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <PermissionRoute
+      permission={permission}
+      excludedRoles={[...CLINICAL_SCOPED_ROLES]}
+    >
+      {children}
+    </PermissionRoute>
+  );
+}
 
 const Login = React.lazy(() => import("./login/Login"));
 const Account = React.lazy(() => import("./account/Account"));
@@ -34,6 +80,12 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const FrontDeskRegistration = React.lazy(
+  () => import("./frontdesk/Registration"),
+);
+const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
+const WaitingQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
+const Portal = React.lazy(() => import("./portal/Portal"));
 const TechnologistWorklist = React.lazy(
   () => import("./technologist/TechnologistWorklist"),
 );
@@ -60,6 +112,7 @@ const DicomWebAdmin = React.lazy(() => import("./dicomweb/DicomWebAdmin"));
 const StowUpload = React.lazy(() => import("./dicomweb/StowUpload"));
 const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
+const AdminDashboard = React.lazy(() => import("./dashboard/AdminDashboard"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
 function NavigatorSetter() {
@@ -123,6 +176,17 @@ function ThemedApp() {
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
                     <Route
+                      path="/admin"
+                      element={
+                        <PermissionRoute
+                          permission={ADMIN_DASHBOARD_PERMISSIONS}
+                          adminOnly
+                        >
+                          <AdminDashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
                       path="/replicas"
                       element={
                         <PermissionRoute permission="REPLICA_READ">
@@ -165,7 +229,11 @@ function ThemedApp() {
                     <Route
                       path="/logs"
                       element={
-                        <PermissionRoute permission="LOG_READ">
+                        // LOG_READ or its canonical alias AUDIT_READ (spec §6):
+                        // Matrix A admin roles carry only AUDIT_READ; the nav
+                        // gate already accepts both and the backend resolves
+                        // the alias symmetrically (rbac.py).
+                        <PermissionRoute permission={["LOG_READ", "AUDIT_READ"]}>
                           <Logs />
                         </PermissionRoute>
                       }
@@ -173,97 +241,129 @@ function ThemedApp() {
                     <Route
                       path="/worklist"
                       element={
-                        <PermissionRoute permission="WORKLIST_READ">
+                        <ClinicalRoute permission="WORKLIST_READ">
                           <Worklist />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/schedule-board"
                       element={
-                        <PermissionRoute permission="WORKLIST_READ">
+                        <ClinicalRoute permission="WORKLIST_READ">
                           <ScheduleBoard />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/exams"
                       element={
-                        <PermissionRoute permission="EXAM_READ">
+                        <ClinicalRoute permission="EXAM_READ">
                           <TechnologistWorklist />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/registration"
+                      element={
+                        <PermissionRoute permission="REGISTRATION_READ">
+                          <FrontDeskRegistration />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/visits"
+                      element={
+                        <PermissionRoute permission="REGISTRATION_READ">
+                          <FrontDeskVisits />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/queue"
+                      element={
+                        <PermissionRoute permission="QUEUE_READ">
+                          <WaitingQueue />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal"
+                      element={
+                        <PermissionRoute permission="PORTAL_READ">
+                          <Portal />
                         </PermissionRoute>
                       }
                     />
                     <Route
                       path="/exams/:id"
                       element={
-                        <PermissionRoute permission="EXAM_READ">
+                        <ClinicalRoute permission="EXAM_READ">
                           <ExamConsole />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/reading"
                       element={
-                        <PermissionRoute permission="REPORT_READ">
+                        <ClinicalRoute permission="REPORT_READ">
                           <ReadingWorklist />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/reading/:examId"
                       element={
-                        <PermissionRoute permission="REPORT_READ">
+                        <ClinicalRoute permission="REPORT_READ">
                           <ReportEditor />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/peer-review"
                       element={
-                        <PermissionRoute permission="PEER_REVIEW_READ">
+                        <ClinicalRoute permission="PEER_REVIEW_READ">
                           <PeerReviewInbox />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/qa/queue"
                       element={
-                        <PermissionRoute permission="QA_READ">
+                        <ClinicalRoute permission="QA_READ">
                           <QAQueue />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/qa/review/:examId"
                       element={
-                        <PermissionRoute permission="QA_READ">
+                        <ClinicalRoute permission="QA_READ">
                           <QAReviewForm />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/qa/protocols"
                       element={
-                        <PermissionRoute permission="QA_READ">
+                        <ClinicalRoute permission="QA_READ">
                           <ProtocolRegistry />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/qa/incidents"
                       element={
-                        <PermissionRoute permission="QA_READ">
+                        <ClinicalRoute permission="QA_READ">
                           <Incidents />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/qa/actions"
                       element={
-                        <PermissionRoute permission="QA_READ">
+                        <ClinicalRoute permission="QA_READ">
                           <CorrectiveActions />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route
@@ -317,25 +417,25 @@ function ThemedApp() {
                     <Route
                       path="/dicomweb"
                       element={
-                        <PermissionRoute permission="DICOMWEB_READ">
+                        <AdminConsoleRoute permission="DICOMWEB_READ">
                           <DicomWebAdmin />
-                        </PermissionRoute>
+                        </AdminConsoleRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/store"
                       element={
-                        <PermissionRoute permission="DICOMWEB_READ">
+                        <AdminConsoleRoute permission="DICOMWEB_READ">
                           <StowUpload />
-                        </PermissionRoute>
+                        </AdminConsoleRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/browser"
                       element={
-                        <PermissionRoute permission="DICOMWEB_READ">
+                        <AdminConsoleRoute permission="DICOMWEB_READ">
                           <StudyBrowser />
-                        </PermissionRoute>
+                        </AdminConsoleRoute>
                       }
                     />
                     <Route
@@ -349,9 +449,9 @@ function ThemedApp() {
                     <Route
                       path="/patients/:id"
                       element={
-                        <PermissionRoute permission={PATIENT_ROUTE_PERMISSIONS}>
+                        <ClinicalRoute permission={PATIENT_ROUTE_PERMISSIONS}>
                           <Patient />
-                        </PermissionRoute>
+                        </ClinicalRoute>
                       }
                     />
                     <Route

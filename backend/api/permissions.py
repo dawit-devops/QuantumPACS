@@ -114,6 +114,11 @@ class Permission(str, Enum):
     CDS_ADMIN = 'CDS_ADMIN'
 
 
+# Every permission the backend knows: canonical + legacy enum members in
+# declaration order. Single source of truth for code-level grants; consumers
+# (role validation, UI catalogs) must not drift from it.
+PERMISSION_KEYS = [p.value for p in Permission]
+
 # Canonical permission catalog — the 56 codes from docs/reaserch/RBAC_matrix_spec.md §3.
 # SYSTEM_ADMIN is the System Admin *role* code (§4), not a permission in §3;
 # Matrix C grants SYSTEM_ADMIN "ALL permissions" instead.
@@ -207,9 +212,15 @@ MATRIX_A_SCHED = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
     'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
     'WORKLIST_READ',
+    # R08 front-desk grants: the scheduler registers patients, books
+    # appointments and reads the waiting queue (api/frontdesk.py guards).
+    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
 }
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
+    # R08 front-desk grants: registration (search/create patients), visits,
+    # order intake, consents and the privacy-projected waiting queue.
+    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
 }
 MATRIX_A_REF = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',

@@ -101,4 +101,18 @@ describe("MobileNav", () => {
     await user.click(screen.getByText("Admin"));
     expect(await screen.findByText("Logs")).toBeInTheDocument();
   });
+
+  it("hides clinical sections in the drawer for a tenant_admin even with clinical grants", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "tenant_admin",
+      permissions: ["REPORT_READ", "EXAM_READ", "QA_READ", "USER_READ"],
+    });
+    renderWithRouter("/");
+    await user.click(screen.getByLabelText("Menu"));
+    expect(await screen.findByText("Admin")).toBeInTheDocument();
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.queryByText("QA")).not.toBeInTheDocument();
+  });
 });

@@ -37,6 +37,7 @@ import {
 import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
+import { isAdminScopedRole } from "../navigator";
 import { API_URL } from "../config";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
 import KeyValueTable from "./KeyValueTable";
@@ -60,10 +61,14 @@ function Detail() {
   const imagePath = `wadouri:${API_URL}/files/${params.id}/data`;
   const screens = useBreakpoint();
   const isMobile = !screens.md;
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   // Viewer-level scope (route gate is the first line of defense; this covers
   // direct component reuse where no PermissionRoute wraps the mount point).
   const canViewFiles = VIEWER_ROUTE_PERMISSIONS.some((p) => hasPermission(p));
+  // Admin-scoped roles keep the viewer for file verification, but the
+  // clinical reading tooling around it (annotations, presets) and patient
+  // navigation are trimmed — patients/ is a clinical surface for them.
+  const isAdminScoped = isAdminScopedRole(user?.role);
 
   const [tab, setTab] = useState("image");
   const [data, setData] = useState<FileRecord>({ id: 0 });
@@ -241,21 +246,23 @@ function Detail() {
               Admin
             </Menu.Item>
           )}
-          <Menu.Item
-            key="measurements-toggle"
-            onClick={() => setPanelOpen(!panelOpen)}
-            style={{
-              marginLeft: "auto",
-              borderLeft: "1px solid var(--border-color)",
-            }}
-          >
-            <Tooltip title="Toggle measurements panel">
-              <Badge count={measurements.length} size="small" offset={[2, -4]}>
-                <DashboardOutlined />
-              </Badge>
-            </Tooltip>
-            Measures
-          </Menu.Item>
+          {!tempKey && !isAdminScoped && (
+            <Menu.Item
+              key="measurements-toggle"
+              onClick={() => setPanelOpen(!panelOpen)}
+              style={{
+                marginLeft: "auto",
+                borderLeft: "1px solid var(--border-color)",
+              }}
+            >
+              <Tooltip title="Toggle measurements panel">
+                <Badge count={measurements.length} size="small" offset={[2, -4]}>
+                  <DashboardOutlined />
+                </Badge>
+              </Tooltip>
+              Measures
+            </Menu.Item>
+          )}
         </Menu>
         {data && data.patient && ["image"].includes(tab) && (
           <Breadcrumb
@@ -266,11 +273,17 @@ function Detail() {
             }}
           >
             <Breadcrumb.Item>
-              <Link to={`/patients/${data.patient_id}`}>
-                {isMobile
+              {isAdminScoped ? (
+                isMobile
                   ? data.patient.name
-                  : `${data.patient.name} (${data.patient.patient_id})`}
-              </Link>
+                  : `${data.patient.name} (${data.patient.patient_id})`
+              ) : (
+                <Link to={`/patients/${data.patient_id}`}>
+                  {isMobile
+                    ? data.patient.name
+                    : `${data.patient.name} (${data.patient.patient_id})`}
+                </Link>
+              )}
             </Breadcrumb.Item>
             <Breadcrumb.Item
               menu={{ items: studiesDrop(data.patient.studies) }}
@@ -318,17 +331,19 @@ function Detail() {
                 onAnnotationsChange={handleAnnotationsChange}
                 focusAnnotationUID={focusAnnotationUID}
                 isMobile={isMobile}
-                enableReadingPresets={hasPermission("REPORT_READ")}
+                enableReadingPresets={!isAdminScoped && hasPermission("REPORT_READ")}
               />
             </Suspense>
           </div>
-          <MeasurementPanel
-            measurements={measurements}
-            onFocusAnnotation={handleFocusAnnotation}
-            collapsed={!panelOpen}
-            onToggle={() => setPanelOpen(false)}
-            visible={tab === "image"}
-          />
+          {!isAdminScoped && (
+            <MeasurementPanel
+              measurements={measurements}
+              onFocusAnnotation={handleFocusAnnotation}
+              collapsed={!panelOpen}
+              onToggle={() => setPanelOpen(false)}
+              visible={tab === "image"}
+            />
+          )}
         </div>
         <KeyValueTable
           style={tab !== "data" ? { display: "none" } : {}}

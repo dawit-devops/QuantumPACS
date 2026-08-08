@@ -26,6 +26,7 @@ import {
 import { useParams, useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import "./ReportEditor.css";
 
 const Content = Layout.Content;
@@ -43,6 +44,15 @@ function ReportEditor() {
   useDocumentTitle("QuantumPACS - Report Editor");
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
+
+  // REPORT_WRITE gates editing (draft save, mark preliminary, template
+  // application); REPORT_SIGN gates finalizing. A REPORT_READ-only user
+  // (referring physician, care coordinator, nurse) gets a read-only view, and
+  // a resident (REPORT_WRITE without REPORT_SIGN) drafts without the sign
+  // affordance — the attending cosigns.
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("REPORT_WRITE");
+  const canSign = hasPermission("REPORT_SIGN");
 
   const [exam, setExam] = useState<any | null>(null);
   const [report, setReport] = useState<any | null>(null);
@@ -119,6 +129,9 @@ function ReportEditor() {
 
   const saveDraft = useCallback(
     async (silent = true): Promise<boolean> => {
+      // Read-only viewers never save: the guard also makes the autosave
+      // interval a no-op for them.
+      if (!canWrite) return true;
       dirtyRef.current = false;
       setDirty(false);
       try {
@@ -143,7 +156,7 @@ function ReportEditor() {
         return false;
       }
     },
-    [examId, findings, impression, recommendations, status, templateName],
+    [canWrite, examId, findings, impression, recommendations, status, templateName],
   );
 
   const applyTemplate = (name: string) => {
@@ -253,7 +266,7 @@ function ReportEditor() {
               <SaveOutlined /> saved {savedAt.toLocaleTimeString()}
             </span>
           )}
-          {!isFinal && (
+          {!isFinal && canSign && (
             <Button
               type="primary"
               icon={<CheckCircleOutlined />}
@@ -315,31 +328,43 @@ function ReportEditor() {
         />
       )}
 
+      {!isFinal && !canWrite && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 16 }}
+          message="Read-only report"
+          description="You have view access to this report. Editing requires the REPORT_WRITE permission — only the assigned radiologist can draft or sign."
+        />
+      )}
+
       {!isFinal && (
         <>
-          <Card
-            title="Report Template"
-            size="small"
-            style={{ marginTop: 16 }}
-            extra={
-              <Select
-                placeholder="Apply a template"
-                style={{ width: 260 }}
-                onChange={applyTemplate}
-                options={templates.map((t) => ({
-                  value: t.name,
-                  label: t.name,
-                }))}
-                showSearch
-                optionFilterProp="label"
-              />
-            }
-          >
-            <span className="report-template-hint">
-              Templates seed the findings and impression sections — always
-              review and tailor the text before signing.
-            </span>
-          </Card>
+          {canWrite && (
+            <Card
+              title="Report Template"
+              size="small"
+              style={{ marginTop: 16 }}
+              extra={
+                <Select
+                  placeholder="Apply a template"
+                  style={{ width: 260 }}
+                  onChange={applyTemplate}
+                  options={templates.map((t) => ({
+                    value: t.name,
+                    label: t.name,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              }
+            >
+              <span className="report-template-hint">
+                Templates seed the findings and impression sections — always
+                review and tailor the text before signing.
+              </span>
+            </Card>
+          )}
 
           <Card title="Findings" size="small" style={{ marginTop: 16 }}>
             <Input.TextArea
@@ -350,6 +375,7 @@ function ReportEditor() {
                 dirtyRef.current = true;
                 setDirty(true);
               }}
+              readOnly={!canWrite}
               placeholder="Structured findings — per template or free text…"
             />
           </Card>
@@ -363,6 +389,7 @@ function ReportEditor() {
                 dirtyRef.current = true;
                 setDirty(true);
               }}
+              readOnly={!canWrite}
               placeholder="Impression / conclusion (required before signing)…"
               status={!impression.trim() ? "warning" : ""}
             />
@@ -377,38 +404,43 @@ function ReportEditor() {
                 dirtyRef.current = true;
                 setDirty(true);
               }}
+              readOnly={!canWrite}
               placeholder="Optional recommendations for follow-up…"
             />
           </Card>
 
-          <div className="report-actions">
-            <Button
-              icon={<SaveOutlined />}
-              onClick={() => saveDraft(false)}
-              disabled={!dirty}
-            >
-              Save Draft
-            </Button>
-            <Button
-              onClick={() => {
-                setStatus("preliminary");
-                saveDraft(true).then(() =>
-                  message.success("Marked preliminary"),
-                );
-              }}
-              disabled={isFinal}
-            >
-              Mark Preliminary
-            </Button>
-            <Button
-              type="primary"
-              icon={<CheckCircleOutlined />}
-              onClick={() => setSignOpen(true)}
-              disabled={!impression.trim()}
-            >
-              Sign Report
-            </Button>
-          </div>
+          {canWrite && (
+            <div className="report-actions">
+              <Button
+                icon={<SaveOutlined />}
+                onClick={() => saveDraft(false)}
+                disabled={!dirty}
+              >
+                Save Draft
+              </Button>
+              <Button
+                onClick={() => {
+                  setStatus("preliminary");
+                  saveDraft(true).then(() =>
+                    message.success("Marked preliminary"),
+                  );
+                }}
+                disabled={isFinal}
+              >
+                Mark Preliminary
+              </Button>
+              {canSign && (
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => setSignOpen(true)}
+                  disabled={!impression.trim()}
+                >
+                  Sign Report
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
 

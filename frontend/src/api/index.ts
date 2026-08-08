@@ -20,3 +20,5 @@ export * from "./metrics";
 export * from "./replicas";
 export * from "./auth";
 export * from "./hl7";
+export * from "./frontdesk";
+export * from "./portal";

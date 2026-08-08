@@ -10,6 +10,7 @@ import {
   getHl7Status,
 } from "../api/hl7";
 import { PageState } from "../common/PageState";
+import { useAuth } from "../auth/AuthContext";
 import { MessagesTab } from "./MessagesTab";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ConfigTab } from "./ConfigTab";
@@ -20,6 +21,9 @@ const { Content } = Layout;
 
 function Hl7Dashboard() {
   const { message } = App.useApp();
+  // HL7_READ gates the page; the Configuration tab's Save hits HL7_WRITE.
+  const { hasPermission } = useAuth();
+  const canWriteConfig = hasPermission("HL7_WRITE");
 
   // Messages tab
   const [messages, setMessages] = useState<any[]>([]);
@@ -218,6 +222,7 @@ function Hl7Dashboard() {
                 fetchConfig={fetchConfig}
                 fetchStatus={fetchStatus}
                 handleSaveConfig={handleSaveConfig}
+                canWrite={canWriteConfig}
               />
             ),
           },

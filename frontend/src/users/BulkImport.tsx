@@ -11,6 +11,7 @@ import {
 } from "antd";
 import { UploadOutlined, InboxOutlined } from "@ant-design/icons";
 import { createUser } from "../api/users";
+import { useAuth } from "../auth/AuthContext";
 
 const { Text } = Typography;
 
@@ -27,11 +28,16 @@ interface BulkImportProps {
 
 export function BulkImport({ reload }: BulkImportProps) {
   const { message } = App.useApp();
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Only platform admins may grant the admin flag (backend users.py:240);
+  // non-admins import plain users and the admin column is ignored.
+  const canGrantAdmin = user?.admin === true;
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -44,7 +50,7 @@ export function BulkImport({ reload }: BulkImportProps) {
         if (parts[0]) {
           parsed.push({
             username: parts[0],
-            admin: parts[1]?.toLowerCase() === "true" || parts[1] === "1",
+            admin: canGrantAdmin && (parts[1]?.toLowerCase() === "true" || parts[1] === "1"),
           });
         }
       }
@@ -164,7 +170,7 @@ export function BulkImport({ reload }: BulkImportProps) {
           />
           <p style={{ margin: 0 }}>Click to select CSV file</p>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Format: username,admin (one per line)
+            Format: username,admin{canGrantAdmin ? "" : " (admin column ignored for non-platform admins)"} (one per line)
           </Text>
         </div>
         {importing && (

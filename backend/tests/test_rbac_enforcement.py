@@ -234,6 +234,26 @@ def test_has_permission_resolves_log_read_alias_for_audit_read():
     assert has_permission(user, 'REPORT_READ') is False
 
 
+def test_has_permission_resolves_audit_read_alias_for_log_read():
+    """Symmetric alias: a canonical-role user holding only AUDIT_READ (as the
+    Matrix A admin roles do) passes a guard written against the legacy
+    LOG_READ code — the direction the production /api/logs guard uses."""
+    user = _make_user(['AUDIT_READ'])
+    assert has_permission(user, 'LOG_READ') is True
+    assert has_permission(user, Permission.LOG_READ) is True
+    assert has_permission(user, 'AUDIT_READ') is True
+
+
+def test_has_permission_resolves_analytics_read_alias_for_metrics_read():
+    """ANALYTICS_READ ⇄ METRICS_READ: department_manager (Matrix A) holds only
+    ANALYTICS_READ and must pass the METRICS_READ-guarded dashboard endpoints."""
+    dm = _make_user(['ANALYTICS_READ'])
+    assert has_permission(dm, 'METRICS_READ') is True
+    assert has_permission(dm, Permission.METRICS_READ) is True
+    metrics_only = _make_user(['METRICS_READ'])
+    assert has_permission(metrics_only, 'ANALYTICS_READ') is True
+
+
 def test_audit_read_guarded_endpoint_accepts_log_read_grant():
     """§7: /api/logs* → AUDIT_READ; LOG_READ stays as its legacy alias, so a
     LOG_READ grant must pass an AUDIT_READ guard. The guard is written against

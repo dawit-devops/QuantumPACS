@@ -87,7 +87,7 @@ describe("TechnologistWorklist", () => {
     expect(screen.getByText("CT Head (Routine)")).toBeInTheDocument();
   });
 
-  it("fetches exams with the selected status filter", async () => {
+  it("fetches exams with the selected status chip", async () => {
     mockRequest.mockResolvedValue({ data: mockExams });
     renderWorklist();
 
@@ -95,16 +95,31 @@ describe("TechnologistWorklist", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    // antd v6 Select renders a combobox; open the first (Status) select.
-    const statusCombobox = screen.getAllByRole("combobox")[0];
-    fireEvent.mouseDown(statusCombobox);
-    fireEvent.click(await screen.findByTitle("completed"));
+    // The status chips replace the old Select: click the Completed chip.
+    fireEvent.click(screen.getByRole("button", { name: /Completed/ }));
 
     await waitFor(() => {
       const lastCall =
         mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
       expect(lastCall[0]).toBe("exams");
       expect(lastCall[1].query.status).toBe("completed");
+    });
+  });
+
+  it("shows the completed-history banner when filtering completed exams", async () => {
+    mockRequest.mockResolvedValue({ data: mockExams });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Completed/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/handed off to the radiologist worklist/),
+      ).toBeInTheDocument();
     });
   });
 
@@ -115,6 +130,18 @@ describe("TechnologistWorklist", () => {
     await waitFor(() => {
       expect(screen.getByText(/No exams assigned/i)).toBeInTheDocument();
     });
+  });
+
+  it("restores the persisted status filter from sessionStorage", async () => {
+    sessionStorage.setItem("tech-wl-status", "completed");
+    mockRequest.mockResolvedValue({ data: mockExams });
+    renderWorklist();
+
+    await waitFor(() => {
+      const call = mockRequest.mock.calls.find((c: any) => c[0] === "exams");
+      expect(call?.[1]?.query?.status).toBe("completed");
+    });
+    sessionStorage.removeItem("tech-wl-status");
   });
 
   it("shows an error alert when the fetch fails", async () => {

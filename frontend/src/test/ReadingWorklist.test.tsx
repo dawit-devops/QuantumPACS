@@ -63,6 +63,16 @@ const mockItems = [
 describe("ReadingWorklist", () => {
   beforeEach(() => {
     localStorage.clear();
+    // A full radiologist: view + claim (REPORT_WRITE) unlocked. The
+    // read-only variant seeds its own session below.
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "radiologist");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
+    );
     mockRequest.mockReset();
   });
 
@@ -175,6 +185,22 @@ describe("ReadingWorklist", () => {
         mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
       expect(lastCall[1].query.physician).toBe("Lee");
     });
+  });
+
+  it("hides the Take button for a REPORT_READ-only reader", async () => {
+    // The claim endpoint is gated REPORT_WRITE (api/reports.py): a referring
+    // physician or nurse views the queue without the claim affordance.
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ"]),
+    );
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("Read Study")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Take")).not.toBeInTheDocument();
   });
 
   it("takes an unassigned exam and refetches the list", async () => {

@@ -91,6 +91,13 @@ const mockProtocols = {
 describe("ExamConsole", () => {
   beforeEach(() => {
     localStorage.clear();
+    // A technologist: full acquisition surface (EXAM_WRITE). The read-only
+    // variant seeds its own session below.
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "technologist");
+    localStorage.setItem("permissions", JSON.stringify(["EXAM_READ", "EXAM_WRITE"]));
     mockRequest.mockReset();
   });
 
@@ -338,5 +345,34 @@ describe("ExamConsole", () => {
         screen.getByText(/Exam completed and handed off/i),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders a read-only console for an EXAM_READ-only user", async () => {
+    // nurse / resident hold EXAM_READ only: every acquisition write
+    // (identity, protocol, acquire, safety, complete) is EXAM_WRITE-gated.
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["EXAM_READ"]),
+    );
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: readyExam });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Patient Identity Verification"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Confirm Patient/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Start Protocol")).not.toBeInTheDocument();
+    expect(screen.queryByText("Acquire Image")).not.toBeInTheDocument();
+    expect(screen.queryByText("Complete Exam")).not.toBeInTheDocument();
+    expect(screen.queryByText("Log Incident")).not.toBeInTheDocument();
+    expect(screen.getByText("Read-only exam console")).toBeInTheDocument();
   });
 });

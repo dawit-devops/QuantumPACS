@@ -8,6 +8,8 @@ import {
   LockOutlined,
   DatabaseOutlined,
   TeamOutlined,
+  IdcardOutlined,
+  SolutionOutlined,
   AlignLeftOutlined,
   SafetyCertificateOutlined,
   BankOutlined,
@@ -40,7 +42,13 @@ import QuantumLogo from "./QuantumLogo";
 import TenantSelector from "../auth/TenantSelector";
 import { logout } from "../api/auth";
 import { request } from "../helpers";
-import { workspaceFor } from "../navigator";
+import {
+  ADMIN_DASHBOARD_PERMISSIONS,
+  workspaceFor,
+  isAdminScopedRole,
+  CLINICAL_WORKSPACES,
+} from "../navigator";
+import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import "./Sidebar.css";
 
 const { Sider } = Layout;
@@ -48,7 +56,9 @@ const { Sider } = Layout;
 function getKey(loc: string) {
   if (loc === "/") return "files";
   const parts = loc.slice(1).split("/");
+  if (parts[0] === "admin") return "dashboard";
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
+  if (parts[0] === "reading") return "reading-worklist";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",
@@ -59,6 +69,15 @@ function getKey(loc: string) {
     if (parts[1] === "review") return "qa-queue";
     return qaMap[`qa-${parts[1]}`] || "qa-queue";
   }
+  if (parts[0] === "frontdesk") {
+    const fdMap: Record<string, string> = {
+      registration: "fd-registration",
+      visits: "fd-visits",
+      queue: "fd-queue",
+    };
+    return fdMap[parts[1]] || "fd-registration";
+  }
+  if (parts[0] === "portal") return "portal";
   return parts[0];
 }
 
@@ -72,6 +91,9 @@ export interface NavItemDef {
   // reserved for the always-visible Files/Account entries and for children of
   // a gated submenu (FHIR), whose parent gate governs visibility.
   permissions: string[];
+  // Role-scope gate: the item only shows for admin-scoped roles (the
+  // dashboard's operational home), mirroring the route's adminOnly guard.
+  adminOnly?: boolean;
   children?: NavItemDef[];
 }
 
@@ -84,10 +106,11 @@ export interface NavSectionDef {
 
 // Workspace section definitions. Every item permission gate is copied VERBATIM
 // from the pre-workspace sidebar (REPORT_READ on Reading Worklist, QA_READ on
-// each QA item, ...) so role scoping never weakens an existing gate. The one
-// addition — METRICS_READ on Metrics — matches the /v2/dashboard/metrics
-// endpoint guard (backend/api/dashboard_metrics.py) so the nav item no longer
-// advertises a page the backend rejects; it only ever hides navigation.
+// each QA item, ...) so role scoping never weakens an existing gate. Gates that
+// drifted from the route/backend guards were re-aligned to the guard sets:
+// Metrics accepts METRICS_READ|ANALYTICS_READ (route + backend alias), Routing
+// is ROUTING_READ only, DICOMweb is DICOMWEB_READ only — a nav item must never
+// advertise a page the backend rejects; it only ever hides navigation.
 export const NAV_SECTIONS: NavSectionDef[] = [
   {
     key: "reading",
@@ -95,7 +118,10 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     icon: <FileDoneOutlined />,
     items: [
       {
-        key: "reading",
+        // Distinct from the section key: antd Menu rejects duplicate keys
+        // (warns "Duplicated key 'reading' used in Menu by path [reading]"
+        // and breaks item selection/open-state tracking).
+        key: "reading-worklist",
         path: "/reading",
         label: "Reading Worklist",
         icon: <FileDoneOutlined />,
@@ -174,10 +200,49 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     ],
   },
   {
+    key: "frontdesk",
+    title: "Front Desk",
+    icon: <IdcardOutlined />,
+    items: [
+      {
+        key: "fd-registration",
+        path: "/frontdesk/registration",
+        label: "Registration",
+        icon: <IdcardOutlined />,
+        permissions: ["REGISTRATION_READ"],
+      },
+      {
+        key: "fd-visits",
+        path: "/frontdesk/visits",
+        label: "Visits & Check-In",
+        icon: <MedicineBoxOutlined />,
+        permissions: ["REGISTRATION_READ"],
+      },
+      {
+        key: "fd-queue",
+        path: "/frontdesk/queue",
+        label: "Waiting Queue",
+        icon: <TeamOutlined />,
+        permissions: ["QUEUE_READ"],
+      },
+    ],
+  },
+  {
     key: "admin",
     title: "Admin",
     icon: <LockOutlined />,
     items: [
+      {
+        // The dashboard is the landing home of every admin-scoped role; it
+        // sits at the top of the Admin section and is role-scoped (adminOnly)
+        // so a clinical role granted one of its permissions never sees it.
+        key: "dashboard",
+        path: "/admin",
+        label: "Dashboard",
+        icon: <DashboardOutlined />,
+        permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
+        adminOnly: true,
+      },
       {
         key: "replicas",
         path: "/replicas",
@@ -225,7 +290,10 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/routing",
         label: "Routing",
         icon: <ApartmentOutlined />,
-        permissions: ["ROUTING_READ", "INTERFACE_ADMIN"],
+        // Matches the /api/routing backend guard (ROUTING_READ/ROUTING_WRITE).
+        // INTERFACE_ADMIN was dropped from the gate: tenant_admin and
+        // radiology_admin hold it but the route and backend both reject them.
+        permissions: ["ROUTING_READ"],
       },
       {
         // FHIR is a nested submenu; SYSTEM_ADMIN gates the whole group, and
@@ -273,13 +341,20 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["HL7_READ"],
       },
       {
-        // DICOMweb is a submenu: the parent gate (DICOMWEB_READ etc.) covers
+        // DICOMweb is a submenu: the parent gate (DICOMWEB_READ) covers
         // Server, Store (STOW-RS) and Study Browser — the backend re-checks
-        // DICOMWEB_WRITE on the STOW endpoint itself.
+        // DICOMWEB_WRITE on the STOW endpoint itself. STORAGE_ADMIN and
+        // INTERFACE_ADMIN were dropped from the gate: tenant_admin,
+        // radiology_admin and pacs_admin hold them but the route and the
+        // /api/dicomweb* backend guards all require DICOMWEB_READ.
+        // adminOnly: the console is admin-scoped; clinical roles (radiologist,
+        // physician) carry legacy DICOMWEB_READ but must not see it — the
+        // same scope the AdminConsoleRoute and navigator.ts apply.
         key: "dicomweb",
         label: "DICOMweb",
         icon: <CloudServerOutlined />,
-        permissions: ["DICOMWEB_READ", "STORAGE_ADMIN", "INTERFACE_ADMIN"],
+        permissions: ["DICOMWEB_READ"],
+        adminOnly: true,
         children: [
           {
             key: "dicomweb-server",
@@ -316,7 +391,11 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/metrics",
         label: "Metrics",
         icon: <DashboardOutlined />,
-        permissions: ["METRICS_READ"],
+        // METRICS_READ or ANALYTICS_READ — mirrors the /metrics route gate
+        // (METRICS_ROUTE_PERMISSIONS) and the backend alias resolution
+        // (ANALYTICS_READ ⇄ METRICS_READ) so department_manager, which holds
+        // only ANALYTICS_READ, gets the nav item its landing route promises.
+        permissions: ["METRICS_READ", "ANALYTICS_READ"],
       },
     ],
   },
@@ -328,6 +407,7 @@ const SECTION_KEYS = NAV_SECTIONS.map((s) => s.key);
 // route, preserving the old "admin" open behavior and extending it to the new
 // Reading/Acquisition/QA/Analytics groups.
 const SECTION_OF_KEY: Record<string, string> = {
+  dashboard: "admin",
   replicas: "admin",
   users: "admin",
   roles: "admin",
@@ -348,12 +428,15 @@ const SECTION_OF_KEY: Record<string, string> = {
   worklist: "acquisition",
   exams: "acquisition",
   "schedule-board": "acquisition",
-  reading: "reading",
+  "reading-worklist": "reading",
   "peer-review": "reading",
   "qa-queue": "qa",
   "qa-protocols": "qa",
   "qa-incidents": "qa",
   "qa-actions": "qa",
+  "fd-registration": "frontdesk",
+  "fd-visits": "frontdesk",
+  "fd-queue": "frontdesk",
   metrics: "analytics",
 };
 
@@ -364,7 +447,9 @@ function getOpenKey(key: string): string | undefined {
 export function hasItemPermission(
   item: NavItemDef,
   hasPermission: (p: string) => boolean,
+  isAdminScoped = false,
 ): boolean {
+  if (item.adminOnly && !isAdminScoped) return false;
   return item.permissions.length === 0 || item.permissions.some(hasPermission);
 }
 
@@ -426,11 +511,16 @@ function Sidebar() {
   // workspaceFor() decides which section a role "lives in"; sections without a
   // role mapping (clinical, platform, files) fall back to pure permission-based
   // visibility, so e.g. a physician still sees Reading via REPORT_READ.
+  // Admin-scoped roles resolve to the "dashboard" workspace, which has no nav
+  // section of its own — the dashboard lives at the top of the Admin section,
+  // so auto-open that section for them.
   const userWorkspace = user ? workspaceFor(user) : null;
   const workspaceOpenKey =
-    userWorkspace && SECTION_KEYS.includes(userWorkspace)
-      ? userWorkspace
-      : null;
+    userWorkspace === "dashboard"
+      ? "admin"
+      : userWorkspace && SECTION_KEYS.includes(userWorkspace)
+        ? userWorkspace
+        : null;
 
   const [selectedKey, setSelectedKey] = useState(key);
   const [openKey, setOpenKey] = useState(getOpenKey(key) ?? workspaceOpenKey);
@@ -439,14 +529,23 @@ function Sidebar() {
   // OR the user can see at least one item inside it. The workspace clause keeps
   // e.g. a role-only user's own section available; the item clause keeps
   // cross-scope access (radiologist granted LOG_READ still reaches Admin).
+  // Admin-scoped roles (admin, super_admin, tenant_admin, pacs_admin, ...)
+  // manage the platform rather than perform clinical work, so the clinical
+  // sections (Reading / Acquisition / QA) are always hidden for them — even
+  // when their grants would pass — mirroring navigator.ts landing rules.
+  const isAdminScoped = isAdminScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission),
+      hasItemPermission(item, hasPermission, isAdminScoped),
     ),
-  })).filter(
-    ({ section, items }) => userWorkspace === section.key || items.length > 0,
-  );
+  }))
+    .filter(
+      ({ section, items }) => userWorkspace === section.key || items.length > 0,
+    )
+    .filter(
+      ({ section }) => !isAdminScoped || !CLINICAL_WORKSPACES.has(section.key),
+    );
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
@@ -494,15 +593,48 @@ function Sidebar() {
           if (isMobile) setDrawerOpen(false);
         }}
       >
-        <Menu.Item
-          key="files"
-          aria-current={selectedKey === "files" ? "page" : undefined}
-        >
-          <Link to="/">
-            <FileSearchOutlined />
-            <span className="nav-text">Files</span>
-          </Link>
-        </Menu.Item>
+        {hasItemPermission(
+          {
+            key: "files",
+            path: "/",
+            label: "Files",
+            icon: <FileSearchOutlined />,
+            permissions: [...VIEWER_ROUTE_PERMISSIONS],
+          },
+          hasPermission,
+          isAdminScoped,
+        ) && (
+          <Menu.Item
+            key="files"
+            aria-current={selectedKey === "files" ? "page" : undefined}
+          >
+            <Link to="/">
+              <FileSearchOutlined />
+              <span className="nav-text">Files</span>
+            </Link>
+          </Menu.Item>
+        )}
+        {hasItemPermission(
+          {
+            key: "portal",
+            path: "/portal",
+            label: "My Records",
+            icon: <SolutionOutlined />,
+            permissions: ["PORTAL_READ"],
+          },
+          hasPermission,
+          isAdminScoped,
+        ) && (
+          <Menu.Item
+            key="portal"
+            aria-current={selectedKey === "portal" ? "page" : undefined}
+          >
+            <Link to="/portal">
+              <SolutionOutlined />
+              <span className="nav-text">My Records</span>
+            </Link>
+          </Menu.Item>
+        )}
         <Menu.Item
           key="account"
           aria-current={selectedKey === "account" ? "page" : undefined}
@@ -576,7 +708,7 @@ function Sidebar() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           placement="left"
-          width={280}
+          size={280}
           styles={{ body: { padding: 0, background: "#001529" } }}
           title={null}
           closable={false}

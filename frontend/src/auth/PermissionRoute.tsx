@@ -1,7 +1,11 @@
 import React from "react";
 import { Navigate } from "react-router";
 import { useAuth } from "./AuthContext";
-import { landingRouteFor } from "../navigator";
+import {
+  ADMIN_DASHBOARD_PERMISSIONS,
+  landingRouteFor,
+  isAdminScopedRole,
+} from "../navigator";
 
 /**
  * Route-level permission gate.
@@ -19,6 +23,10 @@ import { landingRouteFor } from "../navigator";
  * `permission` may be a single key or a list; a list passes when the user has
  * ANY of the keys (admin bypasses, matching AuthContext.hasPermission).
  *
+ * `excludedRoles` optionally closes a route to specific role slugs even when
+ * the permission passes — used for clinical surfaces, which admin-scoped
+ * roles never work despite holding the underlying grants.
+ *
  * The gate sets for the PACS workspace routes live here so index.tsx (the
  * route table) and the route-gates tests share one source of truth.
  */
@@ -35,18 +43,35 @@ export const METRICS_ROUTE_PERMISSIONS: string[] = [
   "ANALYTICS_READ",
 ];
 
+// Defined in navigator.ts (avoids a navigator <-> PermissionRoute import
+// cycle); re-exported here so index.tsx and the route-gates tests can import
+// both gate sets from the same module.
+export { ADMIN_DASHBOARD_PERMISSIONS };
+
 export default function PermissionRoute({
   permission,
+  excludedRoles,
+  adminOnly,
   children,
 }: {
-  permission: string | string[];
+  permission: string | readonly string[];
+  excludedRoles?: string[];
+  adminOnly?: boolean;
   children: React.ReactNode;
 }) {
   const { isAuthenticated, hasPermission, user } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const required = Array.isArray(permission) ? permission : [permission];
   const allowed = required.some((p) => hasPermission(p));
-  if (!allowed) {
+  const roleExcluded =
+    user !== null &&
+    excludedRoles !== undefined &&
+    excludedRoles.includes(user.role);
+  // adminOnly is the landing complement: a user with dashboard permissions but
+  // a clinical role (granted LOG_READ for instance) must not open the admin
+  // console — only admin-scoped roles run the platform.
+  const notAdmin = adminOnly === true && !isAdminScopedRole(user?.role);
+  if (!allowed || roleExcluded || notAdmin) {
     // Hardcoding "/" here would loop: the Files route is itself permission-
     // gated, so a user without study/file perms would bounce forever.
     // landingRouteFor picks the highest-priority route this user can open.

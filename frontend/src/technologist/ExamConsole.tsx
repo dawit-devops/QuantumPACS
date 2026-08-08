@@ -31,6 +31,7 @@ import {
 import { useParams, useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import SimulatedPreview from "./SimulatedPreview";
 import "./ExamConsole.css";
 
@@ -102,6 +103,13 @@ function ExamConsole() {
   useDocumentTitle("QuantumPACS - Exam Console");
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // Every write here (identity confirm, protocol, acquisitions, safety
+  // checks, incidents, overrides, complete) is gated EXAM_WRITE on the
+  // backend (api/exams.py). View-only holders (EXAM_READ — nurse, resident)
+  // watch the exam progression without the acquisition affordances.
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("EXAM_WRITE");
 
   const [exam, setExam] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -392,10 +400,12 @@ function ExamConsole() {
           </span>
         </div>
         <Space>
-          <Button icon={<BugOutlined />} onClick={() => setIncidentOpen(true)}>
-            Log Incident
-          </Button>
-          {!isComplete && (
+          {canWrite && (
+            <Button icon={<BugOutlined />} onClick={() => setIncidentOpen(true)}>
+              Log Incident
+            </Button>
+          )}
+          {canWrite && !isComplete && (
             <Button
               icon={<ExclamationCircleOutlined />}
               danger
@@ -406,6 +416,16 @@ function ExamConsole() {
           )}
         </Space>
       </div>
+
+      {!canWrite && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Read-only exam console"
+          description="You have view access to this exam. Acquisition actions require the EXAM_WRITE permission."
+        />
+      )}
 
       <Steps
         size="small"
@@ -431,10 +451,12 @@ function ExamConsole() {
             <Tag color="green" icon={<CheckCircleOutlined />}>
               Verified
             </Tag>
-          ) : (
+          ) : canWrite ? (
             <Button type="primary" size="small" onClick={confirmIdentity}>
               Confirm Patient
             </Button>
+          ) : (
+            <Tag>Awaiting confirmation</Tag>
           )
         }
       >
@@ -482,7 +504,7 @@ function ExamConsole() {
                 : "—"}
             </Descriptions.Item>
           </Descriptions>
-        ) : (
+        ) : canWrite ? (
           <>
             <Select
               placeholder="Select protocol"
@@ -502,6 +524,12 @@ function ExamConsole() {
               Start Protocol
             </Button>
           </>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            message="No protocol started yet — read-only view."
+          />
         )}
       </Card>
 
@@ -511,7 +539,7 @@ function ExamConsole() {
         size="small"
         style={{ marginTop: 16 }}
         extra={
-          !isComplete && identityDone && protocolStarted ? (
+          canWrite && !isComplete && identityDone && protocolStarted ? (
             <Button type="primary" onClick={acquireImage}>
               Acquire Image
             </Button>
@@ -548,20 +576,24 @@ function ExamConsole() {
                     </span>
                   </div>
                   <Space>
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => decideAcquisition(acq.id, "accept")}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      onClick={() => setRejectOpen(acq.id)}
-                    >
-                      Reject
-                    </Button>
+                    {canWrite && (
+                      <>
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={() => decideAcquisition(acq.id, "accept")}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="small"
+                          danger
+                          onClick={() => setRejectOpen(acq.id)}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
                   </Space>
                 </div>
               ))}
@@ -625,7 +657,7 @@ function ExamConsole() {
         size="small"
         style={{ marginTop: 16 }}
         extra={
-          !isComplete && !(exam.safety_checks || []).length ? (
+          canWrite && !isComplete && !(exam.safety_checks || []).length ? (
             <Button
               onClick={recordSafetyChecks}
               icon={<SafetyCertificateOutlined />}
@@ -662,7 +694,7 @@ function ExamConsole() {
       </Card>
 
       {/* FR-R06-07: Complete + handoff */}
-      {!isComplete && (
+      {!isComplete && canWrite && (
         <Card
           title="Complete Exam"
           size="small"

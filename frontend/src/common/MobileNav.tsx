@@ -7,7 +7,11 @@ import {
   MenuOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
-import { workspaceFor } from "../navigator";
+import {
+  workspaceFor,
+  isAdminScopedRole,
+  CLINICAL_WORKSPACES,
+} from "../navigator";
 import { NAV_SECTIONS, hasItemPermission, type NavItemDef } from "./Sidebar";
 import "./MobileNav.css";
 
@@ -34,15 +38,21 @@ export default function MobileNav() {
 
   // Same section visibility rule as the desktop sidebar: the user's own
   // workspace section always shows, plus any section with a visible item.
+  // Admin-scoped roles never see the clinical sections (see Sidebar).
   const userWorkspace = user ? workspaceFor(user) : null;
+  const isAdminScoped = isAdminScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission),
+      hasItemPermission(item, hasPermission, isAdminScoped),
     ),
-  })).filter(
-    ({ section, items }) => userWorkspace === section.key || items.length > 0,
-  );
+  }))
+    .filter(
+      ({ section, items }) => userWorkspace === section.key || items.length > 0,
+    )
+    .filter(
+      ({ section }) => !isAdminScoped || !CLINICAL_WORKSPACES.has(section.key),
+    );
 
   const isActive = (path: string) =>
     path === "/"
@@ -60,14 +70,14 @@ export default function MobileNav() {
     item.children
       ? { key: item.key, icon: item.icon, label: item.label }
       : {
-          key: item.key,
-          icon: item.icon,
-          label: (
-            <Link to={item.path!} onClick={closeDrawer}>
-              {item.label}
-            </Link>
-          ),
-        };
+        key: item.key,
+        icon: item.icon,
+        label: (
+          <Link to={item.path!} onClick={closeDrawer}>
+            {item.label}
+          </Link>
+        ),
+      };
 
   return (
     <>
@@ -113,7 +123,7 @@ export default function MobileNav() {
         open={drawerOpen}
         onClose={closeDrawer}
         placement="bottom"
-        height="auto"
+        size="auto"
         title="Menu"
         styles={{ body: { padding: 0 } }}
       >

@@ -1,10 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, seedTechnologist, BASE } from "./helpers";
+import {
+  loginAsAdmin,
+  seedTechnologist,
+  seedAuditOnlyUser,
+  BASE,
+  menuName,
+} from "./helpers";
 
 // Every admin route gated by PermissionRoute in index.tsx. Shared by the denial
 // suite (technologist must be bounced to "/") and the positive-control suite
 // (admin must NOT be bounced) so the matrix stays in sync.
 const ADMIN_ROUTES = [
+  "/admin",
   "/replicas",
   "/users",
   "/roles",
@@ -35,24 +42,32 @@ test.describe("Role-Based Access", () => {
   });
 
   test("admin sees admin menu item", async ({ page }) => {
-    await expect(page.getByText("Admin").first()).toBeVisible({
+    await expect(
+      page.getByRole("menuitem", { name: menuName("Admin") }),
+    ).toBeVisible({
       timeout: 5000,
     });
   });
 
   test("admin can navigate to Users page", async ({ page }) => {
-    await page.getByText("Admin").first().click();
-    await page.getByText("Users").first().click();
+    await page.getByRole("menuitem", { name: menuName("Admin") }).click();
+    await page.getByRole("menuitem", { name: menuName("Users") }).click();
     await expect(page).toHaveURL(/\/users/, { timeout: 10000 });
   });
 
   test("account page loads", async ({ page }) => {
-    await page.getByText("Account").first().click();
+    await page.getByRole("menuitem", { name: menuName("Account") }).click();
     await expect(page).toHaveURL(/\/account/, { timeout: 10000 });
   });
 
   test("metrics page loads", async ({ page }) => {
-    await page.getByText("Metrics").first().click();
+    // "Metrics" names both the submenu and its single child — expand the
+    // submenu, then follow the child's link (mounted lazily on first open).
+    await page
+      .getByRole("menuitem", { name: menuName("Metrics") })
+      .first()
+      .click();
+    await page.getByRole("link", { name: "Metrics" }).click();
     await expect(page).toHaveURL(/\/metrics/, { timeout: 10000 });
   });
 });
@@ -73,6 +88,27 @@ test.describe("Non-admin deep-link denial (PermissionRoute)", () => {
   }) => {
     await seedTechnologist(page);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+  });
+});
+
+test.describe("Audit-only deep-link access (LOG_READ | AUDIT_READ gate)", () => {
+  // AUDIT_READ without LOG_READ must satisfy the /logs route (the imaging
+  // informatics / department manager shape), while still being bounced
+  // elsewhere. Also proves the gate is a union, not an AND.
+  test("audit-only user can reach /logs", async ({ page }) => {
+    await seedAuditOnlyUser(page);
+    await page.goto(BASE + "/logs", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/logs$/, { timeout: 10000 });
+  });
+
+  test("audit-only user is still denied /users and /routing", async ({
+    page,
+  }) => {
+    await seedAuditOnlyUser(page);
+    await page.goto(BASE + "/users", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+    await page.goto(BASE + "/routing", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
   });
 });

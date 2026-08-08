@@ -138,3 +138,45 @@
   color: var(--text-primary);
   line-height: 1.25;
 }
+
+.schedule-appointments {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+}
+
+.schedule-appointments-title {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: var(--space-2);
+}
+
+.schedule-appointment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schedule-appointment:last-child {
+  border-bottom: none;
+}
+
+.schedule-appointment-time {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 48px;
+}
+
+.schedule-appointment-patient {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}

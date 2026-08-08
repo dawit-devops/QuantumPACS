@@ -23,6 +23,9 @@ import {
   type Replica,
 } from "../api/replicas";
 import { PageState } from "../common/PageState";
+import PageHeader from "../common/PageHeader";
+import RequirePermission from "../auth/RequirePermission";
+import { useAuth } from "../auth/AuthContext";
 import { AddReplica } from "./EditReplica";
 
 const Content = Layout.Content;
@@ -55,6 +58,12 @@ export function EditDelay(props: any) {
 function Replicas() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Replicas");
+  const { hasPermission } = useAuth();
+
+  // REPLICA_READ gates the page; adding/updating needs REPLICA_WRITE and
+  // deleting needs REPLICA_DELETE (backend /api/replicas guards match).
+  const canWrite = hasPermission("REPLICA_WRITE");
+  const canDelete = hasPermission("REPLICA_DELETE");
 
   const [data, setData] = useState<Replica[]>([]);
   const [pagination, setPagination] = useState<any>({});
@@ -247,30 +256,41 @@ function Replicas() {
       title: "Action",
       key: "action",
       render: (_: any, record: any) =>
-        !record.master || (record.master && data.length === 1) ? (
-          <span>
-            {!record.master && (
-              <span>
-                <a onClick={() => setCurrReplica(record)}>Update delay</a>
-                <Divider type="vertical" />
-                <a onClick={() => setMaster(record)}>Set master</a>
-                <Divider type="vertical" />
-              </span>
-            )}
-            <Popconfirm
-              title="Sure to delete?"
-              onConfirm={() => handleDelete(record.id)}
-            >
-              <a>Delete</a>
-            </Popconfirm>
-          </span>
-        ) : null,
+        (canWrite || canDelete) &&
+        (!record.master || (record.master && data.length === 1)) ? (
+            <span>
+              {canWrite && !record.master && (
+                <span>
+                  <a onClick={() => setCurrReplica(record)}>Update delay</a>
+                  <Divider type="vertical" />
+                  <a onClick={() => setMaster(record)}>Set master</a>
+                  <Divider type="vertical" />
+                </span>
+              )}
+              {canDelete && (
+                <Popconfirm
+                  title="Sure to delete?"
+                  onConfirm={() => handleDelete(record.id)}
+                >
+                  <a>Delete</a>
+                </Popconfirm>
+              )}
+            </span>
+          ) : null,
     },
   ];
 
   return (
-    <Content style={{ padding: 50 }}>
-      <AddReplica style={{ marginBottom: 10 }} reload={fetch} />
+    <Content style={{ padding: 24 }}>
+      <PageHeader
+        title="Replicas"
+        description="Replica nodes and sync status for the archive cluster."
+        extra={
+          <RequirePermission permission="REPLICA_WRITE">
+            <AddReplica reload={fetch} />
+          </RequirePermission>
+        }
+      />
       <PageState
         error={error}
         onRetry={() => fetch()}

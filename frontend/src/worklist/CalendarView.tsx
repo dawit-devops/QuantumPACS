@@ -26,7 +26,9 @@ export const groupByDate = (
 
 interface CalendarViewProps {
   entries: WorklistEntry[];
-  onEdit: (entry: WorklistEntry) => void;
+  // Optional: read-only viewers (no WORKLIST_WRITE) get a non-interactive
+  // calendar; the parent omits the handler instead of opening an edit modal.
+  onEdit?: (entry: WorklistEntry) => void;
 }
 
 const CalendarView = ({ entries, onEdit }: CalendarViewProps) => (
@@ -41,11 +43,11 @@ const CalendarView = ({ entries, onEdit }: CalendarViewProps) => (
           <div
             key={entry.id}
             className={`calendar-entry ${entry.status}`}
-            onClick={() => onEdit(entry)}
+            onClick={() => onEdit?.(entry)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter") onEdit(entry);
+              if (e.key === "Enter") onEdit?.(entry);
             }}
           >
             <Tag
