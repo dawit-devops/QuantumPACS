@@ -33,9 +33,7 @@ export type Workspace =
   | "clinical"
   | "files"
   | "platform"
-  | "dashboard"
-  | "frontdesk"
-  | "portal";
+  | "dashboard";
 
 /**
  * Roles scoped to the admin/platform workspaces. These roles operate the
@@ -132,23 +130,6 @@ const LANDING_STEPS: LandingStep[] = [
   { route: "/exams", workspace: "acquisition", permissions: ["EXAM_READ"] },
   { route: "/qa/queue", workspace: "qa", permissions: ["QA_READ"] },
   { route: "/replicas", workspace: "admin", permissions: ["REPLICA_READ"] },
-  // Front Desk (R08): registration is the front-office home for the
-  // scheduler / receptionist / front_desk roles; the privacy queue and
-  // schedule board are reachable from there. QUEUE_READ unlocks the queue
-  // step for roles that hold it without REGISTRATION_READ.
-  {
-    route: "/frontdesk/registration",
-    workspace: "frontdesk",
-    permissions: ["REGISTRATION_READ"],
-  },
-  {
-    route: "/frontdesk/queue",
-    workspace: "frontdesk",
-    permissions: ["QUEUE_READ"],
-  },
-  // Patient portal (R19): the patient role lands on its own scope-gated
-  // records, never on the admin/clinical surfaces.
-  { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },
   // The clinical workspace (physician, referring_physician, ed_physician,
   // care_coordinator) lands on the reading worklist: reports are the shared
   // clinical read surface for all of them (REPORT_READ on Matrix A/B).
@@ -216,13 +197,7 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   // fallback that would otherwise put them on the reading worklist.
   nurse: "acquisition",
   care_coordinator: "clinical",
-  // Front-office roles (RIS P03/P04) work the Front Desk workspace: patient
-  // registration, visits/check-in, booking and the waiting queue. Patient
-  // portal (P12/H21) is the patient's own-data surface.
-  scheduler: "frontdesk",
-  receptionist: "frontdesk",
-  front_desk: "frontdesk",
-  patient: "portal",
+  patient: "files",
   super_admin: "platform",
   tenant_admin: "platform",
   admin: "platform",

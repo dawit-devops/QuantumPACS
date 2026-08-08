@@ -80,12 +80,6 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
-const FrontDeskRegistration = React.lazy(
-  () => import("./frontdesk/Registration"),
-);
-const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
-const WaitingQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
-const Portal = React.lazy(() => import("./portal/Portal"));
 const TechnologistWorklist = React.lazy(
   () => import("./technologist/TechnologistWorklist"),
 );
@@ -260,38 +254,6 @@ function ThemedApp() {
                         <ClinicalRoute permission="EXAM_READ">
                           <TechnologistWorklist />
                         </ClinicalRoute>
-                      }
-                    />
-                    <Route
-                      path="/frontdesk/registration"
-                      element={
-                        <PermissionRoute permission="REGISTRATION_READ">
-                          <FrontDeskRegistration />
-                        </PermissionRoute>
-                      }
-                    />
-                    <Route
-                      path="/frontdesk/visits"
-                      element={
-                        <PermissionRoute permission="REGISTRATION_READ">
-                          <FrontDeskVisits />
-                        </PermissionRoute>
-                      }
-                    />
-                    <Route
-                      path="/frontdesk/queue"
-                      element={
-                        <PermissionRoute permission="QUEUE_READ">
-                          <WaitingQueue />
-                        </PermissionRoute>
-                      }
-                    />
-                    <Route
-                      path="/portal"
-                      element={
-                        <PermissionRoute permission="PORTAL_READ">
-                          <Portal />
-                        </PermissionRoute>
                       }
                     />
                     <Route

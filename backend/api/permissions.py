@@ -212,15 +212,9 @@ MATRIX_A_SCHED = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
     'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
     'WORKLIST_READ',
-    # R08 front-desk grants: the scheduler registers patients, books
-    # appointments and reads the waiting queue (api/frontdesk.py guards).
-    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
 }
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
-    # R08 front-desk grants: registration (search/create patients), visits,
-    # order intake, consents and the privacy-projected waiting queue.
-    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
 }
 MATRIX_A_REF = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',

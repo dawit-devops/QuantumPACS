@@ -100,21 +100,11 @@ class TestMatrixA:
                 'PRIOR_AUTH_WRITE', 'PATIENT_WRITE'} <= sch
         assert 'REPORT_READ' not in sch
 
-    def test_scheduler_has_front_desk_grants(self):
-        # The scheduler registers patients and reads the waiting queue
-        # (R08 front desk) — mirroring the R08 backend guards.
-        sch = perms('scheduler')
-        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= sch
-
-    def test_receptionist_registers_and_queues(self):
+    def test_receptionist_registers_only(self):
         rec = perms('receptionist')
         assert {'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
                 'SCHEDULE_READ', 'WORKLIST_READ'} <= rec
-        # R08 grants: registration + visits + waiting queue.
-        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= rec
         assert 'REPORT_READ' not in rec
-        # Bookings stay with the scheduler/front_desk (SCHEDULE_WRITE); the
-        # receptionist books visits but not modality slots.
         assert 'SCHEDULE_WRITE' not in rec
 
     def test_ed_physician_full_scope(self):

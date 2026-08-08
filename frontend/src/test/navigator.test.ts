@@ -67,26 +67,7 @@ describe("workspaceFor", () => {
       permissions: ["REPORT_READ"],
       expected: "clinical",
     },
-    {
-      role: "patient",
-      permissions: ["PORTAL_READ"],
-      expected: "portal",
-    },
-    {
-      role: "scheduler",
-      permissions: ["REGISTRATION_READ"],
-      expected: "frontdesk",
-    },
-    {
-      role: "receptionist",
-      permissions: ["REGISTRATION_READ"],
-      expected: "frontdesk",
-    },
-    {
-      role: "front_desk",
-      permissions: ["REGISTRATION_READ"],
-      expected: "frontdesk",
-    },
+    { role: "patient", permissions: ["FILE_READ"], expected: "files" },
     {
       role: "super_admin",
       permissions: ["USER_READ"],
@@ -106,8 +87,11 @@ describe("workspaceFor", () => {
   );
 
   it.each([
+    "receptionist",
     "cashier",
     "biller",
+    "scheduler",
+    "front_desk",
     "pharmacist",
     "lab_technician",
     "him_specialist",
@@ -213,20 +197,8 @@ describe("landingRouteFor", () => {
       ),
     ).toBe("/admin");
     expect(
-      landingRouteFor(
-        user({ role: "patient", permissions: ["PORTAL_READ"] }),
-      ),
-    ).toBe("/portal");
-    expect(
-      landingRouteFor(
-        user({ role: "scheduler", permissions: ["REGISTRATION_READ"] }),
-      ),
-    ).toBe("/frontdesk/registration");
-    expect(
-      landingRouteFor(
-        user({ role: "receptionist", permissions: ["REGISTRATION_READ"] }),
-      ),
-    ).toBe("/frontdesk/registration");
+      landingRouteFor(user({ role: "patient", permissions: ["STUDY_READ"] })),
+    ).toBe("/");
   });
 
   it("lets the admin flag bypass permission gates", () => {
@@ -243,35 +215,6 @@ describe("landingRouteFor", () => {
         user({ role: "radiologist", permissions: ["STUDY_READ"] }),
       ),
     ).toBe("/");
-  });
-
-  it("lands patients on the portal, never the files workspace", () => {
-    // The patient role's own-data surface is /portal (PORTAL_READ); even
-    // with FILE_READ it resolves to the portal when permitted.
-    expect(
-      landingRouteFor(user({ role: "patient", permissions: ["PORTAL_READ"] })),
-    ).toBe("/portal");
-    // Without PORTAL_READ the patient degrades to the files fallback.
-    expect(
-      landingRouteFor(user({ role: "patient", permissions: ["FILE_READ"] })),
-    ).toBe("/");
-  });
-
-  it("lands front-office roles on the Front Desk registration surface", () => {
-    // scheduler / receptionist / front_desk with R08 grants land on
-    // registration; a QUEUE_READ-only front-office user lands on the queue.
-    for (const role of ["scheduler", "receptionist", "front_desk"]) {
-      expect(
-        landingRouteFor(
-          user({ role, permissions: ["REGISTRATION_READ"] }),
-        ),
-      ).toBe("/frontdesk/registration");
-    }
-    expect(
-      landingRouteFor(
-        user({ role: "receptionist", permissions: ["QUEUE_READ"] }),
-      ),
-    ).toBe("/frontdesk/queue");
   });
 
   it("falls back to the first permitted route in priority order", () => {
@@ -434,11 +377,7 @@ describe("landingRouteFor", () => {
         "dashboard",
         "/admin",
       ],
-      [
-        user({ role: "patient", permissions: ["PORTAL_READ"] }),
-        "portal",
-        "/portal",
-      ],
+      [user({ role: "patient", permissions: ["FILE_READ"] }), "files", "/"],
       [user({ role: "patient", permissions: ["STUDY_READ"] }), "files", "/"],
       [user({ role: "radiologist", permissions: [] }), "files", "/account"],
     ];

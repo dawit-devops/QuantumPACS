@@ -39,31 +39,9 @@ function TechnologistWorklist() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(
-    () => sessionStorage.getItem("tech-wl-status") || undefined,
-  );
-  const [modalityFilter, setModalityFilter] = useState<string | undefined>(
-    () => sessionStorage.getItem("tech-wl-modality") || undefined,
-  );
-  const [search, setSearch] = useState(
-    () => sessionStorage.getItem("tech-wl-search") || "",
-  );
-
-  // Persist filter state across the worklist -> exam console -> back loop
-  // (R06 UI/UX: back navigation preserves scroll position and filter state).
-  useEffect(() => {
-    if (statusFilter) sessionStorage.setItem("tech-wl-status", statusFilter);
-    else sessionStorage.removeItem("tech-wl-status");
-  }, [statusFilter]);
-  useEffect(() => {
-    if (modalityFilter)
-      sessionStorage.setItem("tech-wl-modality", modalityFilter);
-    else sessionStorage.removeItem("tech-wl-modality");
-  }, [modalityFilter]);
-  useEffect(() => {
-    if (search) sessionStorage.setItem("tech-wl-search", search);
-    else sessionStorage.removeItem("tech-wl-search");
-  }, [search]);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [modalityFilter, setModalityFilter] = useState<string | undefined>();
+  const [search, setSearch] = useState("");
 
   const fetchExams = useCallback(() => {
     setLoading(true);
@@ -91,31 +69,6 @@ function TechnologistWorklist() {
 
   // Tenant switch → refetch immediately (interval may be up to 30s away).
   useTenantRefetch(fetchExams);
-
-  // Per-status counts across the whole assignment (not just the filtered
-  // page): one lightweight request with a big per_page, summed client-side.
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  useEffect(() => {
-    request("exams", { query: { per_page: "500" } })
-      .then((res: any) => {
-        const rows = Array.isArray(res.data) ? res.data : [];
-        const counts: Record<string, number> = {};
-        for (const e of rows) {
-          counts[e.status || "ready"] = (counts[e.status || "ready"] || 0) + 1;
-        }
-        setStatusCounts(counts);
-      })
-      .catch(() => {});
-  }, []);
-
-  const STATUS_TABS = [
-    { key: "", label: "All" },
-    { key: "ready", label: "Ready" },
-    { key: "in_progress", label: "In Progress" },
-    { key: "completed", label: "Completed" },
-    { key: "cancelled", label: "Cancelled" },
-  ];
-  const totalCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
   const modalities = [...new Set(data.map((e) => e.modality).filter(Boolean))];
 
@@ -199,22 +152,19 @@ function TechnologistWorklist() {
       </div>
 
       <div className="tech-wl-filters">
-        <div className="fd-chips" style={{ marginBottom: 0 }}>
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.key || "all"}
-              type="button"
-              className={`fd-chip ${statusFilter === tab.key ? "is-active" : ""}`}
-              onClick={() => setStatusFilter(tab.key || undefined)}
-            >
-              {tab.label} (
-              {tab.key === ""
-                ? totalCount
-                : statusCounts[tab.key] || 0}
-              )
-            </button>
-          ))}
-        </div>
+        <Select
+          allowClear
+          placeholder="Status"
+          style={{ width: 150 }}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={["ready", "in_progress", "completed", "cancelled"].map(
+            (s) => ({
+              value: s,
+              label: s,
+            }),
+          )}
+        />
         <Select
           allowClear
           placeholder="Modality"
@@ -245,15 +195,6 @@ function TechnologistWorklist() {
           onSearch={() => fetchExams()}
         />
       </div>
-
-      {statusFilter === "completed" && data.length > 0 && (
-        <Alert
-          type="success"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
-        />
-      )}
 
       {error && (
         <Alert

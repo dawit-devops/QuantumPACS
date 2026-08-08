@@ -1,7 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  App,
   Layout,
   Button,
   Tag,
@@ -10,24 +9,14 @@ import {
   Spin,
   Empty,
   Alert,
-  Popconfirm,
 } from "antd";
 import {
   LeftOutlined,
   RightOutlined,
   CalendarOutlined,
-  PlusOutlined,
-  DeleteOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
-import { useAuth } from "../auth/AuthContext";
-import {
-  listAppointments,
-  cancelAppointment,
-  type Appointment,
-} from "../api/frontdesk";
-import AppointmentBooking from "../frontdesk/AppointmentBooking";
 import dayjs from "dayjs";
 import "./ScheduleBoard.css";
 
@@ -80,17 +69,12 @@ function slotIndexFor(time: string | null | undefined): number | null {
 
 function ScheduleBoard() {
   useDocumentTitle("QuantumPACS - Schedule Board");
-  const { message } = App.useApp();
-  const { hasPermission } = useAuth();
-  const canBook = hasPermission("SCHEDULE_WRITE");
 
   const [day, setDay] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
-  const [bookingOpen, setBookingOpen] = useState(false);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   const fetch = useCallback(() => {
     setLoading(true);
@@ -108,18 +92,9 @@ function ScheduleBoard() {
       });
   }, [day]);
 
-  // Appointments feed the same day: list them so the board shows booked
-  // capacity and the drawer can cancel them (SCHEDULE_WRITE).
-  const fetchAppointments = useCallback(() => {
-    listAppointments({ date: day })
-      .then(setAppointments)
-      .catch(() => {});
-  }, [day]);
-
   useEffect(() => {
     fetch();
-    fetchAppointments();
-  }, [fetch, fetchAppointments]);
+  }, [fetch]);
 
   const modalities = useMemo(() => {
     const fromData = new Set(
@@ -173,18 +148,6 @@ function ScheduleBoard() {
     setSelectedEntry(null);
   };
 
-  const doCancelAppointment = async (id: string) => {
-    try {
-      await cancelAppointment(id);
-      message.success("Appointment cancelled");
-      fetch();
-      fetchAppointments();
-      setSelectedEntry(null);
-    } catch (e: any) {
-      message.error(e.message || "Cancel failed");
-    }
-  };
-
   const statusLabel = (s: string) => (s ? s : "scheduled");
 
   return (
@@ -194,20 +157,8 @@ function ScheduleBoard() {
           <CalendarOutlined />
           <h2>Schedule Board</h2>
           <Tag>{day}</Tag>
-          {appointments.length > 0 && (
-            <Tag color="cyan">{appointments.length} booked</Tag>
-          )}
         </div>
         <div className="schedule-header-nav">
-          {canBook && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setBookingOpen(true)}
-            >
-              Book Appointment
-            </Button>
-          )}
           <Button
             icon={<LeftOutlined />}
             onClick={() => changeDay(-1)}
@@ -241,41 +192,6 @@ function ScheduleBoard() {
           <b style={{ color: "var(--color-error)" }}>{stats.cancelled}</b>
         </span>
       </div>
-
-      {appointments.length > 0 && (
-        <div className="schedule-appointments">
-          <div className="schedule-appointments-title">
-            Booked appointments — {day}
-          </div>
-          {appointments.map((appt) => (
-            <div key={appt.id} className="schedule-appointment">
-              <span className="schedule-appointment-time">
-                {appt.scheduled_time || "—"}
-              </span>
-              <span className="schedule-appointment-patient">
-                {appt.patient_id}
-              </span>
-              <Tag color="cyan" style={{ margin: 0 }}>
-                {appt.modality || "—"}
-              </Tag>
-              {canBook && appt.status !== "cancelled" && (
-                <Popconfirm
-                  title="Cancel this appointment?"
-                  onConfirm={() => doCancelAppointment(appt.id)}
-                >
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={`Cancel appointment for ${appt.patient_id}`}
-                  />
-                </Popconfirm>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {error && (
         <Alert
@@ -435,17 +351,6 @@ function ScheduleBoard() {
           </Descriptions>
         )}
       </Drawer>
-
-      <AppointmentBooking
-        open={bookingOpen}
-        onClose={() => setBookingOpen(false)}
-        onBooked={() => {
-          fetch();
-          fetchAppointments();
-        }}
-        patientId=""
-        patientName="New patient"
-      />
     </Content>
   );
 }

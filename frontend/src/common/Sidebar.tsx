@@ -8,8 +8,6 @@ import {
   LockOutlined,
   DatabaseOutlined,
   TeamOutlined,
-  IdcardOutlined,
-  SolutionOutlined,
   AlignLeftOutlined,
   SafetyCertificateOutlined,
   BankOutlined,
@@ -69,15 +67,6 @@ function getKey(loc: string) {
     if (parts[1] === "review") return "qa-queue";
     return qaMap[`qa-${parts[1]}`] || "qa-queue";
   }
-  if (parts[0] === "frontdesk") {
-    const fdMap: Record<string, string> = {
-      registration: "fd-registration",
-      visits: "fd-visits",
-      queue: "fd-queue",
-    };
-    return fdMap[parts[1]] || "fd-registration";
-  }
-  if (parts[0] === "portal") return "portal";
   return parts[0];
 }
 
@@ -196,34 +185,6 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Corrective Actions",
         icon: <CheckCircleOutlined />,
         permissions: ["QA_READ"],
-      },
-    ],
-  },
-  {
-    key: "frontdesk",
-    title: "Front Desk",
-    icon: <IdcardOutlined />,
-    items: [
-      {
-        key: "fd-registration",
-        path: "/frontdesk/registration",
-        label: "Registration",
-        icon: <IdcardOutlined />,
-        permissions: ["REGISTRATION_READ"],
-      },
-      {
-        key: "fd-visits",
-        path: "/frontdesk/visits",
-        label: "Visits & Check-In",
-        icon: <MedicineBoxOutlined />,
-        permissions: ["REGISTRATION_READ"],
-      },
-      {
-        key: "fd-queue",
-        path: "/frontdesk/queue",
-        label: "Waiting Queue",
-        icon: <TeamOutlined />,
-        permissions: ["QUEUE_READ"],
       },
     ],
   },
@@ -434,9 +395,6 @@ const SECTION_OF_KEY: Record<string, string> = {
   "qa-protocols": "qa",
   "qa-incidents": "qa",
   "qa-actions": "qa",
-  "fd-registration": "frontdesk",
-  "fd-visits": "frontdesk",
-  "fd-queue": "frontdesk",
   metrics: "analytics",
 };
 
@@ -611,27 +569,6 @@ function Sidebar() {
             <Link to="/">
               <FileSearchOutlined />
               <span className="nav-text">Files</span>
-            </Link>
-          </Menu.Item>
-        )}
-        {hasItemPermission(
-          {
-            key: "portal",
-            path: "/portal",
-            label: "My Records",
-            icon: <SolutionOutlined />,
-            permissions: ["PORTAL_READ"],
-          },
-          hasPermission,
-          isAdminScoped,
-        ) && (
-          <Menu.Item
-            key="portal"
-            aria-current={selectedKey === "portal" ? "page" : undefined}
-          >
-            <Link to="/portal">
-              <SolutionOutlined />
-              <span className="nav-text">My Records</span>
             </Link>
           </Menu.Item>
         )}

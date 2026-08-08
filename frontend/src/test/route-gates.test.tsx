@@ -125,40 +125,6 @@ function WorkspaceRouteTable() {
           </PermissionRoute>
         }
       />
-      {/* Mirrors the index.tsx front-desk routes: plain PermissionRoute gates. */}
-      <Route
-        path="/frontdesk/registration"
-        element={
-          <PermissionRoute permission="REGISTRATION_READ">
-            <div data-testid="fd-registration-page" />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/frontdesk/visits"
-        element={
-          <PermissionRoute permission="REGISTRATION_READ">
-            <div data-testid="fd-visits-page" />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/frontdesk/queue"
-        element={
-          <PermissionRoute permission="QUEUE_READ">
-            <div data-testid="fd-queue-page" />
-          </PermissionRoute>
-        }
-      />
-      {/* Mirrors the index.tsx /portal route: patient own-data surface. */}
-      <Route
-        path="/portal"
-        element={
-          <PermissionRoute permission="PORTAL_READ">
-            <div data-testid="portal-page" />
-          </PermissionRoute>
-        }
-      />
       {/* Mirrors the AdminConsoleRoute wrapper in src/index.tsx: the DICOMweb
           console is closed to clinical role slugs even when the legacy
           DICOMWEB_READ permission passes. */}
@@ -263,74 +229,6 @@ describe("PACS workspace route gates", () => {
     expect(screen.getByTestId("account-page")).toBeInTheDocument();
     expect(screen.queryByTestId("patient-page")).toBeNull();
     third.unmount();
-  });
-
-  it("lets a patient-role user open the portal", () => {
-    seedUser({
-      role: "patient",
-      admin: false,
-      permissions: ["PORTAL_READ"],
-    });
-
-    const result = renderAt("/portal");
-    expect(screen.getByTestId("portal-page")).toBeInTheDocument();
-    result.unmount();
-  });
-
-  it("blocks non-portal users from the portal", () => {
-    seedUser({
-      role: "radiologist",
-      admin: false,
-      permissions: ["REPORT_READ"],
-    });
-    landingRouteForMock.mockImplementation(() => "/account");
-
-    const result = renderAt("/portal");
-    expect(screen.getByTestId("account-page")).toBeInTheDocument();
-    expect(screen.queryByTestId("portal-page")).toBeNull();
-    result.unmount();
-  });
-
-  it("lets a receptionist open the front-desk surfaces with R08 grants", () => {
-    seedUser({
-      role: "receptionist",
-      admin: false,
-      permissions: ["REGISTRATION_READ", "REGISTRATION_WRITE", "QUEUE_READ"],
-    });
-
-    const first = renderAt("/frontdesk/registration");
-    expect(screen.getByTestId("fd-registration-page")).toBeInTheDocument();
-    first.unmount();
-
-    const second = renderAt("/frontdesk/visits");
-    expect(screen.getByTestId("fd-visits-page")).toBeInTheDocument();
-    second.unmount();
-
-    const third = renderAt("/frontdesk/queue");
-    expect(screen.getByTestId("fd-queue-page")).toBeInTheDocument();
-    third.unmount();
-  });
-
-  it("blocks front-desk surfaces without the grants", () => {
-    seedUser({
-      role: "receptionist",
-      admin: false,
-      permissions: ["PATIENT_READ"],
-    });
-    landingRouteForMock.mockImplementation(() => "/account");
-
-    for (const path of [
-      "/frontdesk/registration",
-      "/frontdesk/visits",
-      "/frontdesk/queue",
-    ]) {
-      const result = renderAt(path);
-      expect(screen.getByTestId("account-page")).toBeInTheDocument();
-      expect(screen.queryByTestId("fd-registration-page")).toBeNull();
-      expect(screen.queryByTestId("fd-visits-page")).toBeNull();
-      expect(screen.queryByTestId("fd-queue-page")).toBeNull();
-      result.unmount();
-    }
   });
 
   it("blocks a billing-only biller from files, viewer and patients", () => {
