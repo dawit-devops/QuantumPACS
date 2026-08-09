@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { isAdmin, parseParams, encodeQuery } from "../helpers";
+import { navigate } from "../navigator";
+
+vi.mock("../navigator", () => ({
+  navigate: vi.fn(),
+}));
 
 describe("isAdmin", () => {
   beforeEach(() => {
@@ -58,6 +63,7 @@ describe("encodeQuery", () => {
 describe("token helpers", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(navigate).mockClear();
   });
 
   it("getAccessToken returns null when no token stored", async () => {
@@ -159,6 +165,73 @@ describe("token helpers", () => {
     const result = await tryRefreshToken();
 
     expect(result).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("tryRefreshToken records a 429 and wasRefreshRateLimited() reports it", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { tryRefreshToken, wasRefreshRateLimited } =
+      await import("../helpers");
+    const result = await tryRefreshToken();
+
+    expect(result).toBe(false);
+    expect(wasRefreshRateLimited()).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("wasRefreshRateLimited() clears after a successful refresh", async () => {
+    const { tryRefreshToken, wasRefreshRateLimited } =
+      await import("../helpers");
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ access_token: "ok" }),
+      });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await tryRefreshToken();
+    expect(wasRefreshRateLimited()).toBe(true);
+    await tryRefreshToken();
+    expect(wasRefreshRateLimited()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("request does not navigate to /login when refresh is rate-limited (429)", async () => {
+    const { request } = await import("../helpers");
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({}),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 429 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(request("test-endpoint")).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(navigate).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("request navigates to /login when refresh fails with a dead session (401)", async () => {
+    const { request } = await import("../helpers");
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({}),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(request("test-endpoint")).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(navigate).toHaveBeenCalledWith("/login");
     vi.unstubAllGlobals();
   });
 

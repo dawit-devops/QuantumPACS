@@ -10,6 +10,7 @@ export {
   startRefreshTimer,
   stopRefreshTimer,
   tryRefreshToken,
+  wasRefreshRateLimited,
 } from "./api/session";
 
 export const open = async (url: string): Promise<void> => {

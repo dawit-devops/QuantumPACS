@@ -6,7 +6,11 @@ import {
   ApiError,
   RequestOptions,
 } from "./client";
-import { getAccessToken, tryRefreshToken } from "./session";
+import {
+  getAccessToken,
+  tryRefreshToken,
+  wasRefreshRateLimited,
+} from "./session";
 import { navigate } from "../navigator";
 
 export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
@@ -79,6 +83,10 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
             return;
           } catch {}
         }
+        // A rate-limited refresh (429) is a transient throttle on the
+        // unauthenticated grant endpoint, not a dead session — stay put and
+        // surface the error instead of bouncing to /login.
+        if (wasRefreshRateLimited()) return;
         if (options.unauthorized) {
           options.unauthorized();
         } else {

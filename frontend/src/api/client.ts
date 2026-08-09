@@ -1,6 +1,11 @@
 import { API_URL } from "../config";
 import { navigate } from "../navigator";
-import { getAccessToken, setTokens, tryRefreshToken } from "./session";
+import {
+  getAccessToken,
+  setTokens,
+  tryRefreshToken,
+  wasRefreshRateLimited,
+} from "./session";
 
 export interface RequestOptions {
   method?: string;
@@ -203,6 +208,10 @@ export const request = async <T = any>(
           if (!retry401) throw retryError;
         }
       }
+      // A rate-limited refresh (429) is a transient throttle on the
+      // unauthenticated grant endpoint, not a dead session — stay put and
+      // let the caller surface the error; the next request may refresh.
+      if (wasRefreshRateLimited()) throw error;
       if (options.unauthorized) {
         options.unauthorized();
       } else {

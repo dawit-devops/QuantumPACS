@@ -234,6 +234,7 @@ function LoginForm(props: any) {
                 size="large"
                 autoComplete="username"
                 list="demo-usernames"
+                maxLength={128}
               />
             </Form.Item>
             {/* Dev/demo helper: a datalist of `test.`-prefixed role usernames
@@ -266,6 +267,7 @@ function LoginForm(props: any) {
                 placeholder="Password"
                 size="large"
                 autoComplete="current-password"
+                maxLength={256}
               />
             </Form.Item>
             <Form.Item>
