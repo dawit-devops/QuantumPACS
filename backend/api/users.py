@@ -356,16 +356,31 @@ class RefreshToken(HTTPEndpoint):
 
         await block_token(refresh_token)
 
+        # Re-read the full auth state from the DB: refresh must mint a token
+        # from current facts (status, admin, role, permissions, token_version),
+        # never from the (possibly stale) refresh-token claims. Fail closed
+        # when the row is missing or the account is not active.
         try:
             async with get_conn() as conn:
-                token_version = await Users(conn).get_token_version(data['id'])
+                user_row = await Users(conn).get_user_row(data['id'])
+                if user_row and user_row.get('status') == 'active':
+                    role_slug, permissions = await Users(conn).get_user_role(data['id'])
         except RuntimeError:
-            token_version = 0
+            user_row = None
+            role_slug, permissions = None, []
 
-        user = {'id': data['id'], 'admin': data.get('admin', False)}
-        if data.get('tenant'):
-            user['tenant'] = data['tenant']
-        access, refresh = create_token_pair(user, token_version=token_version)
+        if not user_row or user_row.get('status') != 'active':
+            return api_error('ACCOUNT_UNAVAILABLE', 'Account unavailable', status=401)
+        if (user_row.get('token_version') or 0) != data.get('token_version', 0):
+            return api_error('TOKEN_REVOKED', 'Session invalidated', status=401)
+
+        user = {'id': data['id'], 'admin': bool(user_row.get('admin', False))}
+        if user_row.get('tenant'):
+            user['tenant'] = user_row['tenant']
+        access, refresh = create_token_pair(
+            user, role=role_slug, permissions=permissions,
+            token_version=user_row.get('token_version') or 0,
+        )
         resp = ok({
             'access_token': access,
             'refresh_token': refresh,

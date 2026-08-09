@@ -11,6 +11,7 @@ from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.routing_rule import RoutingRule
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 class RoutingHandler(HTTPEndpoint):
@@ -59,7 +60,7 @@ class RoutingHandler(HTTPEndpoint):
                 resource_type='routing_rule',
                 resource_id=result['id'],
                 details={'name': body.name, 'destination': body.destination},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': result})
@@ -101,7 +102,7 @@ class RoutingRuleHandler(HTTPEndpoint):
                 resource_type='routing_rule',
                 resource_id=rule_id,
                 details={'name': body.name},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'id': rule_id}})
@@ -121,7 +122,7 @@ class RoutingRuleHandler(HTTPEndpoint):
                 resource_type='routing_rule',
                 resource_id=rule_id,
                 details={'name': existing['name']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return no_content()

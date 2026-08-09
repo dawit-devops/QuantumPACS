@@ -72,6 +72,10 @@ class Permission(str, Enum):
     # R19 Hospital Staff
     PORTAL_READ = 'PORTAL_READ'
     FOLLOW_UP_WRITE = 'FOLLOW_UP_WRITE'
+    # R2-03 Cross-tenant clinical reads (teleradiology / telemedicine) —
+    # permission gate for user_tenant_grants rows: a grant only takes effect
+    # when the user's role also carries this code.
+    CROSS_TENANT_READ = 'CROSS_TENANT_READ'
 
     # ---- Canonical codes (docs/reaserch/RBAC_matrix_spec.md §3) ----
     # Platform / Identity
@@ -201,6 +205,9 @@ MATRIX_A_RAD_TEL = {  # RADIOLOGIST == TELERADIOLOGIST (identical grants, §5)
     'REPORT_READ', 'REPORT_WRITE', 'REPORT_SIGN', 'CRITICAL_RESULTS_WRITE',
     'REPORT_TEMPLATE_ADMIN', 'VIEWER_READ', 'STUDY_READ', 'STUDY_EXPORT',
     'CHART_READ', 'RESULTS_READ', 'MED_ORDER_READ',
+    # R2-03: teleradiology reads workload from other tenants only when the
+    # user holds an explicit user_tenant_grants row for that tenant.
+    'CROSS_TENANT_READ',
 }
 MATRIX_A_TECH = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ',
@@ -212,9 +219,20 @@ MATRIX_A_SCHED = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
     'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
     'WORKLIST_READ',
+    # R08 front-desk grants: registration (search/create patients), visits,
+    # order intake and the privacy-projected waiting queue (api/frontdesk.py).
+    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
 }
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
+    # R08 front-desk grants: registration (search/create patients), visits,
+    # order intake, consents and the privacy-projected waiting queue.
+    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+    # SCHEDULE_WRITE: US-R08-04 has the receptionist book appointments with
+    # capacity conflict detection (api/frontdesk.py AppointmentsHandler).
+    # The Matrix A row historically omitted it; the R08 front-office booking
+    # flow requires it, so the grant is added here to match.
+    'SCHEDULE_WRITE',
 }
 MATRIX_A_REF = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
@@ -340,8 +358,10 @@ MATRIX_C_PATIENT = {
 # ---------------------------------------------------------------------------
 
 LEGACY_TECHNOLOGIST = {
-    'FILE_DELETE', 'PATIENT_WRITE', 'STUDY_WRITE', 'EXAM_READ', 'EXAM_WRITE',
-    'DICOMWEB_READ',
+    'EXAM_READ', 'EXAM_WRITE', 'DICOMWEB_READ',
+    # PATIENT_WRITE / STUDY_WRITE / FILE_DELETE removed (R2-14): the Matrix A
+    # technologist row carries no clinical writes, and the modality worklist
+    # surface needs only registrar-level read + the exam/DICOM codes above.
 }
 LEGACY_RADIOLOGIST = {
     'FILE_READ', 'EXAM_READ', 'PEER_REVIEW_READ', 'PEER_REVIEW_WRITE', 'DICOMWEB_READ',
@@ -350,13 +370,17 @@ LEGACY_PHYSICIAN = {
     'FILE_READ', 'DICOMWEB_READ',
 }
 LEGACY_TENANT_ADMIN = {
-    'FILE_READ', 'FILE_WRITE', 'FILE_DELETE', 'PATIENT_WRITE',
-    'STUDY_READ', 'STUDY_WRITE', 'REPLICA_READ', 'REPLICA_WRITE',
+    'FILE_READ', 'FILE_WRITE', 'REPLICA_READ', 'REPLICA_WRITE',
     'LOG_READ', 'METRICS_READ',
+    # PATIENT_WRITE / STUDY_WRITE / FILE_DELETE removed (R2-14): Matrix C
+    # explicitly grants "no clinical writes" — the legacy union re-granted
+    # three of them, silently exceeding the canonical role.
 }
-LEGACY_CASHIER = {
-    'PATIENT_WRITE', 'STUDY_READ', 'FILE_READ',
-}
+# Aligned with the canonical biller (R2-14): the legacy union granted
+# PATIENT_WRITE / STUDY_READ / FILE_READ on top of MATRIX_A_BILL, giving a
+# billing role more power than the Matrix A billing row. An empty set makes
+# CASHIER == BILLER exactly.
+LEGACY_CASHIER = set()
 LEGACY_FRONT_DESK = {
     'FILE_READ', 'STUDY_READ', 'SCHEDULE_WRITE',
     'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',

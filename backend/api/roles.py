@@ -11,6 +11,7 @@ from db.conn import get_conn
 from db.roles import Roles
 from db.users import Users
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 class RolesHandler(HTTPEndpoint):
@@ -40,7 +41,7 @@ class RolesHandler(HTTPEndpoint):
                 resource_type='role',
                 resource_id=role_id,
                 details={'name': body.name, 'slug': body.slug, 'permissions': body.permissions},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'id': role_id})
@@ -86,7 +87,7 @@ class RoleHandler(HTTPEndpoint):
                 resource_type='role',
                 resource_id=role_id,
                 details=body.model_dump(exclude_none=True),
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -110,7 +111,7 @@ class RoleHandler(HTTPEndpoint):
                 resource_type='role',
                 resource_id=role_id,
                 details={'name': role.get('name'), 'slug': role.get('slug')},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})

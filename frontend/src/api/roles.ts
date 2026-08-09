@@ -164,6 +164,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   REPORT_BUILD: "Build reports",
   PORTAL_READ: "Patient portal",
   FOLLOW_UP_WRITE: "Follow-up tasks",
+  CROSS_TENANT_READ: "Read other tenants (telemedicine/teleradiology)",
 };
 
 export function permissionLabel(code: string): string {

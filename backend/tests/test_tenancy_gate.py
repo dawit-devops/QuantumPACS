@@ -123,6 +123,124 @@ class TestTenantMiddlewareGating:
             resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'unknown'})
             assert resp.status_code == 404
 
+    # ---- R2-03 cross-tenant clinical grants (teleradiology) ----
+
+    def _stub_grant(self, mock_auth_conn, grant_exists=True):
+        """Patch api.auth.get_conn so User.has_grant resolves the mock; the
+        auth module holds its own get_conn reference (grant table lives in
+        the main DB, read before the middleware scopes anything)."""
+        auth_ctx = AsyncMock()
+        auth_conn = AsyncMock()
+        auth_conn.fetchval.return_value = 1 if grant_exists else None
+        auth_ctx.__aenter__.return_value = auth_conn
+        mock_auth_conn.return_value = auth_ctx
+
+    def test_grant_holder_can_override_to_granted_tenant(self):
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic', 'db_name': 'other_clinic'}
+        mock_pool = AsyncMock()
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+
+        with (
+            patch('api.auth.get_conn') as mock_auth_conn,
+            patch('api.tenant_middleware.get_conn') as mock_mw_conn,
+            patch('api.tenant_middleware.TenantConnectionPool.get',
+                  new=AsyncMock(return_value=mock_pool)),
+        ):
+            self._stub_grant(mock_auth_conn, grant_exists=True)
+            mw_ctx = AsyncMock()
+            conn = AsyncMock()
+            conn.fetchrow.return_value = mock_info
+            mw_ctx.__aenter__.return_value = conn
+            mock_mw_conn.return_value = mw_ctx
+
+            resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'other-clinic'})
+            assert resp.status_code == 200
+            assert resp.json()['slug'] == 'other-clinic'
+
+    def test_grant_row_without_permission_is_denied(self):
+        # Defense in depth: the CROSS_TENANT_READ permission gate runs before
+        # any DB lookup, so a stray grant row must stay inert.
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['STUDY_READ']})
+        client = TestClient(_make_app(user))
+        with patch.object(User, 'has_grant') as mock_has_grant:
+            resp = client.get('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+            assert resp.status_code == 403
+            mock_has_grant.assert_not_called()
+
+    def test_permission_without_grant_row_is_denied(self):
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+
+        with patch('api.auth.get_conn') as mock_auth_conn:
+            self._stub_grant(mock_auth_conn, grant_exists=False)
+            resp = client.get('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+            assert resp.status_code == 403
+
+    def test_cross_tenant_access_is_audited(self):
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic', 'db_name': 'other_clinic'}
+        mock_pool = AsyncMock()
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+
+        with (
+            patch('api.auth.get_conn') as mock_auth_conn,
+            patch('api.tenant_middleware.get_conn') as mock_mw_conn,
+            patch('api.tenant_middleware.TenantConnectionPool.get',
+                  new=AsyncMock(return_value=mock_pool)),
+        ):
+            self._stub_grant(mock_auth_conn, grant_exists=True)
+            mw_ctx = AsyncMock()
+            conn = AsyncMock()
+            conn.fetchrow.return_value = mock_info
+            mw_ctx.__aenter__.return_value = conn
+            mock_mw_conn.return_value = mw_ctx
+
+            resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'other-clinic'})
+            assert resp.status_code == 200
+
+            audit_calls = [
+                c for c in conn.execute.call_args_list
+                if 'INSERT INTO logs' in c.args[0]
+            ]
+            assert len(audit_calls) == 1
+            assert 'tenant.cross_tenant_access' in audit_calls[0].args[1]
+            assert audit_calls[0].args[2] == 'other-clinic'
+            assert '"actor": "7"' in audit_calls[0].args[1]
+
+    def test_home_tenant_override_is_not_audited(self):
+        # Same-tenant header (fast path, no grant) must not produce a
+        # cross-tenant audit row.
+        mock_info = {'slug': 'my-clinic', 'name': 'My Clinic', 'db_name': 'my_clinic'}
+        mock_pool = AsyncMock()
+        user = User({'id': 2, 'admin': False, 'tenant': 'my-clinic'})
+        client = TestClient(_make_app(user))
+
+        with (
+            patch('api.auth.get_conn') as mock_auth_conn,
+            patch('api.tenant_middleware.get_conn') as mock_mw_conn,
+            patch('api.tenant_middleware.TenantConnectionPool.get',
+                  new=AsyncMock(return_value=mock_pool)),
+        ):
+            self._stub_grant(mock_auth_conn, grant_exists=False)
+            mw_ctx = AsyncMock()
+            conn = AsyncMock()
+            conn.fetchrow.return_value = mock_info
+            mw_ctx.__aenter__.return_value = conn
+            mock_mw_conn.return_value = mw_ctx
+
+            resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'my-clinic'})
+            assert resp.status_code == 200
+            audit_calls = [
+                c for c in conn.execute.call_args_list
+                if 'INSERT INTO logs' in c.args[0]
+            ]
+            assert audit_calls == []
+
 
 class TestTenantPool:
     def setup_method(self):
@@ -188,7 +306,8 @@ class TestTenantJWT:
                 expire={'minutes': 60},
             )
         import jwt
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        from api.jwt_keys import get_public_key_pem
+        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
         assert payload['tenant'] == 'clinic-a'
 
     def test_refresh_preserves_tenant(self):
@@ -202,14 +321,53 @@ class TestTenantJWT:
         )
         client = TestClient(app)
 
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                    with patch('api.users.get_conn', return_value=mock_conn):
+                        with patch('api.users.Users') as mock_users:
+                            mock_users.return_value.get_user_row = AsyncMock(return_value={
+                                'id': 1, 'admin': False, 'tenant': 'clinic-a',
+                                'status': 'active', 'token_version': 0,
+                            })
+                            mock_users.return_value.get_user_role = AsyncMock(return_value=(
+                                'receptionist', ['REGISTRATION_READ', 'QUEUE_READ'],
+                            ))
+                            resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
 
             assert resp.status_code == 200
             payload = verify_token(resp.json()['access_token'])
             assert payload['tenant'] == 'clinic-a'
+            # Refresh must mint from current DB state, not stale claims (R2-01).
+            assert payload['role'] == 'receptionist'
+            assert payload['permissions'] == ['REGISTRATION_READ', 'QUEUE_READ']
+
+    def test_refresh_inactive_user_denied(self):
+        from api.users import RefreshToken
+        app = Starlette(
+            routes=[Route('/api/auth/refresh', endpoint=RefreshToken)],
+        )
+        client = TestClient(app)
+
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        with patch('api.tokens.config', {'secret': SECRET}):
+            user = {'id': 1, 'admin': False, 'tenant': 'clinic-a'}
+            _, refresh = create_token_pair(user)
+        with patch('api.tokens.config', {'secret': SECRET}):
+            with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
+                with patch('api.users.block_token', new=AsyncMock()):
+                    with patch('api.users.get_conn', return_value=mock_conn):
+                        with patch('api.users.Users') as mock_users:
+                            mock_users.return_value.get_user_row = AsyncMock(return_value={
+                                'id': 1, 'admin': False, 'tenant': 'clinic-a',
+                                'status': 'disabled', 'token_version': 0,
+                            })
+                            resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+
+            assert resp.status_code == 401
 
     def test_user_can_access_own_tenant(self):
         u = User({'id': 2, 'admin': False, 'tenant': 'my-clinic'})

@@ -4,6 +4,7 @@ from unittest.mock import patch
 import jwt
 import pytest
 
+from api.jwt_keys import get_public_key_pem
 from api.tokens import create_token, verify_token, create_token_pair, verify_refresh_token
 
 
@@ -57,11 +58,27 @@ class TestTokens:
                 verify_token(token)
 
     def test_invalid_signature_raises(self, user):
+        # R2-11: RS256 tokens are signed by the RSA keypair (published via
+        # JWKS), not the app secret — swapping the secret must not invalidate
+        # them, unlike the legacy HS256 scheme.
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user)
         with patch('api.tokens.config', {'secret': 'different-secret-key-32-bytes!!!'}):
+            payload = verify_token(token)
+        assert payload['admin'] is True
+
+    def test_legacy_hs256_signature_rejected_with_wrong_secret(self, user):
+        import time
+
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            legacy = jwt.encode(
+                {'id': user['id'], 'admin': user['admin'],
+                 'exp': int(time.time()) + 3600},
+                self.SECRET, algorithm='HS256',
+            )
+        with patch('api.tokens.config', {'secret': 'different-secret-key-32-bytes!!!'}):
             with pytest.raises(jwt.InvalidSignatureError):
-                verify_token(token)
+                verify_token(legacy)
 
     def test_tampered_token_raises(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
@@ -81,7 +98,7 @@ class TestTokens:
     def test_create_token_admin_flag_preserved(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user)
-        decoded = jwt.decode(token, self.SECRET, algorithms=['HS256'])
+        decoded = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
         assert decoded['admin'] is True
         assert decoded['id'] == 42
 

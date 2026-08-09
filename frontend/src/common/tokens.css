@@ -117,13 +117,15 @@
 
 :root {
   /* ── Brand Colors ─────────────────────────────────── */
-  --color-primary: var(--color-cyan-600);
+  /* R1-11: cyan-600 (#0891b2) is ~3.7:1 against white — fails AA for
+     button labels and links. cyan-700 (#0e7490) is ≈5.1:1. */
+  --color-primary: var(--color-cyan-700);
   --color-secondary: var(--color-cyan-400);
   --color-accent: var(--color-teal-600);
   --color-success: var(--color-teal-500);
   --color-warning: var(--color-amber-500);
   --color-error: var(--color-red-600);
-  --color-info: var(--color-cyan-600);
+  --color-info: var(--color-cyan-700);
 
   /* ── Background ───────────────────────────────────── */
   --bg-page: var(--color-slate-50);
@@ -136,7 +138,9 @@
   /* ── Text ─────────────────────────────────────────── */
   --text-primary: var(--color-slate-800);
   --text-secondary: var(--color-slate-600);
-  --text-muted: var(--color-slate-400);
+  /* R1-02: slate-400 (#94a3b8) on white is ≈2.7:1 — fails AA for small
+     text (queue timestamps). slate-500 is ≈4.75:1. */
+  --text-muted: var(--color-slate-500);
   --text-light: var(--color-slate-300);
   --text-inverse: var(--color-white);
   --text-link: var(--color-primary);
@@ -259,7 +263,7 @@
   /* ── Button ───────────────────────────────────────── */
   --btn-primary-bg: var(--color-primary);
   --btn-primary-text: var(--color-white);
-  --btn-primary-hover-bg: var(--color-cyan-500);
+  --btn-primary-hover-bg: var(--color-cyan-600);
 
   /* ── Sidebar ──────────────────────────────────────── */
   --sidebar-bg: var(--color-slate-900);

@@ -84,6 +84,90 @@ export async function openAdminItem(page: Page, name: string) {
     .click();
 }
 
+/**
+ * Endpoint-keyed /api/** stub (R4-05). Boot-time calls must resolve with the
+ * shape their unwrapping expects; a single blanket shape already broke once
+ * (Files' fallbackToV2 object-shape vs the QA array-shape, see seedQAUser).
+ * Keying by path makes the next drift surface here instead of at runtime:
+ * every front-office / patient seed returns `{data, total}` (object shape)
+ * for everything, with the specific list endpoints called out.
+ */
+export function stubApiRoutes(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const keyed: Record<string, object> = {
+        // R19 scope + R08 queue unwrap res.data as arrays — keep them literal.
+        "/api/portal/scope": { data: [], total: 0 },
+        "/api/queue": { data: [], total: 0 },
+        "/api/patients/search": { data: [], total: 0 },
+        "/api/visits": { data: [], total: 0 },
+      };
+      const body = JSON.stringify(keyed[path] ?? { data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+}
+
+/**
+ * Seeds an authenticated front-office session (scheduler / receptionist /
+ * front_desk) with the R08 grants: registration, visits, order intake,
+ * consent capture, the privacy queue and schedule read/write. /api/** is
+ * stubbed so the deep-link suite runs without a real backend user.
+ */
+export async function seedFrontDesk(
+  page: Page,
+  role: "scheduler" | "receptionist" | "front_desk" = "scheduler",
+) {
+  await stubApiRoutes(page);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate((r) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "fd-1");
+    localStorage.setItem("username", r);
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", r);
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify([
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "SCHEDULE_READ",
+        "SCHEDULE_WRITE",
+        "WORKLIST_READ",
+      ]),
+    );
+    localStorage.setItem("access_token", "e2e-frontdesk-token");
+    localStorage.setItem("refresh_token", "e2e-frontdesk-token");
+  }, role);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Seeds an authenticated patient session holding PORTAL_READ — the R19
+ * own-data portal grant. /api/** is stubbed so the portal renders its
+ * empty scope state without a real backend patient.
+ */
+export async function seedPatient(page: Page) {
+  await stubApiRoutes(page);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "pat-1");
+    localStorage.setItem("username", "patient");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "patient");
+    localStorage.setItem("permissions", JSON.stringify(["PORTAL_READ"]));
+    localStorage.setItem("access_token", "e2e-patient-token");
+    localStorage.setItem("refresh_token", "e2e-patient-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
 export async function loginAsAdmin(page: Page) {
   await clearAndGo(page);
   await page.getByPlaceholder("Username").fill("admin");
@@ -100,8 +184,14 @@ export async function loginAsAdmin(page: Page) {
  * technologist user in the backend.
  */
 export async function seedTechnologist(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      }),
   );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
@@ -128,10 +218,13 @@ export async function seedTechnologist(page: Page) {
  * on their acquisition workspace instead.
  */
 export async function seedNurse(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) => {
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
@@ -163,10 +256,13 @@ export async function seedNurse(page: Page) {
  * (no REPORT_READ means no clinical surface either).
  */
 export async function seedPhysicianLegacy(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) => {
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
@@ -188,10 +284,13 @@ export async function seedPhysicianLegacy(page: Page) {
  * when its permission set contains the clinical grant.
  */
 export async function seedPacsAdminClinical(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) => {
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
@@ -215,13 +314,16 @@ export async function seedPacsAdminClinical(page: Page) {
  * loading, and route gating without a real qa_team user in the backend.
  */
 export async function seedQAUser(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) => {
-    // Files.tsx's fallbackToV2 reads res.data / res.total (object shape); the
-    // QA list endpoints read res.data as an array. A bare '[]' would set
-    // res.data to undefined and crash Files on boot, so return an object.
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      // Files.tsx's fallbackToV2 reads res.data / res.total (object shape); the
+      // QA list endpoints read res.data as an array. A bare '[]' would set
+      // res.data to undefined and crash Files on boot, so return an object.
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
@@ -258,10 +360,13 @@ export async function seedQAUser(page: Page) {
  * dual-permission /logs gate (LOG_READ | AUDIT_READ) end to end.
  */
 export async function seedAuditOnlyUser(page: Page) {
-  await page.route((u) => u.pathname.startsWith("/api/"), (route) => {
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();

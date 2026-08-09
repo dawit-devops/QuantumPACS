@@ -87,7 +87,11 @@ describe("MobileNav", () => {
   });
 
   it("hides the Menu button when the user has no workspace sections", () => {
-    setSession({ role: "patient", permissions: ["PORTAL_READ"] });
+    // A patient without PORTAL_READ has no permitted section: the portal
+    // (My Records) section and all clinical/admin sections stay hidden, so
+    // the drawer trigger must not render. With PORTAL_READ the patient does
+    // have a workspace section and the Menu button legitimately appears.
+    setSession({ role: "patient", permissions: [] });
     renderWithRouter("/");
     expect(screen.queryByLabelText("Menu")).not.toBeInTheDocument();
   });
@@ -114,5 +118,48 @@ describe("MobileNav", () => {
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
     expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
     expect(screen.queryByText("QA")).not.toBeInTheDocument();
+  });
+
+  it("hides Front Desk and My Records from a tenant_admin even with the grants", async () => {
+    // NON_ADMIN_WORKSPACES drift guard (mobile parity with the sidebar):
+    // an admin-scoped role holding the R08/R19 grants must not see the
+    // front-office or patient surfaces in the drawer.
+    const user = userEvent.setup();
+    setSession({
+      role: "tenant_admin",
+      permissions: [
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "PORTAL_READ",
+        "USER_READ",
+      ],
+    });
+    renderWithRouter("/");
+    await user.click(screen.getByLabelText("Menu"));
+    expect(await screen.findByText("Admin")).toBeInTheDocument();
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
+  it("shows the Front Desk section in the drawer for a scheduler with R08 grants", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "scheduler",
+      permissions: [
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "SCHEDULE_READ",
+      ],
+    });
+    renderWithRouter("/");
+    await user.click(screen.getByLabelText("Menu"));
+    expect(await screen.findByText("Front Desk")).toBeInTheDocument();
+    await user.click(screen.getByText("Front Desk"));
+    expect(await screen.findByText("Registration")).toBeInTheDocument();
+    expect(screen.getByText("Visits & Check-In")).toBeInTheDocument();
+    expect(screen.getByText("Waiting Queue")).toBeInTheDocument();
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 });

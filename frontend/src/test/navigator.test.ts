@@ -67,7 +67,22 @@ describe("workspaceFor", () => {
       permissions: ["REPORT_READ"],
       expected: "clinical",
     },
-    { role: "patient", permissions: ["FILE_READ"], expected: "files" },
+    { role: "patient", permissions: ["PORTAL_READ"], expected: "portal" },
+    {
+      role: "scheduler",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
+    {
+      role: "receptionist",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
+    {
+      role: "front_desk",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
     {
       role: "super_admin",
       permissions: ["USER_READ"],
@@ -87,11 +102,8 @@ describe("workspaceFor", () => {
   );
 
   it.each([
-    "receptionist",
     "cashier",
     "biller",
-    "scheduler",
-    "front_desk",
     "pharmacist",
     "lab_technician",
     "him_specialist",
@@ -306,7 +318,10 @@ describe("landingRouteFor", () => {
     // MED_VERIFY, ...) that have no PACS surface — /account is the terminal.
     expect(
       landingRouteFor(
-        user({ role: "pharmacist", permissions: ["RESULTS_READ", "MED_VERIFY"] }),
+        user({
+          role: "pharmacist",
+          permissions: ["RESULTS_READ", "MED_VERIFY"],
+        }),
       ),
     ).toBe("/account");
     expect(
@@ -321,7 +336,9 @@ describe("landingRouteFor", () => {
     // instead of landing on the admin console (physician with DICOMWEB_READ
     // previously landed on /dicomweb).
     expect(
-      landingRouteFor(user({ role: "physician", permissions: ["DICOMWEB_READ"] })),
+      landingRouteFor(
+        user({ role: "physician", permissions: ["DICOMWEB_READ"] }),
+      ),
     ).toBe("/account");
     expect(
       workspaceFor(
@@ -367,11 +384,7 @@ describe("landingRouteFor", () => {
         "dashboard",
         "/admin",
       ],
-      [
-        user({ role: "biller", permissions: ["AUDIT_READ"] }),
-        "admin",
-        "/logs",
-      ],
+      [user({ role: "biller", permissions: ["AUDIT_READ"] }), "admin", "/logs"],
       [
         user({ role: "tenant_admin", permissions: ["USER_READ"] }),
         "dashboard",
@@ -379,6 +392,40 @@ describe("landingRouteFor", () => {
       ],
       [user({ role: "patient", permissions: ["FILE_READ"] }), "files", "/"],
       [user({ role: "patient", permissions: ["STUDY_READ"] }), "files", "/"],
+      [
+        user({ role: "patient", permissions: ["PORTAL_READ"] }),
+        "portal",
+        "/portal",
+      ],
+      [
+        user({ role: "receptionist", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        user({ role: "scheduler", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        user({ role: "front_desk", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        // QUEUE_READ unlocks the privacy queue step for roles that hold it
+        // without REGISTRATION_READ (navigator.ts landing steps).
+        user({ role: "receptionist", permissions: ["QUEUE_READ"] }),
+        "frontdesk",
+        "/frontdesk/queue",
+      ],
+      [
+        // CHART_READ alone has no landing step: the patient degrades to the
+        // auth-only terminal inside the files workspace (no PORTAL_READ).
+        user({ role: "patient", permissions: ["CHART_READ"] }),
+        "files",
+        "/account",
+      ],
       [user({ role: "radiologist", permissions: [] }), "files", "/account"],
     ];
     cases.forEach(([u, workspace, route]) => {

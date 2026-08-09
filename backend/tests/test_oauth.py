@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 
 from api.oauth import (
     _code_verifier, _code_challenge, oauth_login, oauth_callback, oidc_discovery,
-    oauth_token_exchange,
+    oidc_jwks, oauth_token_exchange,
 )
 
 
@@ -77,6 +77,77 @@ class MockClaims:
 
     def __getitem__(self, key):
         return self._data[key]
+
+
+class TestOidcJwks:
+    def test_jwks_endpoint_publishes_rsa_key(self):
+        app = Starlette(routes=[Route('/api/oauth/jwks', endpoint=oidc_jwks)])
+        client = TestClient(app)
+        resp = client.get('/api/oauth/jwks')
+
+        assert resp.status_code == 200
+        keys = resp.json()['keys']
+        assert len(keys) == 1
+        key = keys[0]
+        assert key['kty'] == 'RSA'
+        assert key['use'] == 'sig'
+        assert key['alg'] == 'RS256'
+        assert key['kid']
+        assert key['n']
+        assert key['e'] == 'AQAB'
+
+    def test_minted_tokens_verify_with_jwks_key(self):
+        import jwt as pyjwt
+
+        from api.jwt_keys import get_kid, get_public_key_pem
+        from api.tokens import create_token
+
+        with patch('api.tokens.config', {'secret': 'jwt-test-secret'}):
+            token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
+
+        header = pyjwt.get_unverified_header(token)
+        assert header['alg'] == 'RS256'
+        assert header['kid'] == get_kid()
+
+        payload = pyjwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        assert payload['id'] == 1
+
+    def test_legacy_hs256_token_still_verifies_during_rotation(self):
+        import time
+
+        import jwt as pyjwt
+
+        from api.tokens import verify_token
+
+        with patch('api.tokens.config', {'secret': 'jwt-test-secret'}):
+            legacy = pyjwt.encode(
+                {'id': 1, 'admin': True, 'exp': int(time.time()) + 3600},
+                'jwt-test-secret', algorithm='HS256',
+            )
+            payload = verify_token(legacy)
+
+        assert payload['id'] == 1
+
+    def test_jwks_is_reachable_without_auth(self):
+        from starlette.middleware import Middleware
+        from starlette.middleware.authentication import AuthenticationMiddleware
+
+        from api.auth import TokenAuth
+
+        app = Starlette(
+            routes=[Route('/api/oauth/jwks', endpoint=oidc_jwks)],
+            middleware=[
+                Middleware(
+                    AuthenticationMiddleware, backend=TokenAuth(),
+                    on_error=TokenAuth.on_auth_error,
+                ),
+            ],
+        )
+        client = TestClient(app)
+
+        resp = client.get('/api/oauth/jwks')
+        assert resp.status_code == 200
+        assert resp.json()['keys'][0]['alg'] == 'RS256'
 
 
 class TestOAuthLogin:
@@ -150,6 +221,16 @@ class TestOAuthCallback:
         tokens = {'id_token': 'fake-id-token'}
         claims = MockClaims(sub='oauth-user-1', email='dr@example.com', name='Dr Smith')
 
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_users = MagicMock()
+        mock_users.return_value.get_user_row = AsyncMock(return_value={
+            'id': 42, 'admin': False, 'status': 'active', 'token_version': 0,
+        })
+        mock_users.return_value.get_user_role = AsyncMock(return_value=(
+            'radiologist', ['REPORT_READ'],
+        ))
+
         with patch('api.oauth.config', cfg):
             with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None))):
                 with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
@@ -157,13 +238,18 @@ class TestOAuthCallback:
                         with patch('api.oauth._find_or_create_user', AsyncMock(return_value=(
                             {'id': 42, 'admin': False, 'username': 'dr'}, [],
                         ))):
-                            with patch('api.oauth.create_token', return_value='qp-jwt-token'):
-                                resp = await oauth_callback(request)
+                            with patch('api.oauth.get_conn', return_value=mock_conn):
+                                with patch('api.oauth.Users', mock_users):
+                                    with patch('api.oauth.create_token', return_value='qp-jwt-token') as mock_create_token:
+                                        resp = await oauth_callback(request)
 
         assert resp.status_code == 200
         body = resp.body
         assert b'qp-jwt-token' in body
         assert b'token' in body
+        kwargs = mock_create_token.call_args[1]
+        assert kwargs.get('role') == 'radiologist'
+        assert kwargs.get('permissions') == ['REPORT_READ']
 
 
 class TestOAuthTokenExchange:

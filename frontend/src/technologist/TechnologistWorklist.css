@@ -43,3 +43,11 @@
     opacity: 0.55;
   }
 }
+
+/* R1-12: the endless pulse is a vestibular hazard in a screen stared at all
+   shift — honor reduced-motion with a static treatment. */
+@media (prefers-reduced-motion: reduce) {
+  .stat-tag {
+    animation: none;
+  }
+}

@@ -25,6 +25,31 @@ _app = None
 _MAX_CACHE_SIZE = 5000
 
 
+async def can_access_tenant(user, tenant_slug):
+    """Async tenant-access gateway used by TenantMiddleware for X-Tenant-ID
+    overrides (R2-03).
+
+    Admission order — cheap checks first, the DB grant lookup last:
+      1. no slug → always allowed (un-scoped calls)
+      2. admin → any tenant
+      3. home tenant (JWT claim) → allowed
+      4. CROSS_TENANT_READ permission AND explicit user_tenant_grants row
+         → allowed (teleradiology / telemedicine reads)
+      5. everything else → denied (403 upstream)
+    The permission gate before the DB check makes grant rows inert for roles
+    that should never cross tenants (defense in depth).
+    """
+    if not tenant_slug:
+        return True
+    if user.admin:
+        return True
+    if user.tenant == tenant_slug:
+        return True
+    if 'CROSS_TENANT_READ' not in (user.permissions or []):
+        return False
+    return await user.has_grant(tenant_slug)
+
+
 def set_app(app):
     global _app
     _app = app
@@ -117,11 +142,24 @@ class User(BaseUser):
         return str(self.id)
 
     def can_access_tenant(self, tenant_slug):
+        # Sync fast path (R2-03): admins and home-tenant access never need a
+        # DB round-trip. Cross-tenant access (grants) requires the async
+        # can_access_tenant() below — callers that can await must use it.
         if not tenant_slug:
             return True
         if self.admin:
             return True
         return self.tenant == tenant_slug
+
+    async def has_grant(self, tenant_slug):
+        """True when this user holds an explicit user_tenant_grants row.
+        The CROSS_TENANT_READ permission check is the caller's job — the
+        row alone must not authorize anything."""
+        if not tenant_slug:
+            return False
+        from db.user_tenant_grants import UserTenantGrants
+        async with get_conn() as conn:
+            return await UserTenantGrants(conn).has(self.id, tenant_slug)
 
     def to_dict(self):
         d = {
@@ -147,11 +185,13 @@ class TokenAuth(AuthenticationBackend):
         '/api/oauth/providers/public',
         '/api/.well-known/openid-configuration',
         '/api/oauth/token',
+        '/api/oauth/jwks',
         '/api/v2/oauth/login',
         '/api/v2/oauth/callback',
         '/api/v2/oauth/providers/public',
         '/api/v2/.well-known/openid-configuration',
         '/api/v2/oauth/token',
+        '/api/v2/oauth/jwks',
         '/api/v2/auth/refresh',
         '/api/v2/auth/logout',
         '/api/v2/login',

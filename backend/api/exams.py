@@ -27,6 +27,7 @@ from db.exams import (
 )
 from db.notifications import Notifications
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 DEFAULT_PROTOCOLS = [
     {
@@ -215,7 +216,7 @@ class ExamsHandler(HTTPEndpoint):
                     'modality': exam.get('modality'),
                     'priority': exam.get('priority'),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': exam})
@@ -284,7 +285,7 @@ class ExamIdentityHandler(HTTPEndpoint):
                 resource_type='exam',
                 resource_id=exam_id,
                 details={'notes': body.notes},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'confirmed': body.confirmed}})
@@ -310,7 +311,7 @@ class ExamProtocolHandler(HTTPEndpoint):
                 resource_type='exam',
                 resource_id=exam_id,
                 details={'protocol_name': name},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'protocol_name': name}})
@@ -342,7 +343,7 @@ class ExamAcquisitionsHandler(HTTPEndpoint):
                 resource_type='acquisition',
                 resource_id=acquisition['id'],
                 details={'description': body.description},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': acquisition})
@@ -371,7 +372,7 @@ class ExamAcquisitionDecisionHandler(HTTPEndpoint):
                 resource_type='acquisition',
                 resource_id=acq_id,
                 details={'reason': body.reason},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'status': status, 'rejected_count': rejected}})
@@ -425,7 +426,7 @@ class ExamSafetyHandler(HTTPEndpoint):
                 resource_type='exam',
                 resource_id=exam_id,
                 details={'count': len(body.checks)},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'recorded': len(body.checks)}})
@@ -469,7 +470,7 @@ class ExamCompleteHandler(HTTPEndpoint):
                 resource_type='exam',
                 resource_id=exam_id,
                 details={'accession_number': accession},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'status': 'completed'}})
@@ -497,7 +498,7 @@ class ExamIncidentsHandler(HTTPEndpoint):
                 resource_type='incident',
                 resource_id=incident['id'],
                 details={'severity': body.severity, 'incident_type': body.incident_type},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             if body.severity in ('high', 'critical'):
@@ -540,7 +541,7 @@ class ExamOverridesHandler(HTTPEndpoint):
                 resource_type='protocol_override',
                 resource_id=override['id'],
                 details={'justification': body.justification},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': override})

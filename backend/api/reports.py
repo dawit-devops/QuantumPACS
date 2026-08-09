@@ -21,6 +21,7 @@ from db.exams import Exams
 from db.reports import Reports, ReportTemplates, PeerReviews
 from api.notify import notify_role, notify_user
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 DEFAULT_REPORT_TEMPLATES = [
     {
@@ -162,7 +163,7 @@ class ExamAssignHandler(HTTPEndpoint):
                     'radiologist_id': radiologist_id,
                     'accession_number': exam.get('accession_number'),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': updated})
@@ -210,7 +211,7 @@ class ExamReportHandler(HTTPEndpoint):
                     'status': report.get('status'),
                     'accession_number': exam.get('accession_number'),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': report})
@@ -246,7 +247,7 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'exam_id': exam_id,
                     'accession_number': exam.get('accession_number'),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             # Notify QA that a report is final and ready for any scheduled
@@ -339,7 +340,7 @@ class PeerReviewsHandler(HTTPEndpoint):
                 resource_type='peer_review',
                 resource_id=review['id'],
                 details={'report_id': report['id']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             await notify_user(
@@ -408,7 +409,7 @@ class PeerReviewSubmitHandler(HTTPEndpoint):
                     'discrepancy_level': body.discrepancy_level,
                     'report_id': review['report_id'],
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             # Notify the original report author that their review is complete.

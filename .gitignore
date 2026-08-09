@@ -24,3 +24,4 @@ htmlcov/
 opencode.json
 SCRATCH
 .opencode/teams/
+/backend/certs/

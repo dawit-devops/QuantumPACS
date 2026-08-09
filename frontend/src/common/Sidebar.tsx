@@ -30,6 +30,8 @@ import {
   AuditOutlined,
   WarningOutlined,
   CheckCircleOutlined,
+  IdcardOutlined,
+  SolutionOutlined,
 } from "@ant-design/icons";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -44,7 +46,7 @@ import {
   ADMIN_DASHBOARD_PERMISSIONS,
   workspaceFor,
   isAdminScopedRole,
-  CLINICAL_WORKSPACES,
+  NON_ADMIN_WORKSPACES,
 } from "../navigator";
 import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import "./Sidebar.css";
@@ -67,6 +69,15 @@ function getKey(loc: string) {
     if (parts[1] === "review") return "qa-queue";
     return qaMap[`qa-${parts[1]}`] || "qa-queue";
   }
+  if (parts[0] === "frontdesk") {
+    const fdMap: Record<string, string> = {
+      registration: "fd-registration",
+      visits: "fd-visits",
+      queue: "fd-queue",
+    };
+    return fdMap[parts[1]] || "fd-registration";
+  }
+  if (parts[0] === "portal") return "portal";
   return parts[0];
 }
 
@@ -149,7 +160,9 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/schedule-board",
         label: "Schedule",
         icon: <CalendarOutlined />,
-        permissions: ["WORKLIST_READ"],
+        // Schedule surface (R08): SCHEDULE_READ matches the route gate; the
+        // board's write actions (book/cancel) need SCHEDULE_WRITE inside.
+        permissions: ["SCHEDULE_READ"],
       },
     ],
   },
@@ -343,6 +356,50 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     ],
   },
   {
+    key: "frontdesk",
+    title: "Front Desk",
+    icon: <IdcardOutlined />,
+    items: [
+      {
+        key: "fd-registration",
+        path: "/frontdesk/registration",
+        label: "Registration",
+        icon: <IdcardOutlined />,
+        permissions: ["REGISTRATION_READ"],
+      },
+      {
+        key: "fd-visits",
+        path: "/frontdesk/visits",
+        label: "Visits & Check-In",
+        icon: <MedicineBoxOutlined />,
+        permissions: ["REGISTRATION_READ"],
+      },
+      {
+        key: "fd-queue",
+        path: "/frontdesk/queue",
+        label: "Waiting Queue",
+        icon: <TeamOutlined />,
+        permissions: ["QUEUE_READ"],
+      },
+    ],
+  },
+  {
+    key: "portal",
+    title: "My Records",
+    icon: <SolutionOutlined />,
+    items: [
+      {
+        key: "portal",
+        path: "/portal",
+        label: "My Records",
+        icon: <SolutionOutlined />,
+        // Own-data patient portal (R19): scope-gated server-side via
+        // patient_staff_scope, never a navigation target for non-holders.
+        permissions: ["PORTAL_READ"],
+      },
+    ],
+  },
+  {
     key: "analytics",
     title: "Metrics",
     icon: <DashboardOutlined />,
@@ -395,6 +452,10 @@ const SECTION_OF_KEY: Record<string, string> = {
   "qa-protocols": "qa",
   "qa-incidents": "qa",
   "qa-actions": "qa",
+  "fd-registration": "frontdesk",
+  "fd-visits": "frontdesk",
+  "fd-queue": "frontdesk",
+  portal: "portal",
   metrics: "analytics",
 };
 
@@ -464,7 +525,6 @@ function Sidebar() {
 
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const key = getKey(loc);
 
   // workspaceFor() decides which section a role "lives in"; sections without a
   // role mapping (clinical, platform, files) fall back to pure permission-based
@@ -480,8 +540,20 @@ function Sidebar() {
         ? userWorkspace
         : null;
 
-  const [selectedKey, setSelectedKey] = useState(key);
-  const [openKey, setOpenKey] = useState(getOpenKey(key) ?? workspaceOpenKey);
+  // Navigation state derives from the location during render (R1-01/R1-23):
+  // defaultSelectedKeys/defaultOpenKeys are read only on first mount and
+  // froze the highlight at the landing route for the whole session. The
+  // controlled props below stay in sync on every navigation; manual section
+  // collapse is honored via onOpenChange, and the route re-opens the owning
+  // section on navigation (manual overrides are cleared then).
+  const selectedKey = getKey(loc);
+  const routeOpenKey = getOpenKey(selectedKey) ?? workspaceOpenKey;
+  const [manualOpenKeys, setManualOpenKeys] = useState<string[] | null>(null);
+  useEffect(() => {
+    setManualOpenKeys(null);
+  }, [selectedKey]);
+  const openKeys =
+    manualOpenKeys ?? (routeOpenKey ? [routeOpenKey] : []);
 
   // Section visibility rule: a section shows when it owns the user's workspace
   // OR the user can see at least one item inside it. The workspace clause keeps
@@ -502,7 +574,7 @@ function Sidebar() {
       ({ section, items }) => userWorkspace === section.key || items.length > 0,
     )
     .filter(
-      ({ section }) => !isAdminScoped || !CLINICAL_WORKSPACES.has(section.key),
+      ({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key),
     );
 
   const onCollapse = (collapsed: boolean) => {
@@ -518,14 +590,6 @@ function Sidebar() {
     signOut();
     navigate("/login");
   };
-
-  useEffect(() => {
-    const key = getKey(loc);
-    setSelectedKey(key);
-    // When the route belongs to a section, open that section; otherwise open
-    // the user's workspace section (e.g. radiologist on Files → Reading open).
-    setOpenKey(getOpenKey(key) ?? workspaceOpenKey);
-  }, [loc, workspaceOpenKey]);
 
   const sidebarContent = (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -545,8 +609,9 @@ function Sidebar() {
       <Menu
         mode="inline"
         theme="dark"
-        defaultOpenKeys={openKey ? [openKey] : []}
-        defaultSelectedKeys={[selectedKey]}
+        openKeys={openKeys}
+        selectedKeys={[selectedKey]}
+        onOpenChange={(keys) => setManualOpenKeys(keys)}
         onClick={() => {
           if (isMobile) setDrawerOpen(false);
         }}

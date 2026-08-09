@@ -21,7 +21,9 @@ from api.users import (
 )
 from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
-from api.oauth import oauth_login, oauth_callback, oidc_discovery, oauth_token_exchange
+from api.oauth import (
+    oauth_login, oauth_callback, oidc_discovery, oidc_jwks, oauth_token_exchange,
+)
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
@@ -130,6 +132,7 @@ _V1_ROUTES = [
     v2(Route('/oauth/login', endpoint=oauth_login)),
     v2(Route('/oauth/callback', endpoint=oauth_callback)),
     v2(Route('/.well-known/openid-configuration', endpoint=oidc_discovery)),
+    v2(Route('/oauth/jwks', endpoint=oidc_jwks)),
     v2(Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])),
     v2(Route('/change_password', endpoint=ChangePassword)),
     v2(Route('/account/profile', endpoint=ProfileHandler)),

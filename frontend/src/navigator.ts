@@ -31,6 +31,8 @@ export type Workspace =
   | "admin"
   | "analytics"
   | "clinical"
+  | "frontdesk"
+  | "portal"
   | "files"
   | "platform"
   | "dashboard";
@@ -78,6 +80,19 @@ export const CLINICAL_WORKSPACES: ReadonlySet<string> = new Set([
   "reading",
   "acquisition",
   "qa",
+]);
+
+/**
+ * Workspaces whose surfaces belong to non-admin staff / patient roles —
+ * clinical queues plus the R08 front-desk and R19 patient portal. Admin-scoped
+ * roles are excluded from all of them even when their grants pass: super_admin
+ * holds every permission, so REGISTRATION_READ / PORTAL_READ alone must not
+ * surface the Front Desk or My Records menu items or landing steps.
+ */
+export const NON_ADMIN_WORKSPACES: ReadonlySet<string> = new Set([
+  ...CLINICAL_WORKSPACES,
+  "frontdesk",
+  "portal",
 ]);
 
 export function isAdminScopedRole(role?: string): boolean {
@@ -130,6 +145,23 @@ const LANDING_STEPS: LandingStep[] = [
   { route: "/exams", workspace: "acquisition", permissions: ["EXAM_READ"] },
   { route: "/qa/queue", workspace: "qa", permissions: ["QA_READ"] },
   { route: "/replicas", workspace: "admin", permissions: ["REPLICA_READ"] },
+  // Front Desk (R08): registration is the front-office home for the
+  // scheduler / receptionist / front_desk roles; the privacy queue is
+  // reachable from there. QUEUE_READ unlocks the queue step for roles that
+  // hold it without REGISTRATION_READ.
+  {
+    route: "/frontdesk/registration",
+    workspace: "frontdesk",
+    permissions: ["REGISTRATION_READ"],
+  },
+  {
+    route: "/frontdesk/queue",
+    workspace: "frontdesk",
+    permissions: ["QUEUE_READ"],
+  },
+  // Patient portal (R19): the patient role lands on its own scope-gated
+  // records, never on the admin/clinical surfaces.
+  { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },
   // The clinical workspace (physician, referring_physician, ed_physician,
   // care_coordinator) lands on the reading worklist: reports are the shared
   // clinical read surface for all of them (REPORT_READ on Matrix A/B).
@@ -197,7 +229,13 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   // fallback that would otherwise put them on the reading worklist.
   nurse: "acquisition",
   care_coordinator: "clinical",
-  patient: "files",
+  // Front-office roles: registration / visits / check-in and the waiting
+  // queue are the operational home (R08). The patient portal (P12/H21) is
+  // the patient's own-data surface.
+  scheduler: "frontdesk",
+  receptionist: "frontdesk",
+  front_desk: "frontdesk",
+  patient: "portal",
   super_admin: "platform",
   tenant_admin: "platform",
   admin: "platform",
@@ -214,13 +252,14 @@ function hasAnyPermission(user: WorkspaceUser, permissions: string[]): boolean {
  * role-scope-aware and bidirectional: admin-scoped roles never land on (or
  * resolve to) clinical workspaces, clinical roles never land on admin-console
  * workspaces — even when their legacy grants would pass (e.g. DICOMWEB_READ
- * on physician) — and unmapped/RIS roles (biller, receptionist, ...) scan the
+ * on physician) — and unmapped/RIS roles (biller, ...) scan the
  * full priority chain (e.g. AUDIT_READ on biller still reaches /logs).
  */
 function landingStepsFor(user: WorkspaceUser): LandingStep[] {
   if (isAdminScopedRole(user.role)) {
     return LANDING_STEPS.filter(
-      (s) => !CLINICAL_WORKSPACES.has(s.workspace) && s.workspace !== "clinical",
+      (s) =>
+        !NON_ADMIN_WORKSPACES.has(s.workspace) && s.workspace !== "clinical",
     );
   }
   if (isClinicalScopedRole(user.role)) {

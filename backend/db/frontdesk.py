@@ -40,6 +40,24 @@ class FrontDesk:
             data.get('sex', ''), data.get('meta'),
         )
 
+    async def find_patient_duplicate(self, name, birth_date):
+        """Exact demographic match for the MPI pre-check (R5-13) — a patient
+        with the same name and date of birth is presumed to be the same
+        person regardless of the MRN seen. Only meaningful when a birth date
+        was actually captured; empty dates never match."""
+        if not birth_date:
+            return None
+        return await self.conn.fetchrow(
+            """
+            SELECT id, patient_id, name, birth_date, sex
+            FROM patients
+            WHERE name = $1 AND birth_date = $2
+            ORDER BY created_at
+            LIMIT 1
+            """,
+            name, birth_date,
+        )
+
     async def get_patient(self, patient_id):
         return await self.conn.fetchrow(
             "SELECT id, patient_id, name, birth_date, sex FROM patients WHERE patient_id = $1",
@@ -146,15 +164,14 @@ class FrontDesk:
         )
 
     async def count_slot_booked(self, modality, scheduled_date, scheduled_time):
+        """Booked capacity for a slot. Appointments are the single source of
+        truth (R5-01): the mirrored worklist entry is a projection of the
+        appointment, so counting it too would double-count every booking."""
         return await self.conn.fetchval(
             """
-            SELECT
-                (SELECT COUNT(1) FROM appointments
-                  WHERE modality = $1 AND scheduled_date = $2 AND scheduled_time = $3
-                    AND status != 'cancelled')
-              + (SELECT COUNT(1) FROM worklist_entries
-                  WHERE modality = $1 AND scheduled_date = $2 AND scheduled_time = $3
-                    AND status = 'scheduled')
+            SELECT COUNT(1) FROM appointments
+            WHERE modality = $1 AND scheduled_date = $2 AND scheduled_time = $3
+              AND status != 'cancelled'
             """,
             modality, scheduled_date, scheduled_time,
         )
@@ -183,13 +200,14 @@ class FrontDesk:
     async def create_appointment(self, data):
         return await self.conn.fetchrow(
             """
-            INSERT INTO appointments (patient_id, visit_id, modality, room, technologist,
-                                      scheduled_date, scheduled_time, status, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)
+            INSERT INTO appointments (patient_id, visit_id, worklist_entry_id, modality,
+                                      room, technologist, scheduled_date, scheduled_time,
+                                      status, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9)
             RETURNING *
             """,
-            data['patient_id'], data.get('visit_id'), data['modality'],
-            data.get('room', ''), data.get('technologist', ''),
+            data['patient_id'], data.get('visit_id'), data.get('worklist_entry_id'),
+            data['modality'], data.get('room', ''), data.get('technologist', ''),
             data['scheduled_date'], data['scheduled_time'], data.get('created_by', ''),
         )
 
@@ -215,6 +233,16 @@ class FrontDesk:
     async def cancel_appointment(self, appointment_id):
         await self.conn.execute(
             "UPDATE appointments SET status = 'cancelled', updated_at = now() WHERE id = $1",
+            appointment_id,
+        )
+        # Keep the mirrored worklist entry in sync so the modality worklist
+        # stops presenting a patient whose appointment was cancelled (R5-02).
+        await self.conn.execute(
+            """
+            UPDATE worklist_entries SET status = 'cancelled', updated_at = now()
+            WHERE id = (SELECT worklist_entry_id FROM appointments WHERE id = $1)
+              AND status = 'scheduled'
+            """,
             appointment_id,
         )
 
@@ -309,21 +337,30 @@ class FrontDesk:
     # ---- waiting queue ----
 
     async def waiting_queue(self, date=''):
+        """Open visits (registered/checked_in) for the day. The exams join
+        added no columns yet multiplied rows (one patient can have many
+        exams), so the destination room is fetched per-visit instead (R5-09).
+        Completed/archived visits are hidden — the queue shows patients
+        waiting to be seen."""
         return await self.conn.fetch(
             """
-            SELECT DISTINCT
+            SELECT
                 v.id AS visit_id,
                 v.patient_id,
                 p.name AS patient_name,
                 v.status,
-                COALESCE(a.room, v.destination_room) AS destination,
+                COALESCE(
+                    (SELECT a.room FROM appointments a
+                      WHERE a.visit_id = v.id AND a.status != 'cancelled'
+                      ORDER BY a.created_at LIMIT 1),
+                    v.destination_room
+                ) AS destination,
                 v.updated_at,
                 v.created_at
             FROM visits v
             LEFT JOIN patients p ON p.patient_id = v.patient_id
-            LEFT JOIN exams e ON e.patient_id = v.patient_id
-            LEFT JOIN appointments a ON a.visit_id = v.id AND a.status != 'cancelled'
-            WHERE ($1 = '' OR v.visit_date = $1::date)
+            WHERE v.status IN ('registered', 'checked_in')
+              AND ($1 = '' OR v.visit_date = $1::date)
             ORDER BY v.created_at
             """,
             date,

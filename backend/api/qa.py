@@ -21,6 +21,7 @@ from db.conn import get_conn
 from db.exams import Exams
 from db.qa import QaScores, CorrectiveActions, IncidentsQA, ProtocolsQA
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 # R05-06 incident types (matches the schema whitelist for the UI dropdown).
 INCIDENT_TYPES = [
@@ -149,7 +150,7 @@ class QAReviewHandler(HTTPEndpoint):
                     'pass_fail': body.pass_fail,
                     'discrepancy_level': body.discrepancy_level,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             if body.pass_fail == 'fail':
@@ -206,7 +207,7 @@ class QAProtocolsHandler(HTTPEndpoint):
                 resource_type='protocol',
                 resource_id=protocol['id'],
                 details={'code': body.protocol_code, 'modality': body.modality},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': protocol})
@@ -236,7 +237,7 @@ class QAProtocolHandler(HTTPEndpoint):
                 resource_type='protocol',
                 resource_id=protocol_id,
                 details={'name': updated.get('name')},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': updated})
@@ -255,7 +256,7 @@ class QAProtocolHandler(HTTPEndpoint):
                 resource_type='protocol',
                 resource_id=protocol_id,
                 details={'name': protocol.get('name')},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'deleted': True}})
@@ -304,7 +305,7 @@ class QAIncidentsHandler(HTTPEndpoint):
                 resource_type='incident',
                 resource_id=incident['id'],
                 details={'type': body.incident_type, 'severity': body.severity},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': incident})
@@ -330,7 +331,7 @@ class QAIncidentHandler(HTTPEndpoint):
                 resource_type='incident',
                 resource_id=incident_id,
                 details={'notes': body.notes[:120]},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'resolved': True}})
@@ -363,7 +364,7 @@ class QACorrectiveActionsHandler(HTTPEndpoint):
                 resource_type='corrective_action',
                 resource_id=action['id'],
                 details={'source': body.source},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': action})
@@ -389,7 +390,7 @@ class QACorrectiveActionHandler(HTTPEndpoint):
                 resource_type='corrective_action',
                 resource_id=action_id,
                 details={'findings': body.findings[:120]},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': resolved})

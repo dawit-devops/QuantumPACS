@@ -1,8 +1,10 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from api.auth import can_access_tenant
 from api.response import not_found, apply_cors_headers
 from config import config
+from db.audit_log import AuditLog
 from db.conn import get_conn, get_database, set_request_tenant, reset_request_tenant
 from db.tenants import Tenants, TenantConnectionPool
 from log import get_logger
@@ -44,13 +46,16 @@ class TenantMiddleware(BaseHTTPMiddleware):
             slug = user.tenant
 
         # Priority (b): X-Tenant-ID header override — still gated through
-        # can_access_tenant (admins pass for any slug). Anonymous requests
-        # never get tenant scope from a header: public endpoints (login,
-        # oauth, health) run un-scoped on the main pool, so a header can't
-        # steer them into an attacker-chosen tenant's database.
+        # can_access_tenant (admins pass for any slug; CROSS_TENANT_READ
+        # holders only for tenants with an explicit user_tenant_grants row,
+        # R2-03). Anonymous requests never get tenant scope from a header:
+        # public endpoints (login, oauth, health) run un-scoped on the main
+        # pool, so a header can't steer them into an attacker-chosen tenant's
+        # database.
         header_slug = request.headers.get('X-Tenant-ID')
+        cross_tenant = False
         if header_slug and authenticated:
-            if not user.can_access_tenant(header_slug):
+            if not await can_access_tenant(user, header_slug):
                 # TenantMiddleware sits outside CORSMiddleware; error
                 # responses need explicit CORS headers or browsers block them.
                 return apply_cors_headers(
@@ -62,19 +67,42 @@ class TenantMiddleware(BaseHTTPMiddleware):
                     ),
                 )
             slug = header_slug
+            # Grant-based overrides are the audit-worthy events: the user is
+            # operating outside their home tenant via a user_tenant_grants
+            # row, not via an admin flag. Logged below, before any data-plane
+            # work, on the main pool.
+            cross_tenant = not user.admin and user.tenant != header_slug
 
         if slug:
             async with get_conn() as conn:
                 info = await Tenants(conn).get_by_slug(slug)
+                if cross_tenant:
+                    await AuditLog(conn).log_event(
+                        'tenant.cross_tenant_access',
+                        str(user.id),
+                        'tenant',
+                        slug,
+                        details={'home': getattr(user, 'tenant', None)},
+                        tenant=slug,
+                    )
             if not info:
                 if header_slug:
                     # Header path keeps its historical contract: unknown
                     # tenant → 404.
                     return apply_cors_headers(request, not_found(f'Tenant not found: {slug}'))
-                # Claim path: the tenant has no registry row (hard-deleted or
-                # legacy account) — log and stay un-scoped (main-DB mode) so
-                # the account keeps working.
-                log.warning('Tenant claim %s has no registry row; request stays un-scoped', slug)
+                # Claim path (R5-04): a JWT tenant with no registry row
+                # (hard-deleted or decommissioned tenant) must NOT fall back
+                # to the main DB — that would silently re-scope the user into
+                # the default tenant's data plane. Fail closed with 403.
+                log.warning('Tenant claim %s has no registry row; rejecting request', slug)
+                return apply_cors_headers(
+                    request,
+                    JSONResponse(
+                        {'error': 'Forbidden',
+                         'message': f'Tenant not available: {slug}'},
+                        status_code=403,
+                    ),
+                )
             else:
                 status = info.get('status', 'active')
                 if status in _INVISIBLE_STATUSES:
@@ -111,6 +139,18 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 pass
 
         return response
+
+
+def effective_tenant(request):
+    """The tenant scope actually in effect for this request — the
+    middleware-resolved slug when one is in effect (header override or JWT
+    claim), otherwise the user's home tenant. Audit rows must record the
+    effective scope (R5-05): under X-Tenant-ID, the JWT claim is the home
+    tenant, not where the mutation actually landed."""
+    slug = getattr(getattr(request, 'state', None), 'tenant_slug', None)
+    if isinstance(slug, str) and slug:
+        return slug
+    return getattr(request.user, 'tenant', None)
 
 
 async def get_tenant_conn(request):

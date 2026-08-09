@@ -226,6 +226,61 @@ describe("Sidebar", () => {
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
 
+  it("hides Front Desk and My Records from a tenant_admin even with the grants", () => {
+    // The most dangerous NON_ADMIN_WORKSPACES drift: an admin-scoped role
+    // that DOES hold the R08/R19 grants. The nav must still hide the
+    // front-office and patient surfaces — admins manage the platform.
+    setSession({
+      role: "tenant_admin",
+      permissions: [
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "PORTAL_READ",
+        "SCHEDULE_READ",
+        "USER_READ",
+      ],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
+  it("hides Front Desk and My Records from super_admin (worst case)", () => {
+    // super_admin holds every permission, so the filter is the only thing
+    // standing between the platform roles and the front-office/patient UIs.
+    setSession({
+      role: "super_admin",
+      admin: true,
+      permissions: ["REGISTRATION_READ", "PORTAL_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
+  it("shows the Front Desk section for a scheduler with R08 grants", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "scheduler",
+      permissions: [
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "SCHEDULE_READ",
+        "SCHEDULE_WRITE",
+      ],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Front Desk")).toBeInTheDocument();
+    await user.click(screen.getByText("Front Desk"));
+    expect(screen.getByText("Registration")).toBeInTheDocument();
+    expect(screen.getByText("Visits & Check-In")).toBeInTheDocument();
+    expect(screen.getByText("Waiting Queue")).toBeInTheDocument();
+    // No PORTAL_READ: the patient surface stays hidden.
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
   it("shows the Metrics item for a department_manager holding only ANALYTICS_READ", () => {
     setSession({
       role: "department_manager",

@@ -10,7 +10,7 @@ from starlette.endpoints import HTTPEndpoint
 from api.notify import notify_role
 from api.permissions import Permission
 from api.rbac import requires_permission
-from api.response import created, not_found, ok
+from api.response import created, not_found, ok, validation_error
 from api.schemas.portal import (
     CreateFollowUpRequest,
     CreateScopeRequest,
@@ -21,6 +21,7 @@ from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.portal import Portal
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 class PortalScopeHandler(HTTPEndpoint):
@@ -30,8 +31,12 @@ class PortalScopeHandler(HTTPEndpoint):
             rows = await Portal(conn).list_scope(request.user.id)
         return ok({'data': rows})
 
-    @requires_permission(Permission.PORTAL_READ)
+    @requires_permission(Permission.FOLLOW_UP_WRITE)
     async def post(self, request):
+        # Scope creation is a staff-side write: FOLLOW_UP_WRITE is the
+        # portal's write grant and no patient role carries it. PORTAL_READ
+        # alone (the patient role's grant) must never be able to attach a
+        # scope to an arbitrary patient (R3-01).
         body = await parse_body(CreateScopeRequest, request)
         async with get_conn() as conn:
             portal = Portal(conn)
@@ -39,6 +44,22 @@ class PortalScopeHandler(HTTPEndpoint):
                 return not_found('Patient not found')
             existing = await portal.get_scope(body.patient_id, request.user.id)
             if existing:
+                # R5-14: the idempotent re-attach path is a state change from
+                # the caller's perspective — an audit row proves the scope was
+                # (re)confirmed, not just created.
+                await AuditLog(conn).log_event(
+                    event_type='portal.scope_exists',
+                    actor_id=request.user.id,
+                    resource_type='patient_scope',
+                    resource_id=existing['id'],
+                    details={
+                        'patient_id': body.patient_id,
+                        'scope_type': existing['scope_type'],
+                        'existing': True,
+                    },
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
                 return ok({
                     'data': {
                         'id': existing['id'],
@@ -51,6 +72,19 @@ class PortalScopeHandler(HTTPEndpoint):
             )
             if row is None:
                 existing = await portal.get_scope(body.patient_id, request.user.id)
+                await AuditLog(conn).log_event(
+                    event_type='portal.scope_exists',
+                    actor_id=request.user.id,
+                    resource_type='patient_scope',
+                    resource_id=existing['id'],
+                    details={
+                        'patient_id': body.patient_id,
+                        'scope_type': existing['scope_type'],
+                        'existing': True,
+                    },
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
                 return ok({
                     'data': {
                         'id': existing['id'],
@@ -67,7 +101,7 @@ class PortalScopeHandler(HTTPEndpoint):
                     'patient_id': body.patient_id,
                     'scope_type': row['scope_type'],
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': {'id': row['id'], 'scope_type': row['scope_type']}})
@@ -85,7 +119,7 @@ class PortalScopeHandler(HTTPEndpoint):
                 resource_type='patient_scope',
                 resource_id=row['id'],
                 details={'patient_id': row['patient_id']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -107,7 +141,7 @@ class PortalPatientSearchHandler(HTTPEndpoint):
                 resource_id=None,
                 # No PHI in details — query string and result count only.
                 details={'query': query, 'result_count': len(rows)},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': rows})
@@ -127,7 +161,7 @@ class PortalPatientHandler(HTTPEndpoint):
                     resource_type='patient',
                     resource_id=patient_id,
                     details={'scoped': False, 'scope_type': None},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
                 return ok({'data': None})
@@ -145,7 +179,7 @@ class PortalPatientHandler(HTTPEndpoint):
                     'order_count': len(orders),
                     'report_count': len(reports),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({
@@ -172,7 +206,7 @@ class PortalReportHandler(HTTPEndpoint):
                     resource_type='report',
                     resource_id=report_id,
                     details={'scoped': False, 'scope_type': None},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
                 return ok({'data': None})
@@ -185,7 +219,7 @@ class PortalReportHandler(HTTPEndpoint):
                 resource_type='report',
                 resource_id=report_id,
                 details={'scoped': True, 'scope_type': scope['scope_type']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': row})
@@ -205,7 +239,7 @@ class PortalOrdersHandler(HTTPEndpoint):
                     resource_type='patient',
                     resource_id=patient_id,
                     details={'scoped': False, 'scope_type': None},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
                 return ok({'data': []})
@@ -220,7 +254,7 @@ class PortalOrdersHandler(HTTPEndpoint):
                     'scope_type': scope['scope_type'],
                     'order_count': len(orders),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': orders})
@@ -238,7 +272,20 @@ class PortalFollowUpHandler(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(CreateFollowUpRequest, request)
         async with get_conn() as conn:
-            row = await Portal(conn).create_follow_up(request.user.id, body)
+            portal = Portal(conn)
+            # Follow-ups reference a patient identity — the one portal write
+            # path that touches patient data must respect the scope boundary
+            # like every read path (R3-02). 404 keeps the "no such patient"
+            # ambiguity of the read paths, so staff cannot probe.
+            if not await portal.get_scope(body.patient_id, request.user.id):
+                return not_found('Patient not found')
+            if not await portal.follow_up_targets_valid(
+                body.patient_id, body.report_id, body.exam_id,
+            ):
+                return validation_error(
+                    'Report or exam does not belong to the patient'
+                )
+            row = await portal.create_follow_up(request.user.id, body)
             await AuditLog(conn).log_event(
                 event_type='portal.follow_up_created',
                 actor_id=request.user.id,
@@ -248,7 +295,7 @@ class PortalFollowUpHandler(HTTPEndpoint):
                     'patient_id': body.patient_id,
                     'priority': body.priority,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             await notify_role(
@@ -280,7 +327,7 @@ class PortalFollowUpStatusHandler(HTTPEndpoint):
                     resource_type='follow_up_request',
                     resource_id=follow_up_id,
                     details={'status': body.status},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
         return ok({})

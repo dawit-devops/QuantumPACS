@@ -14,6 +14,7 @@ from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.worklist import Worklist
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 class WorklistHandler(HTTPEndpoint):
@@ -67,7 +68,7 @@ class WorklistHandler(HTTPEndpoint):
                     'accession_number': body.accession_number,
                     'modality': body.modality,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': entry})
@@ -114,7 +115,7 @@ class WorklistEntryHandler(HTTPEndpoint):
                 resource_type='worklist_entry',
                 resource_id=entry_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -130,7 +131,7 @@ class WorklistEntryHandler(HTTPEndpoint):
                 resource_type='worklist_entry',
                 resource_id=entry_id,
                 details={},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})

@@ -276,27 +276,39 @@ async def _check_auth():
     except Exception:
         return {'status': 'degraded', 'latency_ms': int((time.monotonic() - start) * 1000),
                 'message': 'Auth secret is unset or still the default placeholder'}
-    # The token blocklist degrades gracefully in tokens.py when Redis is
-    # unavailable (is_blocked returns False), so auth stays healthy there.
+    return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
+
+
+async def _check_token_blocklist():
+    """R2-07: the token blocklist is fail-open by design — auth keeps working
+    without Redis, and the HTTP contract never 503s over it. Its degradation
+    must still be observable: surfaced as its own 'degraded' component here
+    instead of being hidden inside the auth component."""
+    start = time.monotonic()
     try:
         from api.redis_client import get_client, is_available
         if not is_available():
-            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000),
-                    'message': 'Token blocklist disabled (redis unavailable)'}
+            return {'status': 'degraded', 'latency_ms': 0,
+                    'message': 'Token blocklist fail-open active (redis unavailable)'}
         client = await get_client(db=1)
-        if client:
-            await client.ping()
+        if client is None:
+            return {'status': 'degraded',
+                    'latency_ms': int((time.monotonic() - start) * 1000),
+                    'message': 'Token blocklist fail-open active (redis client unavailable)'}
+        await client.ping()
         return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
     except Exception as e:
-        return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000),
-                'message': f'Token blocklist disabled: {(str(e) or type(e).__name__)[:200]}'}
+        return {'status': 'degraded',
+                'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': f'Token blocklist fail-open active: {(str(e) or type(e).__name__)[:200]}'}
 
 
 async def health_endpoint(request):
-    db_result, es_result, redis_result, storage_result, dicom_result, ingestion_result, hl7_result, fhir_result, auth_result = await asyncio.gather(
+    db_result, es_result, redis_result, storage_result, dicom_result, ingestion_result, hl7_result, fhir_result, auth_result, blocklist_result = await asyncio.gather(
         _check_db(), _check_es(), _check_redis(), _check_storage(),
         _check_dicom_listener(), _check_ingestion_service(),
         _check_hl7_listener(), _check_fhir(), _check_auth(),
+        _check_token_blocklist(),
     )
     components = {
         'database': db_result,
@@ -308,6 +320,7 @@ async def health_endpoint(request):
         'hl7': hl7_result,
         'fhir': fhir_result,
         'auth': auth_result,
+        'token_blocklist': blocklist_result,
     }
     all_ok = all(c.get('status') == 'ok' for c in components.values())
     overall_status = 'ok' if all_ok else 'degraded'

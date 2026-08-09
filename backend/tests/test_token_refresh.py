@@ -1,4 +1,6 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from contextlib import ExitStack
 
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -9,6 +11,19 @@ from api.tokens import create_token_pair, verify_token
 from api.validate import validation_exception_handler, _ValidationException
 
 SECRET = 'test-secret-key-for-refresh-token-test!!'
+
+
+def _mock_auth_db(row, role):
+    """Patch the refresh handler's DB re-read of user auth state."""
+    mock_conn = AsyncMock()
+    mock_conn.__aenter__.return_value = mock_conn
+    mock_users = MagicMock()
+    mock_users.return_value.get_user_row = AsyncMock(return_value=row)
+    mock_users.return_value.get_user_role = AsyncMock(return_value=role)
+    stack = ExitStack()
+    stack.enter_context(patch('api.users.get_conn', return_value=mock_conn))
+    stack.enter_context(patch('api.users.Users', mock_users))
+    return stack
 
 
 class TestRefreshEndpoint:
@@ -31,7 +46,11 @@ class TestRefreshEndpoint:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                    with _mock_auth_db(
+                        {'id': 1, 'admin': True, 'status': 'active', 'token_version': 0},
+                        ('super_admin', ['ALL']),
+                    ):
+                        resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
 
             assert resp.status_code == 200
             data = resp.json()
@@ -43,6 +62,8 @@ class TestRefreshEndpoint:
             payload = verify_token(data['access_token'])
             assert payload['id'] == 1
             assert payload['admin'] is True
+            assert payload['role'] == 'super_admin'
+            assert payload['permissions'] == ['ALL']
 
     def test_refresh_rotates_tokens(self):
         access, refresh = self._token_pair()
@@ -51,8 +72,12 @@ class TestRefreshEndpoint:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp1 = client.post('/api/auth/refresh', json={'refresh_token': refresh})
-                    assert resp1.status_code == 200
+                    with _mock_auth_db(
+                        {'id': 1, 'admin': True, 'status': 'active', 'token_version': 0},
+                        ('super_admin', ['ALL']),
+                    ):
+                        resp1 = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                        assert resp1.status_code == 200
 
             with patch('api.users.is_blocked', new=AsyncMock(return_value=True)):
                 resp2 = client.post('/api/auth/refresh', json={'refresh_token': refresh})
@@ -94,7 +119,11 @@ class TestRefreshEndpoint:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp = client.post('/api/auth/refresh', json={})
+                    with _mock_auth_db(
+                        {'id': 1, 'admin': True, 'status': 'active', 'token_version': 0},
+                        ('super_admin', ['ALL']),
+                    ):
+                        resp = client.post('/api/auth/refresh', json={})
 
             assert resp.status_code == 200
             data = resp.json()
@@ -116,8 +145,12 @@ class TestRefreshEndpoint:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()) as mock_block:
-                    resp = client.post('/api/auth/refresh', json={})
-                    assert resp.status_code == 200
+                    with _mock_auth_db(
+                        {'id': 1, 'admin': True, 'status': 'active', 'token_version': 0},
+                        ('super_admin', ['ALL']),
+                    ):
+                        resp = client.post('/api/auth/refresh', json={})
+                        assert resp.status_code == 200
 
             mock_block.assert_called_once_with(refresh)
             with patch('api.users.is_blocked', new=AsyncMock(return_value=True)):
@@ -132,7 +165,12 @@ class TestRefreshEndpoint:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                    with _mock_auth_db(
+                        {'id': 3, 'admin': False, 'tenant': 'hospital-x',
+                         'status': 'active', 'token_version': 0},
+                        ('receptionist', ['REGISTRATION_READ']),
+                    ):
+                        resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
 
             assert resp.status_code == 200
             payload = verify_token(resp.json()['access_token'])

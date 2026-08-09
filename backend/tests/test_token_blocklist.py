@@ -1,3 +1,6 @@
+import json
+import pytest
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, patch
 
 from starlette.applications import Starlette
@@ -13,6 +16,11 @@ from api.users import ChangePassword, Logout, RevokeToken
 from api.validate import validation_exception_handler, _ValidationException
 
 SECRET = 'test-secret-key-for-blocklist-tests!!'
+
+
+def _run(coro):
+    import asyncio
+    return asyncio.run(coro)
 
 
 def _fake_auth_middleware(user):
@@ -76,6 +84,15 @@ class TestLogout:
 
 
 class TestChangePasswordBlocklist:
+    @pytest.fixture(autouse=True)
+    def _hermetic_password_bucket(self):
+        # Redis is up in the dev env; the password bucket would persist this
+        # test's attempts in the shared zset and 429 subsequent runs. Force
+        # the in-memory fallback so the tests stay deterministic.
+        with patch('api.ratelimit._get_rate_redis',
+                   new=AsyncMock(return_value=None)):
+            yield
+
     def _make_app(self, user):
         return Starlette(
             routes=[Route('/api/change_password', endpoint=ChangePassword)],
@@ -213,3 +230,117 @@ class TestBlockedTokenAuth:
                 resp = client.get('/api/protected', headers={'X-Auth-Pacs': token})
 
             assert resp.status_code == 401
+
+
+class TestBlocklistFailOpenSignal:
+    """R2-07: the blocklist is fail-open by design (auth never 503s when
+    Redis is down), but the degradation must be loud — throttled ERROR logs
+    and a dedicated degraded component in /api/health."""
+
+    def setup_method(self):
+        from api import tokens
+        tokens.reset_blocklist_warn()
+        tokens._blocklist_redis = None
+
+    def test_is_blocked_fails_open_without_redis(self, caplog):
+        import logging
+        from api import tokens
+        with (
+            patch('api.tokens._get_blocklist_redis',
+                  new=AsyncMock(return_value=None)),
+            caplog.at_level(logging.ERROR, logger='api.tokens'),
+        ):
+            assert _run(tokens.is_blocked('jti-1')) is False
+        assert 'Token blocklist unavailable' in caplog.text
+        assert 'fail-open' in caplog.text
+
+    def test_is_blocked_fails_open_on_redis_error(self, caplog):
+        import logging
+        from api import tokens
+        r = AsyncMock()
+        r.exists.side_effect = Exception('connection refused')
+        with (
+            patch('api.tokens._get_blocklist_redis', new=AsyncMock(return_value=r)),
+            caplog.at_level(logging.ERROR, logger='api.tokens'),
+        ):
+            assert _run(tokens.is_blocked('jti-2')) is False
+        assert 'Token blocklist unavailable' in caplog.text
+
+    def test_block_token_fails_open_and_logs_error(self, caplog):
+        import logging
+        from api import tokens
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        with (
+            patch('api.tokens._get_blocklist_redis',
+                  new=AsyncMock(return_value=None)),
+            caplog.at_level(logging.ERROR, logger='api.tokens'),
+        ):
+            _run(tokens.block_token(token))
+        assert 'Token blocklist unavailable' in caplog.text
+
+    def test_warning_is_throttled(self, caplog):
+        import logging
+        from api import tokens
+        with (
+            patch('api.tokens._get_blocklist_redis',
+                  new=AsyncMock(return_value=None)),
+            caplog.at_level(logging.ERROR, logger='api.tokens'),
+        ):
+            assert _run(tokens.is_blocked('jti-3')) is False
+            assert _run(tokens.is_blocked('jti-4')) is False
+            assert _run(tokens.is_blocked('jti-5')) is False
+        assert caplog.text.count('Token blocklist unavailable') == 1
+
+
+class TestBlocklistHealthSignal:
+    def test_blocklist_component_degraded_without_redis(self):
+        from api import telemetry
+        with patch('api.redis_client.is_available', return_value=False):
+            result = _run(telemetry._check_token_blocklist())
+        assert result['status'] == 'degraded'
+        assert 'fail-open' in result['message']
+
+    def test_health_endpoint_reports_blocklist_without_503(self):
+        from api import telemetry
+        ok = {'status': 'ok', 'latency_ms': 1}
+        probes = {
+            '_check_db': AsyncMock(return_value=ok),
+            '_check_es': AsyncMock(return_value=ok),
+            '_check_redis': AsyncMock(return_value=ok),
+            '_check_storage': AsyncMock(return_value=ok),
+            '_check_dicom_listener': AsyncMock(return_value=ok),
+            '_check_ingestion_service': AsyncMock(return_value=ok),
+            '_check_hl7_listener': AsyncMock(return_value=ok),
+            '_check_fhir': AsyncMock(return_value=ok),
+            '_check_auth': AsyncMock(return_value=ok),
+            '_check_token_blocklist': AsyncMock(return_value={
+                'status': 'degraded', 'latency_ms': 0,
+                'message': 'Token blocklist fail-open active'},
+            ),
+        }
+        with ExitStack() as stack:
+            for name, mock in probes.items():
+                stack.enter_context(patch(f'api.telemetry.{name}', new=mock))
+            resp = _run(telemetry.health_endpoint(None))
+        data = json.loads(resp.body)
+        assert resp.status_code == 200
+        assert data['status'] == 'degraded'
+        assert data['components']['token_blocklist']['status'] == 'degraded'
+
+    def test_health_endpoint_blocklist_ok_when_redis_up(self):
+        from api import telemetry
+        ok = {'status': 'ok', 'latency_ms': 1}
+        probes = {f'_check_{name}': AsyncMock(return_value=ok)
+                  for name in ('db', 'es', 'redis', 'storage',
+                               'dicom_listener', 'ingestion_service',
+                               'hl7_listener', 'fhir', 'auth')}
+        probes['_check_token_blocklist'] = AsyncMock(return_value=ok)
+        with ExitStack() as stack:
+            for name, mock in probes.items():
+                stack.enter_context(patch(f'api.telemetry.{name}', new=mock))
+            resp = _run(telemetry.health_endpoint(None))
+        data = json.loads(resp.body)
+        assert resp.status_code == 200
+        assert data['status'] == 'ok'
+        assert data['components']['token_blocklist']['status'] == 'ok'

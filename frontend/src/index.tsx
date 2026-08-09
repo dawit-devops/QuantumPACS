@@ -80,6 +80,12 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const FrontDeskRegistration = React.lazy(
+  () => import("./frontdesk/Registration"),
+);
+const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
+const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
+const PatientPortal = React.lazy(() => import("./portal/Portal"));
 const TechnologistWorklist = React.lazy(
   () => import("./technologist/TechnologistWorklist"),
 );
@@ -227,7 +233,9 @@ function ThemedApp() {
                         // Matrix A admin roles carry only AUDIT_READ; the nav
                         // gate already accepts both and the backend resolves
                         // the alias symmetrically (rbac.py).
-                        <PermissionRoute permission={["LOG_READ", "AUDIT_READ"]}>
+                        <PermissionRoute
+                          permission={["LOG_READ", "AUDIT_READ"]}
+                        >
                           <Logs />
                         </PermissionRoute>
                       }
@@ -243,7 +251,13 @@ function ThemedApp() {
                     <Route
                       path="/schedule-board"
                       element={
-                        <ClinicalRoute permission="WORKLIST_READ">
+                        // The board is a schedule surface (view + capacity
+                        // booking + cancel), so it gates on SCHEDULE_READ
+                        // rather than the worklist permission: front-office
+                        // roles holding SCHEDULE_READ reach it, and the
+                        // SCHEDULE_WRITE grant (scheduler; receptionist via
+                        // R08) unlocks the write actions inside.
+                        <ClinicalRoute permission="SCHEDULE_READ">
                           <ScheduleBoard />
                         </ClinicalRoute>
                       }
@@ -325,6 +339,44 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="QA_READ">
                           <CorrectiveActions />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/registration"
+                      element={
+                        <ClinicalRoute permission="REGISTRATION_READ">
+                          <FrontDeskRegistration />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/visits"
+                      element={
+                        <ClinicalRoute permission="REGISTRATION_READ">
+                          <FrontDeskVisits />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/queue"
+                      element={
+                        <ClinicalRoute permission="QUEUE_READ">
+                          <FrontDeskQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal"
+                      element={
+                        // The patient portal is a role-scoped surface (R19):
+                        // staff/patient roles holding PORTAL_READ render their
+                        // own scope-gated records. Admin-scoped roles are
+                        // excluded like the front-desk surfaces — super_admin
+                        // holds every grant, but "My Records" is not an admin
+                        // surface.
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <PatientPortal />
                         </ClinicalRoute>
                       }
                     />
