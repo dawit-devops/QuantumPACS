@@ -5,11 +5,12 @@ import {
   seedAuditOnlyUser,
   BASE,
   menuName,
+  openSubmenu,
 } from "./helpers";
 
-// Every admin route gated by PermissionRoute in index.tsx. Shared by the denial
-// suite (technologist must be bounced to "/") and the positive-control suite
-// (admin must NOT be bounced) so the matrix stays in sync.
+// Admin-console and platform routes gated by PermissionRoute in index.tsx.
+// Shared by the denial suite (technologist must be bounced to "/") and the
+// positive-control suite (admin must NOT be bounced) so the matrix stays in sync.
 const ADMIN_ROUTES = [
   "/admin",
   "/replicas",
@@ -17,11 +18,6 @@ const ADMIN_ROUTES = [
   "/roles",
   "/tenants",
   "/logs",
-  "/worklist",
-  "/schedule-board",
-  "/exams",
-  "/reading",
-  "/peer-review",
   "/service-keys",
   "/routing",
   "/fhir/config",
@@ -30,6 +26,17 @@ const ADMIN_ROUTES = [
   "/hl7",
   "/dicomweb",
   "/integrations",
+];
+
+// Clinical surfaces (Reading / Acquisition / QA) are closed to admin-scoped
+// roles: ClinicalRoute excludes them regardless of grants and the bounce lands
+// on the dashboard. The positive control is therefore inverted for these paths.
+const CLINICAL_ROUTES = [
+  "/worklist",
+  "/schedule-board",
+  "/exams",
+  "/reading",
+  "/peer-review",
   "/qa/queue",
   "/qa/protocols",
   "/qa/incidents",
@@ -50,7 +57,10 @@ test.describe("Role-Based Access", () => {
   });
 
   test("admin can navigate to Users page", async ({ page }) => {
-    await page.getByRole("menuitem", { name: menuName("Admin") }).click();
+    // The Admin section is already open for admin (dashboard landing auto-opens
+    // it), so expand conditionally: clicking an open submenu title toggles it
+    // closed and hides the Users child.
+    await openSubmenu(page, "Admin", "Users");
     await page.getByRole("menuitem", { name: menuName("Users") }).click();
     await expect(page).toHaveURL(/\/users/, { timeout: 10000 });
   });
@@ -75,7 +85,7 @@ test.describe("Role-Based Access", () => {
 test.describe("Non-admin deep-link denial (PermissionRoute)", () => {
   // A technologist without those permissions must be redirected to "/" (Files)
   // rather than reaching the route.
-  for (const path of ADMIN_ROUTES) {
+  for (const path of [...ADMIN_ROUTES, ...CLINICAL_ROUTES]) {
     test(`technologist is denied deep-link ${path}`, async ({ page }) => {
       await seedTechnologist(page);
       await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
@@ -105,11 +115,13 @@ test.describe("Audit-only deep-link access (LOG_READ | AUDIT_READ gate)", () => 
   test("audit-only user is still denied /users and /routing", async ({
     page,
   }) => {
+    // imaging_informatics is admin-scoped with AUDIT_READ (a dashboard
+    // permission), so the PermissionRoute bounce lands on the dashboard.
     await seedAuditOnlyUser(page);
     await page.goto(BASE + "/users", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+    await expect(page).toHaveURL(/\/admin$/, { timeout: 5000 });
     await page.goto(BASE + "/routing", { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+    await expect(page).toHaveURL(/\/admin$/, { timeout: 5000 });
   });
 });
 
@@ -126,6 +138,18 @@ test.describe("Admin deep-link access (PermissionRoute positive control)", () =>
       await expect(page).toHaveURL(new RegExp(path + "$"), {
         timeout: 10000,
       });
+    });
+  }
+});
+
+test.describe("Admin deep-link denial (role-scoped clinical routes)", () => {
+  // ClinicalRoute excludes admin-scoped roles from Reading / Acquisition / QA
+  // even when their grants pass; the redirect lands on the dashboard.
+  for (const path of CLINICAL_ROUTES) {
+    test(`admin is denied deep-link ${path}`, async ({ page }) => {
+      await loginAsAdmin(page);
+      await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
+      await expect(page).toHaveURL(/\/admin$/, { timeout: 10000 });
     });
   }
 });
