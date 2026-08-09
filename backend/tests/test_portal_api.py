@@ -123,7 +123,14 @@ class TestPortalScope:
         assert len(data) == 1
         assert data[0]['patient_id'] == 'MRN1'
 
-    def test_create_requires_portal_read(self):
+    def test_create_requires_follow_up_write(self):
+        # R3-01: PORTAL_READ alone (the patient role's grant) must never
+        # attach a scope to an arbitrary patient.
+        client = TestClient(_make_app(READ_ONLY))
+        resp = client.post('/portal/scope', json={'patient_id': 'MRN1'})
+        assert resp.status_code == 403
+
+    def test_create_requires_any_permission(self):
         client = TestClient(_make_app(NO_PERMS))
         resp = client.post('/portal/scope', json={'patient_id': 'MRN1'})
         assert resp.status_code == 403
@@ -155,6 +162,27 @@ class TestPortalScope:
         data = resp.json()['data']
         assert data['existing'] is True
         assert data['id'] == 'scope-1'
+
+    def test_create_duplicate_is_audited(self):
+        """R5-14: the idempotent re-attach path is a state confirmation, not
+        a no-op — it must leave an audit trail like every other mutation."""
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchval.return_value = 1
+        mock_conn.fetchrow.return_value = {'id': 'scope-1', 'scope_type': 'ward'}
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            resp = client.post('/portal/scope', json={'patient_id': 'MRN1'})
+        assert resp.status_code == 200
+        audit_calls = [
+            call for call in mock_conn.execute.await_args_list
+            if 'INSERT INTO logs' in call.args[0]
+        ]
+        assert len(audit_calls) == 1
+        # the event type and patient live in the JSON payload parameter
+        payload = audit_calls[0].args[1]
+        assert 'portal.scope_exists' in payload
+        assert 'MRN1' in payload
 
     def test_create_unknown_patient_not_found(self):
         client = TestClient(_make_app(STAFF))
@@ -368,7 +396,11 @@ class TestPortalFollowUps:
         client = TestClient(_make_app(STAFF))
         mock_conn = AsyncMock()
         mock_conn.__aenter__.return_value = mock_conn
-        mock_conn.fetchrow.return_value = {'id': 'fu-1'}
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),          # get_scope — in scope
+            {'id': 'fu-1'},        # create_follow_up
+        ]
+        mock_conn.fetchval.return_value = 1  # follow_up_targets_valid
         with patch('api.portal.get_conn', return_value=mock_conn):
             with patch('api.portal.notify_role') as mock_notify:
                 resp = client.post('/portal/follow-ups', json={
@@ -382,6 +414,37 @@ class TestPortalFollowUps:
         args = mock_notify.call_args.args
         assert args[1] == 'radiologist'
         assert 'stat' in args[4]
+
+    def test_create_out_of_scope_not_found(self):
+        # R3-02: the follow-up write path must respect the scope boundary.
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = None  # get_scope — no scope
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            with patch('api.portal.notify_role') as mock_notify:
+                resp = client.post('/portal/follow-ups', json={
+                    'patient_id': 'MRN1',
+                    'reason': 'Repeat imaging',
+                })
+        assert resp.status_code == 404
+        mock_notify.assert_not_awaited()
+
+    def test_create_foreign_report_rejected(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = _scope_row()
+        mock_conn.fetchval.return_value = None  # targets_valid — foreign report
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            with patch('api.portal.notify_role') as mock_notify:
+                resp = client.post('/portal/follow-ups', json={
+                    'patient_id': 'MRN1',
+                    'report_id': 'rep-other',
+                    'reason': 'Repeat imaging',
+                })
+        assert resp.status_code == 400
+        mock_notify.assert_not_awaited()
 
     def test_update_requires_portal_read(self):
         client = TestClient(_make_app(NO_PERMS))

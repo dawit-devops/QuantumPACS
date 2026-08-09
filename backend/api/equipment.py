@@ -37,6 +37,7 @@ from db.equipment import (
     WorkOrders,
 )
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 # Documented work order lifecycle: open → in_progress → on_hold → resolved.
 _WORK_ORDER_TRANSITIONS = {
@@ -107,7 +108,7 @@ class EquipmentHandler(HTTPEndpoint):
                     'identifier': body.identifier,
                     'modality': body.modality,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': equipment})
@@ -144,7 +145,7 @@ class EquipmentItemHandler(HTTPEndpoint):
                 resource_type='equipment',
                 resource_id=equipment_id,
                 details=details,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -226,7 +227,7 @@ class MaintenanceSchedulesHandler(HTTPEndpoint):
                     'equipment_id': equipment_id,
                     'schedule_type': body.schedule_type,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': schedule})
@@ -255,7 +256,7 @@ class MaintenanceScheduleItemHandler(HTTPEndpoint):
                     'equipment_id': existing.get('equipment_id'),
                     'title': existing.get('title'),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': schedule})
@@ -303,7 +304,7 @@ class QCRecordsHandler(HTTPEndpoint):
                         'equipment_id': equipment_id,
                         'test_type': body.test_type,
                     },
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
                 identifier = equipment.get('identifier') or equipment_id
@@ -324,7 +325,7 @@ class QCRecordsHandler(HTTPEndpoint):
                         'test_type': body.test_type,
                         'pass_fail': body.pass_fail,
                     },
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
         return created({'data': record})
@@ -367,7 +368,7 @@ class DowntimeEventsHandler(HTTPEndpoint):
                     'equipment_id': equipment_id,
                     'cause_category': body.cause_category,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': event})
@@ -426,7 +427,7 @@ class DowntimeEventHandler(HTTPEndpoint):
                     'equipment_id': equipment_id,
                     'duration_minutes': duration_minutes,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': event})
@@ -470,7 +471,7 @@ class WorkOrdersHandler(HTTPEndpoint):
                     'equipment_id': body.equipment_id,
                     'description': body.description,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             identifier = equipment.get('identifier') or body.equipment_id
@@ -525,7 +526,7 @@ class WorkOrderHandler(HTTPEndpoint):
                 resource_type='work_order',
                 resource_id=work_order_id,
                 details=details,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': work_order})
@@ -577,7 +578,7 @@ class VendorContractsHandler(HTTPEndpoint):
                     'equipment_id': equipment_id,
                     'vendor_name': body.vendor_name,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': contract})
@@ -602,7 +603,7 @@ class VendorContractHandler(HTTPEndpoint):
                 resource_type='vendor_contract',
                 resource_id=contract_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': contract})
@@ -638,7 +639,7 @@ class PartsInventoryHandler(HTTPEndpoint):
                     'part_name': body.part_name,
                     'stock_level': body.stock_level,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': part})
@@ -663,7 +664,7 @@ class PartsInventoryHandler(HTTPEndpoint):
                 resource_type='part',
                 resource_id=part_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
             if stock_level < threshold:
@@ -678,7 +679,7 @@ class PartsInventoryHandler(HTTPEndpoint):
                         'stock_level': stock_level,
                         'low_stock_threshold': threshold,
                     },
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
                 await notify_role(

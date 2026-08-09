@@ -7,6 +7,7 @@ necessary projection (initials + last-4 of MRN, never full names).
 """
 import time as _time
 import uuid
+import zlib
 from datetime import date, datetime, time
 
 from asyncpg.exceptions import UniqueViolationError
@@ -25,6 +26,7 @@ from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.frontdesk import FrontDesk
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 def _row_dict(row):
@@ -40,6 +42,18 @@ def _row_dict(row):
 
 def _slot_key(t):
     return f'{t.hour:02d}:{t.minute:02d}'
+
+
+# The single canonical visit lifecycle (R5-10): each status may only move to
+# the next state; 'complete' is terminal. The appointment/worklist/exam status
+# vocabularies are separate projections of the same booking — the visit is the
+# patient-facing lifecycle and the only one a front-desk caller may mutate.
+_VISIT_TRANSITIONS = {
+    'registered': {'checked_in'},
+    'checked_in': {'in_progress'},
+    'in_progress': {'complete'},
+    'complete': set(),
+}
 
 
 class PatientsSearchHandler(HTTPEndpoint):
@@ -58,11 +72,25 @@ class PatientsRegistrationHandler(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(CreatePatientRequest, request)
         patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
+        name = body.name.strip()
         async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            # R5-13: MPI dedup belongs on the server, not in a client banner —
+            # two registrations of the same person (same name + birth date,
+            # different MRNs) must not create two records. 409 with the
+            # existing row lets the front desk re-use it instead of probing.
+            existing = await fd.find_patient_duplicate(name, body.birth_date)
+            if existing:
+                return api_error(
+                    'PATIENT_EXISTS',
+                    'Patient with this name and birth date already exists',
+                    details={'patient': _row_dict(existing)},
+                    status=409,
+                )
             try:
-                row = await FrontDesk(conn).create_patient({
+                row = await fd.create_patient({
                     'patient_id': patient_id,
-                    'name': body.name,
+                    'name': name,
                     'birth_date': body.birth_date,
                     'sex': body.sex,
                     'meta': body.meta,
@@ -75,7 +103,7 @@ class PatientsRegistrationHandler(HTTPEndpoint):
                 resource_type='patient',
                 resource_id=row['id'],
                 details={'patient_id': patient_id},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
@@ -119,7 +147,7 @@ class VisitsHandler(HTTPEndpoint):
                 resource_type='visit',
                 resource_id=row['id'],
                 details={'patient_id': body.patient_id, 'destination_room': body.destination_room or ''},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
@@ -146,6 +174,20 @@ class VisitHandler(HTTPEndpoint):
             existing = await FrontDesk(conn).get_visit(visit_id)
             if not existing:
                 return not_found('Visit not found')
+            # R5-10: one canonical lifecycle — a visit moves strictly forward
+            # registered → checked_in → in_progress → complete, and nothing
+            # leaves 'complete'. Illegal transitions are rejected (409) so a
+            # REGISTRATION_WRITE caller can never skip check-in or resurrect
+            # a finished visit; same-status no-ops stay idempotent.
+            new_status = updates.get('status')
+            if new_status and new_status != existing['status']:
+                allowed = _VISIT_TRANSITIONS.get(existing['status'], set())
+                if new_status not in allowed:
+                    return api_error(
+                        'INVALID_VISIT_TRANSITION',
+                        f'Visit cannot transition {existing["status"]} -> {new_status}',
+                        status=409,
+                    )
             await FrontDesk(conn).update_visit(visit_id, updates)
             event_type = 'frontdesk.checkin' if updates.get('status') == 'checked_in' else 'frontdesk.visit_updated'
             await AuditLog(conn).log_event(
@@ -154,7 +196,7 @@ class VisitHandler(HTTPEndpoint):
                 resource_type='visit',
                 resource_id=visit_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -194,7 +236,7 @@ class VisitOrdersHandler(HTTPEndpoint):
                 resource_type='visit',
                 resource_id=visit_id,
                 details={'requested_procedure': body.requested_procedure, 'urgency': body.urgency},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
@@ -212,7 +254,13 @@ class AppointmentAvailabilityHandler(HTTPEndpoint):
 
         slots = [time(h, m) for h in range(8, 18) for m in (0, 30)]
         async with get_conn() as conn:
-            capacity = await FrontDesk(conn).get_capacity(modality, day.weekday()) or 1
+            # R5-16: unconfigured capacity must be loud, not silent — a
+            # modality with no capacity row previously booked at capacity 1
+            # with a full grid. 404 surfaces "not configured" to the caller.
+            capacity = await FrontDesk(conn).get_capacity(modality, day.weekday())
+            if capacity is None and modality:
+                return not_found('Modality not configured for this day')
+            capacity = capacity or 1
             appt_rows = await conn.fetch(
                 """
                 SELECT scheduled_time, COUNT(1) AS c FROM appointments
@@ -221,20 +269,13 @@ class AppointmentAvailabilityHandler(HTTPEndpoint):
                 """,
                 modality, day,
             )
-            wl_rows = await conn.fetch(
-                """
-                SELECT scheduled_time, COUNT(1) AS c FROM worklist_entries
-                WHERE modality = $1 AND scheduled_date = $2 AND status = 'scheduled'
-                GROUP BY scheduled_time
-                """,
-                modality, day,
-            )
 
+        # Appointments are the single source of truth for booked capacity
+        # (R5-01) — the mirrored worklist entry is not counted again.
         booked = {}
-        for rows in (appt_rows, wl_rows):
-            for r in rows:
-                key = _slot_key(r['scheduled_time'])
-                booked[key] = booked.get(key, 0) + r['c']
+        for r in appt_rows:
+            key = _slot_key(r['scheduled_time'])
+            booked[key] = booked.get(key, 0) + r['c']
 
         data = []
         for s in slots:
@@ -264,12 +305,24 @@ class AppointmentsHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_WRITE)
     async def post(self, request):
         body = await parse_body(CreateAppointmentRequest, request)
+        lock_key = zlib.crc32(
+            f'{body.modality}|{body.scheduled_date}|{body.scheduled_time}'.encode(),
+        )
         async with get_conn() as conn:
             fd = FrontDesk(conn)
             # Conflict check + inserts run in one transaction so two concurrent
-            # bookings can never double-book a slot below capacity.
+            # bookings can never double-book a slot below capacity. The
+            # advisory lock serializes competing bookings of the same slot
+            # across connections (R3-03) — locking the capacity row would be a
+            # no-op on days where no modality_capacity row exists.
             async with conn.transaction():
-                capacity = await fd.get_capacity(body.modality, body.scheduled_date.weekday()) or 1
+                await conn.execute('SELECT pg_advisory_xact_lock($1::bigint)', lock_key)
+                # R5-16: bookings against an unconfigured modality must not
+                # silently succeed at capacity 1 — same 404 as availability.
+                capacity = await fd.get_capacity(body.modality, body.scheduled_date.weekday())
+                if capacity is None and body.modality:
+                    return not_found('Modality not configured for this day')
+                capacity = capacity or 1
                 booked = await fd.count_slot_booked(
                     body.modality, body.scheduled_date, body.scheduled_time,
                 ) or 0
@@ -278,25 +331,31 @@ class AppointmentsHandler(HTTPEndpoint):
                         'SLOT_CONFLICT', 'Slot already booked — availability refreshed', status=409,
                     )
                 patient = await fd.get_patient(body.patient_id)
+                if not patient:
+                    # Never schedule against a phantom patient (R5-06) —
+                    # neither the appointment nor the worklist entry is
+                    # created, so the modality worklist stays clean.
+                    return not_found('Patient not found')
+                wl_id = await fd.create_worklist_entry({
+                    'patient_id': body.patient_id,
+                    'patient_name': patient['name'],
+                    'patient_birth_date': patient['birth_date'],
+                    'patient_sex': patient['sex'],
+                    'scheduled_date': body.scheduled_date,
+                    'scheduled_time': body.scheduled_time,
+                    'modality': body.modality,
+                    'station_ae_title': body.room,
+                    'created_by': str(request.user.id),
+                })
                 appt = await fd.create_appointment({
                     'patient_id': body.patient_id,
                     'visit_id': body.visit_id,
+                    'worklist_entry_id': wl_id,
                     'modality': body.modality,
                     'room': body.room,
                     'technologist': body.technologist,
                     'scheduled_date': body.scheduled_date,
                     'scheduled_time': body.scheduled_time,
-                    'created_by': str(request.user.id),
-                })
-                wl_id = await fd.create_worklist_entry({
-                    'patient_id': body.patient_id,
-                    'patient_name': patient['name'] if patient else '',
-                    'patient_birth_date': patient['birth_date'] if patient else '',
-                    'patient_sex': patient['sex'] if patient else '',
-                    'scheduled_date': body.scheduled_date,
-                    'scheduled_time': body.scheduled_time,
-                    'modality': body.modality,
-                    'station_ae_title': body.room,
                     'created_by': str(request.user.id),
                 })
                 await AuditLog(conn).log_event(
@@ -305,10 +364,10 @@ class AppointmentsHandler(HTTPEndpoint):
                     resource_type='appointment',
                     resource_id=appt['id'],
                     details={'patient_id': body.patient_id, 'modality': body.modality},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
-        return created({'data': {**_row_dict(appt), 'worklist_entry_id': str(wl_id)}})
+        return created({'data': _row_dict(appt)})
 
 
 class AppointmentHandler(HTTPEndpoint):
@@ -328,7 +387,7 @@ class AppointmentHandler(HTTPEndpoint):
                 resource_type='appointment',
                 resource_id=appointment_id,
                 details={},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -359,7 +418,7 @@ class ConsentsHandler(HTTPEndpoint):
                     resource_type='visit',
                     resource_id=visit_id,
                     details={'consent_type': body.consent_type, 'file_name': body.file_name},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
             return ok({'data': _row_dict(row)})
@@ -379,7 +438,7 @@ class ConsentsHandler(HTTPEndpoint):
                 resource_type='visit',
                 resource_id=visit_id,
                 details={'consent_type': body.consent_type},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
@@ -421,7 +480,7 @@ class InsuranceHandler(HTTPEndpoint):
                 resource_type='insurance',
                 resource_id=row['id'],
                 details={'patient_id': patient_id},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
@@ -446,7 +505,7 @@ class InsuranceHandler(HTTPEndpoint):
                 resource_type='insurance',
                 resource_id=insurance_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})

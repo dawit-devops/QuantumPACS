@@ -1,4 +1,4 @@
-import { useDocumentTitle, useTenantRefetch } from "../hooks";
+import { useDocumentTitle, useTenantRefetch, useVisibilityGatedInterval } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import { Layout, Table, Tag, Button, Select, Input, Alert, Spin } from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -6,6 +6,8 @@ import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import "./TechnologistWorklist.css";
+// Status chips reuse the shared Front Desk chip styles (fd-chips/fd-chip).
+import "../frontdesk/FrontDesk.css";
 
 const Content = Layout.Content;
 
@@ -32,19 +34,52 @@ const PRIORITY_COLORS: Record<string, string> = {
 // on this interval so new R04 assignments appear without a manual reload.
 const REFRESH_MS = 30000;
 
+const STATUS_TABS = [
+  { key: "", label: "All" },
+  { key: "ready", label: "Ready" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+];
+
 function TechnologistWorklist() {
   useDocumentTitle("QuantumPACS - Technologist Worklist");
 
   const navigate = useNavigate();
   const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  // R1-03: loading only covers the initial load — background polls must not
+  // flash the Table spinner mask every 30s. It starts true (the mount effect
+  // fetches immediately) and is cleared by the first response; later polls
+  // leave the previous rows in place until fresh data lands.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>();
-  const [modalityFilter, setModalityFilter] = useState<string | undefined>();
-  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(
+    () => sessionStorage.getItem("tech-wl-status") || undefined,
+  );
+  const [modalityFilter, setModalityFilter] = useState<string | undefined>(
+    () => sessionStorage.getItem("tech-wl-modality") || undefined,
+  );
+  const [search, setSearch] = useState(
+    () => sessionStorage.getItem("tech-wl-search") || "",
+  );
+
+  // Persist filter state across the worklist -> exam console -> back loop
+  // (R06 UI/UX: back navigation preserves scroll position and filter state).
+  useEffect(() => {
+    if (statusFilter) sessionStorage.setItem("tech-wl-status", statusFilter);
+    else sessionStorage.removeItem("tech-wl-status");
+  }, [statusFilter]);
+  useEffect(() => {
+    if (modalityFilter)
+      sessionStorage.setItem("tech-wl-modality", modalityFilter);
+    else sessionStorage.removeItem("tech-wl-modality");
+  }, [modalityFilter]);
+  useEffect(() => {
+    if (search) sessionStorage.setItem("tech-wl-search", search);
+    else sessionStorage.removeItem("tech-wl-search");
+  }, [search]);
 
   const fetchExams = useCallback(() => {
-    setLoading(true);
     setError(null);
     const query: Record<string, string> = {};
     if (statusFilter) query.status = statusFilter;
@@ -52,23 +87,41 @@ function TechnologistWorklist() {
     if (search) query.search = search;
     request("exams", { query })
       .then((res: any) => {
-        setLoading(false);
         setData(Array.isArray(res.data) ? res.data : []);
       })
       .catch((e: any) => {
-        setLoading(false);
         setError(e.message);
-      });
+      })
+      .finally(() => setLoading(false));
   }, [statusFilter, modalityFilter, search]);
 
   useEffect(() => {
     fetchExams();
-    const timer = setInterval(fetchExams, REFRESH_MS);
-    return () => clearInterval(timer);
   }, [fetchExams]);
+
+  // R1-04: pause the 30s poll while the tab is hidden; refetch on return.
+  useVisibilityGatedInterval(fetchExams, REFRESH_MS);
 
   // Tenant switch → refetch immediately (interval may be up to 30s away).
   useTenantRefetch(fetchExams);
+
+  // Per-status counts across the whole assignment (not just the filtered
+  // page): one lightweight request with a big per_page, summed client-side.
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    request("exams", { query: { per_page: "500" } })
+      .then((res: any) => {
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const counts: Record<string, number> = {};
+        for (const e of rows) {
+          counts[e.status || "ready"] = (counts[e.status || "ready"] || 0) + 1;
+        }
+        setStatusCounts(counts);
+      })
+      .catch(() => {});
+  }, []);
+
+  const totalCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
   const modalities = [...new Set(data.map((e) => e.modality).filter(Boolean))];
 
@@ -152,19 +205,19 @@ function TechnologistWorklist() {
       </div>
 
       <div className="tech-wl-filters">
-        <Select
-          allowClear
-          placeholder="Status"
-          style={{ width: 150 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={["ready", "in_progress", "completed", "cancelled"].map(
-            (s) => ({
-              value: s,
-              label: s,
-            }),
-          )}
-        />
+        <div className="fd-chips" style={{ marginBottom: 0 }}>
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.key || "all"}
+              type="button"
+              className={`fd-chip ${statusFilter === tab.key ? "is-active" : ""}`}
+              onClick={() => setStatusFilter(tab.key || undefined)}
+            >
+              {tab.label} (
+              {tab.key === "" ? totalCount : statusCounts[tab.key] || 0})
+            </button>
+          ))}
+        </div>
         <Select
           allowClear
           placeholder="Modality"
@@ -195,6 +248,15 @@ function TechnologistWorklist() {
           onSearch={() => fetchExams()}
         />
       </div>
+
+      {statusFilter === "completed" && data.length > 0 && (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
+        />
+      )}
 
       {error && (
         <Alert

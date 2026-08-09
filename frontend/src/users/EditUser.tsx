@@ -77,7 +77,7 @@ export function AddUserFinish(props: any) {
 
 export function AddUser(props: any) {
   const { message } = App.useApp();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<any>({});
   const [roles, setRoles] = useState<any[]>([]);
@@ -87,6 +87,11 @@ export function AddUser(props: any) {
   // Tenant assignment is a platform-admin capability: only users holding
   // TENANT_READ may scope a new user to a tenant via the form.
   const canAssignTenant = hasPermission("TENANT_READ");
+
+  // The Admin flag is a second super-admin channel (backend users.py:240
+  // rejects it unless request.user.admin): only platform admins may grant it,
+  // so the checkbox is hidden for everyone else — same contract as the API.
+  const canGrantAdmin = user?.admin === true;
 
   useEffect(() => {
     if (visible) {
@@ -112,13 +117,13 @@ export function AddUser(props: any) {
   const handleCreate = () => {
     form
       .validateFields()
-      .then((values: any) => {
-        const data: any = {
-          username: values.username,
-          admin: values.admin || false,
-        };
-        if (values.role_id) data.role_id = values.role_id;
-        if (values.tenant) data.tenant = values.tenant;
+        .then((values: any) => {
+          const data: any = {
+            username: values.username,
+            admin: canGrantAdmin ? values.admin || false : false,
+          };
+          if (values.role_id) data.role_id = values.role_id;
+          if (values.tenant) data.tenant = values.tenant;
         createUser(data)
           .then((res: any) => {
             form.resetFields();
@@ -185,9 +190,16 @@ export function AddUser(props: any) {
               />
             </Form.Item>
           )}
-          <Form.Item name="admin" valuePropName="checked" initialValue={false}>
-            <Checkbox>Admin</Checkbox>
-          </Form.Item>
+          {canGrantAdmin && (
+            <Form.Item name="admin" valuePropName="checked" initialValue={false}>
+              <Checkbox>Admin</Checkbox>
+            </Form.Item>
+          )}
+          {!canGrantAdmin && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Platform admin access is reserved for platform administrators.
+            </Text>
+          )}
         </Form>
       </Modal>
     </div>

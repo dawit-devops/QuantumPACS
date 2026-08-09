@@ -26,6 +26,7 @@ from db.audit_log import AuditLog
 from db.billing import money
 from db.conn import get_conn
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 # Refunds above this amount require BILLING_ADMIN approval (FR-R09-05).
 REFUND_THRESHOLD = 500.00
@@ -209,7 +210,7 @@ class BillingInvoicesHandler(HTTPEndpoint):
                 resource_type='invoice',
                 resource_id=invoice['id'],
                 details={'patient_id': body.patient_id, 'total': total, 'line_count': len(lines)},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': {'invoice': _invoice_row(invoice), 'lines': lines}})
@@ -308,7 +309,7 @@ class BillingPaymentsHandler(HTTPEndpoint):
                 resource_type='payment',
                 resource_id=payment['id'],
                 details={'method': body.method, 'amount': money(body.amount), 'invoice_id': invoice_id},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': {
@@ -392,7 +393,7 @@ class BillingClaimsHandler(HTTPEndpoint):
                 resource_type='claim',
                 resource_id=row['id'],
                 details={'status': body.status, 'invoice_id': invoice_id},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': dict(row)})
@@ -430,7 +431,7 @@ class BillingClaimHandler(HTTPEndpoint):
                 resource_type='claim',
                 resource_id=claim_id,
                 details=updates,
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({})
@@ -484,7 +485,7 @@ class BillingRefundsHandler(HTTPEndpoint):
                     'amount': money(refund['amount']), 'reason': body.reason,
                     'threshold_exceeded': threshold_exceeded,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _refund_row(refund)})
@@ -518,7 +519,7 @@ class BillingRefundHandler(HTTPEndpoint):
                     resource_type='refund',
                     resource_id=refund_id,
                     details={'amount': money(refund['amount'])},
-                    tenant=request.user.tenant,
+                    tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
                 )
             else:
@@ -566,7 +567,7 @@ async def _apply_refund(conn, invoice_id, amount, request, event_type):
         resource_type='refund',
         resource_id=None,
         details={'invoice_id': invoice_id, 'amount': money(amount)},
-        tenant=request.user.tenant,
+        tenant=effective_tenant(request),
         request_id=request_id_var.get(),
     )
     return updated
@@ -617,7 +618,7 @@ class BillingQuotesHandler(HTTPEndpoint):
                 resource_type='quote',
                 resource_id=row['id'],
                 details={'procedure_code': body.procedure_code, 'total': total},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _quote_row(row)})
@@ -678,7 +679,7 @@ class BillingPaymentPlansHandler(HTTPEndpoint):
                     'installment_count': len(installments),
                     'total': money(sum(i['amount'] for i in installments)),
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': {**dict(plan), 'installments': installments}})
@@ -732,7 +733,7 @@ class BillingReconciliationHandler(HTTPEndpoint):
                 resource_type='shift_reconciliation',
                 resource_id=row['id'],
                 details={'shift_date': body.shift_date.isoformat(), 'variance': variance},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         data = dict(row)

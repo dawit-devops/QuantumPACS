@@ -164,7 +164,7 @@ class TestMiddlewareRoutingFuzz:
         (True,  None,   'unknown-slug',  404),  # admin, bad slug → 404
         (False, 'clinic-alfa', 'clinic-alfa',  200),  # own tenant → ok
         (False, 'clinic-alfa', 'clinic-bravo', 403),  # wrong tenant → 403
-        (False, 'clinic-alfa', None,           200),  # no header → ok
+        (False, 'clinic-alfa', None,           403),  # claim, no registry row → fail closed (R5-04)
         (False, 'clinic-alfa', 'unknown-slug', 403),  # tenant mismatch → 403 before DB lookup
         (False, None,   'clinic-alfa',  403),  # no tenant claim → 403
         (False, None,   None,           200),  # no claim, no header → ok

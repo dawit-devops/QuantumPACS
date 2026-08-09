@@ -1,14 +1,171 @@
 import { Page } from "@playwright/test";
 
-export const BASE = "http://localhost:5173";
+// E2E_BASE_URL lets CI point at a served build; local dev reuses the vite dev
+// server the playwright webServer block starts (or finds already running).
+export const BASE = process.env.E2E_BASE_URL || "http://localhost:5173";
+export const API_BASE = process.env.E2E_API_BASE || "http://localhost:8080";
 
+// antd Menu items expose "icon-alt label" as their accessible name (the icon
+// renders with an aria-label, e.g. "file-search Files", "user Account"), so
+// exact-string role lookups never match. Build a substring regex instead.
+export function menuName(label: string) {
+  return new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+}
+
+/**
+ * Resets storage and loads the app from a clean slate. Two-step goto because
+ * the first load lets the SPA boot and hydrate before storage is cleared.
+ * Also pre-seeds the onboarding tour's done-flag: the tour mounts a full-screen
+ * overlay (zIndex 9999) on every page once per profile, and its fade-out keeps
+ * intercepting clicks — disabling it entirely makes the suite deterministic.
+ */
 export async function clearAndGo(page: Page, path = "") {
   await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
+    localStorage.setItem("quantumpacs-tour-done", "true");
   });
   await page.goto(BASE + path, { waitUntil: "networkidle" });
+}
+
+/**
+ * Waits for the authenticated shell: the sidebar menu is rendered only after
+ * the app decides the session is valid, so a visible nav item is the cheapest
+ * deterministic "we are logged in" signal (no fixed sleeps). On mobile the
+ * nav lives in a closed drawer, so it is opened first when the desktop menu
+ * item does not appear.
+ */
+export async function waitForShell(page: Page) {
+  const filesItem = page.getByRole("menuitem", { name: menuName("Files") });
+  try {
+    await filesItem.waitFor({ state: "visible", timeout: 5000 });
+  } catch {
+    const menuBtn = page.getByRole("button", { name: "Menu" });
+    if (await menuBtn.isVisible().catch(() => false)) {
+      await menuBtn.click();
+    }
+    await filesItem.waitFor({ state: "visible", timeout: 15000 });
+  }
+}
+
+/**
+ * antd mounts submenu children only while the submenu is open, and the
+ * route-dependent defaultOpenKeys usually leave the target section ALREADY
+ * open (e.g. the admin workspace section opens on the Files page). Clicking
+ * an already-open submenu title TOGGLES it closed, so expand conditionally:
+ * only click the title when the probe child is not yet visible.
+ */
+export async function openSubmenu(
+  page: Page,
+  title: string,
+  probeChild: string,
+) {
+  const child = page.getByRole("menuitem", { name: menuName(probeChild) });
+  const childVisible = await child.isVisible().catch(() => false);
+  if (!childVisible) {
+    await page.getByRole("menuitem", { name: menuName(title) }).click();
+  }
+  await child.waitFor({ state: "visible", timeout: 5000 });
+}
+
+/**
+ * Opens the Admin section (idempotent) and clicks one of its children.
+ * .filter({ visible: true }).first() guards against a same-named item in
+ * another section that happens to be expanded (e.g. Worklist also lives in
+ * Acquisition).
+ */
+export async function openAdminItem(page: Page, name: string) {
+  await openSubmenu(page, "Admin", "Users");
+  await page
+    .getByRole("menuitem", { name: menuName(name) })
+    .filter({ visible: true })
+    .first()
+    .click();
+}
+
+/**
+ * Endpoint-keyed /api/** stub (R4-05). Boot-time calls must resolve with the
+ * shape their unwrapping expects; a single blanket shape already broke once
+ * (Files' fallbackToV2 object-shape vs the QA array-shape, see seedQAUser).
+ * Keying by path makes the next drift surface here instead of at runtime:
+ * every front-office / patient seed returns `{data, total}` (object shape)
+ * for everything, with the specific list endpoints called out.
+ */
+export function stubApiRoutes(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const keyed: Record<string, object> = {
+        // R19 scope + R08 queue unwrap res.data as arrays — keep them literal.
+        "/api/portal/scope": { data: [], total: 0 },
+        "/api/queue": { data: [], total: 0 },
+        "/api/patients/search": { data: [], total: 0 },
+        "/api/visits": { data: [], total: 0 },
+      };
+      const body = JSON.stringify(keyed[path] ?? { data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+}
+
+/**
+ * Seeds an authenticated front-office session (scheduler / receptionist /
+ * front_desk) with the R08 grants: registration, visits, order intake,
+ * consent capture, the privacy queue and schedule read/write. /api/** is
+ * stubbed so the deep-link suite runs without a real backend user.
+ */
+export async function seedFrontDesk(
+  page: Page,
+  role: "scheduler" | "receptionist" | "front_desk" = "scheduler",
+) {
+  await stubApiRoutes(page);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate((r) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "fd-1");
+    localStorage.setItem("username", r);
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", r);
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify([
+        "REGISTRATION_READ",
+        "REGISTRATION_WRITE",
+        "QUEUE_READ",
+        "SCHEDULE_READ",
+        "SCHEDULE_WRITE",
+        "WORKLIST_READ",
+      ]),
+    );
+    localStorage.setItem("access_token", "e2e-frontdesk-token");
+    localStorage.setItem("refresh_token", "e2e-frontdesk-token");
+  }, role);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Seeds an authenticated patient session holding PORTAL_READ — the R19
+ * own-data portal grant. /api/** is stubbed so the portal renders its
+ * empty scope state without a real backend patient.
+ */
+export async function seedPatient(page: Page) {
+  await stubApiRoutes(page);
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "pat-1");
+    localStorage.setItem("username", "patient");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "patient");
+    localStorage.setItem("permissions", JSON.stringify(["PORTAL_READ"]));
+    localStorage.setItem("access_token", "e2e-patient-token");
+    localStorage.setItem("refresh_token", "e2e-patient-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
 
 export async function loginAsAdmin(page: Page) {
@@ -16,19 +173,7 @@ export async function loginAsAdmin(page: Page) {
   await page.getByPlaceholder("Username").fill("admin");
   await page.getByPlaceholder("Password").fill("pa55w0rd");
   await page.getByRole("button", { name: /sign in/i }).click();
-  // super_admin lands on the role-scoped platform workspace (/users) since the
-  // navigator change, not the files page — wait for the authenticated shell
-  // (sidebar) instead of a files-page string.
-  await page.locator(".ant-layout-sider").first().waitFor({ state: "visible", timeout: 30000 });
-  // The onboarding tour mounts at App level and covers every route with a
-  // full-screen overlay (zIndex 9999) until dismissed once per browser profile
-  // — dismiss it so specs can click through the UI on any page.
-  const tourDismiss = page.getByRole("button", { name: "Dismiss tour" });
-  await tourDismiss.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
-  if (await tourDismiss.isVisible().catch(() => false)) {
-    await tourDismiss.click();
-  }
-  await page.waitForTimeout(2000);
+  await waitForShell(page);
 }
 
 /**
@@ -39,8 +184,14 @@ export async function loginAsAdmin(page: Page) {
  * technologist user in the backend.
  */
 export async function seedTechnologist(page: Page) {
-  await page.route("**/api/**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      }),
   );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
@@ -61,6 +212,101 @@ export async function seedTechnologist(page: Page) {
 }
 
 /**
+ * Seeds an authenticated nurse session (clinical role, acquisition surface):
+ * study reads + EXAM_READ + WORKLIST_READ, no admin-console grants. Proves
+ * clinical roles are bounced from admin surfaces (DICOMweb console) and land
+ * on their acquisition workspace instead.
+ */
+export async function seedNurse(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "nurse-1");
+    localStorage.setItem("username", "nurse");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "nurse");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify([
+        "FILE_READ",
+        "PATIENT_READ",
+        "STUDY_READ",
+        "EXAM_READ",
+        "WORKLIST_READ",
+      ]),
+    );
+    localStorage.setItem("access_token", "e2e-nurse-token");
+    localStorage.setItem("refresh_token", "e2e-nurse-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Seeds a physician holding only the legacy DICOMWEB_READ grant — the exact
+ * shape of the pre-scope bug where clinical roles with a leftover grant landed
+ * on the admin DICOMweb console. The console must bounce them to /account
+ * (no REPORT_READ means no clinical surface either).
+ */
+export async function seedPhysicianLegacy(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "phys-1");
+    localStorage.setItem("username", "physician");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "physician");
+    localStorage.setItem("permissions", JSON.stringify(["DICOMWEB_READ"]));
+    localStorage.setItem("access_token", "e2e-physician-token");
+    localStorage.setItem("refresh_token", "e2e-physician-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Seeds a pacs_admin holding only clinical grants (REPORT_READ) — the inverse
+ * drift: an admin-scoped role that must never open the reading worklist even
+ * when its permission set contains the clinical grant.
+ */
+export async function seedPacsAdminClinical(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "pacsadm-1");
+    localStorage.setItem("username", "pacs_admin");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "pacs_admin");
+    localStorage.setItem("permissions", JSON.stringify(["REPORT_READ"]));
+    localStorage.setItem("access_token", "e2e-pacsadmin-token");
+    localStorage.setItem("refresh_token", "e2e-pacsadmin-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
  * Seeds an authenticated QA Team session directly in localStorage with the same
  * permission set as the backend `qa_team` built-in role (read-only clinical
  * access + QA_WRITE + PROTOCOL_MANAGE), and stubs /api/** so the fake token
@@ -68,13 +314,16 @@ export async function seedTechnologist(page: Page) {
  * loading, and route gating without a real qa_team user in the backend.
  */
 export async function seedQAUser(page: Page) {
-  await page.route("**/api/**", (route) => {
-    // Files.tsx's fallbackToV2 reads res.data / res.total (object shape); the
-    // QA list endpoints read res.data as an array. A bare '[]' would set
-    // res.data to undefined and crash Files on boot, so return an object.
-    const body = JSON.stringify({ data: [], total: 0 });
-    route.fulfill({ status: 200, contentType: "application/json", body });
-  });
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      // Files.tsx's fallbackToV2 reads res.data / res.total (object shape); the
+      // QA list endpoints read res.data as an array. A bare '[]' would set
+      // res.data to undefined and crash Files on boot, so return an object.
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
     localStorage.clear();
@@ -101,6 +350,43 @@ export async function seedQAUser(page: Page) {
     );
     localStorage.setItem("access_token", "e2e-qa-token");
     localStorage.setItem("refresh_token", "e2e-qa-token");
+  });
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+}
+
+/**
+ * Seeds an authenticated audit-only session (AUDIT_READ but no LOG_READ) —
+ * the shape of imaging_informatics / department_manager. Validates the
+ * dual-permission /logs gate (LOG_READ | AUDIT_READ) end to end.
+ */
+export async function seedAuditOnlyUser(page: Page) {
+  await page.route(
+    (u) => u.pathname.startsWith("/api/"),
+    (route) => {
+      const body = JSON.stringify({ data: [], total: 0 });
+      route.fulfill({ status: 200, contentType: "application/json", body });
+    },
+  );
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("userId", "audit-1");
+    localStorage.setItem("username", "audit_viewer");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "imaging_informatics");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify([
+        "FILE_READ",
+        "PATIENT_READ",
+        "STUDY_READ",
+        "REPORT_READ",
+        "AUDIT_READ",
+      ]),
+    );
+    localStorage.setItem("access_token", "e2e-audit-token");
+    localStorage.setItem("refresh_token", "e2e-audit-token");
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }

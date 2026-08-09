@@ -15,6 +15,7 @@ import {
   Typography,
 } from "antd";
 import { InfoCircleOutlined, CopyOutlined } from "@ant-design/icons";
+import { useAuth } from "../auth/AuthContext";
 
 const { Text } = Typography;
 import withSidebar from "../common/base";
@@ -27,6 +28,8 @@ import {
 } from "../api/users";
 import { listRoles, type Role } from "../api/roles";
 import { PageState } from "../common/PageState";
+import PageHeader from "../common/PageHeader";
+import RequirePermission from "../auth/RequirePermission";
 import { AddUser } from "./EditUser";
 import { BulkImport } from "./BulkImport";
 
@@ -35,9 +38,19 @@ const Content = Layout.Content;
 function Users() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Users");
+  const { hasPermission } = useAuth();
+
+  // USER_READ gates the page (route); every mutating control — role change,
+  // reset password, deactivate, create — is a USER_WRITE action and is hidden
+  // for read-only holders (backend /api/users guards match).
+  const canWrite = hasPermission("USER_WRITE");
 
   const [data, setData] = useState<User[]>([]);
-  const [pagination, setPagination] = useState<any>({});
+  const [pagination, setPagination] = useState<any>({
+    current: 1,
+    pageSize: 10,
+    total: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState<string | null>(null);
@@ -79,6 +92,9 @@ function Users() {
               onChange={(roleId) => handleRoleChange(record.id, roleId)}
               options={roles.map((r: any) => ({ value: r.id, label: r.name }))}
               size="small"
+              loading={changingRole?.userId === record.id}
+              disabled={changingRole?.userId === record.id || !canWrite}
+              aria-label={`Change role for ${record.username}`}
             />
             <Tooltip
               title={`Role: ${name}\nPermissions: ${roles.find((r: any) => r.id === record.role_id)?.permissions?.join(", ") || "N/A"}`}
@@ -114,11 +130,12 @@ function Users() {
     {
       title: "Action",
       key: "action",
-      render: (_: any, record: any) =>
-        record.status === "active" ? (
+      render: (_: any, record: any) => {
+        if (!canWrite || record.status !== "active") return null;
+        return (
           <span>
             <a onClick={() => handleResetPassword(record.id)}>Reset password</a>
-            <Divider type="vertical" />
+            <Divider orientation="vertical" />
             <Popconfirm
               title="Sure to deactivate?"
               onConfirm={() => deactivate(record.id)}
@@ -126,7 +143,8 @@ function Users() {
               <a>Deactivate</a>
             </Popconfirm>
           </span>
-        ) : null,
+        );
+      },
     },
   ];
 
@@ -145,7 +163,10 @@ function Users() {
   const fetch = (params?: { offset?: number; limit?: number }) => {
     setLoading(true);
     setError(null);
-    listUsers(params || {})
+    // Explicit 1st-page size keeps dataSource length aligned with pageSize, so
+    // antd's pagination heuristic (length < total && length > pageSize) never
+    // fires on the initial unfiltered load.
+    listUsers(params || { offset: 0, limit: 10 })
       .then((res) => {
         const pager = Object.assign({}, pagination, { total: res.total });
         setLoading(false);
@@ -173,7 +194,10 @@ function Users() {
   };
 
   const deactivate = (id: number) => {
-    deactivateUser(id).then(() => fetch());
+    // Same error surfacing as role changes; the table refetches on success.
+    deactivateUser(id)
+      .then(() => fetch())
+      .catch((e: any) => message.error(e.message));
   };
 
   const handleResetPassword = (id: number) => {
@@ -183,11 +207,19 @@ function Users() {
   };
 
   return (
-    <Content style={{ padding: 50 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <AddUser reload={fetch} />
-        <BulkImport reload={fetch} />
-      </div>
+    <Content style={{ padding: 24 }}>
+      <PageHeader
+        title="Users"
+        description="User accounts and role assignments."
+        extra={
+          <RequirePermission permission="USER_WRITE">
+            <div style={{ display: "flex", gap: 8 }}>
+              <AddUser reload={fetch} />
+              <BulkImport reload={fetch} />
+            </div>
+          </RequirePermission>
+        }
+      />
       <Modal
         open={password !== null}
         footer={null}
@@ -231,7 +263,11 @@ function Users() {
         onRetry={() => fetch()}
         empty={!loading && !error && data.length === 0}
         emptyMessage="No users found"
-        emptyAction={<AddUser reload={fetch} />}
+        emptyAction={
+          <RequirePermission permission="USER_WRITE">
+            <AddUser reload={fetch} />
+          </RequirePermission>
+        }
       >
         <Table
           scroll={{ x: 600 }}

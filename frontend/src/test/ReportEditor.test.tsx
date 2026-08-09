@@ -71,6 +71,16 @@ function renderEditor() {
 describe("ReportEditor", () => {
   beforeEach(() => {
     localStorage.clear();
+    // A full radiologist: editing (REPORT_WRITE) and finalizing (REPORT_SIGN)
+    // both unlocked. Gate-specific variants seed their own sessions.
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "radiologist");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ", "REPORT_WRITE", "REPORT_SIGN"]),
+    );
     mockRequest.mockReset();
   });
 
@@ -211,5 +221,65 @@ describe("ReportEditor", () => {
       expect(screen.getByText("FINAL")).toBeInTheDocument();
     });
     expect(screen.getByText(/This report is FINAL/)).toBeInTheDocument();
+  });
+
+  it("renders a read-only view for a REPORT_READ-only user", async () => {
+    // referring_physician / care_coordinator hold REPORT_READ only: the
+    // editing affordances (template, save, mark preliminary, sign) must not
+    // advertise writes the backend rejects.
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ"]),
+    );
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderEditor();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Read-only report")).toBeInTheDocument();
+    expect(screen.queryByText("Save Draft")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mark Preliminary")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /sign report/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Apply a template"),
+    ).not.toBeInTheDocument();
+    const findings = screen.getByDisplayValue("Initial findings");
+    expect(findings).toHaveProperty("readOnly", true);
+  });
+
+  it("hides Sign Report for a resident without REPORT_SIGN", async () => {
+    // resident drafts (REPORT_WRITE) but the attending cosigns: the sign
+    // affordance must be absent, save must remain.
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
+    );
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderEditor();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Save Draft")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /sign report/i }),
+    ).not.toBeInTheDocument();
   });
 });

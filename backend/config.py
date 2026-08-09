@@ -45,6 +45,9 @@ default_config = {
     'oauth_token_url': '',
     'oauth_default_role': 'radiologist',
     'oauth_scope': 'openid email profile',
+    # Path to the RSA signing key (PEM) used for RS256 access/refresh tokens.
+    # Auto-generated on first use; jwks_uri serves the matching public key.
+    'jwt_key_path': 'certs/jwt-rsa.pem',
     'dicom_ae_title': 'QUANTUMPACS',
     'dicom_cstore_port': '11112',
     # Optional dedicated MWL listener port. Empty = MWL served on the

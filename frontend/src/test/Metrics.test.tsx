@@ -51,6 +51,24 @@ const mockData = {
   latest_files: [{ id: 1, name: "test.dcm", created: "2026-07-26" }],
 };
 
+// Health drill links render only when the user holds the target dashboard's
+// permission; every suite below assumes a session with all four targets.
+beforeEach(() => {
+  localStorage.setItem("token", "t");
+  localStorage.setItem("userId", "u1");
+  localStorage.setItem("username", "metrics-user");
+  localStorage.setItem("admin", "false");
+  localStorage.setItem(
+    "permissions",
+    JSON.stringify([
+      "REPLICA_READ",
+      "DICOMWEB_READ",
+      "HL7_READ",
+      "SYSTEM_ADMIN",
+    ]),
+  );
+});
+
 describe("Metrics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -155,6 +173,22 @@ describe("Metrics", () => {
 describe("Metrics health drill-down links", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Drill links render only when the user holds the target dashboard's
+    // permission; seed a session holding all four target permissions.
+    localStorage.clear();
+    localStorage.setItem("token", "t");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "metrics-user");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify([
+        "REPLICA_READ",
+        "DICOMWEB_READ",
+        "HL7_READ",
+        "SYSTEM_ADMIN",
+      ]),
+    );
   });
 
   const healthWithAreaRows = {
@@ -201,6 +235,26 @@ describe("Metrics health drill-down links", () => {
 
     expect(
       screen.queryByRole("link", { name: "View database health dashboard" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders plain rows instead of links when the target permission is missing", async () => {
+    mockGetDashboardMetrics.mockResolvedValue(mockData);
+    mockGetHealth.mockResolvedValue(healthWithAreaRows);
+    localStorage.setItem("permissions", JSON.stringify([]));
+    renderWithAuth(<Metrics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("System Health")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("HL7")).toBeInTheDocument();
+    expect(screen.getByText("DEGRADED")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "View hl7 health dashboard" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "View storage health dashboard" }),
     ).not.toBeInTheDocument();
   });
 

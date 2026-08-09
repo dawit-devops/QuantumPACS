@@ -10,9 +10,12 @@ non-super_admin role, every role has >= 1 permission, SYSTEM_ADMIN
 from api.permissions import (
     BUILT_IN_ROLES,
     CANONICAL_PERMISSIONS,
+    PERMISSION_KEYS,
     Permission,
     SUPER_ADMIN_PERMISSIONS,
 )
+
+import pytest
 
 CANONICAL_ROLES = [
     'super_admin', 'tenant_admin', 'patient',
@@ -22,6 +25,9 @@ CANONICAL_ROLES = [
     'radiology_admin', 'pacs_admin', 'imaging_informatics',
     'physician', 'resident', 'nurse', 'pharmacist', 'lab_technician',
     'him_specialist', 'care_coordinator', 'emr_admin',
+    # Legacy front-office role: carries the R08 front-desk grants and maps to
+    # the frontdesk workspace (frontend/src/navigator.ts).
+    'front_desk',
 ]
 
 NON_SUPER_ADMIN = {slug for slug in BUILT_IN_ROLES if slug != 'super_admin'}
@@ -32,7 +38,7 @@ def perms(role_slug):
 
 
 class TestRoleCatalog:
-    def test_all_24_canonical_roles_exist(self):
+    def test_all_canonical_roles_exist(self):
         missing = [slug for slug in CANONICAL_ROLES if slug not in BUILT_IN_ROLES]
         assert missing == []
 
@@ -95,14 +101,33 @@ class TestMatrixA:
         sch = perms('scheduler')
         assert {'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ',
                 'PRIOR_AUTH_WRITE', 'PATIENT_WRITE'} <= sch
+        # R08 front-desk grants (migration 046): registration, visits and the
+        # waiting queue for the front-office booking flow.
+        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= sch
         assert 'REPORT_READ' not in sch
 
-    def test_receptionist_registers_only(self):
+    def test_receptionist_registers_and_books(self):
         rec = perms('receptionist')
         assert {'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
                 'SCHEDULE_READ', 'WORKLIST_READ'} <= rec
         assert 'REPORT_READ' not in rec
-        assert 'SCHEDULE_WRITE' not in rec
+        # R08 front-office booking: AppointmentsHandler.post requires
+        # SCHEDULE_WRITE (capacity-conflict-checked appointment creation).
+        # The Matrix A row historically omitted it; the R08 receptionist
+        # booking flow grants it so the front-desk UI can book patients.
+        assert 'SCHEDULE_WRITE' in rec
+        # R08 front-desk grants (migration 046): registration, visits and the
+        # waiting queue for the front-office flow.
+        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= rec
+
+    def test_front_desk_legacy_role_carries_r08_grants(self):
+        fd = perms('front_desk')
+        # The legacy front_desk role is MATRIX_A_RECEPT plus the pre-046
+        # legacy grants: it must cover the whole R08 front-office surface.
+        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+                'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PATIENT_READ',
+                'PATIENT_WRITE', 'ORDER_READ', 'WORKLIST_READ'} <= fd
+        assert 'REPORT_READ' not in fd
 
     def test_ed_physician_full_scope(self):
         ed = perms('ed_physician')
@@ -186,6 +211,16 @@ class TestMatrixB:
 class TestMatrixC:
     """Matrix C — platform roles."""
 
+    # The clinical-write codes Matrix C deliberately excludes (§5) — the
+    # R2-14 compliance assertion: tenant_admin must never hold any of them.
+    CLINICAL_WRITES = {
+        'PATIENT_WRITE', 'STUDY_WRITE', 'FILE_DELETE', 'ORDER_WRITE',
+        'REPORT_WRITE', 'REPORT_SIGN', 'CRITICAL_RESULTS_WRITE',
+        'MAR_WRITE', 'MED_ORDER_WRITE', 'MED_VERIFY', 'ENCOUNTER_WRITE',
+        'NOTE_SIGN', 'RESULTS_RELEASE', 'LAB_SPECIMEN_WRITE',
+        'CARE_PLAN_WRITE', 'HIM_WRITE', 'CODING_WRITE', 'BILLING_WRITE',
+    }
+
     def test_tenant_admin_role_grants(self):
         ta = perms('tenant_admin')
         assert {'TENANT_READ', 'TENANT_ADMIN', 'METERING_READ', 'ROLE_DELETE',
@@ -193,6 +228,37 @@ class TestMatrixC:
                 'STORAGE_ADMIN', 'BILLING_READ', 'REPORT_TEMPLATE_ADMIN',
                 'CDS_ADMIN', 'AUDIT_READ', 'INTERFACE_ADMIN'} <= ta
         # Tenant admin covers platform reads, not clinical operations (§5 Matrix C).
+
+    def test_tenant_admin_has_no_clinical_writes(self):
+        """R2-14 matrix-compliance: the legacy union re-granted three clinical
+        write codes the canonical Matrix C row explicitly excludes. The lock
+        is a proper subset assertion, so removing any code still passes."""
+        ta = perms('tenant_admin')
+        assert not (self.CLINICAL_WRITES & ta)
+        # tenant_admin is a platform role — no patient/study writes at all.
+        assert 'PATIENT_WRITE' not in ta
+        assert 'STUDY_WRITE' not in ta
+        assert 'FILE_DELETE' not in ta
+
+    def test_cashier_mirrors_biller(self):
+        """R2-14: the legacy cashier role must equal the canonical biller —
+        a billing role gains nothing beyond the Matrix A billing row."""
+        assert perms('cashier') <= perms('biller')
+        assert perms('biller') <= perms('cashier')
+
+    def test_technologist_has_no_clinical_writes(self):
+        """R2-14: technologist keeps exam workflow codes but its legacy
+        union no longer grants clinical write codes (FILE_DELETE,
+        PATIENT_WRITE, STUDY_WRITE were removed)."""
+        tech = perms('technologist')
+        # The three over-grants removed by R2-14 are gone...
+        assert not ({'FILE_DELETE', 'PATIENT_WRITE', 'STUDY_WRITE'} & tech)
+        # ...while every Matrix A write the technologist legitimately holds
+        # (CRITICAL_RESULTS_WRITE, WORKLIST_WRITE, FILE_WRITE) stays intact,
+        # and the modality worklist surface keeps its exam/DICOM codes.
+        assert {'EXAM_READ', 'EXAM_WRITE', 'DICOMWEB_READ',
+                'CRITICAL_RESULTS_WRITE', 'WORKLIST_WRITE'} <= tech
+        assert 'FILE_WRITE' in tech  # modality worklist write path
 
     def test_patient_portal_grants(self):
         patient = perms('patient')
@@ -210,3 +276,45 @@ class TestDeadPermissions:
             if not holders:
                 dead.append(code)
         assert dead == []
+
+
+class TestPermissionKeys:
+    """Drift guards over PERMISSION_KEYS, the full permission catalog."""
+
+    def test_permission_keys_are_unique_enum_values(self):
+        assert len(PERMISSION_KEYS) == len(set(PERMISSION_KEYS))
+        assert set(PERMISSION_KEYS) == {p.value for p in Permission}
+
+    def test_canonical_catalog_is_a_subset_of_permission_keys(self):
+        assert set(CANONICAL_PERMISSIONS) <= set(PERMISSION_KEYS)
+
+    def test_every_group_code_is_a_valid_permission(self):
+        # PERMISSION_GROUPS is hand-maintained for the roles UI; a typo here
+        # silently renders a dead checkbox group. The enum is the source of
+        # truth, so every group code must resolve to a member.
+        from api.permissions import PERMISSION_GROUPS
+        valid = set(PERMISSION_KEYS)
+        bad = [
+            code for group in PERMISSION_GROUPS.values() for code in group
+            if code not in valid
+        ]
+        assert bad == []
+
+    def test_frontend_permission_labels_do_not_drift_from_the_enum(self):
+        # The frontend keeps a hand-maintained label map (api/roles.ts) for
+        # the permission picker; every label key must be a backend-permitted
+        # code so no UI grant can reference a permission the backend rejects.
+        import re
+        from pathlib import Path
+        roles_ts = (
+            Path(__file__).resolve().parents[2] / 'frontend' / 'src' / 'api' / 'roles.ts'
+        )
+        if not roles_ts.exists():
+            pytest.skip('frontend source not present in this checkout')
+        source = roles_ts.read_text()
+        label_keys = {
+            key for key in re.findall(r'^  ([A-Z][A-Z0-9_]+):', source, re.M)
+            if key != 'PERMISSION_LABELS'
+        }
+        invalid = sorted(label_keys - set(PERMISSION_KEYS))
+        assert invalid == []

@@ -16,6 +16,7 @@ import {
 import { AuditOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import "./PeerReviewInbox.css";
 
 const Content = Layout.Content;
@@ -35,6 +36,11 @@ const DISCREPANCY_COLORS: Record<string, string> = {
 
 function PeerReviewInbox() {
   useDocumentTitle("QuantumPACS - Peer Review");
+  // Submitting an outcome posts to /submit, gated PEER_REVIEW_WRITE on the
+  // backend — a reviewer without the write grant views and discusses but
+  // cannot close a review.
+  const { hasPermission } = useAuth();
+  const canSubmit = hasPermission("PEER_REVIEW_WRITE");
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -247,7 +253,7 @@ function PeerReviewInbox() {
                 showIcon
                 message={`Review complete — discrepancy: ${review.discrepancy_level}`}
               />
-            ) : (
+            ) : canSubmit ? (
               <Button
                 type="primary"
                 icon={<TeamOutlined />}
@@ -256,6 +262,13 @@ function PeerReviewInbox() {
               >
                 Submit Review Outcome
               </Button>
+            ) : (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 12 }}
+                message="Read-only review — submitting an outcome requires the PEER_REVIEW_WRITE permission."
+              />
             )}
           </div>
         )}

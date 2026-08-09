@@ -24,6 +24,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
 import {
   listRoles,
   listPermissions,
@@ -36,6 +37,8 @@ import {
   type Role,
 } from "../api/roles";
 import { PageState } from "../common/PageState";
+import RequirePermission from "../auth/RequirePermission";
+import { useAuth } from "../auth/AuthContext";
 
 const { Text, Paragraph } = Typography;
 const Content = Layout.Content;
@@ -43,6 +46,14 @@ const Content = Layout.Content;
 function Roles() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Roles");
+  const { hasPermission, user } = useAuth();
+
+  // ROLE_READ gates the page; create/edit need ROLE_WRITE, delete needs
+  // ROLE_DELETE. Non-platform-admins may only assign permissions they hold
+  // themselves (mirrors api_keys and the backend role validation).
+  const canWrite = hasPermission("ROLE_WRITE");
+  const canDelete = hasPermission("ROLE_DELETE");
+  const isAdmin = user?.admin === true;
 
   const [data, setData] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,31 +150,35 @@ function Roles() {
         if (!record.built_in) {
           return (
             <Space>
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => handleEdit(record)}
-              >
-                Edit
-              </Button>
-              <Popconfirm
-                title="Delete this role?"
-                onConfirm={() => handleDelete(record.id)}
-              >
+              {canWrite && (
                 <Button
                   type="link"
                   size="small"
-                  danger
-                  icon={<DeleteOutlined />}
+                  icon={<EditOutlined />}
+                  onClick={() => handleEdit(record)}
                 >
-                  Delete
+                  Edit
                 </Button>
-              </Popconfirm>
+              )}
+              {canDelete && (
+                <Popconfirm
+                  title="Delete this role?"
+                  onConfirm={() => handleDelete(record.id)}
+                >
+                  <Button
+                    type="link"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                  >
+                    Delete
+                  </Button>
+                </Popconfirm>
+              )}
             </Space>
           );
         }
-        if (record.built_in) {
+        if (record.built_in && canWrite) {
           return (
             <Tooltip title="Built-in roles cannot be edited or deleted">
               <Button type="link" size="small" disabled icon={<EditOutlined />}>
@@ -172,6 +187,7 @@ function Roles() {
             </Tooltip>
           );
         }
+        return null;
       },
     },
   ];
@@ -196,15 +212,25 @@ function Roles() {
   };
 
   const filteredGroups = useMemo(() => {
-    if (!permSearch) return permGroups;
+    let groups = permGroups;
+    if (!isAdmin) {
+      const grantable = new Set(user?.permissions ?? []);
+      const subset: Record<string, string[]> = {};
+      for (const [group, perms] of Object.entries(permGroups)) {
+        const held = perms.filter((p) => grantable.has(p));
+        if (held.length > 0) subset[group] = held;
+      }
+      groups = subset;
+    }
+    if (!permSearch) return groups;
     const search = permSearch.toLowerCase();
     const result: Record<string, string[]> = {};
-    for (const [group, perms] of Object.entries(permGroups)) {
+    for (const [group, perms] of Object.entries(groups)) {
       const matching = perms.filter((p) => p.toLowerCase().includes(search));
       if (matching.length > 0) result[group] = matching;
     }
     return result;
-  }, [permGroups, permSearch]);
+  }, [permGroups, permSearch, isAdmin, user]);
 
   const handleCreate = () => {
     form
@@ -280,6 +306,7 @@ function Roles() {
   };
 
   const togglePermission = (perm: string) => {
+    if (!isAdmin && !(user?.permissions ?? []).includes(perm)) return;
     setSelectedPerms((prev) =>
       prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm],
     );
@@ -341,23 +368,29 @@ function Roles() {
   const allPerms = Object.values(permGroups).flat();
 
   return (
-    <Content style={{ padding: 50 }}>
-      <Button
-        type="primary"
-        onClick={() => setVisible(true)}
-        style={{ marginBottom: 16 }}
-      >
-        Create Role
-      </Button>
+    <Content style={{ padding: 24 }}>
+      <PageHeader
+        title="Roles"
+        description="Permission sets that scope what each role can do in the platform."
+        extra={
+          <RequirePermission permission="ROLE_WRITE">
+            <Button type="primary" onClick={() => setVisible(true)}>
+              Create Role
+            </Button>
+          </RequirePermission>
+        }
+      />
       <PageState
         error={error}
         onRetry={() => fetch()}
         empty={!loading && !error && data.length === 0}
         emptyMessage="No roles defined"
         emptyAction={
-          <Button type="primary" onClick={() => setVisible(true)}>
-            Create Role
-          </Button>
+          <RequirePermission permission="ROLE_WRITE">
+            <Button type="primary" onClick={() => setVisible(true)}>
+              Create Role
+            </Button>
+          </RequirePermission>
         }
       >
         <Table
@@ -510,10 +543,17 @@ function Roles() {
               })}
               {Object.keys(filteredGroups).length === 0 && (
                 <Text type="secondary">
-                  No permissions match "{permSearch}"
+                  {!isAdmin && !permSearch
+                    ? "You hold no permissions you can grant to a role."
+                    : `No permissions match "${permSearch}"`}
                 </Text>
               )}
             </div>
+            {!isAdmin && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Only permissions you hold can be assigned to a role.
+              </Text>
+            )}
           </Form.Item>
         </Form>
       </Modal>

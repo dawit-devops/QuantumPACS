@@ -18,6 +18,7 @@ from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.reading_presets import ReadingPresets
 from log import request_id_var
+from api.tenant_middleware import effective_tenant
 
 
 class ReadingPresetsHandler(HTTPEndpoint):
@@ -55,7 +56,7 @@ class ReadingPresetsHandler(HTTPEndpoint):
                     'modality': body.modality,
                     'name': body.name,
                 },
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': created_preset})
@@ -99,7 +100,7 @@ class ReadingPresetHandler(HTTPEndpoint):
                 resource_type='reading_preset',
                 resource_id=preset_id,
                 details={'name': body.name or preset['name']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': updated})
@@ -118,7 +119,7 @@ class ReadingPresetHandler(HTTPEndpoint):
                 resource_type='reading_preset',
                 resource_id=preset_id,
                 details={'name': preset['name']},
-                tenant=request.user.tenant,
+                tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'deleted': True}})

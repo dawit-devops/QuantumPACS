@@ -5,24 +5,43 @@ import {
   FileSearchOutlined,
   UserOutlined,
   MenuOutlined,
+  SolutionOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
-import { workspaceFor } from "../navigator";
+import {
+  workspaceFor,
+  isAdminScopedRole,
+  NON_ADMIN_WORKSPACES,
+} from "../navigator";
 import { NAV_SECTIONS, hasItemPermission, type NavItemDef } from "./Sidebar";
 import "./MobileNav.css";
 
-const navItems = [
+interface MobileNavItem {
+  path: string;
+  label: string;
+  icon: React.ReactNode;
+  badge?: number;
+  permission?: string;
+}
+
+const navItems: MobileNavItem[] = [
   {
     path: "/",
     label: "Files",
     icon: <FileSearchOutlined />,
-    badge: undefined as number | undefined,
+  },
+  {
+    // Own-data patient portal: only rendered for PORTAL_READ holders (the
+    // patient role); everyone else keeps a two-item bar (Files, Account).
+    path: "/portal",
+    label: "My Records",
+    icon: <SolutionOutlined />,
+    permission: "PORTAL_READ",
   },
   {
     path: "/account",
     label: "Account",
     icon: <UserOutlined />,
-    badge: undefined,
   },
 ];
 
@@ -34,15 +53,21 @@ export default function MobileNav() {
 
   // Same section visibility rule as the desktop sidebar: the user's own
   // workspace section always shows, plus any section with a visible item.
+  // Admin-scoped roles never see the clinical sections (see Sidebar).
   const userWorkspace = user ? workspaceFor(user) : null;
+  const isAdminScoped = isAdminScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission),
+      hasItemPermission(item, hasPermission, isAdminScoped),
     ),
-  })).filter(
-    ({ section, items }) => userWorkspace === section.key || items.length > 0,
-  );
+  }))
+    .filter(
+      ({ section, items }) => userWorkspace === section.key || items.length > 0,
+    )
+    .filter(
+      ({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key),
+    );
 
   const isActive = (path: string) =>
     path === "/"
@@ -72,26 +97,36 @@ export default function MobileNav() {
   return (
     <>
       <nav className="mobile-nav" aria-label="Bottom navigation">
-        {navItems.map((item) => {
-          const active = isActive(item.path);
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`mobile-nav-item ${active ? "active" : ""}`}
-              aria-current={active ? "page" : undefined}
-            >
-              {item.badge !== undefined ? (
-                <Badge count={item.badge} size="small">
-                  {item.icon}
-                </Badge>
-              ) : (
-                item.icon
-              )}
-              <span className="mobile-nav-label">{item.label}</span>
-            </Link>
-          );
-        })}
+        {navItems
+          .filter(
+            (item) =>
+              !item.permission ||
+              // R4-01: admin-scoped roles never see the patient portal in
+              // the bar — /portal is closed to them (ClinicalRoute), so the
+              // item would be a dead link, mirroring the sidebar's
+              // NON_ADMIN_WORKSPACES filter.
+              (!isAdminScoped && hasPermission(item.permission)),
+          )
+          .map((item) => {
+            const active = isActive(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`mobile-nav-item ${active ? "active" : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.badge !== undefined ? (
+                  <Badge count={item.badge} size="small">
+                    {item.icon}
+                  </Badge>
+                ) : (
+                  item.icon
+                )}
+                <span className="mobile-nav-label">{item.label}</span>
+              </Link>
+            );
+          })}
         {sections.length > 0 && (
           <button
             className={`mobile-nav-item ${drawerOpen ? "active" : ""}`}
@@ -113,7 +148,7 @@ export default function MobileNav() {
         open={drawerOpen}
         onClose={closeDrawer}
         placement="bottom"
-        height="auto"
+        size="auto"
         title="Menu"
         styles={{ body: { padding: 0 } }}
       >

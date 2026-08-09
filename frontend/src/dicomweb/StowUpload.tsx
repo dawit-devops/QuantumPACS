@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
 import { storeInstances, StowResult } from "../api/studies";
 
 const { Text } = Typography;
@@ -69,23 +70,22 @@ function StowUpload() {
     : 0;
 
   return (
-    <div style={{ maxWidth: 720, margin: "16px auto" }}>
-      <Card title="Store Studies (STOW-RS)" style={{ margin: 16 }}>
-        <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-          Upload raw DICOM files directly to the archive via the DICOMweb
-          STOW-RS endpoint. Files are validated and stored as a study/series.
-        </Text>
-
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
+      <PageHeader
+        title="Store Studies (STOW-RS)"
+        description="Upload raw DICOM files directly to the archive via the DICOMweb STOW-RS endpoint. Files are validated and stored as a study/series."
+      />
+      <Card>
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
           style={{
-            border: "2px dashed var(--border-color, #d9d9d9)",
+            border: "2px dashed var(--border-color)",
             borderRadius: 8,
             padding: "32px 16px",
             textAlign: "center",
             cursor: "pointer",
-            background: "var(--bg-active, transparent)",
+            background: "var(--bg-active)",
           }}
           onClick={() => document.getElementById("stow-file-input")?.click()}
           role="button"
@@ -110,7 +110,7 @@ function StowUpload() {
           <InboxOutlined
             style={{
               fontSize: 48,
-              color: "var(--color-primary, #0891B2)",
+              color: "var(--color-primary)",
               marginBottom: 8,
             }}
           />
@@ -121,7 +121,7 @@ function StowUpload() {
             style={{
               margin: "4px 0 0",
               fontSize: 13,
-              color: "var(--text-secondary, #64748b)",
+              color: "var(--text-secondary)",
             }}
           >
             or click to browse

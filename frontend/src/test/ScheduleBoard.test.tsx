@@ -8,6 +8,10 @@ import { ThemeProvider } from "../common/ThemeProvider";
 import ScheduleBoard from "../schedule/ScheduleBoard";
 
 const mockRequest = vi.hoisted(() => vi.fn());
+const mockListAppointments = vi.hoisted(() => vi.fn());
+const mockGetAvailability = vi.hoisted(() => vi.fn());
+const mockCreateAppointment = vi.hoisted(() => vi.fn());
+const mockCancelAppointment = vi.hoisted(() => vi.fn());
 
 vi.mock("../helpers", () => ({
   request: mockRequest,
@@ -21,6 +25,14 @@ vi.mock("../helpers", () => ({
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
+}));
+
+vi.mock("../api/frontdesk", () => ({
+  listAppointments: mockListAppointments,
+  cancelAppointment: mockCancelAppointment,
+  getAvailability: mockGetAvailability,
+  createAppointment: mockCreateAppointment,
+  searchPatients: vi.fn(),
 }));
 
 function renderBoard() {
@@ -78,6 +90,10 @@ describe("ScheduleBoard", () => {
   beforeEach(() => {
     localStorage.clear();
     mockRequest.mockReset();
+    mockListAppointments.mockReset();
+    mockGetAvailability.mockReset();
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([]);
   });
 
   it("renders the board grid with standard modalities and time slots", async () => {

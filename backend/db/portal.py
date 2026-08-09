@@ -165,6 +165,28 @@ class Portal:
             body.reason, body.priority,
         )
 
+    async def follow_up_targets_valid(self, patient_id, report_id, exam_id):
+        """A follow-up may only reference exams/reports that belong to the
+        patient it is filed against (referential integrity of the scope
+        boundary); reports must be final to be referenced."""
+        if exam_id:
+            ok = await self.conn.fetchval(
+                "SELECT 1 FROM exams WHERE id = $1 AND patient_id = $2",
+                exam_id, patient_id,
+            )
+            if not ok:
+                return False
+        if report_id:
+            ok = await self.conn.fetchval(
+                "SELECT 1 FROM reports r"
+                " JOIN exams e ON e.id = r.exam_id"
+                " WHERE r.id = $1 AND e.patient_id = $2 AND r.status = 'final'",
+                report_id, patient_id,
+            )
+            if not ok:
+                return False
+        return True
+
     async def update_follow_up_status(self, follow_up_id, user_id, status):
         return await self.conn.fetchrow(
             """

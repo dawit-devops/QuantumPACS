@@ -73,6 +73,13 @@ const mockRoles = [
 describe("Users", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The page's write controls (role select, reset, deactivate) are gated on
+    // USER_WRITE, so the suite signs in as a user manager with the full grant.
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "user-admin");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "tenant_admin");
+    localStorage.setItem("permissions", JSON.stringify(["USER_READ", "USER_WRITE"]));
     mockListUsers.mockResolvedValue({
       data: mockUsers,
       total: mockUsers.length,

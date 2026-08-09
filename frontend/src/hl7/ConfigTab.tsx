@@ -34,6 +34,7 @@ interface ConfigTabProps {
   fetchConfig: () => void;
   fetchStatus: () => void;
   handleSaveConfig: () => void;
+  canWrite: boolean;
 }
 
 export function ConfigTab({
@@ -50,6 +51,7 @@ export function ConfigTab({
   fetchConfig,
   fetchStatus,
   handleSaveConfig,
+  canWrite,
 }: ConfigTabProps) {
   return (
     <div>
@@ -102,6 +104,7 @@ export function ConfigTab({
                     type="number"
                     value={mllpPort}
                     onChange={(e) => setMllpPort(Number(e.target.value))}
+                    disabled={!canWrite}
                     style={{ width: 120 }}
                   />
                 </Descriptions.Item>
@@ -115,7 +118,7 @@ export function ConfigTab({
                 type="primary"
                 onClick={handleSaveConfig}
                 loading={configSaving}
-                disabled={!config}
+                disabled={!config || !canWrite}
               >
                 Save
               </Button>
@@ -142,9 +145,15 @@ export function ConfigTab({
             <TextArea
               value={allowedIpsText}
               onChange={(e) => setAllowedIpsText(e.target.value)}
+              disabled={!canWrite}
               rows={6}
               placeholder="10.0.0.0/24&#10;192.168.1.100&#10;10.0.0.0/8"
             />
+            {!canWrite && (
+              <div style={{ marginTop: 8 }}>
+                <Tag color="default">Read-only — you need HL7_WRITE to change configuration.</Tag>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>

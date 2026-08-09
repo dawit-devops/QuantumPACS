@@ -16,6 +16,7 @@ import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import "./ReadingWorklist.css";
 
 const Content = Layout.Content;
@@ -45,6 +46,11 @@ function ReadingWorklist() {
   useDocumentTitle("QuantumPACS - Reading Worklist");
 
   const navigate = useNavigate();
+  // Claiming an exam (Take) posts to /assign, gated REPORT_WRITE on the
+  // backend — readers with REPORT_READ only (referring physician, nurse,
+  // care coordinator) view the queue but cannot take exams.
+  const { hasPermission } = useAuth();
+  const canClaim = hasPermission("REPORT_WRITE");
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +168,7 @@ function ReadingWorklist() {
               ? "Continue"
               : "Read Study"}
           </Button>
-          {!r.assigned_radiologist && (
+          {!r.assigned_radiologist && canClaim && (
             <Button
               size="small"
               loading={assigning === r.exam_id}

@@ -1,4 +1,6 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from contextlib import ExitStack
 
 import jwt
 from starlette.applications import Starlette
@@ -9,6 +11,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import TokenAuth
+from api.jwt_keys import get_public_key_pem
 from api.tokens import create_token, create_token_pair, verify_token
 from api.users import Logout
 
@@ -39,7 +42,7 @@ class TestTokenClaims:
     def test_token_has_claims(self):
         with patch('api.tokens.config', {'secret': SECRET}):
             token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
         assert payload['id'] == 1
         assert 'jti' in payload
         assert 'exp' in payload
@@ -52,7 +55,7 @@ class TestTokenClaims:
                 role='technologist',
                 permissions=['FILE_READ', 'FILE_WRITE'],
             )
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
         assert payload['role'] == 'technologist'
         assert 'FILE_READ' in payload.get('permissions', [])
 
@@ -62,7 +65,7 @@ class TestTokenClaims:
                 {'id': 3, 'admin': False, 'tenant': 'hospital-x'},
                 expire={'minutes': 60},
             )
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
         assert payload['tenant'] == 'hospital-x'
 
     def test_token_used_for_request(self):
@@ -220,6 +223,18 @@ class TestLogoutFlow:
 
 
 class TestRefreshFlow:
+    @staticmethod
+    def _mock_auth_db(row, role):
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_users = MagicMock()
+        mock_users.return_value.get_user_row = AsyncMock(return_value=row)
+        mock_users.return_value.get_user_role = AsyncMock(return_value=role)
+        stack = ExitStack()
+        stack.enter_context(patch('api.users.get_conn', return_value=mock_conn))
+        stack.enter_context(patch('api.users.Users', mock_users))
+        return stack
+
     def test_refresh_preserves_tenant_claim(self):
         with patch('api.tokens.config', {'secret': SECRET}):
             user = {'id': 3, 'admin': False, 'tenant': 'hospital-x'}
@@ -233,7 +248,12 @@ class TestRefreshFlow:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                    with self._mock_auth_db(
+                        {'id': 3, 'admin': False, 'tenant': 'hospital-x',
+                         'status': 'active', 'token_version': 0},
+                        ('receptionist', ['REGISTRATION_READ']),
+                    ):
+                        resp = client.post('/api/auth/refresh', json={'refresh_token': refresh})
 
             assert resp.status_code == 200
             payload = verify_token(resp.json()['access_token'])
@@ -251,8 +271,12 @@ class TestRefreshFlow:
         with patch('api.tokens.config', {'secret': SECRET}):
             with patch('api.users.is_blocked', new=AsyncMock(return_value=False)):
                 with patch('api.users.block_token', new=AsyncMock()):
-                    resp1 = client.post('/api/auth/refresh', json={'refresh_token': refresh})
-                    assert resp1.status_code == 200
+                    with self._mock_auth_db(
+                        {'id': 1, 'admin': True, 'status': 'active', 'token_version': 0},
+                        ('super_admin', ['ALL']),
+                    ):
+                        resp1 = client.post('/api/auth/refresh', json={'refresh_token': refresh})
+                        assert resp1.status_code == 200
 
             with patch('api.users.is_blocked', new=AsyncMock(return_value=True)):
                 resp2 = client.post('/api/auth/refresh', json={'refresh_token': refresh})

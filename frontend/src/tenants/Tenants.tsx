@@ -47,6 +47,8 @@ import {
   type TenantUsageRow,
 } from "../api/tenants";
 import { PageState } from "../common/PageState";
+import RequirePermission from "../auth/RequirePermission";
+import { useAuth } from "../auth/AuthContext";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
@@ -144,6 +146,11 @@ function AdminPasswordPanel({
 function Tenants() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Tenants");
+  const { hasPermission } = useAuth();
+
+  // TENANT_READ gates the page; provisioning, editing, lifecycle changes
+  // and decommissioning all hit TENANT_ADMIN endpoints (backend guards).
+  const canAdmin = hasPermission("TENANT_ADMIN");
 
   const [data, setData] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -318,25 +325,10 @@ function Tenants() {
         <Title level={4} style={{ margin: 0 }}>
           Tenants
         </Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            createForm.resetFields();
-            setCreateVisible(true);
-          }}
-        >
-          Provision Tenant
-        </Button>
-      </div>
-      <PageState
-        error={error}
-        onRetry={() => fetch()}
-        empty={!loading && !error && data.length === 0}
-        emptyMessage="No tenants provisioned"
-        emptyAction={
+        <RequirePermission permission="TENANT_ADMIN">
           <Button
             type="primary"
+            icon={<PlusOutlined />}
             onClick={() => {
               createForm.resetFields();
               setCreateVisible(true);
@@ -344,6 +336,25 @@ function Tenants() {
           >
             Provision Tenant
           </Button>
+        </RequirePermission>
+      </div>
+      <PageState
+        error={error}
+        onRetry={() => fetch()}
+        empty={!loading && !error && data.length === 0}
+        emptyMessage="No tenants provisioned"
+        emptyAction={
+          <RequirePermission permission="TENANT_ADMIN">
+            <Button
+              type="primary"
+              onClick={() => {
+                createForm.resetFields();
+                setCreateVisible(true);
+              }}
+            >
+              Provision Tenant
+            </Button>
+          </RequirePermission>
         }
       >
         <Row gutter={[16, 16]}>
@@ -380,7 +391,7 @@ function Tenants() {
               </Popconfirm>
             );
             const lifecycleActions: React.ReactNode[] = [];
-            if (!isProvisioning && !isDecommissioned) {
+            if (canAdmin && !isProvisioning && !isDecommissioned) {
               if (isSuspended || isQuarantined) {
                 lifecycleActions.push(
                   statusPopconfirm(
@@ -421,45 +432,53 @@ function Tenants() {
                     isDecommissioned
                       ? undefined
                       : [
-                          <Button
-                            type="link"
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => handleEdit(tenant)}
-                            disabled={isProvisioning || isQuarantined}
-                            key="edit"
-                          >
-                            Edit
-                          </Button>,
-                          <Button
-                            type="link"
-                            size="small"
-                            icon={<BarChartOutlined />}
-                            onClick={() => openUsage(tenant)}
-                            disabled={isProvisioning}
-                            key="usage"
-                          >
-                            Usage
-                          </Button>,
-                          ...lifecycleActions,
-                          <Popconfirm
-                            key="decommission"
-                            title="Decommission this tenant?"
-                            description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
-                            onConfirm={() => handleDecommission(tenant)}
-                            disabled={isProvisioning}
-                          >
+                        ...(canAdmin
+                          ? [
                             <Button
                               type="link"
                               size="small"
-                              danger
-                              icon={<DeleteOutlined />}
+                              icon={<EditOutlined />}
+                              onClick={() => handleEdit(tenant)}
+                              disabled={isProvisioning || isQuarantined}
+                              key="edit"
+                            >
+                                  Edit
+                            </Button>,
+                          ]
+                          : []),
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<BarChartOutlined />}
+                          onClick={() => openUsage(tenant)}
+                          disabled={isProvisioning}
+                          key="usage"
+                        >
+                            Usage
+                        </Button>,
+                        ...lifecycleActions,
+                        ...(canAdmin
+                          ? [
+                            <Popconfirm
+                              key="decommission"
+                              title="Decommission this tenant?"
+                              description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
+                              onConfirm={() => handleDecommission(tenant)}
                               disabled={isProvisioning}
                             >
-                              Decommission
-                            </Button>
-                          </Popconfirm>,
-                        ]
+                              <Button
+                                type="link"
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                disabled={isProvisioning}
+                              >
+                                    Decommission
+                              </Button>
+                            </Popconfirm>,
+                          ]
+                          : []),
+                      ]
                   }
                 >
                   {isQuarantined && (

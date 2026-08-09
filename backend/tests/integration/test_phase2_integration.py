@@ -140,8 +140,20 @@ class TestOAuthCallbackWithDBProvider:
             ))),
             patch('api.oauth.create_token', return_value='qp-jwt-token') as mock_create_token,
         ):
-            from api.oauth import oauth_callback
-            resp = await oauth_callback(request)
+            mock_conn = AsyncMock()
+            mock_conn.__aenter__.return_value = mock_conn
+            with (
+                patch('api.oauth.get_conn', return_value=mock_conn),
+                patch('api.oauth.Users') as mock_users,
+            ):
+                mock_users.return_value.get_user_row = AsyncMock(return_value={
+                    'id': 42, 'admin': False, 'status': 'active', 'token_version': 0,
+                })
+                mock_users.return_value.get_user_role = AsyncMock(return_value=(
+                    'radiologist', ['REPORT_READ', 'REPORT_WRITE'],
+                ))
+                from api.oauth import oauth_callback
+                resp = await oauth_callback(request)
 
         assert resp.status_code == 200
         mock_exchange.assert_called_once()
@@ -150,6 +162,9 @@ class TestOAuthCallbackWithDBProvider:
         mock_create_token.assert_called_once()
         kwargs = mock_create_token.call_args[1]
         assert kwargs.get('token_version') == 0
+        # Callback must mint from DB role/permissions, not provider default (R2-02).
+        assert kwargs.get('role') == 'radiologist'
+        assert kwargs.get('permissions') == ['REPORT_READ', 'REPORT_WRITE']
 
     @pytest.mark.asyncio
     async def test_callback_fails_when_db_provider_not_found(self):

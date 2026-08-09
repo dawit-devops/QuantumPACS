@@ -7,12 +7,23 @@ from .permissions import Permission, BUILT_IN_ROLES
 from .response import forbidden
 
 # Canonical §7 permission → legacy codes that still grant access
-# (RBAC_matrix_spec.md §7: LOG_READ stays as the alias of AUDIT_READ).
+# (RBAC_matrix_spec.md §7: LOG_READ stays as the alias of AUDIT_READ;
+# METRICS_READ is the legacy alias of the canonical ANALYTICS_READ).
 # Single source of truth for alias resolution. Keyed by plain string so the
 # map works while Stream 1 adds the canonical enum members to permissions.py.
 PERMISSION_ALIASES = {
     'AUDIT_READ': ('LOG_READ',),
+    'ANALYTICS_READ': ('METRICS_READ',),
 }
+
+# Reverse index: legacy code → canonical codes that alias it. Guards written
+# against the legacy codes (e.g. api/logs.py checks Permission.LOG_READ) must
+# accept a user who holds only the canonical grant, so resolution is
+# symmetric: LOG_READ ⇄ AUDIT_READ, METRICS_READ ⇄ ANALYTICS_READ.
+PERMISSION_ALIASES_REVERSE = {}
+for _canonical, _aliases in PERMISSION_ALIASES.items():
+    for _alias in _aliases:
+        PERMISSION_ALIASES_REVERSE.setdefault(_alias, set()).add(_canonical)
 
 
 def has_permission(user, permission) -> bool:
@@ -31,7 +42,9 @@ def has_permission(user, permission) -> bool:
         return True
     if code in perms:
         return True
-    return any(alias in perms for alias in PERMISSION_ALIASES.get(code, ()))
+    aliases = set(PERMISSION_ALIASES.get(code, ()))
+    aliases |= PERMISSION_ALIASES_REVERSE.get(code, set())
+    return any(alias in perms for alias in aliases)
 
 
 def requires_permission(permission):

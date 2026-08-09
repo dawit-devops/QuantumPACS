@@ -53,8 +53,15 @@ export const emit = (event: string, data?: any): void => {
   document.body.dispatchEvent(e);
 };
 
-export const subscribe = (event: string, listener: EventListener): void => {
+export const subscribe = (
+  event: string,
+  listener: EventListener,
+): (() => void) => {
   document.body.addEventListener(event, listener);
+  // R1-06: the bus is app-lifetime, but subscribers must still unsubscribe on
+  // unmount or every page mount leaks a permanent listener (each one fires a
+  // refetch on every tenant switch).
+  return () => document.body.removeEventListener(event, listener);
 };
 
 export const isAdmin = (): boolean => {

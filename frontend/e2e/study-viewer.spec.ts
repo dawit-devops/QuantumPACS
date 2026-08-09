@@ -1,19 +1,25 @@
-import { test, expect } from '@playwright/test';
-import { loginAsAdmin } from './helpers';
+import { test, expect } from "@playwright/test";
+import { loginAsAdmin, menuName } from "./helpers";
 
-test.describe('Study Viewer', () => {
+test.describe("Study Viewer", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
   });
 
-  test('search page loads with search bar', async ({ page }) => {
-    await expect(page.getByPlaceholder(/search/i).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Search Studies')).toBeVisible();
+  test("search page loads with search input", async ({ page }) => {
+    await expect(page.getByTestId("files-search-input")).toBeVisible({
+      timeout: 10000,
+    });
   });
 
-  test('sidebar navigation links visible', async ({ page }) => {
-    await expect(page.getByText('Files').first()).toBeVisible();
-    await expect(page.getByText('Metrics').first()).toBeVisible();
-    await expect(page.getByText('Account').first()).toBeVisible();
+  test("sidebar navigation links are visible", async ({ page }) => {
+    await expect(
+      page.getByRole("menuitem", { name: menuName("Files") }),
+    ).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.getByRole("menuitem", { name: menuName("Account") }),
+    ).toBeVisible();
   });
 });

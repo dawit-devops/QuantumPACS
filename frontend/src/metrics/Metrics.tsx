@@ -132,12 +132,13 @@ function healthIcon(status: string) {
 // Components with a dedicated area dashboard become drill-down links from
 // the System Health card; everything else (database, elasticsearch, redis,
 // auth, ingestion_service) stays a plain status row. hl7/fhir mirror the
-// current /metrics time scope via a period query param.
-const AREA_LINKS: Record<string, { path: string; period?: boolean }> = {
-  storage: { path: "/replicas" },
-  dicom_listener: { path: "/dicomweb" },
-  hl7: { path: "/hl7", period: true },
-  fhir: { path: "/fhir/monitoring", period: true },
+// current /metrics time scope via a period query param. Each link carries
+// the target route's permission so a user never clicks into a dead end.
+const AREA_LINKS: Record<string, { path: string; period?: boolean; permission: string }> = {
+  storage: { path: "/replicas", permission: "REPLICA_READ" },
+  dicom_listener: { path: "/dicomweb", permission: "DICOMWEB_READ" },
+  hl7: { path: "/hl7", period: true, permission: "HL7_READ" },
+  fhir: { path: "/fhir/monitoring", period: true, permission: "SYSTEM_ADMIN" },
 };
 
 // Target dashboards cap their period at 30d, so the 90d scope clamps to 30d.
@@ -157,6 +158,7 @@ function HealthRow({
   timeRange: string;
 }) {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const label = labelName(name);
   const area = AREA_LINKS[name];
 
@@ -176,7 +178,9 @@ function HealthRow({
     </>
   );
 
-  if (!area) {
+  // Without the target dashboard's permission the row renders as a plain
+  // status line instead of a link that would bounce off the route guard.
+  if (!area || !hasPermission(area.permission)) {
     return <div style={rowStyle}>{content}</div>;
   }
 

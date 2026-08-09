@@ -22,16 +22,20 @@ describe("workspaceFor", () => {
       expected: "acquisition",
     },
     { role: "qa_team", permissions: ["QA_READ"], expected: "qa" },
-    { role: "pacs_admin", permissions: ["REPLICA_READ"], expected: "admin" },
+    {
+      role: "pacs_admin",
+      permissions: ["REPLICA_READ"],
+      expected: "dashboard",
+    },
     {
       role: "radiology_admin",
       permissions: ["REPLICA_READ"],
-      expected: "admin",
+      expected: "dashboard",
     },
     {
       role: "imaging_informatics",
       permissions: ["REPLICA_READ"],
-      expected: "admin",
+      expected: "dashboard",
     },
     {
       role: "department_manager",
@@ -40,23 +44,56 @@ describe("workspaceFor", () => {
     },
     {
       role: "physician",
-      permissions: ["DICOMWEB_READ"],
+      permissions: ["REPORT_READ"],
       expected: "clinical",
     },
     {
       role: "referring_physician",
-      permissions: ["DICOMWEB_READ"],
+      permissions: ["REPORT_READ"],
       expected: "clinical",
     },
     {
       role: "ed_physician",
-      permissions: ["DICOMWEB_READ"],
+      permissions: ["REPORT_READ"],
       expected: "clinical",
     },
-    { role: "patient", permissions: ["FILE_READ"], expected: "files" },
-    { role: "super_admin", permissions: ["USER_READ"], expected: "platform" },
-    { role: "tenant_admin", permissions: ["USER_READ"], expected: "platform" },
-    { role: "admin", permissions: ["USER_READ"], expected: "platform" },
+    {
+      role: "nurse",
+      permissions: ["EXAM_READ"],
+      expected: "acquisition",
+    },
+    {
+      role: "care_coordinator",
+      permissions: ["REPORT_READ"],
+      expected: "clinical",
+    },
+    { role: "patient", permissions: ["PORTAL_READ"], expected: "portal" },
+    {
+      role: "scheduler",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
+    {
+      role: "receptionist",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
+    {
+      role: "front_desk",
+      permissions: ["REGISTRATION_READ"],
+      expected: "frontdesk",
+    },
+    {
+      role: "super_admin",
+      permissions: ["USER_READ"],
+      expected: "dashboard",
+    },
+    {
+      role: "tenant_admin",
+      permissions: ["USER_READ"],
+      expected: "dashboard",
+    },
+    { role: "admin", permissions: ["USER_READ"], expected: "dashboard" },
   ])(
     "maps the $role role to the $expected workspace",
     ({ role, permissions, expected }) => {
@@ -65,16 +102,11 @@ describe("workspaceFor", () => {
   );
 
   it.each([
-    "receptionist",
     "cashier",
     "biller",
-    "scheduler",
-    "front_desk",
-    "nurse",
     "pharmacist",
     "lab_technician",
     "him_specialist",
-    "care_coordinator",
     "emr_admin",
     "biomedical_engineer",
     "service_director",
@@ -97,16 +129,47 @@ describe("workspaceFor", () => {
     expect(
       workspaceFor(user({ role: "radiologist", permissions: ["EXAM_READ"] })),
     ).toBe("acquisition");
+    // The DICOMweb console is admin-scoped: a clinical role holding the
+    // legacy DICOMWEB_READ grant never resolves to the admin workspace.
     expect(
       workspaceFor(
         user({ role: "technologist", permissions: ["DICOMWEB_READ"] }),
       ),
-    ).toBe("clinical");
+    ).toBe("files");
   });
 
   it("defaults to the files workspace when nothing is permitted", () => {
     expect(workspaceFor(user({ role: "radiologist" }))).toBe("files");
     expect(workspaceFor(user({}))).toBe("files");
+  });
+
+  it("never resolves admin-scoped roles to clinical workspaces", () => {
+    // pacs_admin holds REPORT_READ (a clinical grant) but no REPLICA_READ:
+    // the fallback must skip reading and resolve outside the clinical set.
+    expect(
+      workspaceFor(user({ role: "pacs_admin", permissions: ["REPORT_READ"] })),
+    ).not.toBe("reading");
+    expect(
+      workspaceFor(
+        user({ role: "tenant_admin", permissions: ["QA_READ", "EXAM_READ"] }),
+      ),
+    ).not.toBe("qa");
+    expect(
+      workspaceFor(user({ role: "tenant_admin", permissions: ["EXAM_READ"] })),
+    ).not.toBe("acquisition");
+    // The admin flag bypasses permission gates but not the role scope.
+    expect(
+      workspaceFor(user({ role: "admin", admin: true, permissions: [] })),
+    ).toBe("dashboard");
+  });
+
+  it("keeps clinical workspaces for non-admin roles", () => {
+    expect(
+      workspaceFor(user({ role: "radiologist", permissions: ["REPORT_READ"] })),
+    ).toBe("reading");
+    expect(
+      workspaceFor(user({ role: "qa_team", permissions: ["QA_READ"] })),
+    ).toBe("qa");
   });
 });
 
@@ -129,12 +192,12 @@ describe("landingRouteFor", () => {
       landingRouteFor(
         user({ role: "pacs_admin", permissions: ["REPLICA_READ"] }),
       ),
-    ).toBe("/replicas");
+    ).toBe("/admin");
     expect(
       landingRouteFor(
-        user({ role: "physician", permissions: ["DICOMWEB_READ"] }),
+        user({ role: "physician", permissions: ["REPORT_READ"] }),
       ),
-    ).toBe("/dicomweb");
+    ).toBe("/reading");
     expect(
       landingRouteFor(
         user({ role: "department_manager", permissions: ["METRICS_READ"] }),
@@ -144,7 +207,7 @@ describe("landingRouteFor", () => {
       landingRouteFor(
         user({ role: "tenant_admin", permissions: ["USER_READ"] }),
       ),
-    ).toBe("/users");
+    ).toBe("/admin");
     expect(
       landingRouteFor(user({ role: "patient", permissions: ["STUDY_READ"] })),
     ).toBe("/");
@@ -166,12 +229,6 @@ describe("landingRouteFor", () => {
     ).toBe("/");
   });
 
-  it("lands patients on '/'", () => {
-    expect(
-      landingRouteFor(user({ role: "patient", permissions: ["FILE_READ"] })),
-    ).toBe("/");
-  });
-
   it("falls back to the first permitted route in priority order", () => {
     expect(
       landingRouteFor(
@@ -190,6 +247,106 @@ describe("landingRouteFor", () => {
     expect(landingRouteFor(user({ role: "mystery_role" }))).toBe("/account");
   });
 
+  it("lands admin-scoped roles on the dashboard, never clinical ones", () => {
+    // pacs_admin holds REPORT_READ (a clinical grant) and USER_READ: the
+    // dashboard step wins over the clinical fallback and the /users primary.
+    expect(
+      landingRouteFor(
+        user({ role: "pacs_admin", permissions: ["REPORT_READ", "USER_READ"] }),
+      ),
+    ).toBe("/admin");
+    // The admin flag bypasses gates but the role scope still excludes
+    // clinical surfaces; the dashboard primary wins.
+    expect(
+      landingRouteFor(user({ role: "admin", admin: true, permissions: [] })),
+    ).toBe("/admin");
+    // Without any dashboard permission the role surface and fallback still
+    // skip clinical workspaces and degrade to the auth-only terminal.
+    expect(
+      landingRouteFor(user({ role: "tenant_admin", permissions: [] })),
+    ).toBe("/account");
+    expect(
+      landingRouteFor(
+        user({ role: "tenant_admin", permissions: ["REPORT_READ"] }),
+      ),
+    ).toBe("/account");
+  });
+
+  it("keeps clinical landings for non-admin roles", () => {
+    expect(
+      landingRouteFor(
+        user({ role: "radiologist", permissions: ["REPORT_READ"] }),
+      ),
+    ).toBe("/reading");
+    expect(
+      landingRouteFor(user({ role: "qa_team", permissions: ["QA_READ"] })),
+    ).toBe("/qa/queue");
+  });
+
+  it("lands the clinical workspace roles on the reading worklist", () => {
+    // physician / referring_physician / ed_physician / care_coordinator all
+    // hold REPORT_READ (Matrix A/B): the clinical landing is /reading, never
+    // the DICOMweb console even when the legacy DICOMWEB_READ grant passes.
+    for (const role of [
+      "physician",
+      "referring_physician",
+      "ed_physician",
+      "care_coordinator",
+    ]) {
+      expect(
+        landingRouteFor(
+          user({ role, permissions: ["REPORT_READ", "DICOMWEB_READ"] }),
+        ),
+      ).toBe("/reading");
+      expect(workspaceFor(user({ role, permissions: ["REPORT_READ"] }))).toBe(
+        "clinical",
+      );
+    }
+  });
+
+  it("lands nurse on the exams worklist via the acquisition workspace", () => {
+    expect(
+      landingRouteFor(user({ role: "nurse", permissions: ["EXAM_READ"] })),
+    ).toBe("/exams");
+    expect(
+      workspaceFor(user({ role: "nurse", permissions: ["EXAM_READ"] })),
+    ).toBe("acquisition");
+  });
+
+  it("lands EMR-only roles on /account until EMR surfaces exist", () => {
+    // pharmacist / lab_technician hold only EMR grants (RESULTS_READ,
+    // MED_VERIFY, ...) that have no PACS surface — /account is the terminal.
+    expect(
+      landingRouteFor(
+        user({
+          role: "pharmacist",
+          permissions: ["RESULTS_READ", "MED_VERIFY"],
+        }),
+      ),
+    ).toBe("/account");
+    expect(
+      landingRouteFor(
+        user({ role: "lab_technician", permissions: ["RESULTS_READ"] }),
+      ),
+    ).toBe("/account");
+  });
+
+  it("closes the DICOMweb console landing to clinical roles with legacy grants", () => {
+    // A clinical role whose only grant is DICOMWEB_READ degrades to /account
+    // instead of landing on the admin console (physician with DICOMWEB_READ
+    // previously landed on /dicomweb).
+    expect(
+      landingRouteFor(
+        user({ role: "physician", permissions: ["DICOMWEB_READ"] }),
+      ),
+    ).toBe("/account");
+    expect(
+      workspaceFor(
+        user({ role: "technologist", permissions: ["DICOMWEB_READ"] }),
+      ),
+    ).toBe("files");
+  });
+
   it("keeps workspaceFor consistent with landingRouteFor", () => {
     const cases: Array<[WorkspaceUser, Workspace, string]> = [
       [
@@ -205,26 +362,70 @@ describe("landingRouteFor", () => {
       [user({ role: "qa_team", permissions: ["QA_READ"] }), "qa", "/qa/queue"],
       [
         user({ role: "pacs_admin", permissions: ["REPLICA_READ"] }),
-        "admin",
-        "/replicas",
+        "dashboard",
+        "/admin",
       ],
       [
         user({ role: "physician", permissions: ["DICOMWEB_READ"] }),
-        "clinical",
-        "/dicomweb",
+        "files",
+        // The clinical workspace maps to /reading, but without REPORT_READ
+        // the DICOMweb grant alone degrades to the auth-only terminal.
+        "/account",
       ],
       [
         user({ role: "department_manager", permissions: ["ANALYTICS_READ"] }),
         "analytics",
         "/metrics",
       ],
+      // AUDIT_READ (canonical alias of LOG_READ, spec §6) unlocks the logs
+      // landing step for roles that carry only AUDIT_READ.
+      [
+        user({ role: "pacs_admin", permissions: ["AUDIT_READ"] }),
+        "dashboard",
+        "/admin",
+      ],
+      [user({ role: "biller", permissions: ["AUDIT_READ"] }), "admin", "/logs"],
       [
         user({ role: "tenant_admin", permissions: ["USER_READ"] }),
-        "platform",
-        "/users",
+        "dashboard",
+        "/admin",
       ],
       [user({ role: "patient", permissions: ["FILE_READ"] }), "files", "/"],
       [user({ role: "patient", permissions: ["STUDY_READ"] }), "files", "/"],
+      [
+        user({ role: "patient", permissions: ["PORTAL_READ"] }),
+        "portal",
+        "/portal",
+      ],
+      [
+        user({ role: "receptionist", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        user({ role: "scheduler", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        user({ role: "front_desk", permissions: ["REGISTRATION_READ"] }),
+        "frontdesk",
+        "/frontdesk/registration",
+      ],
+      [
+        // QUEUE_READ unlocks the privacy queue step for roles that hold it
+        // without REGISTRATION_READ (navigator.ts landing steps).
+        user({ role: "receptionist", permissions: ["QUEUE_READ"] }),
+        "frontdesk",
+        "/frontdesk/queue",
+      ],
+      [
+        // CHART_READ alone has no landing step: the patient degrades to the
+        // auth-only terminal inside the files workspace (no PORTAL_READ).
+        user({ role: "patient", permissions: ["CHART_READ"] }),
+        "files",
+        "/account",
+      ],
       [user({ role: "radiologist", permissions: [] }), "files", "/account"],
     ];
     cases.forEach(([u, workspace, route]) => {

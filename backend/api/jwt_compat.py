@@ -1,8 +1,11 @@
 import jwt as _jwt
 
 
-def encode(payload, key, algorithm='HS256'):
-    token = _jwt.encode(payload, key, algorithm=algorithm)
+def encode(payload, key, algorithm='HS256', headers=None):
+    if headers:
+        token = _jwt.encode(payload, key, algorithm=algorithm, headers=headers)
+    else:
+        token = _jwt.encode(payload, key, algorithm=algorithm)
     if isinstance(token, bytes):
         token = token.decode('utf-8')
     return token

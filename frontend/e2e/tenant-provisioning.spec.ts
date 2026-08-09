@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, BASE } from "./helpers";
+import { loginAsAdmin, BASE, openAdminItem } from "./helpers";
 
 // Provisioning runs alembic on a fresh tenant DB and the dev login flow loads
 // the SPA twice; the default 45s budget is too tight for this spec.
@@ -15,31 +15,37 @@ test.describe("Tenant Provisioning", () => {
   });
 
   test("tenants page loads via admin menu", async ({ page }) => {
-    await page.getByText("Admin").first().click();
-    await expect(page.getByText("Tenants").first()).toBeVisible({ timeout: 5000 });
-    await page.getByText("Tenants").first().click();
+    await openAdminItem(page, "Tenants");
     await expect(page).toHaveURL(/\/tenants/, { timeout: 10000 });
   });
 
   test("roles page loads via admin menu", async ({ page }) => {
-    await page.getByText("Admin").first().click();
-    await page.getByText("Roles").first().click();
+    await openAdminItem(page, "Roles");
     await expect(page).toHaveURL(/\/roles/, { timeout: 10000 });
   });
 
-  test("provisions a tenant: one-time admin password panel, then card with plan tag", async ({ page }) => {
+  test("provisions a tenant: one-time admin password panel, then card with plan tag", async ({
+    page,
+  }) => {
     // Unique per run so parallel/rerun tenants never collide on the slug PK.
     const slug = `e2eui-${Date.now()}`;
     const name = `E2E UI ${slug}`;
 
     await page.goto(`${BASE}/tenants`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("button", { name: /Provision Tenant/ }).first()).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole("button", { name: /Provision Tenant/ }).first(),
+    ).toBeVisible({ timeout: 10000 });
 
     // Create dialog — placeholders are unique to this modal (edit modal reuses labels).
-    await page.getByRole("button", { name: /Provision Tenant/ }).first().click();
+    await page
+      .getByRole("button", { name: /Provision Tenant/ })
+      .first()
+      .click();
     await page.getByPlaceholder("e.g., Memorial Hospital West").fill(name);
     await page.getByPlaceholder("e.g., memorial-west").fill(slug);
-    await page.getByPlaceholder("e.g., admin@memorialwest.com").fill(`admin@${slug}.test`);
+    await page
+      .getByPlaceholder("e.g., admin@memorialwest.com")
+      .fill(`admin@${slug}.test`);
     await page.getByRole("combobox").click();
     await page.getByTitle("pro").click();
     await page.getByPlaceholder("Leave empty for system default").fill("1");
@@ -49,14 +55,19 @@ test.describe("Tenant Provisioning", () => {
     // still trips over migration 032 (CREATE INDEX CONCURRENTLY inside the
     // alembic transaction) and answers with an error toast; in that case the
     // spec skips with the recorded reason instead of asserting a dead flow.
-    const panel = page.getByRole("dialog", { name: "Tenant Admin Credentials" });
+    const panel = page.getByRole("dialog", {
+      name: "Tenant Admin Credentials",
+    });
     const errorToast = page.locator(".ant-message-error").first();
     const outcome = await Promise.race([
       panel.waitFor({ state: "visible", timeout: 45000 }).then(() => "panel"),
-      errorToast.waitFor({ state: "visible", timeout: 45000 }).then(() => "toast"),
+      errorToast
+        .waitFor({ state: "visible", timeout: 45000 })
+        .then(() => "toast"),
     ]);
     if (outcome === "toast") {
-      const reason = (await errorToast.textContent()) || "unknown backend error";
+      const reason =
+        (await errorToast.textContent()) || "unknown backend error";
       test.skip(true, `backend provisioning blocked: ${reason}`);
     }
 

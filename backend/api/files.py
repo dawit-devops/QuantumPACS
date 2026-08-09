@@ -13,6 +13,7 @@ from starlette.responses import FileResponse, Response
 from starlette.exceptions import HTTPException
 from starlette.background import BackgroundTask
 
+from api.tenant_middleware import effective_tenant
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok, not_found, no_content, api_error, paginated
@@ -320,6 +321,18 @@ class FilesHandler(HTTPEndpoint):
         return ok(results)
 
 
+def _outside_effective_tenant(request, user, file_tenant):
+    """True when a file belongs to a tenant outside the request's current
+    scope. The middleware has already authorized that scope (JWT claim,
+    admin, or an R2-03 cross-tenant grant via X-Tenant-ID) — here we only
+    refuse files belonging to a different tenant than the one this request
+    is operating in. Files without a tenant stay accessible exactly as
+    before."""
+    if not file_tenant or user.admin:
+        return False
+    return effective_tenant(request) != file_tenant
+
+
 async def get_file_by_id(request):
     file_id = int(request.path_params['id'])
     async with get_conn() as conn:
@@ -327,7 +340,7 @@ async def get_file_by_id(request):
         if not file or file['deleted']:
             return None
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
             return None
         return file
 
@@ -406,7 +419,7 @@ class ServeFile(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
             raise HTTPException(status_code=403)
 
         async with get_conn() as conn:
@@ -471,7 +484,7 @@ class ServeThumbnail(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and not user.can_access_tenant(file.get('tenant')):
+        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
             raise HTTPException(status_code=403)
 
         tmp = await storage.fetch(file)

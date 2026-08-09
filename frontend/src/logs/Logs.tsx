@@ -16,7 +16,7 @@ import {
   DatePicker,
   Space,
   Typography,
-  Input,
+  AutoComplete,
   Select,
   Badge,
 } from "antd";
@@ -510,18 +510,16 @@ function Logs() {
               onClear={() => setTenantFilter(undefined)}
             />
           )}
-          <Input
+          <AutoComplete
             size="small"
             placeholder="Filter by actor..."
             prefix={<SearchOutlined />}
             value={actorFilter}
-            onChange={(e) => handleActorSearch(e.target.value)}
+            onChange={setActorFilter}
+            onSearch={handleActorSearch}
+            options={actors.map((a) => ({ value: a }))}
             style={{ width: 180 }}
             allowClear
-            onClear={() => {
-              setActorFilter("");
-              setActors([]);
-            }}
           />
           <div
             style={{

@@ -145,3 +145,38 @@ class TestTenantMiddleware:
 
         resp = client.get('/api/noop', headers={'X-Tenant-ID': 'any-clinic'})
         assert resp.status_code == 403
+
+    def test_claim_without_registry_row_is_rejected(self):
+        """R5-04: a JWT tenant with no registry row must not silently fall
+        back to the main DB (the default tenant's data plane) — fail closed
+        with 403."""
+        user = User({'id': 1, 'admin': True, 'tenant': 'ghost-tenant'})
+        client = TestClient(_make_app(user))
+
+        with patch('api.tenant_middleware.get_conn') as mock_get_conn:
+            mock_ctx = AsyncMock()
+            conn_mock = AsyncMock()
+            conn_mock.fetchrow.return_value = None
+            mock_ctx.__aenter__.return_value = conn_mock
+            mock_get_conn.return_value = mock_ctx
+
+            resp = client.get('/api/noop')
+            assert resp.status_code == 403
+
+    def test_effective_tenant_prefers_middleware_slug(self):
+        """R5-05: under an X-Tenant-ID override the effective tenant is the
+        middleware-resolved slug, not the JWT home tenant."""
+        from api.tenant_middleware import effective_tenant
+
+        user = User({'id': 2, 'admin': True, 'tenant': 'home-clinic'})
+        request = _FakeRequest(user, tenant_slug='target-clinic')
+        assert effective_tenant(request) == 'target-clinic'
+
+        request = _FakeRequest(user, tenant_slug=None)
+        assert effective_tenant(request) == 'home-clinic'
+
+
+class _FakeRequest:
+    def __init__(self, user, tenant_slug):
+        self.user = user
+        self.state = type('State', (), {'tenant_slug': tenant_slug})()

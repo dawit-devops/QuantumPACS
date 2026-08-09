@@ -19,6 +19,8 @@ import { SearchOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { open } from "../helpers";
 import { qidoSearch, searchFiles, DicomJsonObject } from "../api/files";
+import { useAuth } from "../auth/AuthContext";
+import { isAdminScopedRole } from "../navigator";
 import { PageState } from "../common/PageState";
 import { AdminFiles } from "./AdminFiles";
 import AdvancedSearch from "./AdvancedSearch";
@@ -118,6 +120,13 @@ function Files() {
   const isMobile = !screens.md;
   const navigate = useNavigate();
   const location = useLocation();
+  // Admin-scoped roles manage files but not patients; the patient column
+  // stays readable as plain text so no dead link into the gated /patients.
+  const { user, hasPermission } = useAuth();
+  const isAdminScoped = isAdminScopedRole(user?.role);
+  // The backend re-checks FILE_WRITE on POST /files/upload, so the button is
+  // hidden client-side for roles without the grant (mirrors nav gating).
+  const canUpload = hasPermission("FILE_WRITE");
 
   const [data, setData] = useState<FileRow[]>([]);
   const [pagination, setPagination] = useState<{
@@ -431,9 +440,12 @@ function Files() {
       title: "Patient ID",
       dataIndex: "Patient ID",
       ...getColumnSearchProps<FileRow>("Patient ID", {
-        render: (text: string, record: FileRow) => (
-          <Link to={"/patients/" + record.patient_db_id}>{text}</Link>
-        ),
+        render: (text: string, record: FileRow) =>
+          isAdminScoped ? (
+            <span>{text}</span>
+          ) : (
+            <Link to={"/patients/" + record.patient_db_id}>{text}</Link>
+          ),
       }),
     },
     {
@@ -499,6 +511,7 @@ function Files() {
       <Row>
         <Col span={16}>
           <Search
+            data-testid="files-search-input"
             placeholder="input search text"
             enterButton="Search"
             size="large"
@@ -520,13 +533,15 @@ function Files() {
           </Button>
         </Col>
       </Row>
-      <Button
-        style={{ marginBottom: "10px" }}
-        type="primary"
-        onClick={() => setShowUpload(true)}
-      >
-        Upload
-      </Button>
+      {canUpload && (
+        <Button
+          style={{ marginBottom: "10px" }}
+          type="primary"
+          onClick={() => setShowUpload(true)}
+        >
+          Upload
+        </Button>
+      )}
       <Button
         style={{ marginBottom: "10px", marginLeft: "5px" }}
         type="primary"

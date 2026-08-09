@@ -195,6 +195,13 @@ async def oidc_discovery(request):
     })
 
 
+def oidc_jwks(request):
+    # R2-11: discovery advertises this jwks_uri; publish the RSA public key
+    # that signs our access/refresh tokens (see api.jwt_keys).
+    from api.jwt_keys import get_jwk
+    return JSONResponse({'keys': [get_jwk()]})
+
+
 async def oauth_login(request):
     idp_slug = request.query_params.get('idp', '')
     if idp_slug:
@@ -281,11 +288,27 @@ async def oauth_callback(request):
     name = claims.get('name', '')
     user, groups = await _find_or_create_user(oauth_sub, email, name, provider)
 
+    # Role/permissions always come from the DB row (the provider default_role
+    # applies only at provisioning); minting from provider config would let a
+    # stale default leak grants to a demoted user and would produce a token
+    # with no permissions claim at all for existing users.
+    try:
+        async with get_conn() as conn:
+            user_row = await Users(conn).get_user_row(user['id'])
+            if user_row and user_row.get('status') == 'active':
+                role_slug, permissions = await Users(conn).get_user_role(user['id'])
+    except RuntimeError:
+        user_row = None
+        role_slug, permissions = None, []
+
+    if not user_row or user_row.get('status') != 'active':
+        return unauthorized('Account unavailable')
+
     token = create_token(
-        {'id': user['id'], 'admin': user.get('admin', False)},
-        role=provider.get('default_role') or config.get('oauth_default_role'),
-        permissions=None,
-        token_version=user.get('token_version', 0),
+        {'id': user['id'], 'admin': bool(user_row.get('admin', False))},
+        role=role_slug,
+        permissions=permissions,
+        token_version=user_row.get('token_version', 0),
     )
 
     resp = ok({
@@ -330,18 +353,23 @@ async def oauth_token_exchange(request):
         try:
             async with get_conn() as conn:
                 user_row = await Users(conn).get_user_row(payload['id'])
+                if user_row and user_row.get('status') == 'active':
+                    role_slug, permissions = await Users(conn).get_user_role(payload['id'])
         except RuntimeError:
             user_row = None
+            role_slug, permissions = None, []
         if not user_row or user_row.get('status') != 'active':
             return unauthorized('Account unavailable')
+        if (user_row.get('token_version') or 0) != payload.get('token_version', 0):
+            return unauthorized('Session invalidated')
 
         user_data = {'id': payload['id'], 'admin': bool(user_row.get('admin', False))}
         if user_row.get('tenant'):
             user_data['tenant'] = user_row['tenant']
-        role = payload.get('role')
         token_version = user_row.get('token_version') or 0
         access, new_refresh = create_token_pair(
-            user_data, role=role, token_version=token_version,
+            user_data, role=role_slug, permissions=permissions,
+            token_version=token_version,
         )
         return ok({
             'access_token': access,
