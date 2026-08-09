@@ -50,7 +50,7 @@ class RoutingHandler(HTTPEndpoint):
                 'priority': body.priority or 0,
                 'enabled': body.enabled if body.enabled is not None else True,
             }
-            tenant_id = getattr(request.user, 'tenant', None) or request.headers.get('X-Tenant-ID', '')
+            tenant_id = effective_tenant(request)
             if tenant_id:
                 rule_data['tenant_id'] = tenant_id
             result = await RoutingRule(conn).create(rule_data)

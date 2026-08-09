@@ -11,7 +11,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import User
-from api.tokens import create_token
+from api.tokens import block_token, create_token, is_blocked
 from api.users import ChangePassword, Logout, RevokeToken
 from api.validate import validation_exception_handler, _ValidationException
 
@@ -344,3 +344,63 @@ class TestBlocklistHealthSignal:
         assert resp.status_code == 200
         assert data['status'] == 'ok'
         assert data['components']['token_blocklist']['status'] == 'ok'
+
+
+class TestLocalDenylistOverlay:
+    """R2-H4: revocation survives a Redis outage via the bounded in-process
+    overlay. The overlay is authoritative for recently revoked tokens even
+    when the primary Redis blocklist is unreachable."""
+
+    def setup_method(self):
+        from api.tokens import reset_local_denylist
+        reset_local_denylist()
+
+    def _jti(self, token):
+        import jwt as pyjwt
+
+        from api.jwt_keys import get_public_key_pem
+
+        return pyjwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False, 'verify_exp': False},
+        )['jti']
+
+    def test_blocked_token_rejected_without_redis(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        jti = self._jti(token)
+        with patch('api.tokens._get_blocklist_redis', new=AsyncMock(return_value=None)):
+            _run(block_token(token))
+            assert _run(is_blocked(jti)) is True
+
+    def test_revocation_survives_redis_outage(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        jti = self._jti(token)
+        # Block with a healthy redis first.
+        fake_redis = AsyncMock()
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=fake_redis)):
+            _run(block_token(token))
+        fake_redis.set.assert_awaited()
+        # Then redis dies — the token must still be rejected via the overlay.
+        with patch('api.tokens._get_blocklist_redis', new=AsyncMock(return_value=None)):
+            assert _run(is_blocked(jti)) is True
+
+    def test_expired_token_not_added_to_overlay(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True}, expire={'seconds': -5})
+        jti = self._jti(token)
+        with patch('api.tokens._get_blocklist_redis', new=AsyncMock(return_value=None)):
+            _run(block_token(token))
+            assert _run(is_blocked(jti)) is False
+
+    def test_overlay_purges_expired_entries(self):
+        from api import tokens as tokens_mod
+
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True}, expire={'seconds': -5})
+        jti = self._jti(token)
+        tokens_mod._local_denylist[jti] = 0.0
+        assert _run(is_blocked(jti)) is False
+        assert jti not in tokens_mod._local_denylist

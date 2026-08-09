@@ -1,7 +1,7 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from api.auth import can_access_tenant
+from api.auth import can_access_tenant, can_mutate_tenant, _is_read_method
 from api.response import not_found, apply_cors_headers
 from config import config
 from db.audit_log import AuditLog
@@ -72,6 +72,21 @@ class TenantMiddleware(BaseHTTPMiddleware):
             # row, not via an admin flag. Logged below, before any data-plane
             # work, on the main pool.
             cross_tenant = not user.admin and user.tenant != header_slug
+            if cross_tenant:
+                # Read-scoped grants (teleradiology) see the tenant but must
+                # not mutate it: deny non-GET/HEAD and every WebSocket
+                # channel unless the grant row explicitly says 'write'.
+                method = request.scope.get('method', '')
+                if request.scope.get('type') == 'websocket' or not _is_read_method(method):
+                    if not await can_mutate_tenant(user, header_slug):
+                        return apply_cors_headers(
+                            request,
+                            JSONResponse(
+                                {'error': 'Forbidden',
+                                 'message': 'Read-only access to this tenant'},
+                                status_code=403,
+                            ),
+                        )
 
         if slug:
             async with get_conn() as conn:

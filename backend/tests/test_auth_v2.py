@@ -42,7 +42,10 @@ class TestTokenClaims:
     def test_token_has_claims(self):
         with patch('api.tokens.config', {'secret': SECRET}):
             token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['id'] == 1
         assert 'jti' in payload
         assert 'exp' in payload
@@ -55,7 +58,10 @@ class TestTokenClaims:
                 role='technologist',
                 permissions=['FILE_READ', 'FILE_WRITE'],
             )
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['role'] == 'technologist'
         assert 'FILE_READ' in payload.get('permissions', [])
 
@@ -65,7 +71,10 @@ class TestTokenClaims:
                 {'id': 3, 'admin': False, 'tenant': 'hospital-x'},
                 expire={'minutes': 60},
             )
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['tenant'] == 'hospital-x'
 
     def test_token_used_for_request(self):

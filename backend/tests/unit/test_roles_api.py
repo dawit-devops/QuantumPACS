@@ -67,7 +67,9 @@ class TestRolesHandler:
     async def test_create_returns_created(self):
         conn = MockConn()
         body = {'name': 'Test Role', 'slug': 'test', 'permissions': ['FILE_READ']}
-        request = make_request(method='POST', body=body, permissions=[Permission.ROLE_WRITE.value])
+        request = make_request(method='POST', body=body,
+                               permissions=[Permission.ROLE_WRITE.value,
+                                            Permission.FILE_READ.value])
         handler = make_handler(RolesHandler, request)
         with patch('api.roles.get_conn', return_value=conn):
             resp = await handler.post(request)
@@ -94,7 +96,9 @@ class TestRolesHandler:
             side_effect=asyncpg.UniqueViolationError('duplicate key value violates unique constraint "roles_slug_key"')
         )
         body = {'name': 'Dup Role', 'slug': 'dup_slug', 'permissions': ['FILE_READ']}
-        request = make_request(method='POST', body=body, permissions=[Permission.ROLE_WRITE.value])
+        request = make_request(method='POST', body=body,
+                               permissions=[Permission.ROLE_WRITE.value,
+                                            Permission.FILE_READ.value])
         handler = make_handler(RolesHandler, request)
         with patch('api.roles.get_conn', return_value=conn):
             resp = await handler.post(request)
@@ -170,7 +174,9 @@ class TestRoleHandler:
             'permissions': '["FILE_READ"]', 'built_in': False, 'tenant_id': None,
         })
         body = {'name': 'Updated', 'permissions': ['FILE_WRITE']}
-        request = make_request(method='PUT', params={'id': 'r1'}, body=body, permissions=[Permission.ROLE_WRITE.value])
+        request = make_request(method='PUT', params={'id': 'r1'}, body=body,
+                               permissions=[Permission.ROLE_WRITE.value,
+                                            Permission.FILE_WRITE.value])
         handler = make_handler(RoleHandler, request)
         with patch('api.roles.get_conn', return_value=conn):
             resp = await handler.put(request)

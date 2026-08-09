@@ -43,7 +43,7 @@ default_config = {
     'oauth_redirect_uri': '',
     'oauth_jwks_uri': '',
     'oauth_token_url': '',
-    'oauth_default_role': 'radiologist',
+    'oauth_default_role': 'patient',
     'oauth_scope': 'openid email profile',
     # Path to the RSA signing key (PEM) used for RS256 access/refresh tokens.
     # Auto-generated on first use; jwks_uri serves the matching public key.
@@ -122,6 +122,11 @@ def assert_production_secret():
         raise ConfigurationError(
             'SECURITY: Using the default superadmin password. Set SUPERADMIN_PASS '
             'env var or config.local.yaml superadmin_pass to a fresh random value.'
+        )
+    if config['db_password'] in ('pa55w0rd', _DEFAULT_DB_PASSWORD):
+        raise ConfigurationError(
+            'SECURITY: Using the default database password. Set DB_PASSWORD '
+            'env var or config.local.yaml db_password to a fresh random value.'
         )
 
 

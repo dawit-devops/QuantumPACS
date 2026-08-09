@@ -2,8 +2,10 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(description="User login identifier")
-    password: str = Field(description="User password in plain text")
+    # Bounded (R2-M6): unbounded fields let a client send multi-KB
+    # credentials through bcrypt work and the audit path on every attempt.
+    username: str = Field(min_length=1, max_length=128, description="User login identifier")
+    password: str = Field(min_length=1, max_length=256, description="User password in plain text")
 
 
 class ChangePasswordRequest(BaseModel):

@@ -14,6 +14,13 @@ from log import request_id_var
 from api.tenant_middleware import effective_tenant
 
 
+def _permissions_subset_of(caller_perms, target_perms):
+    """A non-platform-admin may only create/update roles whose permission
+    set is a subset of their own — otherwise ROLE_WRITE becomes a backdoor
+    to escalate any role (R2-M2)."""
+    return set(target_perms or []) <= set(caller_perms or [])
+
+
 class RolesHandler(HTTPEndpoint):
     @requires_permission(Permission.ROLE_READ)
     async def get(self, request):
@@ -24,6 +31,12 @@ class RolesHandler(HTTPEndpoint):
     @requires_permission(Permission.ROLE_WRITE)
     async def post(self, request):
         body = await parse_body(CreateRoleRequest, request)
+        if not request.user.admin and not _permissions_subset_of(
+            request.user.permissions, body.permissions
+        ):
+            return api_error(
+                'FORBIDDEN', 'Role permissions exceed your own grants', status=403
+            )
         async with get_conn() as conn:
             try:
                 role_id = await Roles(conn).create(
@@ -70,6 +83,14 @@ class RoleHandler(HTTPEndpoint):
                 # immutable") — editing them would let ROLE_WRITE holders
                 # escalate grants (e.g. add permissions to super_admin).
                 return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
+            if (
+                body.permissions is not None
+                and not request.user.admin
+                and not _permissions_subset_of(request.user.permissions, body.permissions)
+            ):
+                return api_error(
+                    'FORBIDDEN', 'Role permissions exceed your own grants', status=403
+                )
             try:
                 await Roles(conn).patch(
                     role_id,

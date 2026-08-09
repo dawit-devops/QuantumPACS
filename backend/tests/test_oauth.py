@@ -28,7 +28,9 @@ class TestOidcDiscovery:
         assert 'code' in data['response_types_supported']
         assert 'S256' in data['code_challenge_methods_supported']
         assert 'authorization_code' in data['grant_types_supported']
-        assert 'HS256' in data['id_token_signing_alg_values_supported']
+        # Only RS256 is advertised: the JWKS endpoint publishes the RSA key,
+        # the legacy HS256 secret signs nothing advertised here.
+        assert data['id_token_signing_alg_values_supported'] == ['RS256']
 
     def test_discovery_endpoints_contain_base_url(self):
         app = Starlette(routes=[Route('/api/.well-known/openid-configuration', endpoint=oidc_discovery)])
@@ -109,7 +111,10 @@ class TestOidcJwks:
         assert header['alg'] == 'RS256'
         assert header['kid'] == get_kid()
 
-        payload = pyjwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = pyjwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['id'] == 1
 
     def test_legacy_hs256_token_still_verifies_during_rotation(self):
@@ -199,7 +204,7 @@ class TestOAuthCallback:
     async def test_callback_invalid_state_returns_401(self):
         request = MagicMock()
         request.query_params = {'code': 'abc', 'state': 'bad'}
-        with patch('api.oauth._verify_state', AsyncMock(return_value=(None, None))):
+        with patch('api.oauth._verify_state', AsyncMock(return_value=(None, None, None))):
             resp = await oauth_callback(request)
         assert resp.status_code == 401
 
@@ -232,27 +237,127 @@ class TestOAuthCallback:
         ))
 
         with patch('api.oauth.config', cfg):
-            with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None))):
+            with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None, None))):
                 with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
                     with patch('api.oauth._verify_id_token', return_value=claims):
-                        with patch('api.oauth._find_or_create_user', AsyncMock(return_value=(
-                            {'id': 42, 'admin': False, 'username': 'dr'}, [],
-                        ))):
+                        with patch('api.oauth._find_or_create_user', AsyncMock(return_value={
+                            'id': 42, 'admin': False, 'username': 'dr',
+                        })):
                             with patch('api.oauth.get_conn', return_value=mock_conn):
                                 with patch('api.oauth.Users', mock_users):
-                                    with patch('api.oauth.create_token', return_value='qp-jwt-token') as mock_create_token:
+                                    with patch(
+                                        'api.oauth.create_token_pair',
+                                        return_value=('qp-access-jwt', 'qp-refresh-jwt'),
+                                    ) as mock_create_pair:
                                         resp = await oauth_callback(request)
 
         assert resp.status_code == 200
         body = resp.body
-        assert b'qp-jwt-token' in body
+        assert b'qp-access-jwt' in body
+        assert b'qp-refresh-jwt' in body
         assert b'token' in body
-        kwargs = mock_create_token.call_args[1]
-        assert kwargs.get('role') == 'radiologist'
-        assert kwargs.get('permissions') == ['REPORT_READ']
+        kwargs = mock_create_pair.call_args[0][0]
+        assert kwargs.get('id') == 42
+        mock_create_pair.assert_called_once()
+        assert mock_create_pair.call_args.kwargs.get('role') == 'radiologist'
+        assert mock_create_pair.call_args.kwargs.get('permissions') == ['REPORT_READ']
+
+    @pytest.mark.asyncio
+    async def test_callback_refuses_provisioning_when_auto_provision_disabled(self):
+        request = MagicMock()
+        request.query_params = {'code': 'valid-code', 'state': 'valid-state'}
+
+        cfg = {
+            'oauth_issuer': 'https://idp.example.com',
+            'oauth_client_id': 'client-id',
+            'oauth_client_secret': 'secret',
+            'oauth_redirect_uri': 'http://localhost:8080/api/oauth/callback',
+            'oauth_jwks_uri': 'https://idp.example.com/jwks',
+            'oauth_token_url': 'https://idp.example.com/token',
+        }
+        tokens = {'id_token': 'fake-id-token'}
+        claims = MockClaims(sub='oauth-user-1', email='dr@example.com', name='Dr Smith')
+
+        with patch('api.oauth.config', cfg):
+            with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None, None))):
+                with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
+                    with patch('api.oauth._verify_id_token', return_value=claims):
+                        # Provider rows are plain dicts here: auto_provision=False
+                        # arrives from the DB-configured provider path.
+                        with patch(
+                            'api.oauth._find_or_create_user',
+                            AsyncMock(return_value=None),
+                        ):
+                            resp = await oauth_callback(request)
+
+        assert resp.status_code == 403
+        body = resp.body
+        assert b'ACCOUNT_NOT_PROVISIONED' in body
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_disabled_provider(self):
+        request = MagicMock()
+        request.query_params = {'code': 'valid-code', 'state': 'valid-state'}
+
+        with patch(
+            'api.oauth._verify_state',
+            AsyncMock(return_value=('code-verifier', 'provider-id', None)),
+        ):
+            with patch(
+                'api.oauth._get_provider_by_id',
+                AsyncMock(return_value={'enabled': False}),
+            ):
+                resp = await oauth_callback(request)
+
+        assert resp.status_code == 403
+        assert b'PROVIDER_DISABLED' in resp.body
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_nonce_mismatch(self):
+        request = MagicMock()
+        request.query_params = {'code': 'valid-code', 'state': 'valid-state'}
+
+        class NonceMismatchClaims(MockClaims):
+            def get(self, key, default=None):
+                if key == 'nonce':
+                    return 'attacker-forged-nonce'
+                return super().get(key, default)
+
+        tokens = {'id_token': 'fake-id-token'}
+        claims = NonceMismatchClaims(sub='oauth-user-1', email='dr@example.com')
+        cfg = {
+            'oauth_issuer': 'https://idp.example.com',
+            'oauth_client_id': 'client-id',
+            'oauth_client_secret': 'secret',
+            'oauth_redirect_uri': 'http://localhost:8080/api/oauth/callback',
+            'oauth_jwks_uri': 'https://idp.example.com/jwks',
+            'oauth_token_url': 'https://idp.example.com/token',
+        }
+
+        with patch('api.oauth.config', cfg):
+            with patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', None, 'real-nonce'))):
+                with patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)):
+                    with patch('api.oauth._verify_id_token', return_value=claims):
+                        resp = await oauth_callback(request)
+
+        assert resp.status_code == 401
+        assert b'NONCE_MISMATCH' in resp.body
 
 
 class TestOAuthTokenExchange:
+    @pytest.fixture(autouse=True)
+    def _hermetic_rate_limit(self):
+        # Token grants are rate-limited per-IP (R2-M9); the module-global
+        # in-memory fallback would accumulate across runs on the shared dev
+        # host. A fresh bucket per test keeps the suite deterministic.
+        from api.ratelimit import RedisTokenBucket
+        with (
+            patch('api.ratelimit.refresh_bucket',
+                  RedisTokenBucket(max_attempts=30, window_seconds=60)),
+            patch('api.ratelimit._get_rate_redis', AsyncMock(return_value=None)),
+        ):
+            yield
+
     def test_empty_body_returns_unsupported_grant(self):
         app = Starlette(routes=[Route('/api/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])])
         client = TestClient(app)

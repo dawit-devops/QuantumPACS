@@ -26,8 +26,10 @@ def _make_app(user):
 
     return Starlette(
         routes=[
-            Route('/api/noop', endpoint=_noop),
-            Route('/api/tenant-info', endpoint=_tenant_info),
+            Route('/api/noop', endpoint=_noop,
+                  methods=['GET', 'POST', 'PUT', 'DELETE']),
+            Route('/api/tenant-info', endpoint=_tenant_info,
+                  methods=['GET', 'POST', 'PUT', 'DELETE']),
         ],
         middleware=[
             Middleware(FakeAuth),
@@ -307,7 +309,10 @@ class TestTenantJWT:
             )
         import jwt
         from api.jwt_keys import get_public_key_pem
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['tenant'] == 'clinic-a'
 
     def test_refresh_preserves_tenant(self):
@@ -381,3 +386,87 @@ class TestTenantJWT:
     def test_no_tenant_denied_all(self):
         u = User({'id': 3, 'admin': False})
         assert u.can_access_tenant('some-clinic') is False
+
+
+class TestCrossTenantWriteGate:
+    """R5-HI-1: cross-tenant grants default to read — mutation requires an
+    explicit scope='write' row. Home-tenant and admin writes are unaffected."""
+
+    def _make_grant_client(self, scope):
+        from contextlib import ExitStack
+
+        from db.user_tenant_grants import UserTenantGrants
+
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic',
+                     'db_name': 'other_clinic'}
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+
+        auth_ctx = AsyncMock()
+        auth_conn = AsyncMock()
+        auth_conn.fetchval.return_value = 1
+        auth_ctx.__aenter__.return_value = auth_conn
+
+        grant_scope = AsyncMock(return_value=scope)
+
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+
+        stack = ExitStack()
+        stack.enter_context(patch('api.auth.get_conn', return_value=auth_ctx))
+        stack.enter_context(patch('api.tenant_middleware.get_conn', return_value=mw_ctx))
+        stack.enter_context(patch('api.tenant_middleware.TenantConnectionPool.get',
+                                  new=AsyncMock()))
+        stack.enter_context(patch.object(UserTenantGrants, 'scope_for', grant_scope))
+        return client, stack
+
+    def test_read_scope_grant_cannot_mutate_cross_tenant(self):
+        client, stack = self._make_grant_client('read')
+        with stack:
+            resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 403
+        assert 'Read-only access to this tenant' in resp.json()['message']
+
+    def test_read_scope_grant_can_read_cross_tenant(self):
+        client, stack = self._make_grant_client('read')
+        with stack:
+            resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+        assert resp.json()['slug'] == 'other-clinic'
+
+    def test_write_scope_grant_allows_mutation_cross_tenant(self):
+        client, stack = self._make_grant_client('write')
+        with stack:
+            resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+
+    def test_admin_can_mutate_cross_tenant(self):
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic',
+                     'db_name': 'other_clinic'}
+        user = User({'id': 1, 'admin': True})
+        client = TestClient(_make_app(user))
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+        with patch('api.tenant_middleware.get_conn', return_value=mw_ctx):
+            with patch('api.tenant_middleware.TenantConnectionPool.get', new=AsyncMock()):
+                resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+
+    def test_home_tenant_write_allowed_for_regular_user(self):
+        mock_info = {'slug': 'my-clinic', 'name': 'My Clinic', 'db_name': 'my_clinic'}
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+        with patch('api.tenant_middleware.get_conn', return_value=mw_ctx):
+            with patch('api.tenant_middleware.TenantConnectionPool.get', new=AsyncMock()):
+                resp = client.post('/api/noop', headers={'X-Tenant-ID': 'my-clinic'})
+        assert resp.status_code == 200

@@ -132,7 +132,9 @@ class TestRefreshEndpoint:
             set_cookie = resp.headers.get('set-cookie', '')
             assert 'refresh_token=' in set_cookie
             assert 'HttpOnly' in set_cookie
-            assert 'Path=/api/auth/refresh' in set_cookie
+            # Cookie path covers /api/auth/refresh — matching the same
+            # contract used by the password login endpoint.
+            assert 'Path=/api/auth' in set_cookie
 
             payload = verify_token(data['access_token'])
             assert payload['id'] == 1

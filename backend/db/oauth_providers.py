@@ -76,7 +76,7 @@ class OAuthProviders(Table):
                      jwks_uri=None, token_url=None, redirect_uri=None,
                      scope='openid email profile', groups_claim='groups',
                      auto_provision=True, enabled=True, tenant_id=None,
-                     slug=None, default_role='cashier'):
+                     slug=None, default_role='patient'):
         if slug is None:
             slug = _slug_from_issuer(issuer)
         encrypted_secret = encrypt_secret(client_secret) if client_secret else ''

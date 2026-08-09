@@ -14,7 +14,7 @@ from starlette.responses import RedirectResponse, JSONResponse
 
 from api.response import ok, api_error, unauthorized
 from api.tokens import (
-    create_token, create_token_pair,
+    create_token_pair,
     verify_refresh_token, block_token, is_blocked,
 )
 from config import config
@@ -64,10 +64,10 @@ def _code_challenge(verifier):
     return base64.urlsafe_b64encode(digest).rstrip(b'=').decode()
 
 
-async def _store_state(state, verifier, provider_id=None):
+async def _store_state(state, verifier, provider_id=None, nonce=None):
     try:
         redis = await _get_redis()
-        data = json.dumps({'verifier': verifier, 'provider_id': provider_id})
+        data = json.dumps({'verifier': verifier, 'provider_id': provider_id, 'nonce': nonce})
         await redis.set(f'oauth_state:{state}', data, ex=300)
     except Exception:
         log.warning('Failed to store OAuth state in Redis')
@@ -80,10 +80,10 @@ async def _verify_state(state):
         if raw:
             await redis.delete(f'oauth_state:{state}')
             data = json.loads(raw if isinstance(raw, str) else raw.decode())
-            return data.get('verifier'), data.get('provider_id')
+            return data.get('verifier'), data.get('provider_id'), data.get('nonce')
     except Exception:
         log.warning('Failed to verify OAuth state from Redis')
-    return None, None
+    return None, None, None
 
 
 async def _exchange_code(code, verifier, provider):
@@ -134,17 +134,21 @@ def _verify_id_token(id_token, provider):
 
 
 async def _find_or_create_user(oauth_sub, email, name, provider):
-    groups = []
     async with get_conn() as conn:
         q = Users(conn).select('*').where(Users.table.oauth_sub == oauth_sub)
         user = await conn.fetchrow(str(q))
         if user:
-            user = dict(user)
-            if provider.get('groups_claim'):
-                groups = user.get('groups') or []
-            return user, groups
+            return dict(user)
 
-        role_slug = provider.get('default_role') or config.get('oauth_default_role', 'cashier')
+        # auto_provision=False providers map a closed user base: identities
+        # must exist before login, JIT self-registration is refused.
+        if provider.get('auto_provision') is False:
+            return None
+
+        # Least-privilege JIT (R2-H3): self-registering identities get the
+        # 'patient' portal role unless the provider explicitly overrides it —
+        # never a billing or clinical role by default.
+        role_slug = provider.get('default_role') or config.get('oauth_default_role', 'patient')
         role_id = None
         if role_slug:
             role_id = await conn.fetchval(
@@ -173,7 +177,7 @@ async def _find_or_create_user(oauth_sub, email, name, provider):
         user = {'id': new_id, 'username': username, 'admin': False,
                 'role_id': role_id, 'oauth_sub': oauth_sub, 'email': email,
                 'token_version': 0}
-        return user, []
+        return user
 
 
 async def oidc_discovery(request):
@@ -187,10 +191,14 @@ async def oidc_discovery(request):
         'response_modes_supported': ['query', 'form_post'],
         'grant_types_supported': ['authorization_code', 'refresh_token'],
         'subject_types_supported': ['public'],
-        'id_token_signing_alg_values_supported': ['HS256', 'RS256'],
+        # Only RS256: the JWKS endpoint publishes the RSA key; the legacy
+        # HS256 secret signs nothing that this endpoint advertises.
+        'id_token_signing_alg_values_supported': ['RS256'],
         'scopes_supported': ['openid', 'email', 'profile'],
         'token_endpoint_auth_methods_supported': ['client_secret_basic', 'client_secret_post'],
-        'claims_supported': ['sub', 'iss', 'aud', 'exp', 'iat', 'email', 'name'],
+        'claims_supported': ['sub', 'iss', 'aud', 'exp', 'iat', 'jti', 'typ',
+                             'email', 'name', 'role', 'permissions',
+                             'tenant', 'token_version'],
         'code_challenge_methods_supported': ['S256'],
     })
 
@@ -208,6 +216,8 @@ async def oauth_login(request):
         provider = await _get_provider(idp_slug)
         if not provider:
             return api_error('PROVIDER_NOT_FOUND', f'OAuth provider not found: {idp_slug}', status=404)
+        if not provider.get('enabled'):
+            return api_error('PROVIDER_DISABLED', 'OAuth provider is disabled', status=403)
     else:
         issuer = config.get('oauth_issuer', '')
         client_id = config.get('oauth_client_id', '')
@@ -225,8 +235,9 @@ async def oauth_login(request):
 
     verifier = _code_verifier()
     state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(16)
     provider_id = provider.get('id') if idp_slug else None
-    await _store_state(state, verifier, provider_id)
+    await _store_state(state, verifier, provider_id, nonce)
 
     auth_url = f"{provider['issuer'].rstrip('/')}/authorize"
     params = {
@@ -235,6 +246,7 @@ async def oauth_login(request):
         'redirect_uri': provider.get('redirect_uri', config.get('oauth_redirect_uri', '')),
         'scope': provider.get('scope', 'openid email profile'),
         'state': state,
+        'nonce': nonce,
         'code_challenge': _code_challenge(verifier),
         'code_challenge_method': 'S256',
     }
@@ -253,7 +265,7 @@ async def oauth_callback(request):
     if not code or not state:
         return api_error('MISSING_PARAMS', 'Missing code or state parameter', status=400)
 
-    verifier, provider_id = await _verify_state(state)
+    verifier, provider_id, nonce = await _verify_state(state)
     if verifier is None:
         return api_error('INVALID_STATE', 'State mismatch or expired', status=401)
 
@@ -261,6 +273,8 @@ async def oauth_callback(request):
         provider = await _get_provider_by_id(provider_id)
         if not provider:
             return api_error('PROVIDER_NOT_FOUND', 'OAuth provider not found', status=404)
+        if not provider.get('enabled'):
+            return api_error('PROVIDER_DISABLED', 'OAuth provider is disabled', status=403)
     else:
         provider = {
             'issuer': config.get('oauth_issuer', ''),
@@ -286,7 +300,24 @@ async def oauth_callback(request):
     oauth_sub = claims.get('sub')
     email = claims.get('email') or claims.get('preferred_username', '')
     name = claims.get('name', '')
-    user, groups = await _find_or_create_user(oauth_sub, email, name, provider)
+    if nonce:
+        # Replay protection (R2-M4): when the IdP cooperates the id_token
+        # must echo the nonce we sent; providers that omit nonce entirely are
+        # tolerated (PKCE + single-use state still bind the code).
+        if claims.get('nonce') != nonce:
+            return api_error('NONCE_MISMATCH', 'Login nonce mismatch', status=401)
+    elif claims.get('nonce') is not None:
+        return api_error('NONCE_MISMATCH', 'Unexpected nonce claim', status=401)
+    user = await _find_or_create_user(oauth_sub, email, name, provider)
+    if user is None:
+        # auto_provision=False: the identity has no account and the provider
+        # forbids JIT self-registration. 403 keeps the 404-vs-403 semantics:
+        # an unprovisioned identity is an authorization decision, not a leak.
+        return api_error(
+            'ACCOUNT_NOT_PROVISIONED',
+            'Account not provisioned — contact your administrator',
+            status=403,
+        )
 
     # Role/permissions always come from the DB row (the provider default_role
     # applies only at provisioning); minting from provider config would let a
@@ -304,26 +335,42 @@ async def oauth_callback(request):
     if not user_row or user_row.get('status') != 'active':
         return unauthorized('Account unavailable')
 
-    token = create_token(
+    token = create_token_pair(
         {'id': user['id'], 'admin': bool(user_row.get('admin', False))},
         role=role_slug,
         permissions=permissions,
         token_version=user_row.get('token_version', 0),
     )
+    access, refresh = token
 
     resp = ok({
-        'token': token,
+        'token': access,
+        'access_token': access,
+        'refresh_token': refresh,
         'user': {
             'id': user['id'],
             'username': user.get('username', email),
             'email': email,
         },
     })
-    resp.set_cookie(key='token', value=token, httponly=True, samesite='strict', path='/api')
+    resp.set_cookie(key='token', value=access, httponly=True, samesite='strict', secure=True, path='/api')
+    # Same cookie contract as the password login: the refresh token rides
+    # only as an HttpOnly cookie scoped to /api/auth so the shared refresh
+    # endpoint can rotate it. 1-hour access tokens + rotation, not a 14-day
+    # bearer (R2-H5).
+    resp.set_cookie(
+        key='refresh_token', value=refresh, httponly=True,
+        samesite='strict', secure=True, path='/api/auth',
+    )
     return resp
 
 
 async def oauth_token_exchange(request):
+    ip = request.client.host if request.client else 'unknown'
+    from api.ratelimit import refresh_bucket
+    allowed, msg = await refresh_bucket.check(ip)
+    if not allowed:
+        return api_error('RATE_LIMITED', msg, status=429)
     body = await request.json()
     grant_type = body.get('grant_type', 'authorization_code')
     code = body.get('code', '')
@@ -371,6 +418,7 @@ async def oauth_token_exchange(request):
             user_data, role=role_slug, permissions=permissions,
             token_version=token_version,
         )
+        await refresh_bucket.record(ip, success=True)
         return ok({
             'access_token': access,
             'refresh_token': new_refresh,

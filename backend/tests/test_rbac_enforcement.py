@@ -329,7 +329,11 @@ def test_role_permission_update_bumps_token_version_for_role_users():
     p_conn = _patch_conn('api.roles')[0]
 
     with p_conn, p_roles[0] as roles_cls, p_users[0] as users_cls, p_audit[0]:
-        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+        # Caller holds ROLE_WRITE + the permission being assigned: the R2-M2
+        # subset guard (no privilege escalation through role editing) must
+        # not trip on a legit same-scope update.
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value,
+                                                     Permission.FILE_READ.value]))) as client:
             resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
     assert resp.status_code == 200
     users_cls.return_value.bulk_increment_token_version_by_role.assert_awaited_once_with('r1')

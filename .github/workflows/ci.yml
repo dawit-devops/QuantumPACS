@@ -66,7 +66,7 @@ jobs:
     services:
       postgres:
         image: postgres:16
-        env: { POSTGRES_DB: quantumpacs_e2e, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
+        env: { POSTGRES_DB: quantumpacs_e2e, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: quantumpacs-ci-e2e-db-pass }
         ports: ['5432:5432']
       redis:
         image: redis:7
@@ -76,7 +76,7 @@ jobs:
       DB_PORT: 5432
       DB_NAME: quantumpacs_e2e
       DB_USER: quantumpacs
-      DB_PASS: pa55w0rd
+      DB_PASSWORD: quantumpacs-ci-e2e-db-pass
       SECRET: quantumpacs-ci-e2e-secret-not-for-any-prod
       SUPERADMIN_PASS: quantumpacs-ci-e2e-superadmin-not-for-any-prod
       QUANTUMPACS_DOCKER: 'true'
@@ -152,6 +152,7 @@ jobs:
       - run: docker compose build
       - run: docker compose up -d
         env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
           SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
           SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
       - name: Wait for backend health

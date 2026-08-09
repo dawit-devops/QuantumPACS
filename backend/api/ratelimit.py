@@ -173,3 +173,7 @@ class RedisTokenBucket:
 
 login_bucket = RedisTokenBucket()
 password_bucket = RedisTokenBucket(max_attempts=3, window_seconds=300)
+# Refresh is an unauthenticated token-grant endpoint (R2-M9): a leaked
+# refresh cookie would otherwise be brute-forceable without bound. 30/s/IP
+# is generous for a single browser session, brutal for scripts.
+refresh_bucket = RedisTokenBucket(max_attempts=30, window_seconds=60)
