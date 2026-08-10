@@ -13,6 +13,9 @@ services:
       - cluster.name=quantumpacs
       - node.name=quantumpacs-es-1
       - network.host=0.0.0.0
+      # Dev: a tight disk must not flip the cluster red — disable the disk
+      # allocation watermark (single-node dev box, production sets its own).
+      - cluster.routing.allocation.disk.threshold_enabled=false
       - http.host=0.0.0.0
       - indices.memory.index_buffer_size=10%
       - indices.fielddata.cache.size=20%

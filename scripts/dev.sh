@@ -16,21 +16,33 @@ cleanup_port() {
     done
 }
 
-# Postgres is a long-lived docker container; dev.sh must never trigger a
-# compose image build (pip installs over a slow network hang for minutes).
-# Only run compose when the container is actually missing, and bound it so
-# the script can never stall on a pull/build.
+# Postgres and Elasticsearch are long-lived docker containers; dev.sh must
+# never trigger a compose image build (pip installs over a slow network hang
+# for minutes). Only run compose when a container is actually missing, and
+# bound it so the script can never stall on a pull/build.
 pg_up() {
     docker ps --filter "name=^/quantumpacs-postgres-1$" --format '{{.Names}}' 2>/dev/null | grep -q quantumpacs-postgres-1
 }
 
+es_up() {
+    docker ps --filter "name=^/quantumpacs-es-1$" --format '{{.Names}}' 2>/dev/null | grep -q quantumpacs-es-1
+}
+
 compose_up() {
-    if pg_up; then
-        echo "  postgres container already running — skipping docker compose"
+    local missing=0
+    if ! pg_up; then
+        echo "  postgres container missing — starting via docker compose (bounded)..."
+        missing=1
+    fi
+    if ! es_up; then
+        echo "  elasticsearch container missing — starting via docker compose (bounded)..."
+        missing=1
+    fi
+    if [ "$missing" -eq 0 ]; then
+        echo "  postgres + elasticsearch containers already running — skipping docker compose"
         return 0
     fi
-    echo "  postgres container missing — starting via docker compose (bounded)..."
-    timeout 300 docker compose up -d 2>&1 || true
+    timeout 300 docker compose up -d postgres elasticsearch 2>&1 || true
 }
 
 verify_config() {
