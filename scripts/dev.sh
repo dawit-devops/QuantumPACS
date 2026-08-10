@@ -16,13 +16,30 @@ cleanup_port() {
     done
 }
 
+# Postgres is a long-lived docker container; dev.sh must never trigger a
+# compose image build (pip installs over a slow network hang for minutes).
+# Only run compose when the container is actually missing, and bound it so
+# the script can never stall on a pull/build.
+pg_up() {
+    docker ps --filter "name=^/quantumpacs-postgres-1$" --format '{{.Names}}' 2>/dev/null | grep -q quantumpacs-postgres-1
+}
+
+compose_up() {
+    if pg_up; then
+        echo "  postgres container already running — skipping docker compose"
+        return 0
+    fi
+    echo "  postgres container missing — starting via docker compose (bounded)..."
+    timeout 300 docker compose up -d 2>&1 || true
+}
+
 verify_config() {
     local CONFIG="$DIR/backend/config.local.yaml"
     if [ ! -f "$CONFIG" ]; then return; fi
 
     # Fix db_port mismatch — detect actual container port
     local CONTAINER_PORT
-    CONTAINER_PORT=$(docker port quantumpacs-postgres-1 5432 2>/dev/null | head -1 | sed 's/.*://')
+    CONTAINER_PORT=$(docker port quantumpacs-postgres-1 5432 2>/dev/null | head -1 | sed 's/.*://' || true)
     if [ -n "$CONTAINER_PORT" ]; then
         local CFG_PORT
         CFG_PORT=$(grep -E '^db_port:' "$CONFIG" 2>/dev/null | awk '{print $2}' | tr -d ' ')
@@ -90,7 +107,7 @@ case "$CMD" in
     echo "Starting QuantumPACS dev services..."
     verify_config
     echo "  starting PostgreSQL (Docker)..."
-    docker compose up -d 2>&1 || true
+    compose_up
     echo "  starting backend..."
     systemctl --user start quantumpacs-backend.service 2>/dev/null || systemctl --user restart quantumpacs-backend.service
     sleep 2
@@ -115,7 +132,7 @@ case "$CMD" in
     cleanup_port 8080
     cleanup_port 11112
     verify_config
-    docker compose up -d 2>&1 || true
+    compose_up
     systemctl --user start quantumpacs-backend.service
     sleep 2
     systemctl --user restart quantumpacs-frontend.service 2>/dev/null || true
@@ -125,8 +142,8 @@ case "$CMD" in
   status)
     echo "=== QuantumPACS Status ==="
     echo ""
-    BE_STATUS=$(systemctl --user is-active quantumpacs-backend.service 2>/dev/null)
-    FE_STATUS=$(systemctl --user is-active quantumpacs-frontend.service 2>/dev/null)
+    BE_STATUS=$(systemctl --user is-active quantumpacs-backend.service 2>/dev/null || true)
+    FE_STATUS=$(systemctl --user is-active quantumpacs-frontend.service 2>/dev/null || true)
     PG_STATUS=$(docker ps --filter name=quantumpacs-postgres-1 --format '{{.Status}}' 2>/dev/null || echo "not running")
     echo "  PostgreSQL : $PG_STATUS"
     echo "  Backend    : $BE_STATUS"
@@ -134,7 +151,14 @@ case "$CMD" in
     echo ""
     if [ "$BE_STATUS" = "active" ]; then
       echo "--- Health Endpoints ---"
-      HEALTH=$(curl -s http://localhost:8080/api/health 2>/dev/null)
+      # The backend takes 10-15s to boot (DICOM listener, ES retries); poll a
+      # bounded number of times so restart/status are self-verifying.
+      HEALTH=""
+      for _ in 1 2 3 4 5 6; do
+        HEALTH=$(curl -s --max-time 5 http://localhost:8080/api/health 2>/dev/null) || HEALTH=""
+        [ -n "$HEALTH" ] && break
+        sleep 5
+      done
       if [ -n "$HEALTH" ]; then
         echo "  Overall   : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["status"])' 2>/dev/null || echo 'unknown')"
         echo "  DB        : $(echo "$HEALTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["components"]["database"]["status"])' 2>/dev/null)"
@@ -148,15 +172,15 @@ case "$CMD" in
       fi
     fi
     if [ "$FE_STATUS" = "active" ]; then
-      FE_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null)
+      FE_CODE=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null || true)
       echo "  Frontend  : HTTP $FE_CODE"
     fi
     echo ""
     echo "--- Last Log Lines ---"
     echo "  Backend:"
-    journalctl --user -u quantumpacs-backend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
+    timeout 10 journalctl --user -u quantumpacs-backend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
     echo "  Frontend:"
-    journalctl --user -u quantumpacs-frontend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
+    timeout 10 journalctl --user -u quantumpacs-frontend.service --no-pager -n 3 2>/dev/null | sed 's/^/    /'
     ;;
   verify)
     bash "$DIR/scripts/verify_config.sh"
