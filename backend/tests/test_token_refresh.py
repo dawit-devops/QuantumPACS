@@ -55,9 +55,13 @@ class TestRefreshEndpoint:
             assert resp.status_code == 200
             data = resp.json()
             assert 'access_token' in data
-            assert 'refresh_token' in data
+            # R2-LOW: refresh token is cookie-only — never in the JSON body.
+            assert 'refresh_token' not in data
             assert data['token_type'] == 'Bearer'
             assert data['expires_in'] == 3600
+            set_cookie = resp.headers.get('set-cookie', '')
+            assert 'refresh_token=' in set_cookie
+            assert 'HttpOnly' in set_cookie
 
             payload = verify_token(data['access_token'])
             assert payload['id'] == 1
@@ -128,11 +132,14 @@ class TestRefreshEndpoint:
             assert resp.status_code == 200
             data = resp.json()
             assert 'access_token' in data
-            assert 'refresh_token' in data
+            # R2-LOW: refresh token is cookie-only — never in the JSON body.
+            assert 'refresh_token' not in data
             set_cookie = resp.headers.get('set-cookie', '')
             assert 'refresh_token=' in set_cookie
             assert 'HttpOnly' in set_cookie
-            assert 'Path=/api/auth/refresh' in set_cookie
+            # Cookie path covers /api/auth/refresh — matching the same
+            # contract used by the password login endpoint.
+            assert 'Path=/api/auth' in set_cookie
 
             payload = verify_token(data['access_token'])
             assert payload['id'] == 1

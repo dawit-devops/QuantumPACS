@@ -1,8 +1,14 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import CornerstoneElement from "../detail/CornerstoneElement";
+
+// (H2) Captured cornerstone eventTarget listeners so tests can fire
+// IMAGE_RENDERED bursts and observe the per-frame coalescing.
+const coreListeners = vi.hoisted(
+  () => new Map<string, Array<(data?: any) => void>>(),
+);
 
 const viewportMock = () => ({
   setStack: vi.fn().mockResolvedValue(undefined),
@@ -42,7 +48,14 @@ vi.mock("@cornerstonejs/core", () => ({
   RenderingEngine: vi.fn(() => engineMock),
   cache: { purgeCache: vi.fn() },
   Enums: { ViewportType: { STACK: "stack" } },
-  eventTarget: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+  eventTarget: {
+    addEventListener: vi.fn((evt: string, cb: (data?: any) => void) => {
+      const list = coreListeners.get(evt) ?? [];
+      list.push(cb);
+      coreListeners.set(evt, list);
+    }),
+    removeEventListener: vi.fn(),
+  },
   EVENTS: { IMAGE_RENDERED: "imageRendered", STACK_NEW_IMAGE: "stackNewImage" },
   getRenderingEngine: vi.fn(() => engineMock),
   StackViewport: vi.fn(),
@@ -252,5 +265,109 @@ describe("CornerstoneElement", () => {
     const { removeEventListener, removeOpenListener } = await import("../ws");
     expect(removeEventListener).toHaveBeenCalled();
     expect(removeOpenListener).toHaveBeenCalled();
+  });
+
+  // (H2) A 100-event burst inside one animation frame must produce exactly one
+  // update pass: the imperative readout write plus the state commit that
+  // React reconciles into the same node. A second pass would add mutations.
+  it("coalesces an IMAGE_RENDERED burst into one update per frame", async () => {
+    const { EVENTS } = await import("@cornerstonejs/core");
+    const { container } = renderWithApp(
+      <CornerstoneElement {...defaultProps} />,
+    );
+    await waitFor(() => {
+      expect(
+        coreListeners.get(EVENTS.IMAGE_RENDERED)?.length ?? 0,
+      ).toBeGreaterThan(0);
+    });
+
+    let zoom = 1;
+    let upper = 100;
+    let lower = 0;
+    viewportInstance.getZoom = () => zoom;
+    viewportInstance.voiRange = { upper, lower };
+
+    const zoomNode = container.querySelector(
+      ".viewportElement > div",
+    ) as HTMLElement;
+    const mutations: MutationRecord[][] = [];
+    const obs = new MutationObserver((records) => mutations.push(records));
+    obs.observe(zoomNode, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    const listeners = coreListeners.get(EVENTS.IMAGE_RENDERED)!;
+    const evt = { type: EVENTS.IMAGE_RENDERED };
+    zoom = 2.5;
+    viewportInstance.voiRange = { upper: 200, lower: 50 };
+    await act(async () => {
+      for (let i = 0; i < 100; i++) listeners.forEach((cb) => cb(evt));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    // jsdom runs rAF on a ~16ms timer: all 100 events land in one frame, so
+    // the readout is written once (imperative + React reconcile at most).
+    expect(mutations.length).toBeGreaterThanOrEqual(1);
+    expect(mutations.length).toBeLessThanOrEqual(2);
+    expect(zoomNode.textContent).toBe("Zoom: 2.50");
+    const readout = container.querySelector('[aria-live="polite"]');
+    expect(readout?.textContent).toContain("Zoom 2.5, Window 150 Level 125");
+  });
+
+  // (H2) When the rendered values did not change, the second burst must not
+  // touch the DOM or schedule a state update at all.
+  it("skips DOM and state updates for unchanged viewport values", async () => {
+    const { EVENTS } = await import("@cornerstonejs/core");
+    const { container } = renderWithApp(
+      <CornerstoneElement {...defaultProps} />,
+    );
+    await waitFor(() => {
+      expect(
+        coreListeners.get(EVENTS.IMAGE_RENDERED)?.length ?? 0,
+      ).toBeGreaterThan(0);
+    });
+
+    let zoom = 1;
+    viewportInstance.getZoom = () => zoom;
+    viewportInstance.voiRange = { upper: 100, lower: 0 };
+
+    // State (and thus the aria-live readout) is the observable contract; the
+    // corner overlays are written imperatively and jsdom records a character
+    // mutation even when the new text equals the old.
+    const readout = container.querySelector(
+      '[aria-live="polite"]',
+    ) as HTMLElement;
+    const mutations: MutationRecord[][] = [];
+    const obs = new MutationObserver((records) => mutations.push(records));
+    obs.observe(readout, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    const listeners = coreListeners.get(EVENTS.IMAGE_RENDERED)!;
+    const evt = { type: EVENTS.IMAGE_RENDERED };
+    await act(async () => {
+      // First burst settles state to the initial values (ww 0 -> 100).
+      for (let i = 0; i < 10; i++) listeners.forEach((cb) => cb(evt));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+    const afterFirstPass = mutations.length;
+    // The first burst did change W/L, so the state-driven commit must have
+    // happened — otherwise "unchanged" would be untestable trivially.
+    expect(screen.getByText("WW/WC: 100 / 50")).toBeInTheDocument();
+
+    await act(async () => {
+      // Second burst carries identical values -> nothing may update.
+      for (let i = 0; i < 100; i++) listeners.forEach((cb) => cb(evt));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    expect(mutations.length).toBe(afterFirstPass);
+    expect(readout.textContent).toContain("Zoom 1.0, Window 100 Level 50");
+    const zoomNode = container.querySelector(".viewportElement > div");
+    expect(zoomNode?.textContent).toBe("Zoom: 1.00");
   });
 });

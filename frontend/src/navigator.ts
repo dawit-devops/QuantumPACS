@@ -45,12 +45,10 @@ export type Workspace =
  * contains the underlying grants (e.g. REPORT_READ on `pacs_admin`).
  */
 export const ADMIN_SCOPED_ROLES: ReadonlyArray<string> = [
-  "admin",
   "super_admin",
   "tenant_admin",
   "pacs_admin",
-  "radiology_admin",
-  "imaging_informatics",
+  "emr_admin",
 ];
 
 /**
@@ -65,13 +63,8 @@ export const CLINICAL_SCOPED_ROLES: ReadonlyArray<string> = [
   "teleradiologist",
   "resident",
   "technologist",
-  "qa_team",
   "physician",
   "referring_physician",
-  "ed_physician",
-  "nurse",
-  "pharmacist",
-  "lab_technician",
   "care_coordinator",
 ];
 
@@ -107,11 +100,10 @@ export function isClinicalScopedRole(role?: string): boolean {
  * Gate for the admin dashboard route (kept here, not in PermissionRoute, to
  * avoid a navigator <-> PermissionRoute import cycle; PermissionRoute imports
  * it from navigator). No single permission is granted to every admin-scoped
- * role (admin, super_admin, tenant_admin, pacs_admin, radiology_admin,
- * imaging_informatics), so the gate is the union of the read permissions each
- * role carries. Each listed key maps to a section the dashboard surfaces;
- * sections still render individually-gated and degrade gracefully when a role
- * lacks some.
+ * role (super_admin, tenant_admin, pacs_admin, emr_admin), so the gate is the
+ * union of the read permissions each role carries. Each listed key maps to a
+ * section the dashboard surfaces; sections still render individually-gated
+ * and degrade gracefully when a role lacks some.
  */
 export const ADMIN_DASHBOARD_PERMISSIONS: ReadonlyArray<string> = [
   "USER_READ",
@@ -146,9 +138,9 @@ const LANDING_STEPS: LandingStep[] = [
   { route: "/qa/queue", workspace: "qa", permissions: ["QA_READ"] },
   { route: "/replicas", workspace: "admin", permissions: ["REPLICA_READ"] },
   // Front Desk (R08): registration is the front-office home for the
-  // scheduler / receptionist / front_desk roles; the privacy queue is
-  // reachable from there. QUEUE_READ unlocks the queue step for roles that
-  // hold it without REGISTRATION_READ.
+  // receptionist role; the privacy queue is reachable from there.
+  // QUEUE_READ unlocks the queue step for roles that hold it without
+  // REGISTRATION_READ.
   {
     route: "/frontdesk/registration",
     workspace: "frontdesk",
@@ -162,7 +154,7 @@ const LANDING_STEPS: LandingStep[] = [
   // Patient portal (R19): the patient role lands on its own scope-gated
   // records, never on the admin/clinical surfaces.
   { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },
-  // The clinical workspace (physician, referring_physician, ed_physician,
+  // The clinical workspace (physician, referring_physician,
   // care_coordinator) lands on the reading worklist: reports are the shared
   // clinical read surface for all of them (REPORT_READ on Matrix A/B).
   {
@@ -207,38 +199,24 @@ const DASHBOARD_STEP: LandingStep = {
 };
 
 /**
- * Canonical role slug -> workspace. PACS personas only (persona catalog
- * PAC-P01..P20 / RBAC spec §4); RIS, EMR and unknown roles fall through to
- * the generic `files` workspace below.
+ * Canonical role slug -> workspace. PACS/EMR personas only (persona catalog
+ * PAC-P01..P20 / RBAC spec §4); RIS, EMR support and unknown roles fall
+ * through to the generic `files` workspace below.
  */
 const ROLE_WORKSPACE: Record<string, Workspace> = {
   radiologist: "reading",
   teleradiologist: "reading",
   resident: "reading",
   technologist: "acquisition",
-  qa_team: "qa",
   pacs_admin: "admin",
-  radiology_admin: "admin",
-  imaging_informatics: "admin",
-  department_manager: "analytics",
+  emr_admin: "admin",
   physician: "clinical",
   referring_physician: "clinical",
-  ed_physician: "clinical",
-  // Nurse lands in acquisition: exams and the worklist are the nursing
-  // operational home (EXAM_READ + WORKLIST_READ), ahead of the REPORT_READ
-  // fallback that would otherwise put them on the reading worklist.
-  nurse: "acquisition",
   care_coordinator: "clinical",
-  // Front-office roles: registration / visits / check-in and the waiting
-  // queue are the operational home (R08). The patient portal (P12/H21) is
-  // the patient's own-data surface.
-  scheduler: "frontdesk",
   receptionist: "frontdesk",
-  front_desk: "frontdesk",
   patient: "portal",
   super_admin: "platform",
   tenant_admin: "platform",
-  admin: "platform",
 };
 
 // Mirrors AuthContext.hasPermission: the admin flag bypasses every gate.
@@ -252,8 +230,8 @@ function hasAnyPermission(user: WorkspaceUser, permissions: string[]): boolean {
  * role-scope-aware and bidirectional: admin-scoped roles never land on (or
  * resolve to) clinical workspaces, clinical roles never land on admin-console
  * workspaces — even when their legacy grants would pass (e.g. DICOMWEB_READ
- * on physician) — and unmapped/RIS roles (biller, ...) scan the
- * full priority chain (e.g. AUDIT_READ on biller still reaches /logs).
+ * on physician) — and unmapped roles (cashier, facility custom slugs) scan
+ * the full priority chain and land on the first surface their grants open.
  */
 function landingStepsFor(user: WorkspaceUser): LandingStep[] {
   if (isAdminScopedRole(user.role)) {

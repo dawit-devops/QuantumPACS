@@ -32,6 +32,10 @@ cryptography>=50.0.0,<51.0
 # Test-only: container-backed E2E suite (tests/integration/test_e2e.py)
 testcontainers>=4.0
 docker>=7.0
+# Test-only: CI coverage gate (M4) and per-test timeouts (M5)
+pytest>=8.0,<10.0
+pytest-cov>=7.0,<8.0
+pytest-timeout>=2.4.0,<3.0
 
 Pillow>=10.0.0,<13.0.0
 numpy>=1.21,<3.0

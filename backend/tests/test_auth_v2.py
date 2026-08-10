@@ -42,7 +42,10 @@ class TestTokenClaims:
     def test_token_has_claims(self):
         with patch('api.tokens.config', {'secret': SECRET}):
             token = create_token({'id': 1, 'admin': True}, expire={'minutes': 60})
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['id'] == 1
         assert 'jti' in payload
         assert 'exp' in payload
@@ -55,7 +58,10 @@ class TestTokenClaims:
                 role='technologist',
                 permissions=['FILE_READ', 'FILE_WRITE'],
             )
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['role'] == 'technologist'
         assert 'FILE_READ' in payload.get('permissions', [])
 
@@ -65,7 +71,10 @@ class TestTokenClaims:
                 {'id': 3, 'admin': False, 'tenant': 'hospital-x'},
                 expire={'minutes': 60},
             )
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['tenant'] == 'hospital-x'
 
     def test_token_used_for_request(self):
@@ -123,7 +132,10 @@ class TestQueryTokenRestriction:
         return Starlette(
             routes=[
                 Route('/api/protected', endpoint=_protected),
-                Route('/api/files/7/dicom', endpoint=_file_endpoint),
+                Route('/api/files/7/data', endpoint=_file_endpoint),
+                Route('/api/v2/files/7/data', endpoint=_file_endpoint),
+                Route('/api/files/72/data', endpoint=_file_endpoint),
+                Route('/api/files/7/changes', endpoint=_file_endpoint),
             ],
             middleware=[
                 Middleware(AuthenticationMiddleware, backend=TokenAuth(),
@@ -159,9 +171,66 @@ class TestQueryTokenRestriction:
             patch('api.auth.get_conn', return_value=mock_conn),
             patch('api.auth.SharedFiles', return_value=mock_files),
         ):
-            resp = client.get('/api/files/7/dicom', params={'token': 'share-key'})
+            resp = client.get('/api/files/7/data', params={'token': 'share-key'})
         assert resp.status_code == 200
         assert resp.json() == {'ok': True}
+
+    def test_share_key_allowed_on_v2_alias_path(self):
+        """The /api/v2 alias of the shared file endpoints must admit the
+        same share key as the v1 path."""
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/v2/files/7/data', params={'token': 'share-key'})
+        assert resp.status_code == 200
+
+    def test_share_key_rejected_on_id_prefix_collision(self):
+        """A key for file 7 must never open /api/files/72/*: the id match
+        has to respect the path boundary, not a raw string prefix."""
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/files/72/data', params={'token': 'share-key'})
+        assert resp.status_code == 401
+
+    def test_share_key_rejected_on_non_shared_suffix(self):
+        """A share key grants read access to the shared file only — audit
+        history and management endpoints under /files/{id} stay closed."""
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.get('/api/files/7/changes', params={'token': 'share-key'})
+        assert resp.status_code == 401
+
+    def test_share_key_rejected_on_write_method(self):
+        """Share keys are read-only: even the allowed data path must not
+        accept a POST with the key."""
+        mock_conn, mock_files = self._mock_share_check(7)
+        client = TestClient(self._make_app())
+        with (
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.SharedFiles', return_value=mock_files),
+        ):
+            resp = client.post('/api/files/7/data', params={'token': 'share-key'})
+        assert resp.status_code == 401
+
+    def test_metrics_paths_are_not_public(self):
+        """Regression guard: /api/metrics must never be admitted by
+        _PUBLIC_PATHS — the admin gate on the endpoint is the only layer
+        between anonymous callers and Prometheus output."""
+        for path in ('/api/metrics', '/api/v2/metrics'):
+            client = TestClient(self._make_app())
+            resp = client.get(path)
+            assert resp.status_code == 401, f'{path} must not be public'
 
     def test_share_key_in_query_param_rejected_on_other_paths(self):
         mock_conn, mock_files = self._mock_share_check(7)
@@ -302,3 +371,61 @@ class TestRefreshFlow:
 
 
 from api.users import RefreshToken
+
+
+class TestWebsocketTokenScope:
+    """NEW #1: the WS auth branch must carry permissions/tenant claims into
+    the User — ws.py's FILE_READ gate and tenant-qualified channels depend on
+    them (dropping them made every real socket 'open' fail)."""
+
+    @staticmethod
+    def _make_app():
+        from starlette.routing import WebSocketRoute
+
+        async def _ws_echo(websocket):
+            await websocket.accept()
+            user = websocket.scope['user']
+            await websocket.send_json({
+                'id': user.id,
+                'admin': user.admin,
+                'role': user.role_slug,
+                'permissions': user.permissions,
+                'tenant': user.tenant,
+            })
+            await websocket.close()
+
+        return Starlette(
+            # Path must start with /api: TokenAuth.authenticate bails out for
+            # non-/api paths (returns None -> UnauthenticatedUser).
+            routes=[WebSocketRoute('/api/ws', endpoint=_ws_echo)],
+            middleware=[
+                Middleware(AuthenticationMiddleware, backend=TokenAuth(),
+                           on_error=TokenAuth.on_auth_error),
+            ],
+        )
+
+    def test_ws_user_carries_permissions_role_and_tenant(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token(
+                {'id': 11, 'admin': False, 'tenant': 'hospital-x'},
+                role='radiologist', permissions=['FILE_READ', 'FILE_WRITE'],
+            )
+        client = TestClient(self._make_app())
+        with client.websocket_connect(f'/api/ws?token={token}') as ws:
+            data = ws.receive_json()
+        assert data['id'] == 11
+        assert data['admin'] is False
+        assert data['role'] == 'radiologist'
+        assert data['permissions'] == ['FILE_READ', 'FILE_WRITE']
+        assert data['tenant'] == 'hospital-x'
+
+    def test_ws_user_keeps_admin_semantics_without_tenant(self):
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 12, 'admin': True})
+        client = TestClient(self._make_app())
+        with client.websocket_connect(f'/api/ws?token={token}') as ws:
+            data = ws.receive_json()
+        assert data['id'] == 12
+        assert data['admin'] is True
+        assert data['permissions'] == []
+        assert data['tenant'] is None

@@ -79,13 +79,23 @@ class TestRoles:
         assert 'INSERT INTO' in sql
         assert 'super_admin' in args
         slugs = [c[0][1] for c in calls]
-        assert 'qa_team' in slugs
+        assert 'cashier' in slugs
+        # The R2-16 catalog has exactly 14 slugs — any dead role here is a
+        # leftover that migration 052 deleted.
+        assert set(slugs) == set(BUILT_IN_ROLES)
 
     @pytest.mark.asyncio
-    async def test_seed_built_in_roles_uses_upsert(self):
+    async def test_seed_built_in_roles_upserts_immutable_and_noops_editable(self):
         conn = AsyncMock()
         r = Roles(conn=conn)
         await r.seed_built_in_roles()
-        sql = conn.execute.call_args[0][0]
-        assert 'ON CONFLICT (slug)' in sql
-        assert 'DO UPDATE' in sql
+        from api.permissions import IMMUTABLE_ROLE_SLUGS
+        sql_by_slug = {c[0][1]: c[0][0] for c in conn.execute.call_args_list}
+        # Immutable anchors keep the repair upsert...
+        for slug in IMMUTABLE_ROLE_SLUGS:
+            assert 'DO UPDATE' in sql_by_slug[slug]
+        # ...editable built-ins (incl. platform-only teleradiologist) seed only
+        # when absent, so tenant/platform edits survive every boot.
+        for slug, sql in sql_by_slug.items():
+            if slug not in IMMUTABLE_ROLE_SLUGS:
+                assert 'DO NOTHING' in sql

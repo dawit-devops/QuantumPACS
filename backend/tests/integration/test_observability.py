@@ -1,6 +1,7 @@
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,6 +10,24 @@ from starlette.testclient import TestClient
 from starlette.responses import PlainTextResponse
 
 from api.telemetry import metrics_endpoint, record_request
+
+
+class _AdminUserMiddleware:
+    """Pure ASGI middleware granting an admin scope['user'].
+
+    BaseHTTPMiddleware is unusable here: starlette 1.x does not propagate its
+    scope mutations to the endpoint, and the metrics admin gate (M-1) would
+    reject every request as anonymous.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        from api.auth import User
+        if scope['type'] == 'http':
+            scope['user'] = User({'id': 1, 'admin': True, 'permissions': []})
+        await self.app(scope, receive, send)
 
 
 class _MetricsTestMiddleware(BaseHTTPMiddleware):
@@ -24,7 +43,7 @@ class _MetricsTestMiddleware(BaseHTTPMiddleware):
 def _make_metrics_app():
     return Starlette(
         routes=[Route('/v2/metrics', endpoint=metrics_endpoint)],
-        middleware=[Middleware(_MetricsTestMiddleware)],
+        middleware=[Middleware(_MetricsTestMiddleware), Middleware(_AdminUserMiddleware)],
     )
 
 
@@ -46,7 +65,7 @@ class TestMetricsEndpoint:
                 Route('/ping', endpoint=_ping),
                 Route('/v2/metrics', endpoint=metrics_endpoint),
             ],
-            middleware=[Middleware(_MetricsTestMiddleware)],
+            middleware=[Middleware(_MetricsTestMiddleware), Middleware(_AdminUserMiddleware)],
         )
         client = TestClient(app)
 
@@ -114,6 +133,45 @@ class TestMetricsEndpoint:
             resp = client.get('/api/v2/metrics', headers={'X-Auth-Pacs': token})
         assert resp.status_code == 403
 
+    def test_non_admin_metrics_denial_has_envelope_message(self):
+        """The metrics admin gate must emit a proper forbidden() envelope —
+        a bare HTTPException(403) with empty detail would render as an empty
+        error string through the app-level http_exception handler."""
+        from starlette.exceptions import HTTPException
+        from starlette.middleware.authentication import AuthenticationMiddleware
+        from api.auth import TokenAuth
+        from api.telemetry import metrics_endpoint
+        from api.tokens import create_token
+
+        async def _http_exception(request, exc):
+            from api.response import server_error, apply_cors_headers
+            detail = getattr(exc, 'detail', None) or 'Request failed'
+            return apply_cors_headers(request, server_error(str(detail), status_code=exc.status_code))
+
+        SECRET = 'test-secret-key-32-bytes-for-hs256!!'
+        app = Starlette(
+            routes=[Route('/api/metrics', endpoint=metrics_endpoint)],
+            middleware=[
+                Middleware(AuthenticationMiddleware, backend=TokenAuth(),
+                           on_error=TokenAuth.on_auth_error),
+            ],
+            exception_handlers={HTTPException: _http_exception},
+        )
+        client = TestClient(app)
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        with (
+            patch('api.tokens.config', {'secret': SECRET}),
+            patch('api.auth.get_conn', return_value=mock_conn),
+            patch('api.auth.is_blocked', new=AsyncMock(return_value=False)),
+            patch('api.auth.Users') as mock_users,
+        ):
+            mock_users.return_value.get_auth_state = AsyncMock(return_value=(True, 0))
+            token = create_token({'id': 3, 'admin': False}, expire={'minutes': 60})
+            resp = client.get('/api/metrics', headers={'X-Auth-Pacs': token})
+        assert resp.status_code == 403
+        assert resp.json() == {'error': {'code': 'FORBIDDEN', 'message': 'Admin access required'}}
+
     def test_admin_can_access_metrics(self):
         from starlette.middleware.authentication import AuthenticationMiddleware
         from api.auth import TokenAuth
@@ -164,7 +222,10 @@ class TestErrorLogging:
         data = resp.json()
         assert 'components' in data
         assert data['components']['database']['status'] == 'error'
-        assert 'DB down' in data['components']['database'].get('message', '')
+        # The DB probe must never leak the raw asyncpg exception (which can
+        # embed connection internals) — only the stable failure class.
+        assert data['components']['database']['message'] == 'Database unreachable'
+        assert 'DB down' not in data['components']['database']['message']
 
     def test_500_logs_structured_json_with_error_stack(self, capsys):
         from log import setup_logging
@@ -350,3 +411,109 @@ class TestInProgressGauge:
         client = TestClient(_make_metrics_app())
         resp = client.get('/v2/metrics')
         assert 'http_requests_in_progress' in resp.text
+
+
+@pytest.mark.asyncio
+class TestHealthProbeSanitization:
+    """M-4: failed probes must emit stable generic messages — raw exception
+    strings can embed hosts/ports/credentials — and success payloads must not
+    expose ports or storage backend types."""
+
+    async def test_es_probe_sanitizes_exception(self):
+        from api.telemetry import _check_es
+        with patch('es.es.get_client', side_effect=RuntimeError('es://admin:pw@internal-es:9200 down')):
+            result = await _check_es()
+        assert result['status'] == 'error'
+        assert result['message'] == 'Elasticsearch unreachable'
+        assert 'internal-es' not in str(result)
+        assert '9200' not in str(result)
+
+    async def test_redis_probe_sanitizes_exception(self):
+        from api.telemetry import _check_redis
+        with patch('api.redis_client.is_available', return_value=True):
+            with patch('api.redis_client.get_client', side_effect=ConnectionError('redis 10.0.0.5:6379 refused')):
+                result = await _check_redis()
+        assert result['status'] == 'error'
+        assert result['message'] == 'Redis unreachable'
+        assert '10.0.0.5' not in str(result)
+
+    async def test_storage_probe_sanitizes_exception(self):
+        from api.telemetry import _check_storage
+        fake_conn = AsyncMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=None)
+        fake_conn.fetch = AsyncMock(side_effect=Exception('postgres://user:pw@db:5432 broken'))
+        with patch('db.conn.get_conn', return_value=fake_conn):
+            result = await _check_storage()
+        assert result['status'] == 'error'
+        assert result['message'] == 'Storage backend unreachable'
+        assert '5432' not in str(result)
+
+    async def test_storage_probe_does_not_leak_backend_types(self):
+        from api.telemetry import _check_storage
+        fake_conn = AsyncMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=None)
+        fake_conn.fetch = AsyncMock(return_value=[
+            {'id': 1, 'type': 'local', 'master': True},
+            {'id': 2, 'type': 's3', 'master': False},
+        ])
+        with patch('db.conn.get_conn', return_value=fake_conn):
+            result = await _check_storage()
+        assert result['status'] == 'ok'
+        assert 'master' not in result
+        assert 'replicas' not in result
+        assert 's3' not in str(result)
+
+    async def test_dicom_listener_probe_does_not_leak_port(self):
+        from api.telemetry import _check_dicom_listener
+        with patch('config.config', {'dicom_cstore_port': '11112'}):
+            with patch('socket.create_connection', side_effect=OSError('refused')):
+                result = await _check_dicom_listener()
+        assert result['status'] == 'degraded'
+        assert result['message'] == 'DICOM listener not reachable'
+        assert 'port' not in result
+        assert '11112' not in str(result)
+
+    async def test_hl7_listener_probe_does_not_leak_port(self):
+        from api.telemetry import _check_hl7_listener
+        with patch('config.config', {'hl7_mllp_port': '12579'}):
+            with patch('socket.create_connection', side_effect=OSError('refused')):
+                result = await _check_hl7_listener()
+        assert result['status'] == 'degraded'
+        assert result['message'] == 'HL7 MLLP listener not reachable'
+        assert 'port' not in result
+        assert '12579' not in str(result)
+
+    async def test_ingestion_probe_sanitizes_exception(self):
+        from api.telemetry import _check_ingestion_service
+        bad_monitor = MagicMock()
+        bad_monitor.metrics = MagicMock(side_effect=RuntimeError('consumer lag exploded'))
+        with patch('api.telemetry.get_stream_monitor', return_value=bad_monitor):
+            result = await _check_ingestion_service()
+        assert result['status'] == 'error'
+        assert result['message'] == 'Ingestion service unreachable'
+        assert 'exploded' not in str(result)
+
+    async def test_fhir_probe_sanitizes_exception(self):
+        from api.telemetry import _check_fhir
+        fake_conn = AsyncMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=None)
+        fake_conn.fetch = AsyncMock(side_effect=Exception('fhir db credentials expired'))
+        with patch('db.conn.get_conn', return_value=fake_conn):
+            result = await _check_fhir()
+        assert result['status'] == 'error'
+        assert result['message'] == 'FHIR configuration unreachable'
+        assert 'credentials' not in str(result)
+
+    async def test_token_blocklist_probe_sanitizes_exception(self):
+        from api.telemetry import _check_token_blocklist
+        bad_client = AsyncMock()
+        bad_client.ping = AsyncMock(side_effect=ConnectionError('redis 10.1.2.3:6379 down'))
+        with patch('api.redis_client.is_available', return_value=True):
+            with patch('api.redis_client.get_client', return_value=bad_client):
+                result = await _check_token_blocklist()
+        assert result['status'] == 'degraded'
+        assert result['message'] == 'Token blocklist fail-open active (redis unreachable)'
+        assert '10.1.2.3' not in str(result)

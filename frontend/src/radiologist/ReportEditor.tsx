@@ -232,7 +232,7 @@ function ReportEditor() {
   const step = isFinal ? 2 : status === "preliminary" ? 1 : 0;
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
+    <Content style={{ padding: 24 }} role="main">
       <div className="report-header">
         <Button onClick={() => navigate("/reading")} className="report-back">
           ← Back to worklist

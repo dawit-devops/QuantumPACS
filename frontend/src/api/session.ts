@@ -54,6 +54,13 @@ export function stopRefreshTimer(): void {
 }
 
 let refreshPromise: Promise<boolean> | null = null;
+let lastRefreshStatus: number | null = null;
+
+// A rate-limited refresh (429, R2-M9) means the session is alive but
+// throttled — not dead. Callers must not bounce the user to /login on it.
+export function wasRefreshRateLimited(): boolean {
+  return lastRefreshStatus === 429;
+}
 
 export async function tryRefreshToken(): Promise<boolean> {
   // Single-flight: N concurrent 401s must not fire N parallel /auth/refresh
@@ -72,11 +79,16 @@ export async function tryRefreshToken(): Promise<boolean> {
           "X-CSRF-Token": "1",
         }),
       });
-      if (!resp.ok) return false;
+      if (!resp.ok) {
+        lastRefreshStatus = resp.status;
+        return false;
+      }
       const data = await resp.json();
       setTokens(data.access_token, data.refresh_token);
+      lastRefreshStatus = null;
       return true;
     } catch {
+      lastRefreshStatus = null;
       return false;
     } finally {
       refreshPromise = null;

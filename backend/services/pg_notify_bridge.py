@@ -21,12 +21,23 @@ class PgNotifyBridge:
         create_conn: Callable[[], Awaitable[Any]],
         stream: str = INGESTION_STREAM,
         group: str = INGESTION_CONSUMER_GROUP,
+        tenant_conns: Optional[list[tuple[str, Callable[[], Awaitable[Any]]]]] = None,
     ):
+        """Bridges PostgreSQL NOTIFY events to the Redis ingestion stream.
+
+        tenant_conns: `(slug, create_conn)` pairs for per-tenant databases.
+        Tenant DBs run the same schema (incl. the notify_event trigger), so
+        their file writes must be bridged too (HI-04). Each listener tags
+        events with the tenant slug so downstream consumers can scope their
+        work (e.g. per-tenant ES indexes).
+        """
         self.redis = redis
         self._create_conn = create_conn
         self.stream = stream
         self.group = group
+        self.tenant_conns = tenant_conns or []
         self._conn: Optional[Any] = None
+        self._tenant_listeners: list[tuple[str, Any]] = []
         self._producer: Optional[StreamProducer] = None
         self._task: Optional[asyncio.Task] = None
         self._shutdown = asyncio.Event()
@@ -41,6 +52,24 @@ class PgNotifyBridge:
         await self._producer.ensure_group(self.stream, self.group)
         self._conn = await self._create_conn()
         await self._conn.add_listener(EVENTS_CHANNEL, self._on_notification)
+        for slug, factory in self.tenant_conns:
+            # A failing tenant listener must not take the bridge down: log
+            # and continue with the remaining tenants (HI-04).
+            try:
+                conn = await factory()
+            except Exception:
+                log.warning('tenant notify listener %s failed to connect', slug, exc_info=True)
+                continue
+            try:
+                await conn.add_listener(EVENTS_CHANNEL, self._listener_for(slug))
+                self._tenant_listeners.append((slug, conn))
+                log.info('tenant notify listener started for %s', slug)
+            except Exception:
+                log.warning('tenant notify listener %s failed to attach', slug, exc_info=True)
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
         self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
@@ -55,6 +84,12 @@ class PgNotifyBridge:
         if self._pending_tasks:
             await asyncio.gather(*self._pending_tasks, return_exceptions=True)
             self._pending_tasks.clear()
+        for _slug, conn in self._tenant_listeners:
+            try:
+                await conn.close()
+            except Exception:
+                pass
+        self._tenant_listeners = []
         if self._conn:
             try:
                 await self._conn.close()
@@ -69,7 +104,14 @@ class PgNotifyBridge:
             except asyncio.CancelledError:
                 break
 
-    def _on_notification(self, conn: Any, pid: int, channel: str, payload: str) -> None:
+    def _listener_for(self, tenant_slug: str) -> OnNotification:
+        def listener(conn: Any, pid: int, channel: str, payload: str) -> None:
+            self._on_notification(conn, pid, channel, payload, tenant_slug=tenant_slug)
+        return listener
+
+    def _on_notification(
+        self, conn: Any, pid: int, channel: str, payload: str, tenant_slug: Optional[str] = None,
+    ) -> None:
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
@@ -81,7 +123,7 @@ class PgNotifyBridge:
         old_row = data.get('old', {})
 
         if table == 'files':
-            task = asyncio.create_task(self._publish_file_event(action, new_row, old_row))
+            task = asyncio.create_task(self._publish_file_event(action, new_row, old_row, tenant_slug))
             self._pending_tasks.add(task)
             task.add_done_callback(self._pending_tasks.discard)
 
@@ -92,6 +134,7 @@ class PgNotifyBridge:
 
     async def _publish_file_event(
         self, action: str, new_row: dict[str, Any], old_row: dict[str, Any],
+        tenant_slug: Optional[str] = None,
     ) -> None:
         if action == 'INSERT':
             event_type = 'dicom:stored'
@@ -109,6 +152,11 @@ class PgNotifyBridge:
             data['patient_id'] = str(new_row.get('patient_id', ''))
             data['study_id'] = str(new_row.get('study_id', ''))
             data['series_id'] = str(new_row.get('series_id', ''))
+        if tenant_slug:
+            # Lets consumers scope the work to the tenant's store/index
+            # (e.g. CR-01: search indexing must not land in the wrong
+            # tenant's namespace).
+            data['tenant'] = tenant_slug
 
         try:
             msg_id = await self._producer.publish(

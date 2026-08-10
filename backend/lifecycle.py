@@ -2,7 +2,9 @@ import asyncio
 import sys
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
+
+import asyncpg
 
 from es import es
 import db.conn
@@ -249,6 +251,7 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
             bridge = PgNotifyBridge(
                 redis=redis,
                 create_conn=db.conn.create_conn,
+                tenant_conns=await _tenant_notify_factories(),
             )
             await bridge.start()
             if state:
@@ -302,6 +305,46 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
             await Users(conn).add_superadmin()
             await _ensure_default_tenant(conn)
             log.info('Database schema synced')
+
+
+async def _tenant_notify_factories():
+    """Per-tenant PG NOTIFY listener factories (HI-04).
+
+    Tenant databases run the same schema as the main database — including the
+    notify_event trigger — so file writes there would otherwise be invisible
+    to the ingestion pipeline. Each active, non-main-store tenant gets its
+    own dedicated listener connection; the bridge tags its events with the
+    tenant slug. The tenant_info dict is bound via a default arg so the
+    closure does not capture the loop variable.
+    """
+    from db.tenants import uses_main_database
+    factories: list[tuple[str, Callable[[], Awaitable[Any]]]] = []
+    try:
+        async with db.conn.get_conn() as conn:
+            rows = await conn.fetch(
+                'SELECT slug, db_name, db_host, db_port, db_user, db_password'
+                ' FROM tenants WHERE status = $1',
+                'active',
+            )
+        for row in rows:
+            info = dict(row)
+            if uses_main_database(info):
+                continue
+            slug = info['slug']
+
+            async def _factory(_info=info):
+                return await asyncpg.connect(
+                    user=_info['db_user'],
+                    password=_info['db_password'],
+                    database=_info['db_name'],
+                    host=_info.get('db_host') or config['db_host'],
+                    port=int(_info.get('db_port') or config.get('db_port', '5432')),
+                )
+
+            factories.append((slug, _factory))
+    except Exception:
+        log.warning('Could not build tenant notify listeners', exc_info=True)
+    return factories
 
 
 async def _ensure_default_tenant(conn):

@@ -28,6 +28,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
       >
         <a
           href="#main-content"
+          className="skip-link"
           style={{
             position: "absolute" as const,
             left: "-9999px",
@@ -59,6 +60,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
         {!tempKey && <Sidebar {...props} isDark={isDark} />}
         <div
           className="page-content"
+          id="main-content"
           style={{
             flex: 1,
             minWidth: 0,

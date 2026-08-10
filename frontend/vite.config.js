@@ -1,9 +1,20 @@
 /// <reference types="vitest" />
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // xmlbuilder2 in the Cornerstone3D dependency graph extends Node's
+  // EventEmitter at module scope; Vite externalizes Node builtins to an
+  // empty proxy, which makes the class declaration throw and kills the whole
+  // prebundled cornerstone chunk. Alias the builtin to the bundled polyfill
+  // (src/vendor/events.js) so both the dev optimizer and the build resolve it.
+  resolve: {
+    alias: {
+      events: fileURLToPath(new URL("./src/vendor/events.js", import.meta.url)),
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -145,11 +156,15 @@ export default defineConfig({
       reporter: ["text", "json", "html"],
       include: ["src/**"],
       exclude: ["src/test/**", "src/types.d.ts"],
+      // M4: measured 2026-08-10 — lines 60.35%, statements 58.17%,
+      // functions 52.09%, branches 50.22% (543 tests, 67 files). Thresholds
+      // sit ~2 points under the local measurement to absorb CI runner
+      // variance while still gating well above the old 42/31/32/38 floor.
       thresholds: {
-        functions: 32,
-        lines: 42,
-        branches: 31,
-        statements: 38,
+        functions: 50,
+        lines: 58,
+        branches: 48,
+        statements: 56,
       },
     },
     pool: "forks",

@@ -1,3 +1,4 @@
+import json
 import re
 from urllib.parse import urlparse
 
@@ -12,6 +13,20 @@ def _slug_from_issuer(issuer: str) -> str:
     return re.sub(r'[^a-z0-9-]+', '-', issuer.lower()).strip('-') or 'provider'
 
 
+def _groups_map_from_row(value):
+    """JSONB arrives from asyncpg as text; normalize to a dict so callers
+    never see the raw column representation."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 class OAuthProviders(Table):
     name = 'oauth_providers'
 
@@ -23,6 +38,7 @@ class OAuthProviders(Table):
         data = dict(data)
         data['created_at'] = str(data.get('created_at', ''))
         data['updated_at'] = str(data.get('updated_at', ''))
+        data['groups_map'] = _groups_map_from_row(data.get('groups_map'))
         data.pop('client_secret', None)
         return data
 
@@ -75,21 +91,22 @@ class OAuthProviders(Table):
     async def create(self, issuer, client_id, client_secret='',
                      jwks_uri=None, token_url=None, redirect_uri=None,
                      scope='openid email profile', groups_claim='groups',
-                     auto_provision=True, enabled=True, tenant_id=None,
-                     slug=None, default_role='cashier'):
+                     groups_map=None, auto_provision=True, enabled=True,
+                     tenant_id=None, slug=None, default_role='patient'):
         if slug is None:
             slug = _slug_from_issuer(issuer)
         encrypted_secret = encrypt_secret(client_secret) if client_secret else ''
+        groups_map_json = json.dumps(groups_map or {})
         q = self.insert().columns(
             self.table.tenant_id, self.table.issuer, self.table.client_id,
             self.table.client_secret, self.table.jwks_uri, self.table.token_url,
             self.table.redirect_uri, self.table.scope, self.table.groups_claim,
-            self.table.auto_provision, self.table.enabled,
+            self.table.groups_map, self.table.auto_provision, self.table.enabled,
             self.table.slug, self.table.default_role,
         ).insert(
             tenant_id, issuer, client_id, encrypted_secret,
             jwks_uri, token_url, redirect_uri, scope, groups_claim,
-            auto_provision, enabled,
+            groups_map_json, auto_provision, enabled,
             slug, default_role,
         ).returning(self.table.id)
         return await self.fetchval(q)
@@ -101,6 +118,9 @@ class OAuthProviders(Table):
                 continue
             if key == 'client_secret' and value:
                 value = encrypt_secret(value)
+            if key == 'groups_map' and isinstance(value, dict):
+                # JSONB columns need an explicit JSON document, not str(dict).
+                value = json.dumps(value)
             q = q.set(self.table.field(key), value)
         q = q.set(self.table.updated_at, 'NOW()')
         await self.exec(q)

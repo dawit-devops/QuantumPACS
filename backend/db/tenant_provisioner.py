@@ -29,14 +29,34 @@ class TenantProvisionError(Exception):
 
 class TenantProvisioner:
     @staticmethod
+    async def _connect_maintenance_db():
+        """Connect to the maintenance DB as a role that can CREATE DATABASE.
+
+        Prefer the configured db_user (the container superuser for the CI
+        postgres service and the compose stack); fall back to the
+        conventional `postgres` role only when the configured user cannot
+        connect (e.g. a hand-managed postgres whose only superuser is named
+        postgres). Connection-level failures only — a successful connect with
+        insufficient privileges must surface as-is, not silently retry."""
+        last_error = None
+        for user in (config['db_user'], 'postgres'):
+            try:
+                return await asyncpg.connect(
+                    user=user,
+                    password=config['db_password'],
+                    database='postgres',
+                    host=config['db_host'],
+                    port=int(config.get('db_port', '5432')),
+                )
+            except (asyncpg.InvalidPasswordError,
+                    asyncpg.InvalidAuthorizationSpecificationError,
+                    OSError) as e:
+                last_error = e
+        raise last_error
+
+    @staticmethod
     async def create_database(db_name: str):
-        conn = await asyncpg.connect(
-            user='postgres',
-            password=config['db_password'],
-            database='postgres',
-            host=config['db_host'],
-            port=int(config.get('db_port', '5432')),
-        )
+        conn = await TenantProvisioner._connect_maintenance_db()
         try:
             await conn.execute(f'CREATE DATABASE "{db_name}"')
             log.info('Created tenant database: %s', db_name)

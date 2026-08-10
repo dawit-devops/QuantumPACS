@@ -13,7 +13,18 @@ log = get_logger(__name__)
 
 
 def _derive_key() -> bytes:
-    raw = config.get('oauth_secret_encryption_key') or config.get('secret', '')
+    raw = config.get('oauth_secret_encryption_key')
+    if not raw:
+        # DEPRECATED fallback (R2-M3): without a dedicated key the OAuth
+        # client secrets are derived from the shared app secret. Kept for
+        # backward compatibility with existing ciphertext, but operators
+        # must set oauth_secret_encryption_key.
+        log.warning(
+            'DEPRECATED: oauth_secret_encryption_key is not set — deriving '
+            'OAuth secret encryption key from the shared app secret. Set a '
+            'dedicated key before the next provider credential change.'
+        )
+        raw = config.get('secret', '')
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,

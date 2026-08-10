@@ -247,7 +247,7 @@ class TestAppointmentConflict:
                 'scheduled_time': '09:00:00',
             })
         assert resp.status_code == 404
-        assert resp.json()['error'] == 'Patient not found'
+        assert resp.json()['error']['message'] == 'Patient not found'
         # capacity + booked only — nothing was inserted for an unknown patient
         assert mock_conn.fetchval.await_count == 2
         assert mock_conn.fetchrow.await_count == 1
@@ -401,7 +401,7 @@ class TestAppointmentAvailability:
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.get('/schedule/availability?modality=NM&date=2026-08-10')
         assert resp.status_code == 404
-        assert resp.json()['error'] == 'Modality not configured for this day'
+        assert resp.json()['error']['message'] == 'Modality not configured for this day'
 
     def test_appointment_booking_unconfigured_modality_returns_404(self):
         user = User({'id': 1, 'permissions': ['SCHEDULE_WRITE']})
@@ -419,7 +419,7 @@ class TestAppointmentAvailability:
                 'scheduled_time': '09:00:00',
             })
         assert resp.status_code == 404
-        assert 'not configured' in resp.json()['error']
+        assert 'not configured' in resp.json()['error']['message']
         # nothing inserted — advisory lock only
         assert mock_conn.fetchrow.await_count == 0
 

@@ -143,6 +143,52 @@ def _make_mock_conn():
     conn.transaction = MagicMock(return_value=tx)
     return conn
 
+
+class _FakeAc:
+    """Plain async context manager (no-ops) for transaction stubs."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class _StubControlConn:
+    """Plain async context manager standing in for a pooled connection.
+
+    Cannot subclass AsyncMock: Python 3.14's mock machinery recreates Mock
+    subclasses and force-replaces __aenter__/__aexit__ with child-mock
+    descriptors, so `async with` would yield a stub-less object and
+    `conn.transaction()` would return a bare coroutine. A plain class keeps
+    the stubs stable across enter/exit.
+    """
+
+    def __init__(self):
+        self.fetchrow = AsyncMock(return_value=None)
+        self.fetch = AsyncMock(return_value=[])
+        self.execute = AsyncMock()
+        self.add = AsyncMock()
+        self.transaction = MagicMock(return_value=_FakeAc())
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+def _make_fake_database():
+    """Fake the db.conn main-pool singleton.
+
+    store_instance now routes control-plane reads (tenant registry, replica
+    registry) through get_database().acquire(); unit tests have no real pool
+    so the fake's connections are stub objects (registry misses, no-op txs).
+    """
+    db = MagicMock()
+    db.acquire = MagicMock(return_value=_StubControlConn())
+    return db
+
 class _TxTracker:
     in_transaction = False
     copy_called_in_tx = False
@@ -360,7 +406,8 @@ class TestStoreHandler:
              patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.server import store
@@ -378,7 +425,8 @@ class TestStoreHandler:
 
         with patch('dcm.server.setup', AsyncMock()), \
              patch('dcm.store.Replica', new=mock_replica_cls), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.server import store
@@ -415,7 +463,8 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -440,7 +489,8 @@ class TestStoreInstance:
         with patch('dcm.store.Replica', new=mock_replica_cls), \
              patch('dcm.store.Files', new=mock_files_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -467,7 +517,8 @@ class TestStoreInstance:
         with patch('dcm.store.Replica', new=mock_replica_cls), \
              patch('dcm.store.Files', new=mock_files_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -511,7 +562,8 @@ class TestStoreInstance:
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
              patch('dcm.store.match_worklist_in_progress', new=AsyncMock()) as mock_match, \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -601,7 +653,8 @@ class TestStoreInstance:
              patch('dcm.store.evaluate_routing_rules', new=AsyncMock(return_value=[
                  {'rule_id': '1', 'rule_name': 'CT route', 'destination': '2'},
              ])), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -642,7 +695,8 @@ class TestStoreInstance:
              patch('dcm.store.Storage.get', AsyncMock(return_value=mock_storage)), \
              patch('dcm.store.ReplicaFiles', new=mock_replicafiles_cls), \
              patch('dcm.store.hash_file', return_value='abc123'), \
-             patch('dcm.store.get_conn') as mock_get_conn:
+             patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
 
             from dcm.store import store_instance
@@ -679,15 +733,17 @@ class TestStudyCompleteness:
         from dcm.store import _bump_study_counts
         conn = MagicMock()
         conn.fetchrow = AsyncMock(return_value={
-            'received_instances': 2, 'expected_instances': 3, 'study_status': 'receiving',
+            'received_instances': 3, 'study_status': 'complete',
         })
         conn.execute = AsyncMock()
         await _bump_study_counts(conn, {'study_instance_uid': '1.2.3'})
-        conn.execute.assert_awaited_once_with(
-            "UPDATE studies SET received_instances = $1, study_status = $2 "
-            "WHERE study_instance_uid = $3",
-            3, 'complete', '1.2.3',
-        )
+        # Single atomic UPDATE (lost-update fix): no read-then-write.
+        conn.execute.assert_not_called()
+        conn.fetchrow.assert_awaited_once()
+        sql, study_uid = conn.fetchrow.await_args.args
+        assert 'UPDATE studies' in sql
+        assert 'received_instances = received_instances + 1' in sql
+        assert study_uid == '1.2.3'
 
     @pytest.mark.asyncio
     async def test_bump_study_counts_survives_missing_study(self):

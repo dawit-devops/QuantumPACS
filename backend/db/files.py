@@ -12,6 +12,7 @@ from db.series import Series
 from db.replica_files import ReplicaFiles
 from db.table import Table
 from db.file_changes import FileChange
+from db.conn import get_tenant_slug
 from log import get_logger
 
 log = get_logger(__name__)
@@ -51,11 +52,13 @@ class Files(Table):
             tools_state JSONB,
             size BIGINT NOT NULL DEFAULT 0,
             sop_class_uid TEXT,
-            instance_number TEXT
+            instance_number TEXT,
+            tenant TEXT
         );
         """)
         await self.exec('CREATE INDEX IF NOT EXISTS files_name on files(name);')
         await self.exec('CREATE INDEX IF NOT EXISTS files_hash on files(hash);')
+        await self.exec('CREATE INDEX IF NOT EXISTS ix_files_tenant on files(tenant);')
         # Parity with migration 017: the partial unique index that makes
         # SOPInstanceUID the dedup identity key.
         await self.exec("""
@@ -94,12 +97,13 @@ class Files(Table):
             q = self.insert().columns(
                 'name', 'patient_id', 'study_id', 'series_id', 'meta',
                 'indexed', 'hash', 'sop_instance_uid', 'created', 'updated',
-                'size', 'sop_class_uid', 'instance_number',
+                'size', 'sop_class_uid', 'instance_number', 'tenant',
             ).insert((
                 filedata['name'], patient['id'], study['id'], series['id'], json.dumps(meta),
                 False, filedata['hash'], filedata.get('sop_instance_uid', ''), now, now,
                 filedata.get('size', 0),
                 filedata.get('sop_class_uid', ''), filedata.get('instance_number', ''),
+                filedata.get('tenant'),
             ), ).returning('id')
 
             file_id = await self.fetchval(q)
@@ -108,7 +112,11 @@ class Files(Table):
         filedata['meta'] = filedata['cleaned']
         if _es_indexer is not None:
             try:
-                await _es_indexer(filedata)
+                # CR-01: the tenant owning the rows we just inserted is read
+                # from the scope ContextVar (set by TenantMiddleware /
+                # tenant_db_scope) so the document lands in the tenant's ES
+                # namespace with a composite slug:id _id.
+                await _es_indexer(filedata, tenant_slug=get_tenant_slug())
             except Exception as e:
                 log.warning('ES indexing failed for file %s: %s, will retry via sync loop', file_id, e)
                 return filedata
@@ -189,7 +197,7 @@ class Files(Table):
             PatientT.patient_id,
             StudyT.study_id,
             SeriesT.number.as_('series_number'),
-            table.meta, table.tools_state, table.deleted, table.size,
+            table.meta, table.tools_state, table.deleted, table.size, table.tenant,
         ).join(PatientT).on(
             PatientT.id == table.patient_id
         ).join(StudyT).on(
@@ -214,6 +222,7 @@ class Files(Table):
             StudyT.study_id,
             SeriesT.number.as_('series_number'),
             table.meta, table.tools_state, table.deleted, table.size,
+            table.tenant,
             ReplicaT.id.as_('replica_id'),
             ReplicaT.replica_id.as_('replica_replica_id'),
             ReplicaT.file_id.as_('replica_file_id'),
@@ -321,7 +330,9 @@ class Files(Table):
     async def delete(self, file_id, master_id):
         if _es_indexer is not None:
             try:
-                await _es_indexer(file_id, delete=True)
+                # CR-01: remove the tenant's composite-id document; un-scoped
+                # calls (platform/main store) keep the bare-id contract.
+                await _es_indexer(file_id, delete=True, tenant_slug=get_tenant_slug())
             except Exception:
                 log.warning('ES delete failed for file %s', file_id)
 

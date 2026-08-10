@@ -109,7 +109,7 @@ class TestEquipmentCreate:
             conn.fetchrow = AsyncMock(return_value={'id': 'existing'})
             resp = client.post('/equipment', json={'identifier': 'EQ-001'})
         assert resp.status_code == 400
-        assert 'already exists' in resp.json()['error']
+        assert 'already exists' in resp.json()['error']['message']
 
 
 class TestDowntime:
@@ -126,7 +126,7 @@ class TestDowntime:
                 'cause_category': 'power',
             })
         assert resp.status_code == 400
-        assert 'open downtime event' in resp.json()['error']
+        assert 'open downtime event' in resp.json()['error']['message']
 
     def test_downtime_create_success_sets_equipment_down(self):
         user = User({'id': 1, 'permissions': ['EQUIPMENT_WRITE']})

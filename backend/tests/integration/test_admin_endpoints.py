@@ -670,9 +670,67 @@ class TestWebhooks:
 
     def test_webhook_test_ping(self):
         client = TestClient(self._make_app())
-        resp = client.post('/webhooks/test', json={'url': 'http://localhost:99999/nonexistent'})
+        # A host that fails to resolve short-circuits to success: False
+        # without any network traffic.
+        with patch('api.webhooks._resolve_host', new=AsyncMock(side_effect=Exception('nxdomain'))):
+            resp = client.post('/webhooks/test', json={'url': 'http://webhook.example.invalid/nonexistent'})
         assert resp.status_code == 200
         assert resp.json()['success'] is False
+
+    def test_webhook_test_blocks_localhost(self):
+        client = TestClient(self._make_app())
+        resp = client.post('/webhooks/test', json={'url': 'http://localhost:8080/hook'})
+        assert resp.status_code == 400
+        assert resp.json()['error']['code'] == 'SSRF_BLOCKED'
+
+    def test_webhook_test_blocks_local_hostname_suffix(self):
+        client = TestClient(self._make_app())
+        resp = client.post('/webhooks/test', json={'url': 'http://pacs.local/hook'})
+        assert resp.status_code == 400
+        assert resp.json()['error']['code'] == 'SSRF_BLOCKED'
+
+    def test_webhook_test_blocks_private_literal_ip(self):
+        client = TestClient(self._make_app())
+        for url in (
+            'http://10.0.0.5/hook',
+            'http://127.0.0.1/hook',
+            'http://192.168.1.1/hook',
+            'http://169.254.169.254/latest/meta-data',
+            'http://[::1]/hook',
+        ):
+            resp = client.post('/webhooks/test', json={'url': url})
+            assert resp.status_code == 400, f'{url} must be blocked'
+            assert resp.json()['error']['code'] == 'SSRF_BLOCKED'
+
+    def test_webhook_test_blocks_dns_rebinding_to_private_ip(self):
+        """A public-looking hostname that resolves to an internal address
+        (metadata endpoints, integer-form IPs) must be refused."""
+        client = TestClient(self._make_app())
+        with patch('api.webhooks._resolve_host', new=AsyncMock(return_value=['10.0.0.7'])):
+            resp = client.post('/webhooks/test', json={'url': 'http://2130706433/hook'})
+        assert resp.status_code == 400
+        assert resp.json()['error']['code'] == 'SSRF_BLOCKED'
+
+    def test_webhook_test_blocks_non_http_scheme(self):
+        client = TestClient(self._make_app())
+        resp = client.post('/webhooks/test', json={'url': 'ftp://example.com/hook'})
+        assert resp.status_code == 400
+        assert resp.json()['error']['code'] == 'SSRF_BLOCKED'
+
+    def test_webhook_test_delivers_to_public_host(self):
+        client = TestClient(self._make_app())
+        fake_post = AsyncMock(return_value=MagicMock(status_code=204, text=''))
+        with (
+            patch('api.webhooks._resolve_host', new=AsyncMock(return_value=['93.184.216.34'])),
+            patch('api.webhooks.httpx.AsyncClient') as mock_client,
+        ):
+            mock_client.return_value.__aenter__.return_value.post = fake_post
+            resp = client.post('/webhooks/test', json={'url': 'http://example.com/hook', 'secret': 's3cret'})
+        assert resp.status_code == 200
+        assert resp.json()['success'] is True
+        fake_post.assert_awaited_once()
+        kwargs = fake_post.await_args.kwargs
+        assert kwargs['headers'].get('X-Webhook-Signature')
 
     def test_webhook_test_no_url(self):
         client = TestClient(self._make_app())

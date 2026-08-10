@@ -98,9 +98,71 @@ class TestTokens:
     def test_create_token_admin_flag_preserved(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):
             token = create_token(user)
-        decoded = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        decoded = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert decoded['admin'] is True
         assert decoded['id'] == 42
+
+    def test_access_token_carries_issuer_audience_iat_typ(self):
+        # R2-M5: every token is self-describing — iss/aud/iat/typ let
+        # verifiers enforce type separation without guessing from shape.
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            token = create_token({'id': 42, 'admin': True})
+            payload = verify_token(token)
+        assert payload['iss'] == 'quantumpacs'
+        assert payload['aud'] == 'quantumpacs:api'
+        assert isinstance(payload['iat'], int)
+        assert payload['typ'] == 'at+jwt'
+
+    def test_minted_iss_follows_configured_token_issuer(self):
+        # R2-M5: iss is config-derived — the same `token_issuer` key the
+        # OIDC discovery document advertises, so the minted claim and the
+        # advertised issuer can never drift apart.
+        cfg = {'secret': self.SECRET, 'token_issuer': 'https://pacs.example.com/api'}
+        with patch('api.tokens.config', cfg):
+            token = create_token({'id': 42, 'admin': True})
+            payload = verify_token(token)
+        assert payload['iss'] == 'https://pacs.example.com/api'
+
+        # Refresh tokens share the same issuer.
+        from api.tokens import create_token_pair, verify_refresh_token
+        with patch('api.tokens.config', cfg):
+            _, refresh = create_token_pair({'id': 42, 'admin': True})
+        assert verify_refresh_token(refresh)['iss'] == 'https://pacs.example.com/api'
+
+    def test_verify_token_rejects_refresh_token(self):
+        # AT-1: a refresh token must never authorize API requests even though
+        # it is a validly signed, unexpired token.
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            _, refresh = create_token_pair({'id': 42, 'admin': True})
+            with pytest.raises(jwt.InvalidTokenError):
+                verify_token(refresh)
+
+    def test_verify_token_rejects_wrong_audience(self):
+        # AT-1: an access token aimed at another audience is rejected even
+        # when the signature is valid.
+        import time
+
+        from api.jwt_keys import get_private_key
+
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            token = create_token({'id': 42, 'admin': True})
+        header = jwt.get_unverified_header(token)
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
+        payload['aud'] = 'other-service'
+        payload['iat'] = int(time.time())
+        forged = jwt.encode(
+            payload, get_private_key(), algorithm='RS256',
+            headers={'kid': header.get('kid')},
+        )
+        with patch('api.tokens.config', {'secret': self.SECRET}):
+            with pytest.raises(jwt.InvalidTokenError):
+                verify_token(forged)
 
     def test_create_token_with_role(self, user):
         with patch('api.tokens.config', {'secret': self.SECRET}):

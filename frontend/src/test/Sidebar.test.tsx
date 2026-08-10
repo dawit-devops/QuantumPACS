@@ -217,8 +217,8 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
-  it("hides clinical sections for the legacy admin role", () => {
-    setSession({ role: "admin", admin: true, permissions: [] });
+  it("hides clinical sections for an admin-scoped role", () => {
+    setSession({ role: "tenant_admin", admin: true, permissions: [] });
     renderWithAuth(<Sidebar />);
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
     expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
@@ -259,10 +259,10 @@ describe("Sidebar", () => {
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
-  it("shows the Front Desk section for a scheduler with R08 grants", async () => {
+  it("shows the Front Desk section for a receptionist with R08 grants", async () => {
     const user = userEvent.setup();
     setSession({
-      role: "scheduler",
+      role: "receptionist",
       permissions: [
         "REGISTRATION_READ",
         "REGISTRATION_WRITE",
@@ -281,9 +281,9 @@ describe("Sidebar", () => {
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
-  it("shows the Metrics item for a department_manager holding only ANALYTICS_READ", () => {
+  it("shows the Metrics item for a custom role holding only ANALYTICS_READ", () => {
     setSession({
-      role: "department_manager",
+      role: "analytics_officer",
       permissions: ["ANALYTICS_READ", "AUDIT_READ", "INTERFACE_MONITOR"],
     });
     renderWithAuth(<Sidebar />);
@@ -307,10 +307,10 @@ describe("Sidebar", () => {
     expect(screen.queryByText("DICOMweb")).not.toBeInTheDocument();
   });
 
-  it("shows the Logs item for an AUDIT_READ-only Matrix A admin role", async () => {
+  it("shows the Logs item for an admin-scoped role with AUDIT_READ", async () => {
     const user = userEvent.setup();
     setSession({
-      role: "imaging_informatics",
+      role: "emr_admin",
       permissions: ["AUDIT_READ", "INTERFACE_MONITOR"],
     });
     renderWithAuth(<Sidebar />);
@@ -347,11 +347,12 @@ describe("Sidebar", () => {
   });
 
   it("hides the Files item from a role without any viewer permission", () => {
-    // pharmacist / lab_technician hold only EMR grants; the Files route gate
-    // (FILE_READ | STUDY_READ | VIEWER_READ) would bounce them, so the nav
-    // item must not advertise a dead link.
+    // an EMR-only custom role (cf. the retired pharmacist/lab_technician
+    // built-ins) holds no viewer grants; the Files route gate (FILE_READ |
+    // STUDY_READ | VIEWER_READ) would bounce them, so the nav item must not
+    // advertise a dead link.
     setSession({
-      role: "pharmacist",
+      role: "emr_clerk",
       permissions: ["RESULTS_READ", "MED_VERIFY"],
     });
     renderWithAuth(<Sidebar />);
@@ -359,9 +360,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Account")).toBeInTheDocument();
   });
 
-  it("keeps the Files item for a nurse with FILE_READ", () => {
+  it("keeps the Files item for a technologist with FILE_READ", () => {
     setSession({
-      role: "nurse",
+      role: "technologist",
       permissions: ["FILE_READ", "EXAM_READ", "WORKLIST_READ"],
     });
     renderWithAuth(<Sidebar />);

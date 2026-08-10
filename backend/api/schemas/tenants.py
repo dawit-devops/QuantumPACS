@@ -3,9 +3,16 @@ from pydantic import BaseModel, Field
 
 class CreateTenantRequest(BaseModel):
     name: str = Field(description="Display name for the tenant organization")
-    slug: str = Field(description="URL-safe unique tenant identifier")
+    slug: str = Field(
+        pattern=r'^[a-z0-9_][a-z0-9_-]{0,62}$',
+        description="URL-safe unique tenant identifier (lowercase letters, digits, underscore; 1-63 chars)",
+    )
     domain: str | None = Field(None, description="Domain name for automatic tenant routing")
-    db_name: str | None = Field(None, description="Dedicated database name for tenant isolation")
+    db_name: str | None = Field(
+        None,
+        pattern=r'^[a-z0-9_]{1,63}$',
+        description="Dedicated database name for tenant isolation",
+    )
     db_host: str | None = Field(None, description="Database host for tenant-specific DB")
     db_port: int | None = Field(None, description="Database port for tenant-specific DB")
     db_user: str | None = Field(None, description="Database user for tenant-specific DB")

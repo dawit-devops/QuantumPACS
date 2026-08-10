@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, openAdminItem, openSubmenu, menuName } from "./helpers";
+import {
+  loginAsAdmin,
+  openAdminItem,
+  openSubmenu,
+  openWorklist,
+  seedTechnologist,
+  menuName,
+} from "./helpers";
 
 test.describe("Admin Navigation", () => {
   test.beforeEach(async ({ page }) => {
@@ -17,6 +24,7 @@ test.describe("Admin Navigation", () => {
   test("admin submenu expands with all items", async ({ page }) => {
     // The Admin section usually starts open on the Files page; openSubmenu
     // makes the expansion idempotent (clicking an open title would close it).
+    // Worklist moved to the Acquisition group (d4abc25 workspace restructure).
     await openSubmenu(page, "Admin", "Users");
     for (const item of [
       "Dashboard",
@@ -25,7 +33,6 @@ test.describe("Admin Navigation", () => {
       "Tenants",
       "Roles",
       "Logs",
-      "Worklist",
       "Service Keys",
       "Routing",
       "FHIR",
@@ -56,7 +63,10 @@ test.describe("Admin Navigation", () => {
   });
 
   test("navigates to Worklist page", async ({ page }) => {
-    await openAdminItem(page, "Worklist");
+    // Worklist lives in the Acquisition group (not Admin) since d4abc25, and
+    // that group is hidden for admin-scoped roles — navigate as a technologist.
+    await seedTechnologist(page);
+    await openWorklist(page);
     await expect(page).toHaveURL(/\/worklist/, { timeout: 10000 });
     await expect(
       page.getByRole("button", { name: "Create worklist entry" }),
@@ -79,7 +89,9 @@ test.describe("Admin Navigation", () => {
   test("navigates to Logs page", async ({ page }) => {
     await openAdminItem(page, "Logs");
     await expect(page).toHaveURL(/\/logs/, { timeout: 10000 });
-    await expect(page.getByText("Audit Log").first()).toBeVisible({
+    // The logs page has no visible heading — the audit trail is the filter
+    // bar + table; assert a stable column header instead.
+    await expect(page.getByText("Event Type").first()).toBeVisible({
       timeout: 10000,
     });
   });

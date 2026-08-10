@@ -7,8 +7,8 @@ import jwt as _jwt
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.tokens import create_token_pair, verify_refresh_token, block_token, is_blocked
-from api.ratelimit import login_bucket, password_bucket
-from api.validate import parse_body
+from api.ratelimit import login_bucket, password_bucket, refresh_bucket
+from api.validate import parse_body, read_body, _BodyTooLargeException
 from api.schemas.auth import LoginRequest
 from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
@@ -127,7 +127,6 @@ class Login(HTTPEndpoint):
                 'tenant_name': tenant_name,
                 'token': access,
                 'access_token': access,
-                'refresh_token': refresh,
             })
             resp.set_cookie(
                 key='token',
@@ -138,14 +137,16 @@ class Login(HTTPEndpoint):
                 path='/api',
             )
             # Refresh token travels only as an HttpOnly cookie scoped to the
-            # refresh endpoint, never in localStorage or URLs.
+            # auth endpoints (/api/auth) — both the refresh endpoint and
+            # logout need to read it for rotation/revocation (AT-4). Never
+            # in localStorage or URLs.
             resp.set_cookie(
                 key='refresh_token',
                 value=refresh,
                 httponly=True,
                 samesite='strict',
                 secure=True,
-                path='/api/auth/refresh',
+                path='/api/auth',
             )
             return resp
 
@@ -192,7 +193,7 @@ class Logout(HTTPEndpoint):
             await block_token(refresh)
         resp = ok({'message': 'Logged out'})
         resp.delete_cookie('token', path='/api')
-        resp.delete_cookie('refresh_token', path='/api/auth/refresh')
+        resp.delete_cookie('refresh_token', path='/api/auth')
         return resp
 
 
@@ -221,8 +222,10 @@ class UsersHandler(HTTPEndpoint):
     @requires_permission(Permission.USER_READ)
     async def get(self, request):
         q = request.query_params.get('q')
-        offset = int(request.query_params.get('offset', 0))
-        limit = int(request.query_params.get('limit', 20))
+        # Clamp pagination: negative/oversized limits and offsets must not
+        # reach the DB (offset/limit are interpolated into the SQL).
+        offset = max(0, int(request.query_params.get('offset', 0)))
+        limit = max(1, min(200, int(request.query_params.get('limit', 20))))
 
         async with get_conn() as conn:
             data = await Users(conn).get_users(offset=offset, limit=limit, username=q)
@@ -272,7 +275,10 @@ class UsersDeactivate(HTTPEndpoint):
         body = await parse_body(UserActionRequest, request)
 
         async with get_conn() as conn:
-            await Users(conn).deactivate(body.id)
+            try:
+                await Users(conn).deactivate(body.id)
+            except ApiException as e:
+                return api_error('FORBIDDEN', str(e), status=403)
             await AuditLog(conn).log_event(
                 event_type='user.deactivated',
                 actor_id=request.user.id,
@@ -335,23 +341,40 @@ class UserRoleUpdate(HTTPEndpoint):
 
 class RefreshToken(HTTPEndpoint):
     async def post(self, request):
+        # Rate-limited: unauthenticated mint of fresh credentials (R2-M9).
+        ip = request.client.host if request.client else 'unknown'
+        allowed, msg = await refresh_bucket.check(ip)
+        if not allowed:
+            return api_error('RATE_LIMITED', msg, status=429)
         # HttpOnly refresh cookie is preferred; body fallback keeps
         # API-client compatibility (OAuth, external integrations).
         refresh_token = request.cookies.get('refresh_token')
         if not refresh_token:
-            if await request.body():
+            try:
+                raw = await read_body(request)
+            except _BodyTooLargeException:
+                await refresh_bucket.record(ip, success=False)
+                return api_error('BODY_TOO_LARGE', 'Request body exceeds 1MB limit', status=413)
+            if raw:
                 body = await parse_body(RefreshTokenRequest, request)
                 refresh_token = body.refresh_token
         if not refresh_token:
+            await refresh_bucket.record(ip, success=False)
             return api_error('INVALID_TOKEN', 'Missing refresh token', status=401)
         try:
             data = verify_refresh_token(refresh_token)
         except _jwt.ExpiredSignatureError:
+            await refresh_bucket.record(ip, success=False)
             return api_error('TOKEN_EXPIRED', 'Refresh token expired', status=401)
         except _jwt.InvalidTokenError:
+            await refresh_bucket.record(ip, success=False)
             return api_error('INVALID_TOKEN', 'Invalid refresh token', status=401)
 
-        if await is_blocked(data.get('jti', '')):
+        # R2-H4: fail CLOSED when the blocklist is unreachable — refreshing
+        # a session that may have been revoked is worse than asking the user
+        # to log in again.
+        if await is_blocked(data.get('jti', ''), fail_closed=True):
+            await refresh_bucket.record(ip, success=False)
             return api_error('TOKEN_REVOKED', 'Refresh token revoked', status=401)
 
         await block_token(refresh_token)
@@ -374,6 +397,7 @@ class RefreshToken(HTTPEndpoint):
         if (user_row.get('token_version') or 0) != data.get('token_version', 0):
             return api_error('TOKEN_REVOKED', 'Session invalidated', status=401)
 
+        await refresh_bucket.record(ip, success=True)
         user = {'id': data['id'], 'admin': bool(user_row.get('admin', False))}
         if user_row.get('tenant'):
             user['tenant'] = user_row['tenant']
@@ -381,9 +405,10 @@ class RefreshToken(HTTPEndpoint):
             user, role=role_slug, permissions=permissions,
             token_version=user_row.get('token_version') or 0,
         )
+        # R2-LOW: refresh token is delivered ONLY via the HttpOnly cookie
+        # below — never in the JSON body.
         resp = ok({
             'access_token': access,
-            'refresh_token': refresh,
             'expires_in': 3600,
             'token_type': 'Bearer',
         })
@@ -393,6 +418,6 @@ class RefreshToken(HTTPEndpoint):
             httponly=True,
             samesite='strict',
             secure=True,
-            path='/api/auth/refresh',
+            path='/api/auth',
         )
         return resp

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, menuName } from "./helpers";
+import { loginAsAdmin, menuName, BASE } from "./helpers";
 
 test.describe("Study Viewer", () => {
   test.beforeEach(async ({ page }) => {
@@ -7,6 +7,9 @@ test.describe("Study Viewer", () => {
   });
 
   test("search page loads with search input", async ({ page }) => {
+    // Admin now lands on /admin (role-scoped dashboard) after login, so the
+    // files search surface is reached via an explicit navigation.
+    await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("files-search-input")).toBeVisible({
       timeout: 10000,
     });

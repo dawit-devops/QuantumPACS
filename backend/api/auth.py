@@ -50,6 +50,31 @@ async def can_access_tenant(user, tenant_slug):
     return await user.has_grant(tenant_slug)
 
 
+async def can_mutate_tenant(user, tenant_slug):
+    """Mutation gate for cross-tenant overrides (R5-HI-1). Teleradiology /
+    telemedicine grants default to scope='read': the target tenant's workload
+    is visible but never writable. Home-tenant and admin access are
+    unaffected; a cross-tenant write requires an explicit scope='write'
+    grant row."""
+    if not tenant_slug:
+        return True
+    if user.admin:
+        return True
+    if user.tenant == tenant_slug:
+        return True
+    if 'CROSS_TENANT_READ' not in (user.permissions or []):
+        return False
+    from db.user_tenant_grants import UserTenantGrants
+    async with get_conn() as conn:
+        return await UserTenantGrants(conn).scope_for(user.id, tenant_slug) == 'write'
+
+
+def _is_read_method(method):
+    # OPTIONS must pass: the middleware runs outside CORSMiddleware and a 403
+    # on preflight would break every cross-tenant browser call.
+    return method in ('GET', 'HEAD', 'OPTIONS')
+
+
 def set_app(app):
     global _app
     _app = app
@@ -195,6 +220,8 @@ class TokenAuth(AuthenticationBackend):
         '/api/v2/auth/refresh',
         '/api/v2/auth/logout',
         '/api/v2/login',
+        '/api/docs',
+        '/api/docs/openapi.json',
     })
 
     async def authenticate(self, request):
@@ -259,7 +286,8 @@ class TokenAuth(AuthenticationBackend):
                     log.error('Share-file check failed: %s', e)
                     raise AuthenticationError('Invalid auth')
 
-                if file_id and (path.startswith(f'/api/files/{file_id}') or path.startswith('/api/ws_token')):
+                if file_id and request.scope.get('method') == 'GET' \
+                        and self._share_key_allowed(path, file_id):
                     data = {'id': credentials, 'admin': False}
                 else:
                     raise AuthenticationError('Invalid auth')
@@ -299,7 +327,18 @@ class TokenAuth(AuthenticationBackend):
             except _jwt.InvalidTokenError:
                 raise AuthenticationError('Invalid auth')
 
-            data = {'id': data['id'], 'admin': data['admin']}
+            # WS-scope user must mirror the HTTP branch: dropping the
+            # permissions/tenant claims made every real socket 'open' fail
+            # the FILE_READ gate in ws.py and left the socket unscoped.
+            tenant = data.get('tenant')
+            data = {
+                'id': data['id'],
+                'admin': data.get('admin', False),
+                'role': data.get('role', ''),
+                'permissions': data.get('permissions', []),
+            }
+            if tenant:
+                data['tenant'] = tenant
 
         if not data:
             raise AuthenticationError('Invalid auth')
@@ -312,3 +351,24 @@ class TokenAuth(AuthenticationBackend):
         # responses would reach the browser without CORS headers and get
         # blocked as "Failed to fetch". Mirror the CORS headers explicitly.
         return apply_cors_headers(request, unauthorized(str(exc)))
+
+    @staticmethod
+    def _share_key_allowed(path, file_id):
+        """Read-only endpoints a share key may open for its file.
+
+        A share key grants exactly what the public share viewer needs —
+        metadata, pixel data, and the thumbnail — nothing else under
+        /files/{id} (no changes/audit history, no annotation writes, no
+        share management, no tool-state updates). Both the v1 and the
+        alias-generated v2 path must be handled, and the file-id boundary
+        must be exact: `path.startswith('/api/files/1')` would let a key
+        for file 1 open /api/files/12/*.
+        """
+        if path == '/api/ws_token' or path.startswith('/api/ws_token/'):
+            return True
+        for prefix in (f'/api/files/{file_id}', f'/api/v2/files/{file_id}'):
+            if path == prefix:
+                return True
+            if path.startswith(prefix + '/'):
+                return path[len(prefix):] in ('/data', '/thumbnail')
+        return False

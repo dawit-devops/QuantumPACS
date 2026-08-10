@@ -1,9 +1,16 @@
 """Seed one test user per built-in role with a shared test password.
 
 Idempotent: existing usernames are updated in place (password + role reset).
-Usage: backend/venv/bin/python backend/seed_test_users.py
+Usage: backend/venv/bin/python backend/seed_test_users.py [--allow-docker]
+
+The docker guard (QUANTUMPACS_DOCKER) protects deployed runtimes from the
+shared well-known test password. CI e2e runs set QUANTUMPACS_DOCKER for the
+prod-like config branch, so the guard is overridable — explicitly, never by
+default — via --allow-docker or QUANTUMPACS_SEED_ALLOW=1.
 """
+import argparse
 import asyncio
+import os
 import sys
 
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
@@ -17,11 +24,14 @@ TEST_PASSWORD = 'Test@123456'
 PREFIX = 'test.'
 
 
-async def main():
-    if is_docker():
+async def seed(allow_docker: bool = False):
+    if is_docker() and not allow_docker:
         # These users share one well-known password — never in any deployed
-        # runtime (docker stack is the prod-like smoke image).
-        print('Refusing to run in a docker/QUANTUMPACS_DOCKER environment.', file=sys.stderr)
+        # runtime (docker stack is the prod-like smoke image). CI e2e opts in
+        # explicitly with --allow-docker / QUANTUMPACS_SEED_ALLOW=1.
+        print('Refusing to run in a docker/QUANTUMPACS_DOCKER environment. '
+              'Pass --allow-docker (or set QUANTUMPACS_SEED_ALLOW=1) to '
+              'override for test environments.', file=sys.stderr)
         sys.exit(1)
 
     db = Database()
@@ -66,4 +76,18 @@ async def main():
     print(f'Login for all of them: username = test.<role>, password = {TEST_PASSWORD}')
 
 
-asyncio.run(main())
+def main():
+    parser = argparse.ArgumentParser(
+        description='Seed one test user per built-in role with a shared test password.',
+    )
+    parser.add_argument(
+        '--allow-docker', action='store_true',
+        help='override the QUANTUMPACS_DOCKER guard (CI e2e only)',
+    )
+    args = parser.parse_args()
+    allow = args.allow_docker or os.getenv('QUANTUMPACS_SEED_ALLOW') == '1'
+    asyncio.run(seed(allow_docker=allow))
+
+
+if __name__ == '__main__':
+    main()

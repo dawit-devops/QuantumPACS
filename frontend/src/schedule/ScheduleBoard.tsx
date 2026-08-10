@@ -188,7 +188,7 @@ function ScheduleBoard() {
   const statusLabel = (s: string) => (s ? s : "scheduled");
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
+    <Content style={{ padding: 24 }} role="main">
       <div className="schedule-header">
         <div className="schedule-header-title">
           <CalendarOutlined />

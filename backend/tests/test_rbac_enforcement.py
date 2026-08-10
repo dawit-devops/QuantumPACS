@@ -54,8 +54,8 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _http_exception(request, exc):
-    from starlette.responses import JSONResponse
-    return JSONResponse({'error': exc.detail}, status_code=exc.status_code)
+    from api.response import server_error
+    return server_error(str(exc.detail), status_code=exc.status_code)
 
 
 def _make_app(route, user):
@@ -112,7 +112,7 @@ def _check_read_group(route, code, conn_module, db_patch=None, url=None):
                 resp = client.get(url or route.path)
         if expected == 403:
             assert resp.status_code == 403
-            assert resp.json()['error'] == f'Missing permission: {code}'
+            assert resp.json()['error']['message'] == f'Missing permission: {code}'
         else:
             assert resp.status_code == 200
 
@@ -124,7 +124,7 @@ def test_unauthenticated_request_returns_401():
     with TestClient(_make_app(route, UnauthenticatedUser())) as client:
         resp = client.get('/api/worklist')
     assert resp.status_code == 401
-    assert resp.json()['error'] == 'Not authenticated'
+    assert resp.json()['error']['message'] == 'Not authenticated'
 
 
 def test_super_admin_wildcard_grant_passes_any_guard():
@@ -283,7 +283,7 @@ def test_file_update_route_requires_file_write():
         with TestClient(_make_app(route, _make_user([Permission.FILE_READ.value]))) as client:
             resp = client.post('/api/files/1', json={})
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'Missing permission: FILE_WRITE'
+    assert resp.json()['error']['message'] == 'Missing permission: FILE_WRITE'
 
     with p, q:
         with TestClient(_make_app(route, _make_user([Permission.FILE_WRITE.value]))) as client:
@@ -302,7 +302,7 @@ def test_file_changes_route_requires_file_read():
         with TestClient(_make_app(route, _make_user([]))) as client:
             resp = client.get('/api/files/1/changes')
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'Missing permission: FILE_READ'
+    assert resp.json()['error']['message'] == 'Missing permission: FILE_READ'
 
     with p, q:
         with TestClient(_make_app(route, _make_user([Permission.FILE_READ.value]))) as client:
@@ -315,7 +315,7 @@ def test_guarded_route_unauthenticated_returns_401():
     with TestClient(_make_app(route, UnauthenticatedUser())) as client:
         resp = client.post('/api/files/1', json={})
     assert resp.status_code == 401
-    assert resp.json()['error'] == 'Not authenticated'
+    assert resp.json()['error']['message'] == 'Not authenticated'
 
 
 # ------------------------------------------------- token_version bump on role change
@@ -329,7 +329,11 @@ def test_role_permission_update_bumps_token_version_for_role_users():
     p_conn = _patch_conn('api.roles')[0]
 
     with p_conn, p_roles[0] as roles_cls, p_users[0] as users_cls, p_audit[0]:
-        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
+        # Caller holds ROLE_WRITE + the permission being assigned: the R2-M2
+        # subset guard (no privilege escalation through role editing) must
+        # not trip on a legit same-scope update.
+        with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value,
+                                                     Permission.FILE_READ.value]))) as client:
             resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
     assert resp.status_code == 200
     users_cls.return_value.bulk_increment_token_version_by_role.assert_awaited_once_with('r1')
@@ -377,8 +381,8 @@ def test_routes_wire_guards_for_unguarded_file_handlers():
 
 # ------------------------------------------------ built-in immutability + schema validation
 
-def test_put_built_in_role_forbidden():
-    role = {'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist', 'built_in': True}
+def test_put_immutable_built_in_role_forbidden():
+    role = {'id': 'r1', 'name': 'Super Admin', 'slug': 'super_admin', 'built_in': True}
     route = Route('/api/roles/{id}', endpoint=RoleHandler)
     p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
     p_conn = _patch_conn('api.roles')[0]
@@ -387,7 +391,54 @@ def test_put_built_in_role_forbidden():
         with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
             resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
     assert resp.status_code == 403
+    assert resp.json()['error']['message'] == 'Cannot modify immutable built-in role'
     roles_cls.return_value.patch.assert_not_awaited()
+
+
+def test_put_platform_admin_only_built_in_role_requires_superadmin():
+    role = {'id': 'r1', 'name': 'Teleradiologist', 'slug': 'teleradiologist', 'built_in': True}
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
+    p_users = _patch_db_class('api.roles', 'Users', bulk_increment_token_version_by_role=None)
+    p_audit = _patch_db_class('api.roles', 'AuditLog', log_event=None)
+    p_conn = _patch_conn('api.roles')[0]
+
+    # Facility admin (ROLE_WRITE + full target grants): still 403 — coverage
+    # contracts are platform policy.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        caller = _make_user([Permission.ROLE_WRITE.value, 'REPORT_READ'])
+        with TestClient(_make_app(route, caller)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['REPORT_READ']})
+    assert resp.status_code == 403
+    assert resp.json()['error']['message'] == 'Only the platform admin can modify this role'
+    p_roles[1].return_value.patch.assert_not_awaited()
+
+    # Platform admin (users.admin flag) can edit it.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        admin_user = User({'id': 2, 'admin': True, 'permissions': [Permission.ROLE_WRITE.value]})
+        with TestClient(_make_app(route, admin_user)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['REPORT_READ']})
+    assert resp.status_code == 200
+    p_roles[1].return_value.patch.assert_awaited()
+
+
+def test_put_editable_built_in_role_allowed_for_facility_admin():
+    role = {'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist', 'built_in': True}
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
+    p_users = _patch_db_class('api.roles', 'Users', bulk_increment_token_version_by_role=None)
+    p_audit = _patch_db_class('api.roles', 'AuditLog', log_event=None)
+    p_conn = _patch_conn('api.roles')[0]
+
+    # R2-16: radiologist is a facility-editable built-in. Caller holds every
+    # permission it assigns (subset guard) — the edit must succeed.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        caller = _make_user([Permission.ROLE_WRITE.value, Permission.FILE_READ.value])
+        with TestClient(_make_app(route, caller)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
+    assert resp.status_code == 200
+    p_roles[1].return_value.patch.assert_awaited()
+    p_users[1].return_value.bulk_increment_token_version_by_role.assert_awaited_once_with('r1')
 
 
 def test_put_unknown_permission_rejected():

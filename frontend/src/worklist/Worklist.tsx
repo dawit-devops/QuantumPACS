@@ -500,7 +500,7 @@ function Worklist() {
   };
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
+    <Content style={{ padding: 24 }} role="main">
       <div
         aria-live="polite"
         aria-atomic="true"

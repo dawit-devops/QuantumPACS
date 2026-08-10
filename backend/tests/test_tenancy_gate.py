@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.applications import Starlette
@@ -26,8 +27,10 @@ def _make_app(user):
 
     return Starlette(
         routes=[
-            Route('/api/noop', endpoint=_noop),
-            Route('/api/tenant-info', endpoint=_tenant_info),
+            Route('/api/noop', endpoint=_noop,
+                  methods=['GET', 'POST', 'PUT', 'DELETE']),
+            Route('/api/tenant-info', endpoint=_tenant_info,
+                  methods=['GET', 'POST', 'PUT', 'DELETE']),
         ],
         middleware=[
             Middleware(FakeAuth),
@@ -49,6 +52,15 @@ async def _tenant_info(request):
     })
 
 
+def _mock_pool():
+    pool = MagicMock()
+    cm = MagicMock()
+    cm.__aenter__.return_value = AsyncMock()
+    cm.__aexit__ = AsyncMock(return_value=None)
+    pool.acquire = MagicMock(return_value=cm)
+    return pool
+
+
 class TestTenantMiddlewareGating:
     def test_no_tenant_header_ok_for_admin(self):
         user = User({'id': 1, 'admin': True})
@@ -58,7 +70,7 @@ class TestTenantMiddlewareGating:
 
     def test_matching_tenant_allowed(self):
         mock_info = {'slug': 'my-clinic', 'name': 'My Clinic', 'db_name': 'my_clinic'}
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         user = User({'id': 2, 'admin': False, 'tenant': 'my-clinic'})
         client = TestClient(_make_app(user))
 
@@ -85,7 +97,7 @@ class TestTenantMiddlewareGating:
 
     def test_admin_can_access_any_tenant(self):
         mock_info = {'slug': 'hospital-x', 'name': 'Hospital X', 'db_name': 'hospital_x'}
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         user = User({'id': 1, 'admin': True})
         client = TestClient(_make_app(user))
 
@@ -137,7 +149,7 @@ class TestTenantMiddlewareGating:
 
     def test_grant_holder_can_override_to_granted_tenant(self):
         mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic', 'db_name': 'other_clinic'}
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
                      'permissions': ['CROSS_TENANT_READ']})
         client = TestClient(_make_app(user))
@@ -182,7 +194,7 @@ class TestTenantMiddlewareGating:
 
     def test_cross_tenant_access_is_audited(self):
         mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic', 'db_name': 'other_clinic'}
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
                      'permissions': ['CROSS_TENANT_READ']})
         client = TestClient(_make_app(user))
@@ -216,7 +228,7 @@ class TestTenantMiddlewareGating:
         # Same-tenant header (fast path, no grant) must not produce a
         # cross-tenant audit row.
         mock_info = {'slug': 'my-clinic', 'name': 'My Clinic', 'db_name': 'my_clinic'}
-        mock_pool = AsyncMock()
+        mock_pool = _mock_pool()
         user = User({'id': 2, 'admin': False, 'tenant': 'my-clinic'})
         client = TestClient(_make_app(user))
 
@@ -246,6 +258,10 @@ class TestTenantPool:
     def setup_method(self):
         TenantConnectionPool._pools.clear()
         TenantConnectionPool._last_used.clear()
+        # ME-02 lease/lock bookkeeping must not leak across tests.
+        TenantConnectionPool._leases.clear()
+        TenantConnectionPool._locks.clear()
+        TenantConnectionPool._eviction_tasks.clear()
 
     @pytest.mark.asyncio
     async def test_get_returns_same_pool_for_same_tenant(self):
@@ -280,12 +296,63 @@ class TestTenantPool:
             mock_create.side_effect = [AsyncMock(), AsyncMock(), AsyncMock()]
             await TenantConnectionPool.get('t1', {**generic, 'db_name': 't1'})
             await TenantConnectionPool.get('t2', {**generic, 'db_name': 't2'})
+            # ME-02: leases simulate in-flight requests — LRU eviction only
+            # closes pools that are not leased, so release them first.
+            TenantConnectionPool.release('t1')
+            TenantConnectionPool.release('t2')
             await TenantConnectionPool.get('t3', {**generic, 'db_name': 't3'})
-            import asyncio
             await asyncio.sleep(0)
 
             assert len(TenantConnectionPool._pools) == 2
             assert 't1' not in TenantConnectionPool._pools or 't2' not in TenantConnectionPool._pools
+
+    @pytest.mark.asyncio
+    async def test_leased_pool_is_not_evicted(self):
+        # ME-02: a pool with an outstanding lease must survive LRU pressure —
+        # closing it mid-request would break the acquire it represents.
+        TenantConnectionPool._max_pools = 2
+        generic = {'db_name': 't', 'db_host': 'localhost',
+                    'db_port': 5432, 'db_user': 'u', 'db_password': 'p'}
+
+        with patch('asyncpg.create_pool', new=AsyncMock()) as mock_create:
+            mock_create.side_effect = [AsyncMock(), AsyncMock(), AsyncMock()]
+            await TenantConnectionPool.get('t1', {**generic, 'db_name': 't1'})
+            TenantConnectionPool.release('t1')
+            await TenantConnectionPool.get('t2', {**generic, 'db_name': 't2'})  # leased
+            await TenantConnectionPool.get('t3', {**generic, 'db_name': 't3'})
+            await asyncio.sleep(0)
+
+            assert 't2' in TenantConnectionPool._pools
+            assert len(TenantConnectionPool._pools) == 2
+            TenantConnectionPool.release('t2')
+
+    @pytest.mark.asyncio
+    async def test_release_balances_lease_counts(self):
+        generic = {'db_name': 't', 'db_host': 'localhost',
+                    'db_port': 5432, 'db_user': 'u', 'db_password': 'p'}
+        with patch('asyncpg.create_pool', new=AsyncMock()):
+            await TenantConnectionPool.get('tenant-a', generic)
+            await TenantConnectionPool.get('tenant-a', generic)
+            assert TenantConnectionPool._leases.get('tenant-a') == 2
+            TenantConnectionPool.release('tenant-a')
+            assert TenantConnectionPool._leases.get('tenant-a') == 1
+            TenantConnectionPool.release('tenant-a')
+            assert 'tenant-a' not in TenantConnectionPool._leases
+
+    @pytest.mark.asyncio
+    async def test_concurrent_gets_create_single_pool(self):
+        # ME-02: N concurrent misses for the same slug must create exactly one
+        # pool (lock + double-check), and each caller holds a lease.
+        generic = {'db_name': 't', 'db_host': 'localhost',
+                    'db_port': 5432, 'db_user': 'u', 'db_password': 'p'}
+        with patch('asyncpg.create_pool', new=AsyncMock()) as mock_create:
+            pools = await asyncio.gather(*[
+                TenantConnectionPool.get('shared-tenant', generic)
+                for _ in range(5)
+            ])
+            assert len(set(pools)) == 1
+            assert mock_create.call_count == 1
+            assert TenantConnectionPool._leases.get('shared-tenant') == 5
 
     @pytest.mark.asyncio
     async def test_close_removes_pool(self):
@@ -307,7 +374,10 @@ class TestTenantJWT:
             )
         import jwt
         from api.jwt_keys import get_public_key_pem
-        payload = jwt.decode(token, get_public_key_pem(), algorithms=['RS256'])
+        payload = jwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False},
+        )
         assert payload['tenant'] == 'clinic-a'
 
     def test_refresh_preserves_tenant(self):
@@ -381,3 +451,87 @@ class TestTenantJWT:
     def test_no_tenant_denied_all(self):
         u = User({'id': 3, 'admin': False})
         assert u.can_access_tenant('some-clinic') is False
+
+
+class TestCrossTenantWriteGate:
+    """R5-HI-1: cross-tenant grants default to read — mutation requires an
+    explicit scope='write' row. Home-tenant and admin writes are unaffected."""
+
+    def _make_grant_client(self, scope):
+        from contextlib import ExitStack
+
+        from db.user_tenant_grants import UserTenantGrants
+
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic',
+                     'db_name': 'other_clinic'}
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+
+        auth_ctx = AsyncMock()
+        auth_conn = AsyncMock()
+        auth_conn.fetchval.return_value = 1
+        auth_ctx.__aenter__.return_value = auth_conn
+
+        grant_scope = AsyncMock(return_value=scope)
+
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+
+        stack = ExitStack()
+        stack.enter_context(patch('api.auth.get_conn', return_value=auth_ctx))
+        stack.enter_context(patch('api.tenant_middleware.get_conn', return_value=mw_ctx))
+        stack.enter_context(patch('api.tenant_middleware.TenantConnectionPool.get',
+                                  new=AsyncMock(return_value=_mock_pool())))
+        stack.enter_context(patch.object(UserTenantGrants, 'scope_for', grant_scope))
+        return client, stack
+
+    def test_read_scope_grant_cannot_mutate_cross_tenant(self):
+        client, stack = self._make_grant_client('read')
+        with stack:
+            resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 403
+        assert 'Read-only access to this tenant' in resp.json()['message']
+
+    def test_read_scope_grant_can_read_cross_tenant(self):
+        client, stack = self._make_grant_client('read')
+        with stack:
+            resp = client.get('/api/tenant-info', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+        assert resp.json()['slug'] == 'other-clinic'
+
+    def test_write_scope_grant_allows_mutation_cross_tenant(self):
+        client, stack = self._make_grant_client('write')
+        with stack:
+            resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+
+    def test_admin_can_mutate_cross_tenant(self):
+        mock_info = {'slug': 'other-clinic', 'name': 'Other Clinic',
+                     'db_name': 'other_clinic'}
+        user = User({'id': 1, 'admin': True})
+        client = TestClient(_make_app(user))
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+        with patch('api.tenant_middleware.get_conn', return_value=mw_ctx):
+            with patch('api.tenant_middleware.TenantConnectionPool.get', new=AsyncMock()):
+                resp = client.post('/api/noop', headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+
+    def test_home_tenant_write_allowed_for_regular_user(self):
+        mock_info = {'slug': 'my-clinic', 'name': 'My Clinic', 'db_name': 'my_clinic'}
+        user = User({'id': 7, 'admin': False, 'tenant': 'my-clinic',
+                     'permissions': ['CROSS_TENANT_READ']})
+        client = TestClient(_make_app(user))
+        mw_ctx = AsyncMock()
+        conn = AsyncMock()
+        conn.fetchrow.return_value = mock_info
+        mw_ctx.__aenter__.return_value = conn
+        with patch('api.tenant_middleware.get_conn', return_value=mw_ctx):
+            with patch('api.tenant_middleware.TenantConnectionPool.get', new=AsyncMock()):
+                resp = client.post('/api/noop', headers={'X-Tenant-ID': 'my-clinic'})
+        assert resp.status_code == 200

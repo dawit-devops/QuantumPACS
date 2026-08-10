@@ -142,10 +142,10 @@ describe("MobileNav", () => {
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
-  it("shows the Front Desk section in the drawer for a scheduler with R08 grants", async () => {
+  it("shows the Front Desk section in the drawer for a receptionist with R08 grants", async () => {
     const user = userEvent.setup();
     setSession({
-      role: "scheduler",
+      role: "receptionist",
       permissions: [
         "REGISTRATION_READ",
         "REGISTRATION_WRITE",

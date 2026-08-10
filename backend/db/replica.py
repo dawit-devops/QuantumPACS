@@ -54,10 +54,32 @@ class Replica(Table):
               record = NEW;
             END IF;
 
-            payload = json_build_object('table', TG_TABLE_NAME,
-                                        'action', TG_OP,
-                                        'old', COALESCE(row_to_json(OLD), '{}'::json),
-                                        'new', COALESCE(row_to_json(NEW), '{}'::json));
+            IF (TG_TABLE_NAME = 'files') THEN
+              -- LO-01: `files` rows reference PHI (patient/study/series ids)
+              -- and the bridge forwards payloads verbatim — forward only the
+              -- minimal routing keys, never the full row. All consumers
+              -- (bridge file events, ingestion) only need these fields.
+              payload = json_build_object(
+                'table', TG_TABLE_NAME,
+                'action', TG_OP,
+                'old', CASE WHEN TG_OP = 'INSERT' THEN '{}'::json
+                            ELSE json_build_object('id', OLD.id, 'name', OLD.name,
+                                                   'hash', OLD.hash,
+                                                   'patient_id', OLD.patient_id,
+                                                   'study_id', OLD.study_id,
+                                                   'series_id', OLD.series_id) END,
+                'new', CASE WHEN TG_OP = 'DELETE' THEN '{}'::json
+                            ELSE json_build_object('id', NEW.id, 'name', NEW.name,
+                                                   'hash', NEW.hash,
+                                                   'patient_id', NEW.patient_id,
+                                                   'study_id', NEW.study_id,
+                                                   'series_id', NEW.series_id) END);
+            ELSE
+              payload = json_build_object('table', TG_TABLE_NAME,
+                                          'action', TG_OP,
+                                          'old', COALESCE(row_to_json(OLD), '{}'::json),
+                                          'new', COALESCE(row_to_json(NEW), '{}'::json));
+            END IF;
 
             PERFORM pg_notify('events', payload::text);
 

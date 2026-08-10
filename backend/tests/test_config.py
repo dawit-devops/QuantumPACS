@@ -1,6 +1,12 @@
 
 
-from config import default_config, load_config
+import pytest
+
+from config import (
+    assert_production_secret,
+    default_config,
+    load_config,
+)
 
 
 class TestDefaultConfig:
@@ -84,3 +90,27 @@ class TestDefaultConfig:
         monkeypatch.chdir(tmp_path)
         cfg = load_config()
         assert 'db_host' in cfg
+
+    def test_default_db_password_rejected_by_assert(self):
+        # R2-M8: the shipped default DB password must never boot any
+        # environment without an explicit override.
+        from unittest.mock import patch
+
+        from config import ConfigurationError, config
+
+        with patch('config.config', {**config, 'db_password': 'pa55w0rd'}):
+            with pytest.raises(ConfigurationError):
+                assert_production_secret()
+
+    def test_fresh_db_password_passes_assert(self):
+        from unittest.mock import patch
+
+        from config import config
+
+        with patch('config.config', {
+            **config,
+            'secret': 'fresh-random-secret-32-bytes-xxxxxxxxx',
+            'superadmin_pass': 'fresh-superadmin-password-9x7k2',
+            'db_password': 'fresh-random-db-pass-9x7k2',
+        }):
+            assert_production_secret()

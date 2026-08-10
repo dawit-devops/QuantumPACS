@@ -22,9 +22,14 @@
   }
 }
 
+/* (R1-05) The old hard min-width: 700px overflowed the content column at
+   exactly 768px (700 + margins > viewport). A block element already fills
+   its parent width, so dropping the horizontal floor removes the overflow
+   without changing the desktop layout; the vertical floor still gives the
+   canvas a definite size. */
 @media only screen and (min-width: 768px) {
   .viewportElement {
-    min-width: 700px;
+    min-width: 0;
     min-height: 700px;
   }
 }

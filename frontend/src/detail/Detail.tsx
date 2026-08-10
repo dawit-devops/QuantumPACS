@@ -24,6 +24,7 @@ import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import { parseAnnotations } from "./MeasurementPanel";
 import MeasurementPanel from "./MeasurementPanel";
 import { PageState } from "../common/PageState";
+import PageHeader from "../common/PageHeader";
 import withSidebar from "../common/base";
 
 const { useBreakpoint } = Grid;
@@ -153,27 +154,24 @@ function Detail() {
 
   const background = tab === "image" ? "var(--viewer-bg)" : "";
 
-  const changeStudy = (e: React.MouseEvent, s: FileStudy) => {
-    e.preventDefault();
+  const changeStudy = (s: FileStudy) => {
     setStudy(s);
     setSeries(s.series?.[0] ?? null);
   };
 
+  // (R1-05) Breadcrumb drop items use the native `title` + `onClick` contract
+  // instead of the old `<a href="">` labels — an empty href is an invalid
+  // link target and is not keyboard-activatable.
   const studiesDrop = (data: FileStudy[] | undefined) => {
     if (!data) return [];
     return data.map((d: FileStudy) => ({
       key: d.study_id,
-      label: (
-        <a
-          href=""
-          onClick={(e: React.MouseEvent) => changeStudy(e, d)}
-        >{`Study ${d.study_id ?? ""} ${wrap(d.description ?? "")}`}</a>
-      ),
+      title: `Study ${d.study_id ?? ""} ${wrap(d.description ?? "")}`,
+      onClick: () => changeStudy(d),
     }));
   };
 
-  const changeSeries = (e: React.MouseEvent, s: FileSeries) => {
-    e.preventDefault();
+  const changeSeries = (s: FileSeries) => {
     setSeries(s);
   };
 
@@ -181,12 +179,8 @@ function Detail() {
     if (!data) return [];
     return data.map((d: FileSeries) => ({
       key: d.number,
-      label: (
-        <a
-          href=""
-          onClick={(e: React.MouseEvent) => changeSeries(e, d)}
-        >{`Series ${d.number ?? ""} ${wrap(d.description ?? "")}`}</a>
-      ),
+      title: `Series ${d.number ?? ""} ${wrap(d.description ?? "")}`,
+      onClick: () => changeSeries(d),
     }));
   };
 
@@ -215,6 +209,10 @@ function Detail() {
       }}
     >
       <PageState loading={loading && !data.id} error={error}>
+        <PageHeader
+          title={data.name ? String(data.name) : "Study Viewer"}
+          description="DICOM image review"
+        />
         <Menu
           style={{ paddingLeft: "40px" }}
           defaultSelectedKeys={[tab]}

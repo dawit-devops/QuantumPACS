@@ -27,7 +27,10 @@ const LOGIN_RETRY_KEY = "loginAttempts";
 
 // Dev-only quick-fill: every canonical role slug becomes a `test.`-prefixed
 // username so testers can sign in as any persona without typing credentials.
-const demoUsernames = Object.keys(NAME_MAP).map((slug) => `test.${slug}`);
+// (R1-05) Gated on DEV so the demo-user catalog never ships in prod builds.
+const demoUsernames = import.meta.env.DEV
+  ? Object.keys(NAME_MAP).map((slug) => `test.${slug}`)
+  : [];
 
 function getLoginDelay(): number {
   try {
@@ -43,7 +46,7 @@ function getLoginDelay(): number {
   return 0;
 }
 
-function recordFailedAttempt() {
+function recordFailedAttempt(): number {
   const raw = localStorage.getItem(LOGIN_RETRY_KEY);
   let count = 1;
   if (raw) {
@@ -52,13 +55,15 @@ function recordFailedAttempt() {
     } catch {}
   }
   const delay = Math.min(30, Math.pow(2, count - 1));
+  const nextAllowed = Date.now() + delay * 1000;
   localStorage.setItem(
     LOGIN_RETRY_KEY,
     JSON.stringify({
       count,
-      nextAllowed: Date.now() + delay * 1000,
+      nextAllowed,
     }),
   );
+  return nextAllowed;
 }
 
 function clearAttempts() {
@@ -78,6 +83,10 @@ function LoginForm(props: any) {
   const [providers, setProviders] = useState<any[]>([]);
   const { signIn } = useAuth();
   const { isDark } = useTheme();
+  // (R1-05) Single absolute lockout deadline; the countdown interval below
+  // derives remaining seconds from it instead of recreating itself on every
+  // tick (the old `[lockoutSeconds]` dependency re-armed setInterval 1/sec).
+  const lockoutEndRef = useRef<number | null>(null);
 
   useEffect(() => {
     const err = sessionStorage.getItem("shareKeyError");
@@ -115,25 +124,28 @@ function LoginForm(props: any) {
     );
     // A-7: ProtectedRoute records the pre-login URL in location.state.from so
     // users land back where they were headed instead of always the root.
+    // The root is not a deep link: logging in from "/" must still reach the
+    // role-scoped landing (admin home is the dashboard, not the files page).
     const from = (location.state as { from?: { pathname?: string } } | null)
       ?.from?.pathname;
     // Role-scoped landing: the user shape mirrors the one handed to signIn()
     // above, so the redirect matches the workspace the session exposes.
     navigate(
-      from ||
-        landingRouteFor({
-          role: data.role || (data.admin ? "admin" : "user"),
-          admin: data.admin === true || data.admin === "true",
-          permissions: data.permissions || [],
-        }),
+      from && from !== "/"
+        ? from
+        : landingRouteFor({
+            role: data.role || (data.admin ? "admin" : "user"),
+            admin: data.admin === true || data.admin === "true",
+            permissions: data.permissions || [],
+          }),
     );
   }, [data, location.state]);
 
-  const errorRef = React.useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (!loading && error) {
-      if (error.status !== 429) recordFailedAttempt();
+      if (error.status !== 429) {
+        lockoutEndRef.current = recordFailedAttempt();
+      }
       setLockoutSeconds(getLoginDelay());
       const msg =
         error.status === 429
@@ -149,15 +161,30 @@ function LoginForm(props: any) {
     }
   }, [loading, error]);
 
+  // Seed the deadline from storage on mount so a reload during a lockout
+  // keeps counting down.
   useEffect(() => {
-    if (lockoutSeconds <= 0) return;
+    try {
+      const raw = localStorage.getItem(LOGIN_RETRY_KEY);
+      if (raw) {
+        const { nextAllowed } = JSON.parse(raw);
+        if (nextAllowed > Date.now()) lockoutEndRef.current = nextAllowed;
+      }
+    } catch {}
+  }, []);
+
+  // One interval for the whole mount; remaining time is always derived from
+  // the absolute deadline, so ticks never re-create the timer.
+  useEffect(() => {
     const id = setInterval(() => {
-      const remaining = getLoginDelay();
+      const end = lockoutEndRef.current;
+      if (end == null) return;
+      const remaining = Math.max(0, Math.ceil((end - Date.now()) / 1000));
       setLockoutSeconds(remaining);
-      if (remaining <= 0) clearInterval(id);
+      if (remaining <= 0) lockoutEndRef.current = null;
     }, 1000);
     return () => clearInterval(id);
-  }, [lockoutSeconds]);
+  }, []);
 
   const handleSubmit = (values: any) => {
     if (lockoutSeconds > 0) {
@@ -231,30 +258,37 @@ function LoginForm(props: any) {
               <Input
                 prefix={<UserOutlined style={{ color: prefixColor }} />}
                 placeholder="Username"
+                aria-label="Username"
                 size="large"
                 autoComplete="username"
-                list="demo-usernames"
+                list={import.meta.env.DEV ? "demo-usernames" : undefined}
+                maxLength={128}
               />
             </Form.Item>
             {/* Dev/demo helper: a datalist of `test.`-prefixed role usernames
                 so testers can impersonate any persona from the role catalog
-                without typing credentials by hand. */}
-            <datalist id="demo-usernames">
-              {demoUsernames.map((username) => (
-                <option key={username} value={username} />
-              ))}
-            </datalist>
-            <Text
-              type="secondary"
-              style={{
-                display: "block",
-                textAlign: "center",
-                fontSize: 11,
-                marginBottom: 16,
-              }}
-            >
-              Demo users (dev only): pick a role username, e.g. test.radiologist
-            </Text>
+                without typing credentials by hand. (R1-05) Dev-only. */}
+            {import.meta.env.DEV && (
+              <datalist id="demo-usernames">
+                {demoUsernames.map((username) => (
+                  <option key={username} value={username} />
+                ))}
+              </datalist>
+            )}
+            {import.meta.env.DEV && (
+              <Text
+                type="secondary"
+                style={{
+                  display: "block",
+                  textAlign: "center",
+                  fontSize: 11,
+                  marginBottom: 16,
+                }}
+              >
+                Demo users (dev only): pick a role username, e.g.
+                test.radiologist
+              </Text>
+            )}
             <Form.Item
               name="password"
               rules={[
@@ -264,8 +298,10 @@ function LoginForm(props: any) {
               <Input.Password
                 prefix={<LockOutlined style={{ color: prefixColor }} />}
                 placeholder="Password"
+                aria-label="Password"
                 size="large"
                 autoComplete="current-password"
+                maxLength={256}
               />
             </Form.Item>
             <Form.Item>

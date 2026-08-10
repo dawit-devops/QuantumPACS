@@ -153,7 +153,7 @@ describe("PermissionRoute", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("username", "ops-user");
     localStorage.setItem("admin", "false");
-    localStorage.setItem("role", "biomedical_engineer");
+    localStorage.setItem("role", "ops_engineer");
     localStorage.setItem("permissions", JSON.stringify(["REPLICA_READ"]));
 
     render(
@@ -177,9 +177,9 @@ describe("PermissionRoute", () => {
 
   it("redirects when none of the listed permissions matches", () => {
     localStorage.setItem("userId", "u1");
-    localStorage.setItem("username", "biller-user");
+    localStorage.setItem("username", "billing-clerk");
     localStorage.setItem("admin", "false");
-    localStorage.setItem("role", "biller");
+    localStorage.setItem("role", "billing_clerk");
     localStorage.setItem(
       "permissions",
       JSON.stringify(["BILLING_READ", "METERING_READ"]),

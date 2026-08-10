@@ -58,18 +58,20 @@ class IngestionHandler:
         if self.storage is not None:
             await self.storage.store(data, file_bytes)
         if self.search is not None:
-            await self.search.index_file(data)
+            # CR-01: tenant-DB events carry their slug (HI-04) — index into
+            # the tenant's namespace so ids cannot collide across tenants.
+            await self.search.index_file(data, tenant_slug=data.get('tenant', ''))
 
     async def _handle_dicom_reindex(self, data: dict[str, Any]) -> None:
         file_id = data.get('file_id', '')
         log.info('reindexing file: %s', file_id)
         if self.search is not None:
-            await self.search.index_file(data)
+            await self.search.index_file(data, tenant_slug=data.get('tenant', ''))
 
     async def _handle_dicom_delete(self, data: dict[str, Any]) -> None:
         file_id = data.get('file_id', '')
         log.info('deleting file: %s', file_id)
         if self.search is not None:
-            await self.search.delete_from_index(file_id)
+            await self.search.delete_from_index(file_id, tenant_slug=data.get('tenant', ''))
         if self.storage is not None:
             await self.storage.delete(data)

@@ -305,7 +305,7 @@ class TestExamReportSign:
         with _conn(fetchrow=fake_fetchrow):
             resp = client.post('/reports/exam-1/sign', json={'confirm': True})
         assert resp.status_code == 400
-        assert 'Impression is required' in resp.json()['error']
+        assert 'Impression is required' in resp.json()['error']['message']
 
     def test_sign_success(self):
         client = TestClient(_make_app(RAD))
@@ -379,7 +379,7 @@ class TestPeerReviews:
                 'report_id': 'rep-1', 'reviewer_id': 'user-x',
             })
         assert resp.status_code == 400
-        assert 'final' in resp.json()['error']
+        assert 'final' in resp.json()['error']['message']
 
     def test_create_assignment(self):
         client = TestClient(_make_app(RAD))

@@ -31,7 +31,7 @@ class FakeStorage:
 class FakeSearch:
     def __init__(self):
         self.indexed = []
-    async def index_file(self, data):
+    async def index_file(self, data, tenant_slug=''):
         self.indexed.append(data)
         return True
     async def search(self, q): return {'data': [], 'total': 0}

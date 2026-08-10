@@ -2,7 +2,12 @@ from starlette.endpoints import HTTPEndpoint
 import asyncpg
 
 from api.rbac import requires_permission
-from api.permissions import Permission, PERMISSION_GROUPS
+from api.permissions import (
+    Permission,
+    PERMISSION_GROUPS,
+    IMMUTABLE_ROLE_SLUGS,
+    PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES,
+)
 from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
@@ -12,6 +17,13 @@ from db.roles import Roles
 from db.users import Users
 from log import request_id_var
 from api.tenant_middleware import effective_tenant
+
+
+def _permissions_subset_of(caller_perms, target_perms):
+    """A non-platform-admin may only create/update roles whose permission
+    set is a subset of their own — otherwise ROLE_WRITE becomes a backdoor
+    to escalate any role (R2-M2)."""
+    return set(target_perms or []) <= set(caller_perms or [])
 
 
 class RolesHandler(HTTPEndpoint):
@@ -24,6 +36,12 @@ class RolesHandler(HTTPEndpoint):
     @requires_permission(Permission.ROLE_WRITE)
     async def post(self, request):
         body = await parse_body(CreateRoleRequest, request)
+        if not request.user.admin and not _permissions_subset_of(
+            request.user.permissions, body.permissions
+        ):
+            return api_error(
+                'FORBIDDEN', 'Role permissions exceed your own grants', status=403
+            )
         async with get_conn() as conn:
             try:
                 role_id = await Roles(conn).create(
@@ -66,10 +84,28 @@ class RoleHandler(HTTPEndpoint):
             if not role:
                 return not_found('Role not found')
             if role.get('built_in'):
-                # Built-in roles are immutable (RBAC spec §4: "built-in ·
-                # immutable") — editing them would let ROLE_WRITE holders
-                # escalate grants (e.g. add permissions to super_admin).
-                return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
+                # R2-16: built-in roles split into three tiers — immutable
+                # (platform/tenant/pacs/emr admin + patient), platform-admin
+                # only (teleradiologist), and facility-editable (the remaining
+                # clinical/operational slugs). Deletion stays blocked for every
+                # built-in; only permission lists are editable.
+                slug = role.get('slug')
+                if slug in IMMUTABLE_ROLE_SLUGS:
+                    return api_error(
+                        'FORBIDDEN', 'Cannot modify immutable built-in role', status=403
+                    )
+                if slug in PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES and not request.user.admin:
+                    return api_error(
+                        'FORBIDDEN', 'Only the platform admin can modify this role', status=403
+                    )
+            if (
+                body.permissions is not None
+                and not request.user.admin
+                and not _permissions_subset_of(request.user.permissions, body.permissions)
+            ):
+                return api_error(
+                    'FORBIDDEN', 'Role permissions exceed your own grants', status=403
+                )
             try:
                 await Roles(conn).patch(
                     role_id,

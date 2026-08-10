@@ -215,14 +215,6 @@ MATRIX_A_TECH = {
     'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
     'CHART_READ', 'RESULTS_READ',
 }
-MATRIX_A_SCHED = {
-    'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ',
-    'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
-    'WORKLIST_READ',
-    # R08 front-desk grants: registration (search/create patients), visits,
-    # order intake and the privacy-projected waiting queue (api/frontdesk.py).
-    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
-}
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
     # R08 front-desk grants: registration (search/create patients), visits,
@@ -239,34 +231,9 @@ MATRIX_A_REF = {
     'WORKLIST_READ', 'REPORT_READ', 'VIEWER_READ', 'STUDY_READ',
     'CHART_READ', 'RESULTS_READ',
 }
-MATRIX_A_ED = {
-    'PATIENT_READ', 'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ', 'WORKLIST_READ',
-    'REPORT_READ', 'CRITICAL_RESULTS_WRITE', 'VIEWER_READ', 'STUDY_READ',
-    'CHART_READ', 'RESULTS_READ',
-    'ENCOUNTER_WRITE', 'NOTE_SIGN', 'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MAR_READ',
-}
 MATRIX_A_BILL = {
     'PATIENT_READ', 'ORDER_READ', 'REPORT_READ', 'BILLING_READ', 'BILLING_WRITE',
     'CHART_READ', 'RESULTS_READ',
-}
-MATRIX_A_DMGR = {
-    'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ', 'REPORT_READ',
-    'BILLING_READ', 'STUDY_READ', 'INTERFACE_MONITOR', 'AUDIT_READ', 'METERING_READ',
-    'CHART_READ', 'RESULTS_READ',
-}
-MATRIX_A_RADADM = {
-    'PATIENT_READ', 'PATIENT_WRITE', 'PATIENT_MERGE', 'MPI_ADMIN',
-    'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ', 'SCHEDULE_WRITE',
-    'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
-    'WORKLIST_READ', 'WORKLIST_WRITE',
-    'REPORT_READ', 'REPORT_WRITE',  # no REPORT_SIGN
-    'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN',
-    'BILLING_READ',  # no BILLING_WRITE
-    'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
-    'STUDY_EXPORT', 'STORAGE_ADMIN', 'INTERFACE_MONITOR', 'INTERFACE_ADMIN',
-    'AUDIT_READ', 'METERING_READ',
-    'CHART_READ', 'RESULTS_READ', 'USER_READ', 'USER_WRITE',
-    'ENCOUNTER_WRITE', 'MED_ORDER_READ', 'MED_ORDER_WRITE', 'ADMIN',
 }
 MATRIX_A_PACSADM = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ',
@@ -275,12 +242,9 @@ MATRIX_A_PACSADM = {
     'STUDY_EXPORT', 'STORAGE_ADMIN', 'INTERFACE_MONITOR', 'INTERFACE_ADMIN',
     'AUDIT_READ', 'CHART_READ', 'RESULTS_READ',
     'USER_READ', 'USER_WRITE', 'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN',
-}
-MATRIX_A_INFO = {
-    'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ', 'REPORT_READ',
-    'REPORT_TEMPLATE_ADMIN', 'BILLING_READ', 'VIEWER_READ', 'STUDY_READ',
-    'INTERFACE_MONITOR', 'AUDIT_READ', 'METERING_READ',
-    'CHART_READ', 'RESULTS_READ',
+    # R2-16: facility admins (pacs_admin) manage roles of the clinical/
+    # operational built-ins (radiologist, technologist, ...) plus custom roles.
+    'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',
 }
 
 # Matrix B — EMR roles
@@ -296,32 +260,6 @@ MATRIX_B_RES = {
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
 }
-MATRIX_B_NURSE = {
-    'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE', 'NOTE_SIGN',
-    'MED_ORDER_READ',  # no MED_ORDER_WRITE
-    'MAR_READ', 'MAR_WRITE', 'RESULTS_READ', 'SCHEDULE_READ',
-    'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
-}
-MATRIX_B_PHARM = {
-    'CHART_READ', 'PATIENT_READ',
-    'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MED_VERIFY', 'MAR_READ', 'RESULTS_READ',
-}
-MATRIX_B_LAB = {
-    'CHART_READ', 'PATIENT_READ',
-    'ORDER_READ', 'ORDER_WRITE',
-    'RESULTS_READ', 'RESULTS_RELEASE', 'LAB_SPECIMEN_WRITE',
-}
-MATRIX_B_CODER = {
-    'CHART_READ', 'PATIENT_READ',
-    'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'PRIOR_AUTH_READ',
-    'REPORT_READ', 'STUDY_READ', 'VIEWER_READ',
-    'CODING_WRITE', 'BILLING_READ', 'BILLING_WRITE',
-}
-MATRIX_B_HIM = {
-    'CHART_READ', 'PATIENT_READ', 'NOTE_SIGN',  # amend
-    'RESULTS_READ', 'REPORT_READ', 'STUDY_READ', 'VIEWER_READ',
-    'HIM_WRITE', 'AUDIT_READ',
-}
 MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',
     'MED_ORDER_READ',  # no MED_ORDER_WRITE
@@ -331,7 +269,11 @@ MATRIX_B_COORD = {
 MATRIX_B_EMRADM = {
     'AUDIT_READ',
     'USER_READ', 'USER_WRITE',
-    'ROLE_READ', 'SERVICE_KEY_READ',  # ROLE_WRITE/ROLE_DELETE reserved for TENANT_ADMIN
+    'ROLE_READ', 'SERVICE_KEY_READ',
+    # R2-16: facility admins (emr_admin) manage roles of the clinical/
+    # operational built-ins (physician, resident, ...) plus custom roles;
+    # ROLE_WRITE/ROLE_DELETE no longer reserved for TENANT_ADMIN alone.
+    'ROLE_WRITE', 'ROLE_DELETE',
     'INTERFACE_MONITOR', 'INTERFACE_ADMIN',
     'CDS_ADMIN', 'REPORT_TEMPLATE_ADMIN', 'METERING_READ', 'TENANT_READ',
 }
@@ -381,24 +323,6 @@ LEGACY_TENANT_ADMIN = {
 # billing role more power than the Matrix A billing row. An empty set makes
 # CASHIER == BILLER exactly.
 LEGACY_CASHIER = set()
-LEGACY_FRONT_DESK = {
-    'FILE_READ', 'STUDY_READ', 'SCHEDULE_WRITE',
-    'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
-}
-LEGACY_NURSE = {
-    'FILE_READ', 'STUDY_READ', 'EXAM_READ', 'WORKLIST_READ',
-    'NURSING_READ', 'NURSING_WRITE',
-}
-LEGACY_BIOMEDICAL_ENGINEER = {
-    'EQUIPMENT_READ', 'EQUIPMENT_WRITE', 'METRICS_READ',
-}
-LEGACY_SERVICE_DIRECTOR = {
-    'FILE_READ', 'STUDY_READ', 'EXAM_READ', 'METRICS_READ',
-    'ANALYTICS_READ', 'ANALYTICS_EXPORT', 'REPORT_BUILD', 'QUEUE_READ',
-}
-LEGACY_HOSPITAL_STAFF = {
-    'FILE_READ', 'STUDY_READ', 'FOLLOW_UP_WRITE',
-}
 
 # RAD/TEL identical grants — teleradiologist must equal radiologist (spec §5)
 RADIOLOGIST_PERMISSIONS = sorted(LEGACY_RADIOLOGIST | MATRIX_A_RAD_TEL)
@@ -406,82 +330,41 @@ TECHNOLOGIST_PERMISSIONS = sorted(LEGACY_TECHNOLOGIST | MATRIX_A_TECH)
 PHYSICIAN_PERMISSIONS = sorted(LEGACY_PHYSICIAN | MATRIX_B_PHYS)
 TENANT_ADMIN_PERMISSIONS = sorted(LEGACY_TENANT_ADMIN | MATRIX_C_TENANT_ADMIN)
 CASHIER_PERMISSIONS = sorted(LEGACY_CASHIER | MATRIX_A_BILL)
-FRONT_DESK_PERMISSIONS = sorted(LEGACY_FRONT_DESK | MATRIX_A_RECEPT)
-NURSE_PERMISSIONS = sorted(LEGACY_NURSE | MATRIX_B_NURSE)
-BIOMEDICAL_ENGINEER_PERMISSIONS = sorted(LEGACY_BIOMEDICAL_ENGINEER | MATRIX_A_INFO)
-SERVICE_DIRECTOR_PERMISSIONS = sorted(LEGACY_SERVICE_DIRECTOR | MATRIX_A_DMGR)
-HOSPITAL_STAFF_PERMISSIONS = sorted(LEGACY_HOSPITAL_STAFF | MATRIX_C_PATIENT)
+
+
+# ---------------------------------------------------------------------------
+# Immutability policy for built-in roles (R2-16).
+#
+# Tiers (superset → subset):
+#   * IMMUTABLE_ROLE_SLUGS — cannot be modified or deleted by anyone below the
+#     platform admin; these anchor platform/tenant/pacs/emr administration and
+#     the patient portal.
+#   * PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES — editable by the platform admin
+#     (super_admin, request.user.admin) only. Teleradiology coverage contracts
+#     are platform policy, so facilities must not loosen these grants.
+#   * All remaining built-in slugs — editable by facility admins holding
+#     ROLE_WRITE (tenant_admin, pacs_admin, emr_admin). Deletion of built-in
+#     roles stays blocked for every tier (R2-16).
+# ---------------------------------------------------------------------------
+IMMUTABLE_ROLE_SLUGS = frozenset({
+    'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+})
+PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES = frozenset({'teleradiologist'})
 
 
 BUILT_IN_ROLES = {
     'super_admin': list(SUPER_ADMIN_PERMISSIONS),
-    'admin': [
-        Permission.FILE_READ.value, Permission.FILE_WRITE.value, Permission.FILE_DELETE.value,
-        Permission.PATIENT_READ.value, Permission.PATIENT_WRITE.value,
-        Permission.STUDY_READ.value, Permission.STUDY_WRITE.value,
-        Permission.USER_READ.value, Permission.USER_WRITE.value,
-        Permission.REPLICA_READ.value, Permission.REPLICA_WRITE.value,
-        Permission.LOG_READ.value,
-        Permission.ROLE_READ.value, Permission.ROLE_WRITE.value,
-        Permission.SERVICE_KEY_READ.value, Permission.SERVICE_KEY_WRITE.value,
-        Permission.SERVICE_KEY_DELETE.value,
-        Permission.WORKLIST_READ.value, Permission.WORKLIST_WRITE.value,
-        Permission.EXAM_READ.value, Permission.EXAM_WRITE.value,
-        Permission.REPORT_READ.value, Permission.REPORT_WRITE.value, Permission.REPORT_SIGN.value,
-        Permission.PEER_REVIEW_READ.value, Permission.PEER_REVIEW_WRITE.value,
-        Permission.DICOMWEB_READ.value, Permission.DICOMWEB_WRITE.value,
-        Permission.ROUTING_READ.value, Permission.ROUTING_WRITE.value,
-        Permission.METRICS_READ.value,
-        Permission.SYSTEM_ADMIN.value,
-        Permission.HL7_READ.value, Permission.HL7_WRITE.value,
-        Permission.REGISTRATION_READ.value, Permission.REGISTRATION_WRITE.value,
-        Permission.SCHEDULE_READ.value, Permission.SCHEDULE_WRITE.value,
-        Permission.QUEUE_READ.value,
-        Permission.BILLING_READ.value, Permission.BILLING_WRITE.value, Permission.BILLING_ADMIN.value,
-        Permission.EQUIPMENT_READ.value, Permission.EQUIPMENT_WRITE.value,
-        Permission.NURSING_READ.value, Permission.NURSING_WRITE.value,
-        Permission.ANALYTICS_READ.value, Permission.ANALYTICS_EXPORT.value, Permission.REPORT_BUILD.value,
-        Permission.PORTAL_READ.value, Permission.FOLLOW_UP_WRITE.value,
-    ],
     'technologist': list(TECHNOLOGIST_PERMISSIONS),
     'radiologist': list(RADIOLOGIST_PERMISSIONS),
     'teleradiologist': list(RADIOLOGIST_PERMISSIONS),  # RAD == TEL (spec §5)
-    'qa_team': [
-        Permission.FILE_READ.value,
-        Permission.PATIENT_READ.value,
-        Permission.STUDY_READ.value,
-        Permission.EXAM_READ.value,
-        Permission.QA_READ.value,
-        Permission.QA_WRITE.value,
-        Permission.PROTOCOL_MANAGE.value,
-        Permission.PEER_REVIEW_READ.value,
-        Permission.PEER_REVIEW_WRITE.value,
-        Permission.DICOMWEB_READ.value,
-        Permission.METRICS_READ.value,
-    ],
     'physician': list(PHYSICIAN_PERMISSIONS),
     'tenant_admin': list(TENANT_ADMIN_PERMISSIONS),
     'cashier': list(CASHIER_PERMISSIONS),
-    'front_desk': list(FRONT_DESK_PERMISSIONS),
-    'nurse': list(NURSE_PERMISSIONS),
-    'biomedical_engineer': list(BIOMEDICAL_ENGINEER_PERMISSIONS),
-    'service_director': list(SERVICE_DIRECTOR_PERMISSIONS),
-    'hospital_staff': list(HOSPITAL_STAFF_PERMISSIONS),
     # ---- Canonical roles (docs/reaserch/RBAC_matrix_spec.md §4/§5) ----
-    'scheduler': sorted(MATRIX_A_SCHED),
     'receptionist': sorted(MATRIX_A_RECEPT),
     'referring_physician': sorted(MATRIX_A_REF),
-    'ed_physician': sorted(MATRIX_A_ED),
-    'biller': sorted(MATRIX_A_BILL),
-    'department_manager': sorted(MATRIX_A_DMGR),
-    'radiology_admin': sorted(MATRIX_A_RADADM),
     'pacs_admin': sorted(MATRIX_A_PACSADM),
-    'imaging_informatics': sorted(MATRIX_A_INFO),
     'resident': sorted(MATRIX_B_RES),
-    'pharmacist': sorted(MATRIX_B_PHARM),
-    'lab_technician': sorted(MATRIX_B_LAB),
-    'medical_coder': sorted(MATRIX_B_CODER),
-    'him_specialist': sorted(MATRIX_B_HIM),
     'care_coordinator': sorted(MATRIX_B_COORD),
     'emr_admin': sorted(MATRIX_B_EMRADM),
     'patient': sorted(MATRIX_C_PATIENT),

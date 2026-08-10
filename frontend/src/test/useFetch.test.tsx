@@ -180,6 +180,24 @@ describe("useFetch", () => {
     expect(navigate).toHaveBeenCalledWith("/login");
   });
 
+  it("does not navigate to /login when refresh is rate-limited (429)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "expired" }, 401));
+    vi.spyOn(session, "tryRefreshToken").mockResolvedValue(false);
+    const rateLimitedSpy = vi
+      .spyOn(session, "wasRefreshRateLimited")
+      .mockReturnValue(true);
+
+    const { result } = renderHook(() => useFetch("items"));
+
+    await act(async () => {
+      result.current.exec();
+      await vi.advanceTimersByTimeAsync(10);
+    });
+
+    expect(navigate).not.toHaveBeenCalled();
+    rateLimitedSpy.mockRestore();
+  });
+
   it("calls the unauthorized callback instead of navigating when provided", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "expired" }, 401));
     vi.spyOn(session, "tryRefreshToken").mockResolvedValue(false);

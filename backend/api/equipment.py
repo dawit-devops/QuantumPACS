@@ -309,7 +309,7 @@ class QCRecordsHandler(HTTPEndpoint):
                 )
                 identifier = equipment.get('identifier') or equipment_id
                 await notify_role(
-                    conn, 'biomedical_engineer', 'equipment.qc_failure',
+                    conn, 'technologist', 'equipment.qc_failure',
                     f'QC failed: {identifier}',
                     f'QC test {body.test_type} failed for {identifier} — action required',
                     f'/equipment/{equipment_id}',
@@ -476,7 +476,7 @@ class WorkOrdersHandler(HTTPEndpoint):
             )
             identifier = equipment.get('identifier') or body.equipment_id
             await notify_role(
-                conn, 'biomedical_engineer', 'equipment.work_order',
+                conn, 'technologist', 'equipment.work_order',
                 f'New work order: {identifier}',
                 body.description,
                 f'/work-orders/{work_order["id"]}',
@@ -683,7 +683,7 @@ class PartsInventoryHandler(HTTPEndpoint):
                     request_id=request_id_var.get(),
                 )
                 await notify_role(
-                    conn, 'biomedical_engineer', 'equipment.low_stock',
+                    conn, 'technologist', 'equipment.low_stock',
                     f'Low stock: {part_name}',
                     f'Stock level {stock_level} is below threshold {threshold}',
                     '/parts',

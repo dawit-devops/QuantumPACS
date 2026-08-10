@@ -11,7 +11,7 @@ from pynetdicom.sop_class import (
     StudyRootQueryRetrieveInformationModelFind,
 )
 
-from dcm.store import store_instance
+from dcm.store import store_instance, tenant_db_scope, resolve_tenant_slug_for_ae, TenantResolutionError
 from config import config
 from lifecycle import setup, teardown
 from log import get_logger
@@ -22,7 +22,35 @@ _initialized = False
 _init_lock = asyncio.Lock()
 
 
-async def store(ds, data):
+def _requestor_ae_title(event):
+    """Calling AE title of the association that raised `event` (CR-02)."""
+    assoc = getattr(event, 'assoc', None)
+    requestor = getattr(assoc, 'requestor', None) if assoc else None
+    return getattr(requestor, 'ae_title', '') or ''
+
+
+async def _tenant_scope_for_ae(ae_title):
+    """Resolve the tenant scope for a DICOM calling AE (CR-02).
+
+    Returns (tenant_slug, tenant_info) — ('', {}) for unmapped AEs, which
+    fall back to the seeded `default` tenant whose data store is the main
+    database. A mapped AE whose tenant is missing from the registry raises
+    TenantResolutionError (ME-05): silently serving the default scope would
+    leak the default tenant's data to a tenant's modality.
+    """
+    slug = resolve_tenant_slug_for_ae(ae_title)
+    if not slug or slug == 'default':
+        return '', {}
+    from db.conn import get_conn
+    from db.tenants import Tenants
+    async with get_conn() as conn:
+        info = await Tenants(conn).get_by_slug(slug) or {}
+    if not info:
+        raise TenantResolutionError(f'Tenant {slug!r} not found in registry')
+    return slug, info
+
+
+async def store(ds, data, ae_title=''):
     global _initialized
 
     if not _initialized:
@@ -31,12 +59,12 @@ async def store(ds, data):
                 await setup()
                 _initialized = True
 
-    return await store_instance(ds, data)
+    return await store_instance(ds, data, ae_title=ae_title)
 
 
-async def _handle_store_async(ds, dst):
+async def _handle_store_async(ds, dst, ae_title=''):
     try:
-        return await store(ds, dst)
+        return await store(ds, dst, ae_title=ae_title)
     except Exception:
         log.error('DICOM store failed: %s', traceback.format_exc())
         return False
@@ -53,7 +81,9 @@ def handle_store(event):
         log.error('DICOM save failed: %s', traceback.format_exc())
         return 0x0001
 
-    future = asyncio.run_coroutine_threadsafe(_handle_store_async(ds, dst), _loop)
+    future = asyncio.run_coroutine_threadsafe(
+        _handle_store_async(ds, dst, _requestor_ae_title(event)), _loop,
+    )
     try:
         result = future.result(timeout=60)
     except Exception:
@@ -100,7 +130,11 @@ def _fmt_time(value):
     return str(value).replace(':', '')
 
 
-async def handle_find_async(query_ds):
+async def handle_find_async(query_ds, ae_title=''):
+    try:
+        slug, tenant_info = await _tenant_scope_for_ae(ae_title)
+    except TenantResolutionError:
+        raise
     try:
         from db.conn import get_conn
         from db.worklist import Worklist
@@ -133,10 +167,13 @@ async def handle_find_async(query_ds):
         if hasattr(query_ds, 'AccessionNumber') and query_ds.AccessionNumber:
             filters['search'] = str(query_ds.AccessionNumber)
 
-        async with get_conn() as conn:
-            # search() returns (rows, total) — the tuple must be unpacked or
-            # the caller iterates a 2-tuple and crashes (seen as empty MWL).
-            entries, _ = await Worklist(conn).search(status='scheduled', per_page=1000, **filters)
+        # Worklist entries are per-tenant: a mapped AE queries its own
+        # tenant's scheduled exams (CR-02).
+        async with tenant_db_scope(slug, tenant_info):
+            async with get_conn() as conn:
+                # search() returns (rows, total) — the tuple must be unpacked or
+                # the caller iterates a 2-tuple and crashes (seen as empty MWL).
+                entries, _ = await Worklist(conn).search(status='scheduled', per_page=1000, **filters)
 
         results = []
         for entry in entries:
@@ -206,14 +243,21 @@ def _entry_to_dataset(entry):
     return ds
 
 
-async def handle_find_qr_async(query_ds):
+async def handle_find_qr_async(query_ds, ae_title=''):
     """Patient/Study Root Q/R C-FIND: study-, series- or instance-level."""
+    try:
+        slug, tenant_info = await _tenant_scope_for_ae(ae_title)
+    except TenantResolutionError:
+        raise
     try:
         from db.conn import get_conn
         from db.query_retrieve import QueryRetrieve
 
-        async with get_conn() as conn:
-            return await QueryRetrieve(query_ds).search(conn)
+        # Studies are per-tenant: a mapped AE queries its own tenant's data
+        # (CR-02); unmapped AEs read the default tenant (main store).
+        async with tenant_db_scope(slug, tenant_info):
+            async with get_conn() as conn:
+                return await QueryRetrieve(query_ds).search(conn)
     except Exception:
         log.error('Q/R C-FIND failed: %s', traceback.format_exc())
         return []
@@ -221,6 +265,7 @@ async def handle_find_qr_async(query_ds):
 
 def handle_find(event):
     query_ds = event.identifier
+    ae_title = _requestor_ae_title(event)
     # EVT_C_FIND carries both the MWL and the Q/R models — dispatch on the
     # negotiated abstract syntax of the presentation context.
     abstract = getattr(getattr(event, 'context', None), 'abstract_syntax', '')
@@ -228,13 +273,18 @@ def handle_find(event):
         PatientRootQueryRetrieveInformationModelFind,
         StudyRootQueryRetrieveInformationModelFind,
     ):
-        coro = handle_find_qr_async(query_ds)
+        coro = handle_find_qr_async(query_ds, ae_title)
     else:
-        coro = handle_find_async(query_ds)
+        coro = handle_find_async(query_ds, ae_title)
 
     future = asyncio.run_coroutine_threadsafe(coro, _loop)
     try:
         results = future.result(timeout=30)
+    except TenantResolutionError as e:
+        # ME-05: a mapped AE whose tenant is missing must not be served the
+        # default tenant's data — refuse the query loudly instead.
+        log.error('C-FIND refused: %s', e)
+        return 0xA700
     except Exception:
         log.error('C-FIND timed out or failed: %s', traceback.format_exc())
         return 0xA700

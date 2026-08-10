@@ -1,12 +1,14 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from api.auth import can_access_tenant
+from api.auth import can_access_tenant, can_mutate_tenant, _is_read_method
 from api.response import not_found, apply_cors_headers
-from config import config
 from db.audit_log import AuditLog
-from db.conn import get_conn, get_database, set_request_tenant, reset_request_tenant
-from db.tenants import Tenants, TenantConnectionPool
+from db.conn import (
+    get_conn, get_database, set_request_tenant, reset_request_tenant,
+    set_tenant_slug, reset_tenant_slug,
+)
+from db.tenants import Tenants, TenantConnectionPool, uses_main_database
 from log import get_logger
 
 log = get_logger(__name__)
@@ -21,14 +23,7 @@ def _main_db_acquire(tenant_info):
     """Return the main pool acquire callable when the tenant's data store IS
     the main database (the seeded `default` tenant), avoiding a second pool
     against the same database."""
-    main_port = int(config.get('db_port', '5432'))
-    if (
-        tenant_info.get('db_name') == config['db_database']
-        and tenant_info.get('db_host', config['db_host']) == config['db_host']
-        and tenant_info.get('db_user', config['db_user']) == config['db_user']
-        and int(tenant_info.get('db_port', main_port)) == main_port
-        and tenant_info.get('db_password', config['db_password']) == config['db_password']
-    ):
+    if uses_main_database(tenant_info):
         return get_database().acquire
     return None
 
@@ -72,6 +67,21 @@ class TenantMiddleware(BaseHTTPMiddleware):
             # row, not via an admin flag. Logged below, before any data-plane
             # work, on the main pool.
             cross_tenant = not user.admin and user.tenant != header_slug
+            if cross_tenant:
+                # Read-scoped grants (teleradiology) see the tenant but must
+                # not mutate it: deny non-GET/HEAD and every WebSocket
+                # channel unless the grant row explicitly says 'write'.
+                method = request.scope.get('method', '')
+                if request.scope.get('type') == 'websocket' or not _is_read_method(method):
+                    if not await can_mutate_tenant(user, header_slug):
+                        return apply_cors_headers(
+                            request,
+                            JSONResponse(
+                                {'error': 'Forbidden',
+                                 'message': 'Read-only access to this tenant'},
+                                status_code=403,
+                            ),
+                        )
 
         if slug:
             async with get_conn() as conn:
@@ -119,15 +129,45 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 pool = await TenantConnectionPool.get(slug, info)
                 acquire = _main_db_acquire(info) or pool.acquire
                 set_request_tenant(acquire)
+                set_tenant_slug(slug)
                 request.state.tenant = info
                 request.state.tenant_slug = slug
                 request.state.tenant_conn = acquire
+
+                if cross_tenant and not uses_main_database(info):
+                    # N5: the gate event was recorded on the main DB above,
+                    # but tenant-scoped log readers query the tenant's own
+                    # logs table (LO-02) — for separate-DB tenants the main
+                    # row is invisible there. Mirror the row on the resolved
+                    # tenant pool so both views carry the event; failure must
+                    # never gate the request itself.
+                    try:
+                        async with acquire() as tconn:
+                            await AuditLog(tconn).log_event(
+                                'tenant.cross_tenant_access',
+                                str(user.id),
+                                'tenant',
+                                slug,
+                                details={'home': getattr(user, 'tenant', None)},
+                                tenant=slug,
+                            )
+                    except Exception:
+                        log.warning(
+                            'Tenant-pool audit write failed for %s', slug, exc_info=True,
+                        )
 
         try:
             response = await call_next(request)
         finally:
             # Never leak a tenant scope into the next request on this task.
             reset_request_tenant()
+            reset_tenant_slug()
+            if slug and info:
+                # ME-02: drop the pool lease taken by TenantConnectionPool.get
+                # above — without this the LRU eviction skips the pool forever
+                # and per-tenant pools leak past _max_pools.
+                if not uses_main_database(info):
+                    TenantConnectionPool.release(slug)
 
         if slug and info:
             try:
@@ -136,7 +176,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 from db.metering import record_request
                 await record_request(slug)
             except Exception:
-                pass
+                log.debug('Metering record failed for tenant %s', slug, exc_info=True)
 
         return response
 
@@ -151,27 +191,3 @@ def effective_tenant(request):
     if isinstance(slug, str) and slug:
         return slug
     return getattr(request.user, 'tenant', None)
-
-
-async def get_tenant_conn(request):
-    slug = request.headers.get('X-Tenant-ID')
-    if not slug:
-        slug = getattr(request.state, 'tenant_slug', None)
-    if not slug:
-        return None
-
-    async with get_conn() as conn:
-        info = await Tenants(conn).get_by_slug(slug)
-    if not info:
-        return None
-
-    main_acquire = _main_db_acquire(info)
-    if main_acquire:
-        return main_acquire()
-
-    pool = TenantConnectionPool._pools.get(slug)
-    if pool:
-        return pool.acquire(timeout=10)
-
-    pool = await TenantConnectionPool.get(slug, info)
-    return pool.acquire(timeout=10)

@@ -101,9 +101,12 @@ export function useReadingPresets({
     if (layoutDef) setActiveLayout(layoutDef);
   }, [modality, reload, applyPresetToViewport]);
 
+  // (R1-05) applyWl is synchronous — the old `async`/bare-await block never
+  // had a pending promise, so callers (cycleWlPreset) treated it as fire-and-
+  // forget already.
   const applyWl = useCallback(
-    async (preset: ReadingPreset) => {
-      if (!applyPresetToViewport(preset)) return;
+    (preset: ReadingPreset) => {
+      applyPresetToViewport(preset);
     },
     [applyPresetToViewport],
   );

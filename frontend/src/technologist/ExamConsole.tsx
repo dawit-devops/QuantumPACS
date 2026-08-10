@@ -378,7 +378,7 @@ function ExamConsole() {
         : 0;
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
+    <Content style={{ padding: 24 }} role="main">
       <div className="exam-header">
         <Button onClick={() => navigate("/exams")} className="exam-back">
           ← Back to worklist

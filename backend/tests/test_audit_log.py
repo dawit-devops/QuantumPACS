@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -187,11 +188,11 @@ class TestAuditHooks:
         request.user.id = 1
         request.user.permissions = [Permission.TENANT_ADMIN.value]
         request.user.tenant = None
-        request.json = AsyncMock(return_value={
+        request._body = json.dumps({
             'name': 'New Hospital', 'slug': 'new-hosp',
             'db_name': 'new_hosp', 'db_host': '127.0.0.1', 'db_port': 5432,
             'db_user': 'admin', 'db_password': 'pass', 'storage_quota_bytes': 0,
-        })
+        }).encode()
         request.scope = {'type': 'http', 'path': '/api/tenants', 'method': 'POST'}
         request.query_params = {}
 
@@ -273,9 +274,9 @@ class TestAuditHooks:
         request.user.id = 1
         request.user.permissions = [Permission.ROLE_WRITE.value]
         request.user.tenant = None
-        request.json = AsyncMock(return_value={
-            'name': 'Editor', 'slug': 'editor', 'permissions': ['FILE_READ'],
-        })
+        request._body = json.dumps(
+            {'name': 'Editor', 'slug': 'editor', 'permissions': ['FILE_READ']}
+        ).encode()
         request.scope = {'type': 'http', 'path': '/api/roles', 'method': 'POST'}
         request.query_params = {}
 
@@ -316,6 +317,7 @@ class TestAuditHooks:
         request.user.permissions = [Permission.ROLE_WRITE.value]
         request.user.tenant = None
         request.json = AsyncMock(return_value={'name': 'Editor V2'})
+        request._body = json.dumps({'name': 'Editor V2'}).encode()
         request.scope = {'type': 'http', 'path': '/api/roles/role-1', 'method': 'PUT'}
         request.query_params = {}
 

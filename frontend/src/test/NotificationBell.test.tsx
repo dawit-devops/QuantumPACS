@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { App } from "antd";
+import userEvent from "@testing-library/user-event";
 import NotificationBell from "../notifications/NotificationBell";
 import * as notifApi from "../api/notifications";
 import * as ws from "../ws";
@@ -52,7 +53,7 @@ async function openDrawer() {
   await waitFor(() => {
     expect(notifApi.getUnreadCount).toHaveBeenCalled();
   });
-  fireEvent.click(screen.getByLabelText("bell"));
+  fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
 }
 
 describe("NotificationBell", () => {
@@ -92,6 +93,45 @@ describe("NotificationBell", () => {
     await openDrawer();
     expect(await screen.findByText("Study arrived")).toBeInTheDocument();
     expect(screen.getByText("P001")).toBeInTheDocument();
+  });
+
+  it("opens the drawer with the Enter key (R1-05)", async () => {
+    vi.mocked(notifApi.listNotifications).mockResolvedValue({
+      data: [],
+      total: 0,
+    });
+    renderBell();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    bell.focus();
+    fireEvent.keyDown(bell, { key: "Enter" });
+    fireEvent.click(bell);
+    await waitFor(() => {
+      expect(notifApi.listNotifications).toHaveBeenCalled();
+    });
+  });
+
+  it("renders drawer rows as keyboard-activatable buttons (R1-05)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(notifApi.listNotifications).mockResolvedValue({
+      data: [
+        {
+          id: "1",
+          event_type: "study.arrived",
+          title: "Study arrived",
+          body: "P001",
+          read: false,
+        },
+      ],
+      total: 1,
+    });
+    renderBell();
+    await openDrawer();
+    const row = await screen.findByRole("button", { name: /Study arrived/ });
+    row.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(notifApi.markRead).toHaveBeenCalledWith("1");
+    });
   });
 
   it("shows the empty state when there are no notifications", async () => {

@@ -44,11 +44,11 @@ class FakeSearchService:
         self.indexed = []
         self.deleted_ids = []
 
-    async def index_file(self, file_data):
+    async def index_file(self, file_data, tenant_slug=''):
         self.indexed.append(file_data)
         return True
     async def search(self, query): return {'data': [], 'total': 0}
-    async def delete_from_index(self, file_id):
+    async def delete_from_index(self, file_id, tenant_slug=''):
         self.deleted_ids.append(file_id)
         return True
 

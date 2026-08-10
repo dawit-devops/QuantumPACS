@@ -4,6 +4,8 @@ from collections import defaultdict
 from starlette.endpoints import HTTPEndpoint, WebSocketEndpoint
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from api.rbac import has_permission
+from api.permissions import Permission
 from api.response import ok
 from api.tokens import create_token as gen_token
 
@@ -48,8 +50,25 @@ async def _get_pubsub(state):
         return None
 
 
-def _channel(file_id):
-    return f'channel:file:{file_id}'
+def _channel(tenant_slug, file_id):
+    # N3: channels are tenant-qualified. File ids are per-tenant SERIALs, so
+    # a bare `channel:file:{id}` collides across tenants — the slug bakes the
+    # data scope into the channel namespace itself.
+    return f'channel:file:{tenant_slug}:{file_id}'
+
+
+def _user_tenant(user):
+    # WebSockets never pass through TenantMiddleware (BaseHTTPMiddleware
+    # skips non-HTTP scopes), so the JWT tenant claim is the only scope a
+    # socket can have — no X-Tenant-ID override exists on this transport.
+    return getattr(user, 'tenant', None) or ''
+
+
+async def _send_error(websocket, message):
+    try:
+        await websocket.send_json({'type': 'error', 'message': message})
+    except WebSocketDisconnect:
+        pass
 
 
 async def broadcast_to_user(user_id, payload):
@@ -83,7 +102,6 @@ async def _pubsub_listener(state):
             channel = message['channel']
             if isinstance(channel, bytes):
                 channel = channel.decode()
-            file_id = channel.split(':', 2)[-1]
             data = message['data']
             if isinstance(data, bytes):
                 data = data.decode()
@@ -93,7 +111,7 @@ async def _pubsub_listener(state):
             except Exception:
                 continue
             async with state.sub_lock:
-                conns = list(state.local_clients.get(file_id, {}).values())
+                conns = list(state.local_clients.get(channel, {}).values())
             for c in conns:
                 if isinstance(c, WebSocket):
                     try:
@@ -152,18 +170,30 @@ class WebsocketHandler(WebSocketEndpoint):
         state = _get_state()
         if state is None:
             return
+        if not isinstance(data, dict):
+            return
 
         type_ = data.get('type')
+        user = websocket.scope.get('user')
 
         match type_:
             case 'open':
-                f = data['file']
+                f = data.get('file')
+                # Channel authz: subscribing registers this socket in the
+                # file's broadcast list, so the user must hold FILE_READ.
+                # Permissions ride on the JWT (share-key sockets never pass
+                # the WS auth path), making this a pure permission gate.
+                if f is None or not user or not getattr(user, 'is_authenticated', False) \
+                        or not has_permission(user, Permission.FILE_READ):
+                    await _send_error(websocket, 'Forbidden: FILE_READ required')
+                    return
+                chan = _channel(_user_tenant(user), f)
                 async with state.sub_lock:
-                    state.local_clients[f][str(id(websocket))] = websocket
+                    state.local_clients[chan][str(id(websocket))] = websocket
                 ps = await _get_pubsub(state)
                 if ps is not None:
                     try:
-                        await ps.subscribe(_channel(f))
+                        await ps.subscribe(chan)
                         _ensure_listener(state)
                     except Exception:
                         pass
@@ -175,9 +205,23 @@ class WebsocketHandler(WebSocketEndpoint):
                     },
                 )
                 websocket.file = f
+                websocket.channel = chan
 
             case 'send_state':
-                f = data['file']
+                # Publishing to a file channel is the write side of the same
+                # broadcast membership the 'open' gate protects — a socket
+                # without FILE_READ must be rejected here too, and the scope
+                # must be the sender's own tenant (the channel namespace is
+                # derived from the user, never from the payload).
+                if not user or not getattr(user, 'is_authenticated', False) \
+                        or not has_permission(user, Permission.FILE_READ):
+                    await _send_error(websocket, 'Forbidden: FILE_READ required')
+                    return
+                f = data.get('file')
+                if f is None or data.get('state') is None:
+                    await _send_error(websocket, 'Invalid payload: file and state are required')
+                    return
+                chan = _channel(_user_tenant(user), f)
                 payload = {
                     'type': 'send_state',
                     'file': f,
@@ -188,10 +232,10 @@ class WebsocketHandler(WebSocketEndpoint):
                 try:
                     from api.redis_client import get_client
                     r = await get_client(db=4)
-                    await r.publish(_channel(f), json.dumps(payload))
+                    await r.publish(chan, json.dumps(payload))
                 except Exception:
                     async with state.sub_lock:
-                        conns = list(state.local_clients.get(f, {}).values())
+                        conns = list(state.local_clients.get(chan, {}).values())
                     for c in conns:
                         if c == websocket:
                             continue
@@ -217,15 +261,15 @@ class WebsocketHandler(WebSocketEndpoint):
                 state.user_clients.get(uid, {}).pop(str(id(websocket)), None)
                 if not state.user_clients.get(uid):
                     state.user_clients.pop(uid, None)
-        f = getattr(websocket, 'file', None)
+        f = getattr(websocket, 'channel', None)
         if f:
             async with state.sub_lock:
-                state.local_clients[f].pop(str(id(websocket)), None)
-                if not state.local_clients[f]:
-                    del state.local_clients[f]
+                state.local_clients.get(f, {}).pop(str(id(websocket)), None)
+                if not state.local_clients.get(f):
+                    state.local_clients.pop(f, None)
                     ps = await _get_pubsub(state)
                     if ps is not None:
                         try:
-                            await ps.unsubscribe(_channel(f))
+                            await ps.unsubscribe(f)
                         except Exception:
                             pass

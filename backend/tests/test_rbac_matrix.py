@@ -10,24 +10,22 @@ non-super_admin role, every role has >= 1 permission, SYSTEM_ADMIN
 from api.permissions import (
     BUILT_IN_ROLES,
     CANONICAL_PERMISSIONS,
+    IMMUTABLE_ROLE_SLUGS,
     PERMISSION_KEYS,
+    PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES,
     Permission,
     SUPER_ADMIN_PERMISSIONS,
 )
 
 import pytest
 
+# The 14 slugs of the v2.16 catalog (R2-16): all canonical Matrix A/B/C roles
+# plus the legacy cashier/technologist/r radiologist/teleradiologist slugs.
 CANONICAL_ROLES = [
-    'super_admin', 'tenant_admin', 'patient',
-    'radiologist', 'teleradiologist', 'technologist',
-    'scheduler', 'receptionist', 'referring_physician', 'ed_physician',
-    'biller', 'medical_coder', 'department_manager',
-    'radiology_admin', 'pacs_admin', 'imaging_informatics',
-    'physician', 'resident', 'nurse', 'pharmacist', 'lab_technician',
-    'him_specialist', 'care_coordinator', 'emr_admin',
-    # Legacy front-office role: carries the R08 front-desk grants and maps to
-    # the frontdesk workspace (frontend/src/navigator.ts).
-    'front_desk',
+    'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+    'radiologist', 'teleradiologist', 'technologist', 'cashier',
+    'receptionist', 'referring_physician', 'physician', 'resident',
+    'care_coordinator',
 ]
 
 NON_SUPER_ADMIN = {slug for slug in BUILT_IN_ROLES if slug != 'super_admin'}
@@ -70,8 +68,8 @@ class TestMatrixA:
     def test_teleradiologist_has_identical_grants_to_radiologist(self):
         assert perms('teleradiologist') == perms('radiologist')
 
-    def test_biller_writes_billing_but_radiologist_does_not(self):
-        assert 'BILLING_WRITE' in perms('biller')
+    def test_cashier_writes_billing_but_radiologist_does_not(self):
+        assert 'BILLING_WRITE' in perms('cashier')
         assert 'BILLING_READ' not in perms('radiologist')
         assert 'BILLING_WRITE' not in perms('radiologist')
 
@@ -82,29 +80,20 @@ class TestMatrixA:
         assert 'STUDY_EXPORT' in perms('pacs_admin')
         assert 'FILE_WRITE' in perms('pacs_admin')
 
+    def test_pacs_admin_manages_roles_but_never_signs(self):
+        # R2-16: facility admins (pacs_admin) get role management over the
+        # clinical/operational built-ins and custom roles.
+        assert {'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'} <= perms('pacs_admin')
+        # ...but stay ops-only: no report signing, no clinical writes.
+        assert 'REPORT_SIGN' not in perms('pacs_admin')
+        assert 'PATIENT_WRITE' not in perms('pacs_admin')
+
     def test_referring_physician_is_read_only(self):
         ref = perms('referring_physician')
         assert 'REPORT_WRITE' not in ref
         assert 'REPORT_SIGN' not in ref
         assert not any(p.startswith('BILLING_') for p in ref)
         assert 'REPORT_READ' in ref and 'VIEWER_READ' in ref
-
-    def test_radiology_admin_ops_but_no_report_sign(self):
-        ra = perms('radiology_admin')
-        assert 'REPORT_WRITE' in ra
-        assert 'REPORT_SIGN' not in ra
-        assert 'PATIENT_MERGE' in ra and 'MPI_ADMIN' in ra
-        assert 'ADMIN' in ra
-        assert 'SCHEDULE_WRITE' in ra and 'PRIOR_AUTH_WRITE' in ra
-
-    def test_scheduler_schedules_and_prior_auth(self):
-        sch = perms('scheduler')
-        assert {'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PRIOR_AUTH_READ',
-                'PRIOR_AUTH_WRITE', 'PATIENT_WRITE'} <= sch
-        # R08 front-desk grants (migration 046): registration, visits and the
-        # waiting queue for the front-office booking flow.
-        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= sch
-        assert 'REPORT_READ' not in sch
 
     def test_receptionist_registers_and_books(self):
         rec = perms('receptionist')
@@ -120,36 +109,6 @@ class TestMatrixA:
         # waiting queue for the front-office flow.
         assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ'} <= rec
 
-    def test_front_desk_legacy_role_carries_r08_grants(self):
-        fd = perms('front_desk')
-        # The legacy front_desk role is MATRIX_A_RECEPT plus the pre-046
-        # legacy grants: it must cover the whole R08 front-office surface.
-        assert {'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
-                'SCHEDULE_READ', 'SCHEDULE_WRITE', 'PATIENT_READ',
-                'PATIENT_WRITE', 'ORDER_READ', 'WORKLIST_READ'} <= fd
-        assert 'REPORT_READ' not in fd
-
-    def test_ed_physician_full_scope(self):
-        ed = perms('ed_physician')
-        assert {'CRITICAL_RESULTS_WRITE', 'ENCOUNTER_WRITE', 'NOTE_SIGN',
-                'MED_ORDER_READ', 'MED_ORDER_WRITE', 'ORDER_WRITE',
-                'MAR_READ'} <= ed
-        assert 'REPORT_SIGN' not in ed
-
-    def test_department_manager_analytics(self):
-        dm = perms('department_manager')
-        assert {'AUDIT_READ', 'METERING_READ', 'INTERFACE_MONITOR',
-                'BILLING_READ', 'STUDY_READ'} <= dm
-        assert 'BILLING_WRITE' not in dm
-
-    def test_imaging_informatics_interoperability(self):
-        info = perms('imaging_informatics')
-        assert {'INTERFACE_MONITOR', 'AUDIT_READ', 'METERING_READ',
-                'REPORT_TEMPLATE_ADMIN', 'REPORT_READ'} <= info
-        assert 'REPORT_WRITE' not in info
-        assert 'STORAGE_ADMIN' not in info
-        assert 'FILE_READ' not in info
-
 
 class TestMatrixB:
     """Matrix B — EMR roles."""
@@ -160,49 +119,21 @@ class TestMatrixB:
         assert {'ENCOUNTER_WRITE', 'MED_ORDER_WRITE', 'CARE_PLAN_WRITE',
                 'MAR_READ'} <= res
 
-    def test_nurse_administers_meds(self):
-        nurse = perms('nurse')
-        assert {'MAR_READ', 'MAR_WRITE', 'NOTE_SIGN', 'MED_ORDER_READ',
-                'ENCOUNTER_WRITE'} <= nurse
-        assert 'MED_ORDER_WRITE' not in nurse
-
-    def test_pharmacist_verifies_meds(self):
-        pharm = perms('pharmacist')
-        assert {'MED_VERIFY', 'MED_ORDER_READ', 'MED_ORDER_WRITE',
-                'MAR_READ'} <= pharm
-        assert 'MAR_WRITE' not in pharm
-        assert 'REPORT_READ' not in pharm
-
-    def test_lab_technician_releases_results(self):
-        lab = perms('lab_technician')
-        assert {'RESULTS_READ', 'RESULTS_RELEASE', 'LAB_SPECIMEN_WRITE',
-                'ORDER_READ', 'ORDER_WRITE'} <= lab
-        assert 'MAR_READ' not in lab
-
-    def test_medical_coder_codes_billing(self):
-        coder = perms('medical_coder')
-        assert {'CODING_WRITE', 'BILLING_READ', 'BILLING_WRITE'} <= coder
-        assert 'HIM_WRITE' not in coder
-
-    def test_him_specialist_amend_and_audit(self):
-        him = perms('him_specialist')
-        assert {'HIM_WRITE', 'AUDIT_READ', 'NOTE_SIGN', 'CHART_READ'} <= him
-        assert 'BILLING_WRITE' not in him
-
     def test_care_coordinator_care_plans(self):
         coord = perms('care_coordinator')
         assert {'CARE_PLAN_WRITE', 'ENCOUNTER_WRITE', 'MED_ORDER_READ',
                 'PRIOR_AUTH_READ'} <= coord
         assert 'MED_ORDER_WRITE' not in coord
 
-    def test_emr_admin_provisions_users_without_clinical_access(self):
+    def test_emr_admin_provisions_users_and_manages_roles(self):
         emr = perms('emr_admin')
         assert {'USER_READ', 'USER_WRITE', 'ROLE_READ', 'SERVICE_KEY_READ',
                 'INTERFACE_ADMIN', 'CDS_ADMIN', 'REPORT_TEMPLATE_ADMIN',
                 'TENANT_READ', 'METERING_READ'} <= emr
-        # Role creation/deletion is reserved for TENANT_ADMIN/SYSTEM_ADMIN (§5).
-        assert 'ROLE_WRITE' not in emr
-        assert 'ROLE_DELETE' not in emr
+        # R2-16: emr_admin (facility admin) manages roles of the clinical/
+        # operational built-ins and custom roles — no longer reserved for
+        # TENANT_ADMIN/SYSTEM_ADMIN alone.
+        assert {'ROLE_WRITE', 'ROLE_DELETE'} <= emr
         # EMR_ADMIN is configuration-only — no clinical data access.
         assert 'CHART_READ' not in emr
         assert 'PATIENT_READ' not in emr
@@ -240,11 +171,11 @@ class TestMatrixC:
         assert 'STUDY_WRITE' not in ta
         assert 'FILE_DELETE' not in ta
 
-    def test_cashier_mirrors_biller(self):
-        """R2-14: the legacy cashier role must equal the canonical biller —
-        a billing role gains nothing beyond the Matrix A billing row."""
-        assert perms('cashier') <= perms('biller')
-        assert perms('biller') <= perms('cashier')
+    def test_cashier_matches_canonical_billing_row(self):
+        """R2-14 + R2-16: the kept cashier slug equals the canonical Matrix A
+        billing row exactly (empty legacy union)."""
+        from api.permissions import MATRIX_A_BILL
+        assert perms('cashier') == MATRIX_A_BILL
 
     def test_technologist_has_no_clinical_writes(self):
         """R2-14: technologist keeps exam workflow codes but its legacy
@@ -267,15 +198,66 @@ class TestMatrixC:
 
 
 class TestDeadPermissions:
-    """Spec §9: every canonical permission is granted to >= 1 non-super_admin role."""
+    """Spec §9: every canonical permission is granted to >= 1 non-super_admin role.
+
+    R2-16 exception: ten codes were only ever held by removed operational
+    slugs (nurse, pharmacist, lab_technician, him_specialist, medical_coder,
+    radiology_admin, scheduler). They stay in the assignable catalog —
+    facility admins compose them onto custom roles — so they are no longer
+    built-in-granted, and the "no dead codes" assertion skips them.
+    """
+
+    # Codes whose only built-in holders were removed by the R2-16 trim.
+    CUSTOM_COMPOSABLE_ONLY = {
+        'RESULTS_RELEASE', 'MED_VERIFY', 'HIM_WRITE', 'MPI_ADMIN',
+        'PRIOR_AUTH_WRITE', 'ADMIN', 'LAB_SPECIMEN_WRITE', 'CODING_WRITE',
+        'MAR_WRITE', 'PATIENT_MERGE',
+    }
 
     def test_no_dead_canonical_permissions(self):
         dead = []
         for code in CANONICAL_PERMISSIONS:
             holders = [slug for slug in NON_SUPER_ADMIN if code in perms(slug)]
-            if not holders:
+            if not holders and code not in self.CUSTOM_COMPOSABLE_ONLY:
                 dead.append(code)
+        # The exception set must stay exact — a code that returns to a
+        # built-in without leaving the exception list hides a gap.
+        custom_only = {
+            code for code in CANONICAL_PERMISSIONS
+            if not any(code in perms(slug) for slug in NON_SUPER_ADMIN)
+        }
+        assert custom_only == self.CUSTOM_COMPOSABLE_ONLY
         assert dead == []
+
+
+class TestRoleImmutabilityPolicy:
+    """R2-16 tiers: immutable anchors, platform-admin-only slugs, editable."""
+
+    def test_immutable_roles_exist_in_catalog(self):
+        assert IMMUTABLE_ROLE_SLUGS <= set(BUILT_IN_ROLES)
+        assert IMMUTABLE_ROLE_SLUGS == {
+            'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+        }
+
+    def test_platform_admin_only_roles_exist_in_catalog(self):
+        assert PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES == {'teleradiologist'}
+        assert PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES <= set(BUILT_IN_ROLES)
+        assert not (PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES & IMMUTABLE_ROLE_SLUGS)
+
+    def test_exactly_eight_built_ins_are_facility_editable(self):
+        editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
+            PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
+        assert editable == {
+            'radiologist', 'physician', 'referring_physician', 'resident',
+            'care_coordinator', 'technologist', 'receptionist', 'cashier',
+        }
+
+    def test_immutable_anchors_are_in_place(self):
+        # The anchors must keep platform/tenant administration and the patient
+        # portal safe no matter what a facility admin edits.
+        for slug in ('super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin',
+                     'patient'):
+            assert slug in IMMUTABLE_ROLE_SLUGS
 
 
 class TestPermissionKeys:

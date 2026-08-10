@@ -36,63 +36,71 @@ class TestResponseHelpers:
     def test_no_content_returns_204(self):
         resp = no_content()
         assert resp.status_code == 204
-        assert json.loads(resp.body) == {}
+        # RFC 9110 §15.3.5: 204 must not carry a body.
+        assert resp.body == b''
 
     def test_not_found_returns_404(self):
         resp = not_found('User not found')
         assert resp.status_code == 404
         body = json.loads(resp.body)
-        assert body == {'error': 'User not found'}
+        assert body == {'error': {'code': 'NOT_FOUND', 'message': 'User not found'}}
 
     def test_not_found_default_message(self):
         resp = not_found()
         assert resp.status_code == 404
-        assert json.loads(resp.body) == {'error': 'Not found'}
+        assert json.loads(resp.body) == {'error': {'code': 'NOT_FOUND', 'message': 'Not found'}}
 
     def test_validation_error_returns_400(self):
         resp = validation_error('Invalid input')
         assert resp.status_code == 400
-        assert json.loads(resp.body) == {'error': 'Invalid input'}
+        assert json.loads(resp.body) == {'error': {'code': 'VALIDATION_ERROR', 'message': 'Invalid input'}}
 
     def test_validation_error_default_message(self):
         resp = validation_error()
         assert resp.status_code == 400
-        assert json.loads(resp.body) == {'error': 'Validation error'}
+        assert json.loads(resp.body) == {'error': {'code': 'VALIDATION_ERROR', 'message': 'Validation error'}}
 
     def test_server_error_returns_500(self):
         resp = server_error('Something broke')
         assert resp.status_code == 500
-        assert json.loads(resp.body) == {'error': 'Something broke'}
+        body = json.loads(resp.body)
+        assert body['error']['code'] == 'SERVER_ERROR'
+        assert body['error']['message'] == 'Something broke'
+        assert len(body['error']['request_id']) == 8
 
     def test_server_error_default_message(self):
         resp = server_error()
         assert resp.status_code == 500
-        assert json.loads(resp.body) == {'error': 'Internal server error'}
+        body = json.loads(resp.body)
+        assert body['error']['message'] == 'Internal server error'
+        assert len(body['error']['request_id']) == 8
 
     def test_server_error_custom_status(self):
         resp = server_error('Custom error', status_code=502)
         assert resp.status_code == 502
-        assert json.loads(resp.body) == {'error': 'Custom error'}
+        body = json.loads(resp.body)
+        assert body['error']['message'] == 'Custom error'
+        assert len(body['error']['request_id']) == 8
 
     def test_unauthorized_returns_401(self):
         resp = unauthorized('Bad token')
         assert resp.status_code == 401
-        assert json.loads(resp.body) == {'error': 'Bad token'}
+        assert json.loads(resp.body) == {'error': {'code': 'UNAUTHORIZED', 'message': 'Bad token'}}
 
     def test_unauthorized_default_message(self):
         resp = unauthorized()
         assert resp.status_code == 401
-        assert json.loads(resp.body) == {'error': 'Unauthorized'}
+        assert json.loads(resp.body) == {'error': {'code': 'UNAUTHORIZED', 'message': 'Unauthorized'}}
 
     def test_forbidden_returns_403(self):
         resp = forbidden('No access')
         assert resp.status_code == 403
-        assert json.loads(resp.body) == {'error': 'No access'}
+        assert json.loads(resp.body) == {'error': {'code': 'FORBIDDEN', 'message': 'No access'}}
 
     def test_forbidden_default_message(self):
         resp = forbidden()
         assert resp.status_code == 403
-        assert json.loads(resp.body) == {'error': 'Forbidden'}
+        assert json.loads(resp.body) == {'error': {'code': 'FORBIDDEN', 'message': 'Forbidden'}}
 
     def test_content_type_is_application_json(self):
         resp = ok({'a': 1})

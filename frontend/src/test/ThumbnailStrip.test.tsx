@@ -4,7 +4,6 @@ import { renderWithApp } from "./renderWithApp";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import ThumbnailStrip from "../detail/ThumbnailStrip";
 import { API_URL } from "../config";
-
 const mockFiles = [
   { id: 1, name: "image1.dcm" },
   { id: 2, name: "image2.dcm" },
@@ -40,43 +39,45 @@ describe("ThumbnailStrip", () => {
     expect(srcs.join(" ")).not.toContain("token=");
   });
   it("renders null when files is null", () => {
-    renderWithApp(
+    const { container } = renderWithApp(
       <ThumbnailStrip
         files={null as any}
         currentFileId="1"
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(container.querySelector(".thumbnail-strip")).not.toBeInTheDocument();
   });
 
   it("renders null when files has only one item", () => {
-    renderWithApp(
+    const { container } = renderWithApp(
       <ThumbnailStrip
         files={[{ id: 1, name: "single.dcm" }]}
         currentFileId="1"
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(container.querySelector(".thumbnail-strip")).not.toBeInTheDocument();
   });
 
-  it("renders a thumbnail option for each file", () => {
+  // (M9) Thumbnails are plain tab-ordered buttons, not listbox/option —
+  // the listbox contract was never implemented, so no arrow-key semantics.
+  it("renders a tab-ordered button for each file", () => {
     renderWithApp(
       <ThumbnailStrip files={mockFiles} currentFileId="1" onSelect={vi.fn()} />,
     );
-    const options = screen.getAllByRole("option");
-    expect(options).toHaveLength(3);
+    const thumbs = screen.getAllByRole("button", { name: /image\d\.dcm/ });
+    expect(thumbs).toHaveLength(3);
   });
 
   it("marks the current file as active", () => {
     renderWithApp(
       <ThumbnailStrip files={mockFiles} currentFileId="2" onSelect={vi.fn()} />,
     );
-    const options = screen.getAllByRole("option");
-    expect(options[1].className).toContain("active");
-    expect(options[0].className).not.toContain("active");
-    expect(options[2].className).not.toContain("active");
+    const thumbs = screen.getAllByRole("button", { name: /image\d\.dcm/ });
+    expect(thumbs[1].className).toContain("active");
+    expect(thumbs[0].className).not.toContain("active");
+    expect(thumbs[2].className).not.toContain("active");
   });
 
   it("calls onSelect with index when clicked", () => {
@@ -88,8 +89,8 @@ describe("ThumbnailStrip", () => {
         onSelect={onSelect}
       />,
     );
-    const options = screen.getAllByRole("option");
-    fireEvent.click(options[2]);
+    const thumbs = screen.getAllByRole("button", { name: /image\d\.dcm/ });
+    fireEvent.click(thumbs[2]);
     expect(onSelect).toHaveBeenCalledWith(2);
   });
 });

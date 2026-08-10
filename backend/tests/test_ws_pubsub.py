@@ -3,24 +3,33 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import WebSocketRoute
 from starlette.testclient import TestClient
 
 from api.auth import User
+from api.permissions import Permission
 import api.ws
 from api.ws import WebsocketHandler
 
 
-class _FakeAuth(BaseHTTPMiddleware):
-    def __init__(self, app, user=None):
-        super().__init__(app)
-        self._user = user or User({'id': 1, 'permissions': []})
+class _FakeAuth:
+    """Pure ASGI middleware setting scope['user'].
 
-    async def dispatch(self, request, call_next):
-        request.scope['user'] = self._user
-        request.scope['auth'] = None
-        return await call_next(request)
+    BaseHTTPMiddleware cannot be used here: starlette 1.x does not propagate
+    its scope mutations to websocket endpoints, so the ws authz gate would
+    see an anonymous user.
+    """
+
+    def __init__(self, app, user=None):
+        self.app = app
+        # Default user holds FILE_READ so channel open passes the ws authz gate.
+        self.user = user or User({'id': 1, 'permissions': [Permission.FILE_READ]})
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] in ('http', 'websocket'):
+            scope['user'] = self.user
+            scope['auth'] = None
+        await self.app(scope, receive, send)
 
 
 def _make_app(user=None):
@@ -33,7 +42,7 @@ def _make_app(user=None):
     return app
 
 
-_EXPECTED_CHANNEL = 'channel:file:pubsub-file-1'
+_EXPECTED_CHANNEL = 'channel:file::pubsub-file-1'
 
 
 def _setup_redis_mocks():
@@ -118,6 +127,47 @@ class TestWebsocketPubSub:
         assert redis_instance.publish.call_count == 3
         for i, call_args in enumerate(redis_instance.publish.call_args_list):
             channel, raw = call_args[0]
-            assert channel == 'channel:file:pubsub-file-3'
+            assert channel == 'channel:file::pubsub-file-3'
             payload = json.loads(raw)
             assert payload['state']['counter'] == i
+
+    def test_publish_targets_tenant_qualified_channel(self):
+        """N3: a send_state must publish to the sender's tenant-qualified
+        channel, never the bare file channel."""
+        self._app = _make_app(
+            user=User({'id': 1, 'permissions': [Permission.FILE_READ], 'tenant': 'ten-a'}),
+        )
+        client = TestClient(self._app)
+        with client.websocket_connect('/ws') as ws:
+            ws.send_json({'type': 'open', 'file': '42'})
+            assert ws.receive_json()['type'] == 'send_state'
+            ws.send_json({'type': 'send_state', 'file': '42', 'state': {'zoom': 4}})
+        channel, _ = self._mock_client.publish.call_args[0]
+        assert channel == 'channel:file:ten-a:42'
+
+    def test_cross_tenant_publish_never_leaks_to_other_tenant(self):
+        """N3: sockets of two tenants on the same file id must end up on
+        disjoint channels — tenant B publishing may only reach
+        channel:file:ten-b:*, never ten-a's namespace."""
+        self._app = _make_app(
+            user=User({'id': 1, 'permissions': [Permission.FILE_READ], 'tenant': 'ten-a'}),
+        )
+        client = TestClient(self._app)
+        with client.websocket_connect('/ws') as ws:
+            ws.send_json({'type': 'open', 'file': '7'})
+            assert ws.receive_json()['type'] == 'send_state'
+            ws.send_json({'type': 'send_state', 'file': '7', 'state': {'x': 1}})
+        channels = {call_args[0][0] for call_args in self._mock_client.publish.call_args_list}
+        assert channels == {'channel:file:ten-a:7'}
+
+    def test_send_state_without_file_read_not_published(self):
+        """NEW #2: unauthorized send_state must not publish anything."""
+        self._app = _make_app(
+            user=User({'id': 9, 'permissions': [], 'tenant': 'ten-a'}),
+        )
+        client = TestClient(self._app)
+        with client.websocket_connect('/ws') as ws:
+            ws.send_json({'type': 'send_state', 'file': '7', 'state': {'x': 1}})
+            resp = ws.receive_json()
+            assert resp['type'] == 'error'
+        assert not self._mock_client.publish.called

@@ -145,9 +145,14 @@ async def metrics_endpoint(request):
     if not config.get('prometheus_enabled', True):
         from starlette.responses import PlainTextResponse
         return PlainTextResponse('Metrics disabled', status_code=404)
-    if 'user' in request.scope:
-        from api.utils import is_admin
-        is_admin(request)
+    # Admin gate lives here, on the endpoint, not in TokenAuth._PUBLIC_PATHS:
+    # metrics must stay authenticated (they can leak endpoint cardinality and
+    # request volumes) but the guard must produce a proper forbidden()
+    # envelope for non-admins instead of a bare HTTPException with no detail.
+    user = request.scope.get('user')
+    if not user or not getattr(user, 'is_authenticated', False) or not user.admin:
+        from api.response import forbidden
+        return forbidden('Admin access required')
     _sample_db_pool()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
@@ -165,8 +170,12 @@ async def _check_db():
     try:
         async with _probe_db() as conn:
             await conn.fetchval('SELECT 1')
-    except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+    except Exception:
+        # Stable, non-leaking message: the raw asyncpg error string can embed
+        # host/user/port details of the failed connection, so the public
+        # health payload exposes only the failure class, never the exception.
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'Database unreachable'}
     return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
 
 
@@ -181,8 +190,12 @@ async def _check_es():
                 return {'status': 'ok', 'latency_ms': latency}
             return {'status': 'error', 'latency_ms': latency, 'message': 'ping returned false'}
         return {'status': 'degraded', 'latency_ms': 0, 'message': 'ES unavailable, search fallback active'}
-    except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+    except Exception:
+        # Same contract as _check_db: the raw exception can embed connection
+        # internals (hosts, ports, backends), so only the stable failure
+        # class ever reaches the public health payload.
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'Elasticsearch unreachable'}
 
 
 async def _check_redis():
@@ -196,8 +209,9 @@ async def _check_redis():
             await client.ping()
             return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
         return {'status': 'degraded', 'latency_ms': 0, 'message': 'Redis unavailable'}
-    except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+    except Exception:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'Redis unreachable'}
 
 
 async def _check_storage():
@@ -206,13 +220,15 @@ async def _check_storage():
         from db.conn import get_conn
         async with get_conn() as conn:
             rows = await conn.fetch("SELECT id, type, master FROM replicas")
+        # Replica/backend types (local/s3/b2) reveal storage topology — the
+        # health payload only reports reachability.
         masters = [r['type'] for r in rows if r.get('master')]
-        backends = list({r['type'] for r in rows})
         if masters:
-            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000), 'master': masters[0], 'replicas': backends}
-        return {'status': 'degraded', 'latency_ms': 0, 'replicas': backends, 'message': 'No master replica configured'}
-    except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+            return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
+        return {'status': 'degraded', 'latency_ms': 0, 'message': 'No master replica configured'}
+    except Exception:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'Storage backend unreachable'}
 
 
 async def _check_dicom_listener():
@@ -224,9 +240,10 @@ async def _check_dicom_listener():
             pass
         state = _get_state()
         start = state.start_time if state is not None else time.time()
-        return {'status': 'ok', 'port': port, 'uptime_seconds': int(time.time() - start), 'latency_ms': 0}
+        # The listener port is an internal deployment detail — not exposed.
+        return {'status': 'ok', 'uptime_seconds': int(time.time() - start), 'latency_ms': 0}
     except Exception:
-        return {'status': 'degraded', 'port': port, 'uptime_seconds': 0, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
+        return {'status': 'degraded', 'uptime_seconds': 0, 'latency_ms': 0, 'message': 'DICOM listener not reachable'}
 
 
 async def _check_ingestion_service():
@@ -237,8 +254,8 @@ async def _check_ingestion_service():
         metrics = monitor.metrics()
         total_pending = sum(info.get('pending', 0) for info in metrics.values())
         return {'status': 'ok', 'stream_lag': total_pending}
-    except Exception as e:
-        return {'status': 'error', 'stream_lag': -1, 'message': (str(e) or type(e).__name__)[:200]}
+    except Exception:
+        return {'status': 'error', 'stream_lag': -1, 'message': 'Ingestion service unreachable'}
 
 
 async def _check_hl7_listener():
@@ -248,9 +265,9 @@ async def _check_hl7_listener():
         import socket
         with socket.create_connection(('127.0.0.1', port), timeout=2):
             pass
-        return {'status': 'ok', 'port': port, 'latency_ms': 0}
+        return {'status': 'ok', 'latency_ms': 0}
     except Exception:
-        return {'status': 'degraded', 'port': port, 'latency_ms': 0, 'message': 'HL7 MLLP listener not reachable'}
+        return {'status': 'degraded', 'latency_ms': 0, 'message': 'HL7 MLLP listener not reachable'}
 
 
 async def _check_fhir():
@@ -264,8 +281,9 @@ async def _check_fhir():
         if raw.get('enabled', 'false') == 'true':
             return {'status': 'ok', 'latency_ms': latency}
         return {'status': 'degraded', 'latency_ms': latency, 'message': 'FHIR not enabled (fhir_config.enabled != true)'}
-    except Exception as e:
-        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000), 'message': (str(e) or type(e).__name__)[:200]}
+    except Exception:
+        return {'status': 'error', 'latency_ms': int((time.monotonic() - start) * 1000),
+                'message': 'FHIR configuration unreachable'}
 
 
 async def _check_auth():
@@ -297,10 +315,10 @@ async def _check_token_blocklist():
                     'message': 'Token blocklist fail-open active (redis client unavailable)'}
         await client.ping()
         return {'status': 'ok', 'latency_ms': int((time.monotonic() - start) * 1000)}
-    except Exception as e:
+    except Exception:
         return {'status': 'degraded',
                 'latency_ms': int((time.monotonic() - start) * 1000),
-                'message': f'Token blocklist fail-open active: {(str(e) or type(e).__name__)[:200]}'}
+                'message': 'Token blocklist fail-open active (redis unreachable)'}
 
 
 async def health_endpoint(request):

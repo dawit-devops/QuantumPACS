@@ -4,11 +4,12 @@ import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from api.auth import TokenAuth
+from api.auth import TokenAuth, User
 from api.tokens import create_token
 from db.oauth_providers import OAuthProviders
 
@@ -121,6 +122,7 @@ class TestOAuthCallbackWithDBProvider:
             'token_url': 'https://idp.example.com/token',
             'jwks_uri': 'https://idp.example.com/jwks',
             'scope': 'openid email profile', 'default_role': 'radiologist',
+            'enabled': True,
         }
 
         tokens = {'id_token': 'fake-id-token'}
@@ -131,14 +133,14 @@ class TestOAuthCallbackWithDBProvider:
         }.get(key, default)
 
         with (
-            patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', 'prov-1'))),
+            patch('api.oauth._verify_state', AsyncMock(return_value=('code-verifier', 'prov-1', None))),
             patch('api.oauth._get_provider_by_id', AsyncMock(return_value=db_provider)),
             patch('api.oauth._exchange_code', AsyncMock(return_value=tokens)) as mock_exchange,
             patch('api.oauth._verify_id_token', return_value=claims),
-            patch('api.oauth._find_or_create_user', AsyncMock(return_value=(
-                {'id': 42, 'admin': False, 'username': 'dr', 'token_version': 0}, [],
-            ))),
-            patch('api.oauth.create_token', return_value='qp-jwt-token') as mock_create_token,
+            patch('api.oauth._find_or_create_user', AsyncMock(return_value={
+                'id': 42, 'admin': False, 'username': 'dr', 'token_version': 0,
+            })),
+            patch('api.oauth.create_token_pair', return_value=('qp-access-token', 'qp-refresh-token')) as mock_create_token,
         ):
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
@@ -172,7 +174,7 @@ class TestOAuthCallbackWithDBProvider:
         request.query_params = {'code': 'code', 'state': 'state'}
 
         with (
-            patch('api.oauth._verify_state', AsyncMock(return_value=('verifier', 'missing-id'))),
+            patch('api.oauth._verify_state', AsyncMock(return_value=('verifier', 'missing-id', None))),
             patch('api.oauth._get_provider_by_id', AsyncMock(return_value=None)),
         ):
             from api.oauth import oauth_callback
@@ -226,28 +228,92 @@ class TestOAuthProviderCreateEncryption:
 
 
 class TestRoleUpdateInvalidatesTokens:
-    """B2: role permission change increments token_version"""
+    """B2: role permission change increments token_version — exercised through
+    the REAL RoleHandler.put decision path (api/roles.py) with a mocked conn,
+    not by calling the mocked increment method directly (the old tests passed
+    regardless of the handler's actual behavior)."""
 
-    @pytest.mark.asyncio
-    async def test_role_patch_with_permissions_calls_bulk_increment(self):
-        conn = AsyncMock()
-        conn.fetchrow.return_value = {'id': 'role-1', 'name': 'Test Role', 'permissions': ['OLD']}
-        from db.roles import Roles
-        from db.users import Users
+    @staticmethod
+    def _patch_conn():
+        conn = MagicMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        conn.fetchval = AsyncMock(return_value=0)
+        conn.execute = AsyncMock()
+        return patch('api.roles.get_conn', return_value=MagicMock(
+            __aenter__=AsyncMock(return_value=conn),
+            __aexit__=AsyncMock(return_value=None),
+        ))
 
-        with patch.object(Users, 'bulk_increment_token_version_by_role', new=AsyncMock()) as mock_bulk:
-            r = Roles(conn=conn)
-            existing = await r.get('role-1')
-            assert existing is not None
+    @staticmethod
+    def _patch_db_class(cls_name, **methods):
+        cls_mock = MagicMock()
+        instance = cls_mock.return_value
+        for name, ret in methods.items():
+            setattr(instance, name, AsyncMock(return_value=ret))
+        return patch(f'api.roles.{cls_name}', cls_mock), cls_mock
 
-            await Users(conn).bulk_increment_token_version_by_role('role-1')
-            mock_bulk.assert_awaited_once_with('role-1')
+    @staticmethod
+    def _make_app(route, user):
+        from starlette.exceptions import HTTPException
 
-    @pytest.mark.asyncio
-    async def test_role_patch_without_permissions_skips_bulk(self):
-        conn = AsyncMock()
-        from db.users import Users
+        from api.validate import _ValidationException, validation_exception_handler
 
-        with patch.object(Users, 'bulk_increment_token_version_by_role', new=AsyncMock()) as mock_bulk:
-            await Users(conn).bulk_increment_token_version_by_role('role-1')
-            mock_bulk.assert_awaited_once()
+        class _FakeAuth(BaseHTTPMiddleware):
+            def __init__(self, app, user=None):
+                super().__init__(app)
+                self._user = user or User({'id': 1, 'permissions': []})
+
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = self._user
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        return Starlette(
+            routes=[route],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: lambda request, exc: JSONResponse(
+                    {'error': exc.detail}, status_code=exc.status_code
+                ),
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_role_patch_with_permissions_calls_bulk_increment(self):
+        from api.roles import RoleHandler
+
+        role = {'id': 'r1', 'name': 'X', 'slug': 'x', 'built_in': False}
+        route = Route('/api/roles/{id}', endpoint=RoleHandler)
+        p_roles = self._patch_db_class('Roles', get=role, patch=None)
+        p_users = self._patch_db_class('Users', bulk_increment_token_version_by_role=None)
+        p_audit = self._patch_db_class('AuditLog', log_event=None)
+
+        with self._patch_conn(), p_roles[0] as roles_cls, p_users[0] as users_cls, p_audit[0]:
+            with TestClient(self._make_app(route, User({'id': 1, 'admin': True, 'permissions': ['*']}))) as client:
+                resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
+
+        assert resp.status_code == 200, resp.text
+        # The real handler patched the role first, then bumped token_version
+        # for every user holding it (api/roles.py `if body.permissions ...`).
+        roles_cls.return_value.patch.assert_awaited_once()
+        users_cls.return_value.bulk_increment_token_version_by_role.assert_awaited_once_with('r1')
+
+    def test_role_patch_without_permissions_skips_bulk(self):
+        from api.roles import RoleHandler
+
+        role = {'id': 'r1', 'name': 'X', 'slug': 'x', 'built_in': False}
+        route = Route('/api/roles/{id}', endpoint=RoleHandler)
+        p_roles = self._patch_db_class('Roles', get=role, patch=None)
+        p_users = self._patch_db_class('Users', bulk_increment_token_version_by_role=None)
+        p_audit = self._patch_db_class('AuditLog', log_event=None)
+
+        with self._patch_conn(), p_roles[0] as roles_cls, p_users[0] as users_cls, p_audit[0]:
+            with TestClient(self._make_app(route, User({'id': 1, 'admin': True, 'permissions': ['*']}))) as client:
+                # A rename carries no permissions payload — the handler must
+                # NOT bump token_version (a no-op bump would force every
+                # holder to re-login for nothing).
+                resp = client.put('/api/roles/r1', json={'name': 'Renamed'})
+
+        assert resp.status_code == 200, resp.text
+        roles_cls.return_value.patch.assert_awaited_once()
+        users_cls.return_value.bulk_increment_token_version_by_role.assert_not_awaited()

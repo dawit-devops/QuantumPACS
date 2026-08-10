@@ -9,7 +9,11 @@ import PermissionRoute, {
   METRICS_ROUTE_PERMISSIONS,
   ADMIN_DASHBOARD_PERMISSIONS,
 } from "../auth/PermissionRoute";
-import { landingRouteFor, ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "../navigator";
+import {
+  landingRouteFor,
+  ADMIN_SCOPED_ROLES,
+  CLINICAL_SCOPED_ROLES,
+} from "../navigator";
 
 const { landingRouteForMock } = vi.hoisted(() => ({
   landingRouteForMock: vi.fn(() => "/account"),
@@ -59,10 +63,7 @@ function WorkspaceRouteTable() {
       <Route
         path="/admin"
         element={
-          <PermissionRoute
-            permission={ADMIN_DASHBOARD_PERMISSIONS}
-            adminOnly
-          >
+          <PermissionRoute permission={ADMIN_DASHBOARD_PERMISSIONS} adminOnly>
             <div data-testid="dashboard-page" />
           </PermissionRoute>
         }
@@ -231,9 +232,9 @@ describe("PACS workspace route gates", () => {
     third.unmount();
   });
 
-  it("blocks a billing-only biller from files, viewer and patients", () => {
+  it("blocks a billing-only billing clerk from files, viewer and patients", () => {
     seedUser({
-      role: "biller",
+      role: "billing_clerk",
       admin: false,
       permissions: ["BILLING_READ", "METERING_READ"],
     });
@@ -260,9 +261,9 @@ describe("PACS workspace route gates", () => {
     fourth.unmount();
   });
 
-  it("lets a biller with ANALYTICS_READ open metrics", () => {
+  it("lets a billing clerk with ANALYTICS_READ open metrics", () => {
     seedUser({
-      role: "biller",
+      role: "billing_clerk",
       admin: false,
       permissions: ["BILLING_READ", "ANALYTICS_READ"],
     });
@@ -272,9 +273,9 @@ describe("PACS workspace route gates", () => {
     result.unmount();
   });
 
-  it("lets an AUDIT_READ-only Matrix A admin role open the audit logs", () => {
+  it("lets an admin-scoped role with AUDIT_READ open the audit logs", () => {
     seedUser({
-      role: "radiology_admin",
+      role: "emr_admin",
       admin: false,
       permissions: ["AUDIT_READ", "INTERFACE_MONITOR"],
     });
@@ -335,7 +336,11 @@ describe("PACS workspace route gates", () => {
   });
 
   it("closes the patient page to an admin-scoped role even with the permission", () => {
-    seedUser({ role: "admin", admin: true, permissions: ["PATIENT_READ"] });
+    seedUser({
+      role: "tenant_admin",
+      admin: true,
+      permissions: ["PATIENT_READ"],
+    });
     landingRouteForMock.mockImplementation(() => "/account");
 
     const result = renderAt("/patients/123");
@@ -345,7 +350,11 @@ describe("PACS workspace route gates", () => {
   });
 
   it("closes clinical routes to an excluded admin role even with the permission", () => {
-    seedUser({ role: "admin", admin: true, permissions: ["REPORT_READ"] });
+    seedUser({
+      role: "tenant_admin",
+      admin: true,
+      permissions: ["REPORT_READ"],
+    });
     landingRouteForMock.mockImplementation(() => "/account");
 
     const result = renderAt("/reading");

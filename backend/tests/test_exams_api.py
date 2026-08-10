@@ -196,7 +196,7 @@ class TestExamCreate:
         with _conn(fetchrow=fake_fetchrow), _audit_ok():
             resp = client.post('/exams', json={'worklist_entry_id': 'wl-1'})
         assert resp.status_code == 400
-        assert 'already adopted' in resp.json()['error']
+        assert 'already adopted' in resp.json()['error']['message']
 
 
 class TestExamDetail:
