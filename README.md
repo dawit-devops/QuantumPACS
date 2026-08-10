@@ -73,6 +73,32 @@ bash scripts/dev.sh logs-fe   # tail frontend logs
 bash scripts/setup_dev.sh     # first-time setup: config, venv, ports, schema
 ```
 
+#### Dev login credentials
+
+| User | Password | Role |
+|------|----------|------|
+| `admin` | `superadmin_pass` in `backend/config.local.yaml` (random per environment) | super_admin (platform admin) |
+| `test.<role>` | `Test@123456` | one per built-in role (see below) |
+
+The `test.*` users cover all 14 kept built-in roles: `test.super_admin`,
+`test.tenant_admin`, `test.pacs_admin`, `test.emr_admin`, `test.radiologist`,
+`test.teleradiologist`, `test.physician`, `test.referring_physician`,
+`test.resident`, `test.care_coordinator`, `test.technologist`,
+`test.receptionist`, `test.cashier`, `test.patient`. `test.super_admin` and
+`admin` are the two platform-admin (`admin: true`) accounts — use one for
+platform-only tasks (e.g. editing the teleradiologist built-in role).
+
+Re-seed or refresh them at any time:
+
+```bash
+backend/venv/bin/python backend/seed_test_users.py
+```
+
+Legacy fixture users with the same `Test@123456` password exist on dev boxes
+provisioned by earlier tenant/e2e setups (`admin-hf`, `role_admin`,
+`role_cashier`, `role_physician`, `role_radiologist`, `role_receptionist`,
+`role_technologist`) — they are not required for onboarding.
+
 ### Manual Setup
 
 #### Backend
