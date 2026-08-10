@@ -24,7 +24,7 @@ test.describe("QA Role", () => {
   });
 
   test("QA user sees QA menu items in the sidebar", async ({ page }) => {
-    // The QA workspace section is open by default for qa_team users. The
+    // The QA workspace section is open by default for QA-officer users. The
     // section groups children under the QA title, so the child labels are
     // Protocols / Incidents / Corrective Actions (d4abc25 workspace
     // restructure) — not prefixed "QA …".
@@ -43,7 +43,7 @@ test.describe("QA Role", () => {
   });
 
   test("QA user is not shown admin-only menu items", async ({ page }) => {
-    // qa_team holds no admin-console grants, so the whole Admin section is
+    // the QA-officer role holds no admin-console grants, so the whole Admin section is
     // filtered out of the sidebar — the strongest form of the old
     // "admin-only items must not appear" assertion.
     await expect(

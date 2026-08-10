@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   BASE,
   menuName,
-  seedNurse,
+  seedAcquisitionTechnologist,
   seedPhysicianLegacy,
   seedPacsAdminClinical,
 } from "./helpers";
@@ -12,10 +12,10 @@ import {
 // admin-scoped roles never land on clinical surfaces, even when their legacy
 // grants would pass (DICOMWEB_READ on physician, REPORT_READ on pacs_admin).
 test.describe("Workspace scope gates (navigator)", () => {
-  test("nurse is denied the DICOMweb console and lands on the exams worklist", async ({
+  test("technologist is denied the DICOMweb console and lands on the exams worklist", async ({
     page,
   }) => {
-    await seedNurse(page);
+    await seedAcquisitionTechnologist(page);
     await page.goto(BASE + "/dicomweb", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/exams$/, { timeout: 5000 });
   });
@@ -39,20 +39,20 @@ test.describe("Workspace scope gates (navigator)", () => {
     await expect(page).toHaveURL(/\/account$/, { timeout: 5000 });
   });
 
-  test("nurse keeps the exams worklist deep-link (positive control)", async ({
+  test("technologist keeps the exams worklist deep-link (positive control)", async ({
     page,
   }) => {
-    await seedNurse(page);
+    await seedAcquisitionTechnologist(page);
     await page.goto(BASE + "/exams", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/exams$/, { timeout: 5000 });
   });
 });
 
 test.describe("Sidebar section scope", () => {
-  test("nurse sees acquisition sections and no admin console", async ({
+  test("technologist sees acquisition sections and no admin console", async ({
     page,
   }) => {
-    await seedNurse(page);
+    await seedAcquisitionTechnologist(page);
     await expect(
       page.getByRole("menuitem", { name: menuName("Acquisition") }),
     ).toBeVisible();

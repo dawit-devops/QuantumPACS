@@ -24,43 +24,24 @@ export interface RoleUser {
   username: string;
 }
 
-// Canonical role slugs -> display names (RBAC spec §4). Legacy built-in slugs
-// kept by the backend are included so every role the API can return renders a
-// stable human name from one place instead of relying on DB names.
+// Built-in role slugs -> display names (R2-16 catalog, 14 slugs). Kept in one
+// place so every role the API can return renders a stable human name instead
+// of relying on DB names.
 export const NAME_MAP: Record<string, string> = {
-  // canonical (spec §4)
   super_admin: "System Admin",
   tenant_admin: "Tenant Admin",
   patient: "Patient",
   radiologist: "Radiologist",
   teleradiologist: "Teleradiologist",
   technologist: "Technologist",
-  scheduler: "Scheduler",
   receptionist: "Receptionist",
   referring_physician: "Referring Physician",
-  ed_physician: "ED Physician",
-  biller: "Biller",
-  medical_coder: "Medical Coder",
-  department_manager: "Department Manager",
-  radiology_admin: "Radiology Admin",
   pacs_admin: "PACS Administrator",
-  imaging_informatics: "Imaging Informatics",
   physician: "Physician",
   resident: "Resident",
-  nurse: "Nurse",
-  pharmacist: "Pharmacist",
-  lab_technician: "Lab Technician",
-  him_specialist: "HIM Specialist",
   care_coordinator: "Care Coordinator",
   emr_admin: "EMR Admin",
-  // legacy built-in slugs kept by the backend
-  admin: "Administrator",
-  qa_team: "QA Team",
   cashier: "Cashier",
-  front_desk: "Front Desk",
-  biomedical_engineer: "Biomedical Engineer",
-  service_director: "Service Director",
-  hospital_staff: "Hospital Staff",
 };
 
 export function roleDisplayName(slug?: string, fallback?: string): string {

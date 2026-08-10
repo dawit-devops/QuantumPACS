@@ -83,9 +83,9 @@ class TestGetRolePermissions:
         perms = get_role_permissions(None)
         assert perms == list(BUILT_IN_ROLES.get('cashier', []))
 
-    def test_admin_has_delete_and_admin_permissions(self):
-        perms = get_role_permissions('admin')
-        assert Permission.FILE_DELETE.value in perms
+    def test_pacs_admin_has_file_and_user_management(self):
+        perms = get_role_permissions('pacs_admin')
+        assert Permission.FILE_WRITE.value in perms
         assert Permission.USER_WRITE.value in perms
 
 

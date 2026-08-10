@@ -7,28 +7,16 @@ from db.table import Table
 
 NAME_BY_SLUG = {
     'super_admin': 'Super Admin',
-    'admin': 'Administrator',
     'tenant_admin': 'Tenant Admin',
     'technologist': 'Technologist',
     'radiologist': 'Radiologist',
-    'qa_team': 'QA Team',
     'physician': 'Physician',
     'cashier': 'Cashier',
     'teleradiologist': 'Teleradiologist',
-    'scheduler': 'Scheduler',
     'receptionist': 'Receptionist',
     'referring_physician': 'Referring Physician',
-    'ed_physician': 'ED Physician',
-    'biller': 'Biller',
-    'medical_coder': 'Medical Coder',
-    'department_manager': 'Department Manager',
-    'radiology_admin': 'Radiology Admin',
     'pacs_admin': 'PACS Administrator',
-    'imaging_informatics': 'Imaging Informatics',
     'resident': 'Resident',
-    'pharmacist': 'Pharmacist',
-    'lab_technician': 'Lab Technician',
-    'him_specialist': 'HIM Specialist',
     'care_coordinator': 'Care Coordinator',
     'emr_admin': 'EMR Admin',
     'patient': 'Patient',
@@ -91,16 +79,33 @@ class Roles(Table):
         await self.exec(q)
 
     async def seed_built_in_roles(self):
-        from api.permissions import BUILT_IN_ROLES
+        from api.permissions import (
+            BUILT_IN_ROLES,
+            IMMUTABLE_ROLE_SLUGS,
+        )
 
         for slug, permissions in BUILT_IN_ROLES.items():
             name = NAME_BY_SLUG.get(slug, slug.replace('_', ' ').title())
             perms_json = json.dumps(permissions)
-            await self.conn.execute(
-                'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
-                'VALUES ($1, $2, $3::jsonb, TRUE, now(), now()) '
-                'ON CONFLICT (slug) DO UPDATE SET '
-                'name = EXCLUDED.name, permissions = EXCLUDED.permissions, '
-                'built_in = TRUE, updated_at = now()',
-                slug, name, perms_json,
-            )
+            if slug in IMMUTABLE_ROLE_SLUGS:
+                # Immutable anchors get the full upsert: drift would silently
+                # widen or shrink platform/tenant/patient administration.
+                await self.conn.execute(
+                    'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
+                    'VALUES ($1, $2, $3::jsonb, TRUE, now(), now()) '
+                    'ON CONFLICT (slug) DO UPDATE SET '
+                    'name = EXCLUDED.name, permissions = EXCLUDED.permissions, '
+                    'built_in = TRUE, updated_at = now()',
+                    slug, name, perms_json,
+                )
+            else:
+                # Editable built-ins (facility-edited clinical/operational
+                # slugs, incl. the platform-only teleradiologist) are seeded
+                # only when absent: an upsert here would wipe tenant-admin /
+                # platform-admin edits on every boot.
+                await self.conn.execute(
+                    'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
+                    'VALUES ($1, $2, $3::jsonb, TRUE, now(), now()) '
+                    'ON CONFLICT (slug) DO NOTHING',
+                    slug, name, perms_json,
+                )

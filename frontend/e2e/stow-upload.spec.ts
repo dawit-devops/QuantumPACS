@@ -5,7 +5,7 @@ test.describe("STOW-RS Upload", () => {
   test.beforeEach(async ({ page }) => {
     // /dicomweb/store is an AdminConsoleRoute surface (admin-scoped, even
     // though the gate permission is DICOMWEB_READ): clinical roles such as
-    // qa_team are excluded by scope, so the suite uses the real admin login.
+    // QA roles are excluded by scope, so the suite uses the real admin login.
     await loginAsAdmin(page);
   });
 

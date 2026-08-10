@@ -79,7 +79,7 @@ describe("CorrectiveActions", () => {
     localStorage.setItem("userId", "qa-1");
     localStorage.setItem("username", "qa_user");
     localStorage.setItem("admin", "true");
-    localStorage.setItem("role", "qa_team");
+    localStorage.setItem("role", "qa_officer");
     localStorage.setItem(
       "permissions",
       JSON.stringify(["QA_READ", "QA_WRITE", "PROTOCOL_MANAGE"]),

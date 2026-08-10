@@ -119,9 +119,9 @@ class TestRoleBasedAccess:
         assert client.get('/api/file-read').status_code == 200
         assert client.get('/api/file-write').status_code == 403
 
-    def test_admin_has_user_read_write_but_not_user_admin(self):
-        perms = BUILT_IN_ROLES['admin']
-        user = User({'id': 6, 'admin': False, 'role': 'admin',
+    def test_pacs_admin_has_user_read_write_but_not_user_admin(self):
+        perms = BUILT_IN_ROLES['pacs_admin']
+        user = User({'id': 6, 'admin': False, 'role': 'pacs_admin',
                       'permissions': perms})
         client = TestClient(_make_app(user))
         assert client.get('/api/user-admin').status_code == 403

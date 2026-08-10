@@ -21,26 +21,16 @@ describe("workspaceFor", () => {
       permissions: ["EXAM_READ"],
       expected: "acquisition",
     },
-    { role: "qa_team", permissions: ["QA_READ"], expected: "qa" },
+    { role: "qa_officer", permissions: ["QA_READ"], expected: "qa" },
     {
       role: "pacs_admin",
       permissions: ["REPLICA_READ"],
       expected: "dashboard",
     },
     {
-      role: "radiology_admin",
+      role: "emr_admin",
       permissions: ["REPLICA_READ"],
       expected: "dashboard",
-    },
-    {
-      role: "imaging_informatics",
-      permissions: ["REPLICA_READ"],
-      expected: "dashboard",
-    },
-    {
-      role: "department_manager",
-      permissions: ["ANALYTICS_READ"],
-      expected: "analytics",
     },
     {
       role: "physician",
@@ -53,33 +43,13 @@ describe("workspaceFor", () => {
       expected: "clinical",
     },
     {
-      role: "ed_physician",
-      permissions: ["REPORT_READ"],
-      expected: "clinical",
-    },
-    {
-      role: "nurse",
-      permissions: ["EXAM_READ"],
-      expected: "acquisition",
-    },
-    {
       role: "care_coordinator",
       permissions: ["REPORT_READ"],
       expected: "clinical",
     },
     { role: "patient", permissions: ["PORTAL_READ"], expected: "portal" },
     {
-      role: "scheduler",
-      permissions: ["REGISTRATION_READ"],
-      expected: "frontdesk",
-    },
-    {
       role: "receptionist",
-      permissions: ["REGISTRATION_READ"],
-      expected: "frontdesk",
-    },
-    {
-      role: "front_desk",
       permissions: ["REGISTRATION_READ"],
       expected: "frontdesk",
     },
@@ -93,7 +63,6 @@ describe("workspaceFor", () => {
       permissions: ["USER_READ"],
       expected: "dashboard",
     },
-    { role: "admin", permissions: ["USER_READ"], expected: "dashboard" },
   ])(
     "maps the $role role to the $expected workspace",
     ({ role, permissions, expected }) => {
@@ -103,15 +72,10 @@ describe("workspaceFor", () => {
 
   it.each([
     "cashier",
-    "biller",
     "pharmacist",
-    "lab_technician",
-    "him_specialist",
-    "emr_admin",
-    "biomedical_engineer",
-    "service_director",
-    "hospital_staff",
     "medical_coder",
+    "nurse",
+    "scheduler",
     "mystery_role",
   ])("defaults the %s role to the files workspace", (role) => {
     expect(workspaceFor(user({ role, permissions: ["FILE_READ"] }))).toBe(
@@ -159,7 +123,9 @@ describe("workspaceFor", () => {
     ).not.toBe("acquisition");
     // The admin flag bypasses permission gates but not the role scope.
     expect(
-      workspaceFor(user({ role: "admin", admin: true, permissions: [] })),
+      workspaceFor(
+        user({ role: "tenant_admin", admin: true, permissions: [] }),
+      ),
     ).toBe("dashboard");
   });
 
@@ -168,7 +134,7 @@ describe("workspaceFor", () => {
       workspaceFor(user({ role: "radiologist", permissions: ["REPORT_READ"] })),
     ).toBe("reading");
     expect(
-      workspaceFor(user({ role: "qa_team", permissions: ["QA_READ"] })),
+      workspaceFor(user({ role: "qa_officer", permissions: ["QA_READ"] })),
     ).toBe("qa");
   });
 });
@@ -186,7 +152,7 @@ describe("landingRouteFor", () => {
       ),
     ).toBe("/exams");
     expect(
-      landingRouteFor(user({ role: "qa_team", permissions: ["QA_READ"] })),
+      landingRouteFor(user({ role: "qa_officer", permissions: ["QA_READ"] })),
     ).toBe("/qa/queue");
     expect(
       landingRouteFor(
@@ -200,7 +166,7 @@ describe("landingRouteFor", () => {
     ).toBe("/reading");
     expect(
       landingRouteFor(
-        user({ role: "department_manager", permissions: ["METRICS_READ"] }),
+        user({ role: "emr_admin", permissions: ["ANALYTICS_READ"] }),
       ),
     ).toBe("/metrics");
     expect(
@@ -237,7 +203,7 @@ describe("landingRouteFor", () => {
     ).toBe("/users");
     expect(
       landingRouteFor(
-        user({ role: "qa_team", permissions: ["ANALYTICS_READ"] }),
+        user({ role: "qa_officer", permissions: ["ANALYTICS_READ"] }),
       ),
     ).toBe("/metrics");
   });
@@ -258,7 +224,9 @@ describe("landingRouteFor", () => {
     // The admin flag bypasses gates but the role scope still excludes
     // clinical surfaces; the dashboard primary wins.
     expect(
-      landingRouteFor(user({ role: "admin", admin: true, permissions: [] })),
+      landingRouteFor(
+        user({ role: "tenant_admin", admin: true, permissions: [] }),
+      ),
     ).toBe("/admin");
     // Without any dashboard permission the role surface and fallback still
     // skip clinical workspaces and degrade to the auth-only terminal.
@@ -279,18 +247,17 @@ describe("landingRouteFor", () => {
       ),
     ).toBe("/reading");
     expect(
-      landingRouteFor(user({ role: "qa_team", permissions: ["QA_READ"] })),
+      landingRouteFor(user({ role: "qa_officer", permissions: ["QA_READ"] })),
     ).toBe("/qa/queue");
   });
 
   it("lands the clinical workspace roles on the reading worklist", () => {
-    // physician / referring_physician / ed_physician / care_coordinator all
-    // hold REPORT_READ (Matrix A/B): the clinical landing is /reading, never
-    // the DICOMweb console even when the legacy DICOMWEB_READ grant passes.
+    // physician / referring_physician / care_coordinator all hold REPORT_READ
+    // (Matrix A/B): the clinical landing is /reading, never the DICOMweb
+    // console even when the legacy DICOMWEB_READ grant passes.
     for (const role of [
       "physician",
       "referring_physician",
-      "ed_physician",
       "care_coordinator",
     ]) {
       expect(
@@ -304,29 +271,15 @@ describe("landingRouteFor", () => {
     }
   });
 
-  it("lands nurse on the exams worklist via the acquisition workspace", () => {
+  it("lands EMR-only custom roles on /account until EMR surfaces exist", () => {
+    // Cashier / facility EMR roles hold only billing/EMR grants that have no
+    // PACS surface — /account is the terminal.
     expect(
-      landingRouteFor(user({ role: "nurse", permissions: ["EXAM_READ"] })),
-    ).toBe("/exams");
-    expect(
-      workspaceFor(user({ role: "nurse", permissions: ["EXAM_READ"] })),
-    ).toBe("acquisition");
-  });
-
-  it("lands EMR-only roles on /account until EMR surfaces exist", () => {
-    // pharmacist / lab_technician hold only EMR grants (RESULTS_READ,
-    // MED_VERIFY, ...) that have no PACS surface — /account is the terminal.
-    expect(
-      landingRouteFor(
-        user({
-          role: "pharmacist",
-          permissions: ["RESULTS_READ", "MED_VERIFY"],
-        }),
-      ),
+      landingRouteFor(user({ role: "cashier", permissions: ["BILLING_READ"] })),
     ).toBe("/account");
     expect(
       landingRouteFor(
-        user({ role: "lab_technician", permissions: ["RESULTS_READ"] }),
+        user({ role: "care_assistant", permissions: ["RESULTS_READ"] }),
       ),
     ).toBe("/account");
   });
@@ -359,7 +312,11 @@ describe("landingRouteFor", () => {
         "acquisition",
         "/exams",
       ],
-      [user({ role: "qa_team", permissions: ["QA_READ"] }), "qa", "/qa/queue"],
+      [
+        user({ role: "qa_officer", permissions: ["QA_READ"] }),
+        "qa",
+        "/qa/queue",
+      ],
       [
         user({ role: "pacs_admin", permissions: ["REPLICA_READ"] }),
         "dashboard",
@@ -373,7 +330,7 @@ describe("landingRouteFor", () => {
         "/account",
       ],
       [
-        user({ role: "department_manager", permissions: ["ANALYTICS_READ"] }),
+        user({ role: "emr_admin", permissions: ["ANALYTICS_READ"] }),
         "analytics",
         "/metrics",
       ],
@@ -384,7 +341,11 @@ describe("landingRouteFor", () => {
         "dashboard",
         "/admin",
       ],
-      [user({ role: "biller", permissions: ["AUDIT_READ"] }), "admin", "/logs"],
+      [
+        user({ role: "cashier", permissions: ["AUDIT_READ"] }),
+        "admin",
+        "/logs",
+      ],
       [
         user({ role: "tenant_admin", permissions: ["USER_READ"] }),
         "dashboard",
@@ -399,16 +360,6 @@ describe("landingRouteFor", () => {
       ],
       [
         user({ role: "receptionist", permissions: ["REGISTRATION_READ"] }),
-        "frontdesk",
-        "/frontdesk/registration",
-      ],
-      [
-        user({ role: "scheduler", permissions: ["REGISTRATION_READ"] }),
-        "frontdesk",
-        "/frontdesk/registration",
-      ],
-      [
-        user({ role: "front_desk", permissions: ["REGISTRATION_READ"] }),
         "frontdesk",
         "/frontdesk/registration",
       ],

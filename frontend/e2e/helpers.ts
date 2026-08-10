@@ -144,12 +144,11 @@ export async function stubApiRoutes(page: Page) {
     (u) => u.pathname.startsWith("/api/"),
     async (route) => {
       const hasSession = await page
-        .evaluate(
-          () =>
-            Boolean(
-              localStorage.getItem("userId") &&
-                localStorage.getItem("access_token"),
-            ),
+        .evaluate(() =>
+          Boolean(
+            localStorage.getItem("userId") &&
+            localStorage.getItem("access_token"),
+          ),
         )
         .catch(() => false);
       if (!hasSession) {
@@ -174,14 +173,14 @@ export async function stubApiRoutes(page: Page) {
 }
 
 /**
- * Seeds an authenticated front-office session (scheduler / receptionist /
- * front_desk) with the R08 grants: registration, visits, order intake,
+ * Seeds an authenticated front-office session (receptionist) with the R08
+ * grants: registration, visits, order intake,
  * consent capture, the privacy queue and schedule read/write. /api/** is
  * stubbed so the deep-link suite runs without a real backend user.
  */
 export async function seedFrontDesk(
   page: Page,
-  role: "scheduler" | "receptionist" | "front_desk" = "scheduler",
+  role: "receptionist" = "receptionist",
 ) {
   await stubApiRoutes(page);
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -243,9 +242,7 @@ export function adminCredentials() {
   return {
     username: process.env.E2E_ADMIN_USER || "admin",
     password:
-      process.env.E2E_ADMIN_PASS ||
-      process.env.SUPERADMIN_PASS ||
-      "pa55w0rd",
+      process.env.E2E_ADMIN_PASS || process.env.SUPERADMIN_PASS || "pa55w0rd",
   };
 }
 
@@ -309,7 +306,7 @@ export async function seedTechnologist(page: Page) {
  * clinical roles are bounced from admin surfaces (DICOMweb console) and land
  * on their acquisition workspace instead.
  */
-export async function seedNurse(page: Page) {
+export async function seedAcquisitionTechnologist(page: Page) {
   await page.route(
     (u) => u.pathname.startsWith("/api/"),
     (route) => {
@@ -321,10 +318,10 @@ export async function seedNurse(page: Page) {
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
-    localStorage.setItem("userId", "nurse-1");
-    localStorage.setItem("username", "nurse");
+    localStorage.setItem("userId", "tech-acq-1");
+    localStorage.setItem("username", "technologist");
     localStorage.setItem("admin", "false");
-    localStorage.setItem("role", "nurse");
+    localStorage.setItem("role", "technologist");
     localStorage.setItem(
       "permissions",
       JSON.stringify([
@@ -335,8 +332,8 @@ export async function seedNurse(page: Page) {
         "WORKLIST_READ",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-nurse-token");
-    localStorage.setItem("refresh_token", "e2e-nurse-token");
+    localStorage.setItem("access_token", "e2e-tech-acq-token");
+    localStorage.setItem("refresh_token", "e2e-tech-acq-token");
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -399,11 +396,13 @@ export async function seedPacsAdminClinical(page: Page) {
 }
 
 /**
- * Seeds an authenticated QA Team session directly in localStorage with the same
- * permission set as the backend `qa_team` built-in role (read-only clinical
+ * Seeds an authenticated QA session directly in localStorage with the same
+ * permission set the retired `qa_team` built-in carried (read-only clinical
  * access + QA_WRITE + PROTOCOL_MANAGE), and stubs /api/** so the fake token
  * never 401-bounces. Lets the QA workflow suite assert menu visibility, page
- * loading, and route gating without a real qa_team user in the backend.
+ * loading, and route gating without a real QA user in the backend — QA
+ * coverage is granted via facility custom roles (R2-16), represented here by
+ * the custom `qa_officer` slug.
  */
 export async function seedQAUser(page: Page) {
   await page.route(
@@ -423,7 +422,7 @@ export async function seedQAUser(page: Page) {
     localStorage.setItem("userId", "qa-1");
     localStorage.setItem("username", "qa_officer");
     localStorage.setItem("admin", "false");
-    localStorage.setItem("role", "qa_team");
+    localStorage.setItem("role", "qa_officer");
     localStorage.setItem(
       "permissions",
       JSON.stringify([
@@ -448,8 +447,8 @@ export async function seedQAUser(page: Page) {
 
 /**
  * Seeds an authenticated audit-only session (AUDIT_READ but no LOG_READ) —
- * the shape of imaging_informatics / department_manager. Validates the
- * dual-permission /logs gate (LOG_READ | AUDIT_READ) end to end.
+ * the shape of emr_admin. Validates the dual-permission /logs gate
+ * (LOG_READ | AUDIT_READ) end to end.
  */
 export async function seedAuditOnlyUser(page: Page) {
   await page.route(
@@ -466,7 +465,7 @@ export async function seedAuditOnlyUser(page: Page) {
     localStorage.setItem("userId", "audit-1");
     localStorage.setItem("username", "audit_viewer");
     localStorage.setItem("admin", "false");
-    localStorage.setItem("role", "imaging_informatics");
+    localStorage.setItem("role", "emr_admin");
     localStorage.setItem(
       "permissions",
       JSON.stringify([

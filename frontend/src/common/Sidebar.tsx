@@ -266,7 +266,7 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <ApartmentOutlined />,
         // Matches the /api/routing backend guard (ROUTING_READ/ROUTING_WRITE).
         // INTERFACE_ADMIN was dropped from the gate: tenant_admin and
-        // radiology_admin hold it but the route and backend both reject them.
+        // emr_admin hold it but the route and backend both reject them.
         permissions: ["ROUTING_READ"],
       },
       {
@@ -318,8 +318,8 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         // DICOMweb is a submenu: the parent gate (DICOMWEB_READ) covers
         // Server, Store (STOW-RS) and Study Browser — the backend re-checks
         // DICOMWEB_WRITE on the STOW endpoint itself. STORAGE_ADMIN and
-        // INTERFACE_ADMIN were dropped from the gate: tenant_admin,
-        // radiology_admin and pacs_admin hold them but the route and the
+        // INTERFACE_ADMIN were dropped from the gate: tenant_admin and
+        // pacs_admin hold them but the route and the
         // /api/dicomweb* backend guards all require DICOMWEB_READ.
         // adminOnly: the console is admin-scoped; clinical roles (radiologist,
         // physician) carry legacy DICOMWEB_READ but must not see it — the
@@ -411,8 +411,8 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <DashboardOutlined />,
         // METRICS_READ or ANALYTICS_READ — mirrors the /metrics route gate
         // (METRICS_ROUTE_PERMISSIONS) and the backend alias resolution
-        // (ANALYTICS_READ ⇄ METRICS_READ) so department_manager, which holds
-        // only ANALYTICS_READ, gets the nav item its landing route promises.
+        // (ANALYTICS_READ ⇄ METRICS_READ) so a custom role holding only
+        // ANALYTICS_READ gets the nav item its landing route promises.
         permissions: ["METRICS_READ", "ANALYTICS_READ"],
       },
     ],
@@ -552,8 +552,7 @@ function Sidebar() {
   useEffect(() => {
     setManualOpenKeys(null);
   }, [selectedKey]);
-  const openKeys =
-    manualOpenKeys ?? (routeOpenKey ? [routeOpenKey] : []);
+  const openKeys = manualOpenKeys ?? (routeOpenKey ? [routeOpenKey] : []);
 
   // Section visibility rule: a section shows when it owns the user's workspace
   // OR the user can see at least one item inside it. The workspace clause keeps

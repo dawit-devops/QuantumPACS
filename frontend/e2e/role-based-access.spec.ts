@@ -132,8 +132,8 @@ test.describe("Audit-only deep-link access (LOG_READ | AUDIT_READ gate)", () => 
   test("audit-only user is still denied /users and /routing", async ({
     page,
   }) => {
-    // imaging_informatics is admin-scoped with AUDIT_READ (a dashboard
-    // permission), so the PermissionRoute bounce lands on the dashboard.
+    // emr_admin is admin-scoped with AUDIT_READ (a dashboard permission),
+    // so the PermissionRoute bounce lands on the dashboard.
     await seedAuditOnlyUser(page);
     await page.goto(BASE + "/users", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/admin$/, { timeout: 5000 });
@@ -143,7 +143,7 @@ test.describe("Audit-only deep-link access (LOG_READ | AUDIT_READ gate)", () => 
 });
 
 test.describe("Front-office deep-link access (R08 / R19 positive control)", () => {
-  // A scheduler holding the R08 grants must render the front-desk surfaces
+  // A receptionist holding the R08 grants must render the front-desk surfaces
   // in place (URL stays on the path), and the schedule board must open under
   // its SCHEDULE_READ gate (not just WORKLIST_READ).
   for (const path of [
@@ -152,38 +152,8 @@ test.describe("Front-office deep-link access (R08 / R19 positive control)", () =
     "/frontdesk/queue",
     "/schedule-board",
   ]) {
-    test(`scheduler is allowed deep-link ${path}`, async ({ page }) => {
-      await seedFrontDesk(page, "scheduler");
-      await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
-      await expect(page).toHaveURL(new RegExp(path + "$"), {
-        timeout: 10000,
-      });
-    });
-  }
-
-  test("receptionist is allowed deep-link /frontdesk/registration", async ({
-    page,
-  }) => {
-    await seedFrontDesk(page, "receptionist");
-    await page.goto(BASE + "/frontdesk/registration", {
-      waitUntil: "domcontentloaded",
-    });
-    await expect(page).toHaveURL(/\/frontdesk\/registration$/, {
-      timeout: 10000,
-    });
-  });
-
-  // R4-05: the legacy front_desk role carries the same R08 grants as the
-  // canonical scheduler/receptionist rows (FRONT_DESK_PERMISSIONS) and maps
-  // to the same workspace — it must pass the identical deep-link gates.
-  for (const path of [
-    "/frontdesk/registration",
-    "/frontdesk/visits",
-    "/frontdesk/queue",
-    "/schedule-board",
-  ]) {
-    test(`front_desk is allowed deep-link ${path}`, async ({ page }) => {
-      await seedFrontDesk(page, "front_desk");
+    test(`receptionist is allowed deep-link ${path}`, async ({ page }) => {
+      await seedFrontDesk(page, "receptionist");
       await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(new RegExp(path + "$"), {
         timeout: 10000,
@@ -211,15 +181,15 @@ test.describe("Front-office deep-link denial (no-grant roles)", () => {
 });
 
 test.describe("Front-office roles denied clinical surfaces", () => {
-  // R4-05 inverse: scheduler/receptionist/front_desk hold no clinical grants,
-  // so deep-linking the reading worklist or the exam console must bounce them
-  // back to their front-office landing (not render a clinical surface).
-  // /worklist is deliberately absent: Matrix A grants the scheduler
-  // WORKLIST_READ (the MWL list is part of scheduling), so the gate lets them
-  // in — covered by the positive control below.
+  // R4-05 inverse: receptionist holds no clinical grants, so deep-linking the
+  // reading worklist or the exam console must bounce back to the front-office
+  // landing (not render a clinical surface). /worklist is deliberately
+  // absent: Matrix A grants the receptionist WORKLIST_READ (the MWL list is
+  // part of scheduling), so the gate lets them in — covered by the positive
+  // control below.
   for (const path of ["/reading", "/exams"]) {
-    test(`scheduler is denied deep-link ${path}`, async ({ page }) => {
-      await seedFrontDesk(page, "scheduler");
+    test(`receptionist is denied deep-link ${path}`, async ({ page }) => {
+      await seedFrontDesk(page, "receptionist");
       await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/frontdesk\/registration$/, {
         timeout: 10000,
@@ -227,15 +197,15 @@ test.describe("Front-office roles denied clinical surfaces", () => {
     });
   }
 
-  test("scheduler is allowed deep-link /worklist (WORKLIST_READ)", async ({
+  test("receptionist is allowed deep-link /worklist (WORKLIST_READ)", async ({
     page,
   }) => {
-    await seedFrontDesk(page, "scheduler");
+    await seedFrontDesk(page, "receptionist");
     await page.goto(BASE + "/worklist", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/worklist$/, { timeout: 10000 });
   });
 
-  test("front_desk with a clinical grant follows the permission-based gate", async ({
+  test("receptionist with a clinical grant follows the permission-based gate", async ({
     page,
   }) => {
     // Drift shape: a front-office role that gained REPORT_READ. ClinicalRoute
@@ -250,9 +220,9 @@ test.describe("Front-office roles denied clinical surfaces", () => {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("userId", "fd-2");
-      localStorage.setItem("username", "front_desk");
+      localStorage.setItem("username", "receptionist");
       localStorage.setItem("admin", "false");
-      localStorage.setItem("role", "front_desk");
+      localStorage.setItem("role", "receptionist");
       localStorage.setItem(
         "permissions",
         JSON.stringify(["REGISTRATION_READ", "QUEUE_READ", "REPORT_READ"]),

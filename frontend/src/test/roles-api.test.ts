@@ -84,7 +84,7 @@ describe("roles api client", () => {
 
   it("roleDisplayName falls back to canonical names and unknown slugs", () => {
     expect(roleDisplayName("super_admin")).toBe("System Admin");
-    expect(roleDisplayName("admin")).toBe("Administrator");
+    expect(roleDisplayName("pacs_admin")).toBe("PACS Administrator");
     expect(roleDisplayName("unknown_slug", "Fallback")).toBe("Fallback");
   });
 

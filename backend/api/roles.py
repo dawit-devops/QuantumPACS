@@ -2,7 +2,12 @@ from starlette.endpoints import HTTPEndpoint
 import asyncpg
 
 from api.rbac import requires_permission
-from api.permissions import Permission, PERMISSION_GROUPS
+from api.permissions import (
+    Permission,
+    PERMISSION_GROUPS,
+    IMMUTABLE_ROLE_SLUGS,
+    PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES,
+)
 from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.roles import CreateRoleRequest, UpdateRoleRequest
@@ -79,10 +84,20 @@ class RoleHandler(HTTPEndpoint):
             if not role:
                 return not_found('Role not found')
             if role.get('built_in'):
-                # Built-in roles are immutable (RBAC spec §4: "built-in ·
-                # immutable") — editing them would let ROLE_WRITE holders
-                # escalate grants (e.g. add permissions to super_admin).
-                return api_error('FORBIDDEN', 'Cannot modify built-in role', status=403)
+                # R2-16: built-in roles split into three tiers — immutable
+                # (platform/tenant/pacs/emr admin + patient), platform-admin
+                # only (teleradiologist), and facility-editable (the remaining
+                # clinical/operational slugs). Deletion stays blocked for every
+                # built-in; only permission lists are editable.
+                slug = role.get('slug')
+                if slug in IMMUTABLE_ROLE_SLUGS:
+                    return api_error(
+                        'FORBIDDEN', 'Cannot modify immutable built-in role', status=403
+                    )
+                if slug in PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES and not request.user.admin:
+                    return api_error(
+                        'FORBIDDEN', 'Only the platform admin can modify this role', status=403
+                    )
             if (
                 body.permissions is not None
                 and not request.user.admin

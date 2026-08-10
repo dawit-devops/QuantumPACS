@@ -3,7 +3,6 @@ from pathlib import Path
 from api.permissions import (
     MATRIX_A_BILL,
     MATRIX_A_RECEPT,
-    MATRIX_A_SCHED,
 )
 
 
@@ -55,8 +54,9 @@ class TestFrontDeskRoleGrantsMigration:
     def test_migration_046_upgrade_grants_match_permissions_py(self):
         # Drift guard: if permissions.py changes after 046 is applied, fresh
         # DBs (runtime seed_built_in_roles upsert) and upgraded DBs diverge.
+        # Scheduler is dropped entirely by migration 052, so only the kept
+        # receptionist row is guarded here.
         module = _import_migration('046')
-        assert set(module.UPGRADE_GRANTS['scheduler']) == MATRIX_A_SCHED
         assert set(module.UPGRADE_GRANTS['receptionist']) == MATRIX_A_RECEPT
 
     def test_migration_046_adds_only_the_r08_grants(self):
@@ -80,10 +80,9 @@ class TestFrontDeskRoleGrantsMigration:
         # Receptionist additionally gained SCHEDULE_WRITE in MATRIX_A_RECEPT
         # (R08 booking); the migration's rollback rows are exactly what the
         # upgraded sets would be minus every grant they added.
-        for slug, rollback in module.ROLLBACK_GRANTS.items():
-            current = MATRIX_A_SCHED if slug == 'scheduler' else MATRIX_A_RECEPT
-            added = set(module.UPGRADE_GRANTS[slug]) - set(rollback)
-            assert set(rollback) == current - added
+        rollback = module.ROLLBACK_GRANTS['receptionist']
+        added = set(module.UPGRADE_GRANTS['receptionist']) - set(rollback)
+        assert set(rollback) == MATRIX_A_RECEPT - added
 
 
 class TestLegacyRoleGrantTrimsMigration:

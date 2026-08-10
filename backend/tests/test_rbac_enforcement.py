@@ -381,8 +381,8 @@ def test_routes_wire_guards_for_unguarded_file_handlers():
 
 # ------------------------------------------------ built-in immutability + schema validation
 
-def test_put_built_in_role_forbidden():
-    role = {'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist', 'built_in': True}
+def test_put_immutable_built_in_role_forbidden():
+    role = {'id': 'r1', 'name': 'Super Admin', 'slug': 'super_admin', 'built_in': True}
     route = Route('/api/roles/{id}', endpoint=RoleHandler)
     p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
     p_conn = _patch_conn('api.roles')[0]
@@ -391,7 +391,54 @@ def test_put_built_in_role_forbidden():
         with TestClient(_make_app(route, _make_user([Permission.ROLE_WRITE.value]))) as client:
             resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
     assert resp.status_code == 403
+    assert resp.json()['error']['message'] == 'Cannot modify immutable built-in role'
     roles_cls.return_value.patch.assert_not_awaited()
+
+
+def test_put_platform_admin_only_built_in_role_requires_superadmin():
+    role = {'id': 'r1', 'name': 'Teleradiologist', 'slug': 'teleradiologist', 'built_in': True}
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
+    p_users = _patch_db_class('api.roles', 'Users', bulk_increment_token_version_by_role=None)
+    p_audit = _patch_db_class('api.roles', 'AuditLog', log_event=None)
+    p_conn = _patch_conn('api.roles')[0]
+
+    # Facility admin (ROLE_WRITE + full target grants): still 403 — coverage
+    # contracts are platform policy.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        caller = _make_user([Permission.ROLE_WRITE.value, 'REPORT_READ'])
+        with TestClient(_make_app(route, caller)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['REPORT_READ']})
+    assert resp.status_code == 403
+    assert resp.json()['error']['message'] == 'Only the platform admin can modify this role'
+    p_roles[1].return_value.patch.assert_not_awaited()
+
+    # Platform admin (users.admin flag) can edit it.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        admin_user = User({'id': 2, 'admin': True, 'permissions': [Permission.ROLE_WRITE.value]})
+        with TestClient(_make_app(route, admin_user)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['REPORT_READ']})
+    assert resp.status_code == 200
+    p_roles[1].return_value.patch.assert_awaited()
+
+
+def test_put_editable_built_in_role_allowed_for_facility_admin():
+    role = {'id': 'r1', 'name': 'Radiologist', 'slug': 'radiologist', 'built_in': True}
+    route = Route('/api/roles/{id}', endpoint=RoleHandler)
+    p_roles = _patch_db_class('api.roles', 'Roles', get=role, patch=None)
+    p_users = _patch_db_class('api.roles', 'Users', bulk_increment_token_version_by_role=None)
+    p_audit = _patch_db_class('api.roles', 'AuditLog', log_event=None)
+    p_conn = _patch_conn('api.roles')[0]
+
+    # R2-16: radiologist is a facility-editable built-in. Caller holds every
+    # permission it assigns (subset guard) — the edit must succeed.
+    with p_conn, p_roles[0], p_users[0], p_audit[0]:
+        caller = _make_user([Permission.ROLE_WRITE.value, Permission.FILE_READ.value])
+        with TestClient(_make_app(route, caller)) as client:
+            resp = client.put('/api/roles/r1', json={'permissions': ['FILE_READ']})
+    assert resp.status_code == 200
+    p_roles[1].return_value.patch.assert_awaited()
+    p_users[1].return_value.bulk_increment_token_version_by_role.assert_awaited_once_with('r1')
 
 
 def test_put_unknown_permission_rejected():
