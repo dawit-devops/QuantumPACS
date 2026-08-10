@@ -2,13 +2,19 @@ import type { ThemeConfig } from "antd";
 import { theme as antTheme } from "antd";
 
 export const BRAND = {
-  primary: "#0891B2",
+  // R1-11: cyan-700 (#0e7490) — cyan-600 (#0891b2) fails AA (3.68:1) for
+  // white button labels and links; the semantic token in tokens.css already
+  // resolves to cyan-700, so the antd theme must match it.
+  primary: "#0E7490",
   secondary: "#22D3EE",
   accent: "#059669",
-  success: "#10B981",
+  // R1-11: antd v6 Tag status text uses colorSuccess itself (not
+  // colorSuccessText) — emerald-500 #10b981 on green-1 #e1faed is 2.3:1.
+  // Emerald-700 passes AA on the tinted bg and on white button labels.
+  success: "#047857",
   warning: "#F59E0B",
   error: "#DC2626",
-  info: "#0891B2",
+  info: "#0E7490",
   bg: "#F8FAFC",
   bgDark: "#0F172A",
   text: "#1E293B",
@@ -22,6 +28,13 @@ export const lightTheme: ThemeConfig = {
     colorPrimary: BRAND.primary,
     colorInfo: BRAND.info,
     colorSuccess: BRAND.success,
+    // R1-11: antd v6 derives colorSuccessBg from the seed color (mid-grey
+    // #a5b8af for emerald-700 → 2.63:1) — pin a light tint that passes AA
+    // against the darkened success text.
+    colorSuccessBg: "#E1FAED",
+    // R1-11: antd's success text (green-6 #389e0d) on green-1 #f6ffed is
+    // 3.37:1 at 12px — fails AA. Green-8 on green-1 passes (~5.4:1).
+    colorSuccessText: "#237804",
     colorWarning: BRAND.warning,
     colorError: BRAND.error,
     colorBgLayout: BRAND.bg,
@@ -64,6 +77,11 @@ export const lightTheme: ThemeConfig = {
     },
     Dropdown: {
       colorBgElevated: "#FFFFFF",
+    },
+    // R1-11: antd's default success Tag (green-6 #389e0d on green-1 #f6ffed)
+    // is 3.37:1 at 12px — fails AA. Green-8 on green-1 passes (~5.4:1).
+    Tag: {
+      colorSuccessText: "#237804",
     },
     Popover: {
       colorBgElevated: "#FFFFFF",

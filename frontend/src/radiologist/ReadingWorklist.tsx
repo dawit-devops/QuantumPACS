@@ -191,7 +191,7 @@ function ReadingWorklist() {
   };
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
+    <Content style={{ padding: 24 }} role="main">
       <div className="reading-wl-header">
         <div>
           <h2 style={{ margin: 0 }}>

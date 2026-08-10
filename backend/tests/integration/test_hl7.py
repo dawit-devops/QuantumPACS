@@ -766,6 +766,43 @@ class TestHl7OruHandler:
         assert resp == b'ACK'
 
 class TestHl7HttpEndpoint:
+    @staticmethod
+    def _make_app(user=None):
+        """Standalone app for the HTTP receiver: fake auth middleware so the
+        HL7_WRITE guard resolves, plus an HTTPException handler so 401/403
+        become responses instead of raised exceptions."""
+        from starlette.applications import Starlette
+        from starlette.exceptions import HTTPException
+        from starlette.middleware import Middleware
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.routing import Route
+
+        from api.auth import User
+        from api.hl7 import Hl7Receiver
+
+        class _FakeAuth(BaseHTTPMiddleware):
+            def __init__(self, app, user=None):
+                super().__init__(app)
+                self._user = user or User({'id': 1, 'permissions': ['HL7_WRITE']})
+
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = self._user
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        def _http_exception(request, exc):
+            # Mirror production (app.py http_exception → server_error →
+            # api_error): a structured envelope, not a bare {"error": str}.
+            from api.response import api_error
+            detail = getattr(exc, 'detail', None) or 'Request failed'
+            return api_error('HTTP_ERROR', detail, status=exc.status_code)
+
+        return Starlette(
+            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={HTTPException: _http_exception},
+        )
+
     def test_post_hl7_message_returns_ack(self):
         mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value="uuid-abc")
@@ -781,46 +818,75 @@ class TestHl7HttpEndpoint:
             with patch('services.ingestion.hl7_server.Patient') as mock_pat_cls:
                 mock_pat_cls.return_value = mock_patient
 
-                from api.hl7 import Hl7Receiver
-                from starlette.applications import Starlette
-                from starlette.routing import Route
                 from starlette.testclient import TestClient
 
-                app = Starlette(
-                    routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
-                )
-                client = TestClient(app)
-                resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+                # Isolate from any whitelist in config.local.yaml: the
+                # success path assumes no IP restriction is configured.
+                with patch('api.hl7.config', {}):
+                    client = TestClient(self._make_app())
+                    resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
 
         assert resp.status_code == 200
         assert resp.text == 'ACK'
 
     def test_post_hl7_invalid_message_returns_err(self):
-        from api.hl7 import Hl7Receiver
-        from starlette.applications import Starlette
-        from starlette.routing import Route
         from starlette.testclient import TestClient
 
-        app = Starlette(
-            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
-        )
-        client = TestClient(app)
-        resp = client.post('/api/hl7', content='NOT VALID HL7')
+        with patch('api.hl7.config', {}):
+            client = TestClient(self._make_app())
+            resp = client.post('/api/hl7', content='NOT VALID HL7')
         assert resp.status_code == 200
         assert 'ERR' in resp.text or 'NACK' in resp.text
 
     def test_get_returns_method_not_allowed(self):
-        from api.hl7 import Hl7Receiver
-        from starlette.applications import Starlette
-        from starlette.routing import Route
         from starlette.testclient import TestClient
 
-        app = Starlette(
-            routes=[Route('/api/hl7', endpoint=Hl7Receiver, methods=['POST'])],
-        )
-        client = TestClient(app)
+        client = TestClient(self._make_app())
         resp = client.get('/api/hl7')
         assert resp.status_code == 405
+
+    def test_post_unauthenticated_returns_401(self):
+        from starlette.authentication import UnauthenticatedUser
+        from starlette.testclient import TestClient
+
+        client = TestClient(self._make_app(user=UnauthenticatedUser()))
+        resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+        assert resp.status_code == 401
+        assert resp.json()['error']['message'] == 'Not authenticated'
+
+    def test_post_without_hl7_write_returns_403(self):
+        from api.auth import User
+        from starlette.testclient import TestClient
+
+        client = TestClient(self._make_app(
+            user=User({'id': 1, 'permissions': ['HL7_READ']}),
+        ))
+        resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+        assert resp.status_code == 403
+        assert resp.json()['error']['message'] == 'Missing permission: HL7_WRITE'
+
+    def test_post_allowed_ips_rejects_sender(self):
+        """H-5: hl7_mllp_allowed_ips configured on the HTTP receiver must
+        reject senders outside the whitelist even with a valid token."""
+        from starlette.testclient import TestClient
+
+        with patch('api.hl7.config', {'hl7_mllp_allowed_ips': '10.0.0.0/8'}):
+            client = TestClient(self._make_app())
+            resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+        assert resp.status_code == 403
+
+    def test_post_over_10mb_returns_413(self):
+        """H-5: oversized HL7 bodies must be refused before the parser runs —
+        the default_handler must not even be reached."""
+        from starlette.testclient import TestClient
+
+        with patch('api.hl7.config', {}):
+            client = TestClient(self._make_app())
+            resp = client.post(
+                '/api/hl7', content=b'x' * (10 * 1024 * 1024 + 1),
+            )
+        assert resp.status_code == 413
+        assert resp.json()['error']['message'] == 'HL7 message exceeds 10MB limit'
 
 
 class TestHl7Audit:

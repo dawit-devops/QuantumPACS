@@ -293,6 +293,91 @@ class TestBlocklistFailOpenSignal:
         assert caplog.text.count('Token blocklist unavailable') == 1
 
 
+class TestBlocklistFailClosedForRefresh:
+    """R2-H4: refresh-token validation fails CLOSED when the blocklist cannot
+    be checked — a denied refresh is a safe error, while a granted refresh
+    during an outage could mint credentials for a revoked session.
+    Access-token verification (fail_closed=False) must keep working."""
+
+    def setup_method(self):
+        from api import tokens
+        tokens.reset_blocklist_warn()
+        tokens.reset_local_denylist()
+        tokens.reset_blocklist_health()
+
+    def _jti(self, token):
+        import jwt as pyjwt
+
+        from api.jwt_keys import get_public_key_pem
+
+        return pyjwt.decode(
+            token, get_public_key_pem(), algorithms=['RS256'],
+            options={'verify_aud': False, 'verify_exp': False},
+        )['jti']
+
+    def test_refresh_denied_without_redis(self):
+        from api import tokens
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=None)):
+            assert _run(tokens.is_blocked('jti-r1', fail_closed=True)) is True
+
+    def test_refresh_denied_on_redis_error(self):
+        from api import tokens
+        r = AsyncMock()
+        r.exists.side_effect = Exception('connection refused')
+        with patch('api.tokens._get_blocklist_redis', new=AsyncMock(return_value=r)):
+            assert _run(tokens.is_blocked('jti-r2', fail_closed=True)) is True
+
+    def test_access_path_still_fails_open_without_redis(self):
+        from api import tokens
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=None)):
+            assert _run(tokens.is_blocked('jti-r3')) is False
+
+    def test_refresh_denied_after_prolonged_outage(self):
+        # Outage > 60s: even a now-successful probe denies once — the client
+        # must re-login before refreshes resume (force re-login semantics).
+        import time
+        from api import tokens
+        fake_redis = AsyncMock()
+        fake_redis.exists = AsyncMock(return_value=False)
+        tokens._last_redis_ok = time.monotonic() - 120.0
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=fake_redis)):
+            assert _run(tokens.is_blocked('jti-r4', fail_closed=True)) is True
+            # Next probe: last-good was refreshed by the successful call →
+            # normal evaluation resumes.
+            assert _run(tokens.is_blocked('jti-r4', fail_closed=True)) is False
+
+    def test_refresh_ok_when_redis_healthy(self):
+        from api import tokens
+        fake_redis = AsyncMock()
+        fake_redis.exists = AsyncMock(return_value=False)
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=fake_redis)):
+            assert _run(tokens.is_blocked('jti-r5', fail_closed=True)) is False
+
+    def test_reconnection_resyncs_blocklist(self):
+        # Block with redis up → outage (fail closed) → recovery: the revoked
+        # jti is still rejected once Redis answers again.
+        fake_redis = AsyncMock()
+        with patch('api.tokens.config', {'secret': SECRET}):
+            token = create_token({'id': 1, 'admin': True})
+        jti = self._jti(token)
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=fake_redis)):
+            _run(block_token(token))
+            fake_redis.set.assert_awaited()
+        fake_redis.exists = AsyncMock(return_value=False)
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=None)):
+            assert _run(is_blocked(jti, fail_closed=True)) is True
+        fake_redis.exists = AsyncMock(return_value=True)
+        with patch('api.tokens._get_blocklist_redis',
+                   new=AsyncMock(return_value=fake_redis)):
+            assert _run(is_blocked(jti, fail_closed=True)) is True
+
+
 class TestBlocklistHealthSignal:
     def test_blocklist_component_degraded_without_redis(self):
         from api import telemetry

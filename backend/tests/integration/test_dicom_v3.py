@@ -16,6 +16,32 @@ class _TxContext:
         pass
 
 
+class _FakeAc:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *args):
+        return False
+
+
+def _make_fake_database():
+    """Fake the main-pool singleton for store_instance's control-plane reads.
+
+    A plain class is required: Python 3.14's mock machinery force-replaces
+    __aenter__/__aexit__ on AsyncMock subclasses with child-mock descriptors,
+    so `async with` would yield an object whose transaction() is a bare
+    coroutine.
+    """
+    conn = _FakeAc()
+    conn.fetchrow = AsyncMock(return_value=None)
+    conn.fetch = AsyncMock(return_value=[])
+    conn.execute = AsyncMock()
+    conn.add = AsyncMock()
+    conn.transaction = MagicMock(return_value=_FakeAc())
+    db = MagicMock()
+    db.acquire = MagicMock(return_value=conn)
+    return db
+
+
 
 
 
@@ -52,7 +78,8 @@ class TestDicomCoreStoreIntegration:
         mock_conn.transaction.return_value.__aenter__ = AsyncMock()
         mock_conn.transaction.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        with patch('dcm.store.get_conn') as mock_get_conn:
+        with patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
             mock_get_conn.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -221,7 +248,8 @@ class TestPhase3Pipeline:
         mock_replica.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/data'})
         mock_replica.get = AsyncMock(return_value={'id': 2, 'type': 'remote', 'location': '/remote'})
 
-        with patch('dcm.store.get_conn') as mock_get_conn:
+        with patch('dcm.store.get_conn') as mock_get_conn, \
+             patch('dcm.store.get_database', return_value=_make_fake_database()):
             mock_get_conn.return_value.__aenter__.return_value = mock_conn
             mock_get_conn.return_value.__aexit__ = AsyncMock(return_value=None)
 

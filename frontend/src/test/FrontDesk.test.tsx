@@ -275,9 +275,11 @@ describe("WaitingQueue", () => {
     renderWithAuth(<WaitingQueue />);
     expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
 
-    const pickerInput = document.querySelector(
-      ".ant-picker input",
-    ) as HTMLInputElement;
+    // Role/label query instead of the brittle .ant-picker CSS class (the
+    // input carries the aria-label the component sets on the DatePicker).
+    const pickerInput = screen.getByRole("textbox", {
+      name: "Queue date",
+    }) as HTMLInputElement;
     expect(pickerInput).not.toBeNull();
     await user.click(pickerInput);
     await user.clear(pickerInput);

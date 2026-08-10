@@ -106,8 +106,83 @@ class TestFilesHandler:
              _patch_get_conn('api.files', mock_conn):
             mock_search.return_value = {'hits': {'hits': []}}
             client = TestClient(self._make_app())
-            resp = client.post('/files', json={'query': {'match_all': {}}})
+            resp = client.post('/files', json={'query': 'CT chest'})
         assert resp.status_code == 200
+
+    def test_search_scopes_to_effective_tenant(self):
+        # CR-1: the shared ES index holds every tenant's documents — a
+        # tenant-scoped search must pass the effective tenant slug so es.search
+        # filters on the tenant keyword (else other tenants' docs leak in).
+        mock_conn = _mock_conn()
+        with patch('api.files.es.search', new_callable=AsyncMock) as mock_search, \
+             _patch_get_conn('api.files', mock_conn):
+            mock_search.return_value = {'data': [], 'total': 0}
+            user = User({'id': 1, 'tenant': 'acme', 'permissions': ['FILE_READ']})
+            client = TestClient(self._make_app(user=user))
+            resp = client.post('/files', json={'query': 'CT chest'})
+        assert resp.status_code == 200
+        mock_search.assert_called_once_with(
+            {'query': 'CT chest', 'results': 10, 'page': 1},
+            tenant_slug='acme',
+        )
+
+    def test_search_with_header_override_uses_resolved_tenant(self):
+        # Under X-Tenant-ID the JWT claim is the home tenant, not where the
+        # search runs — the middleware-resolved slug (request.state.tenant_slug)
+        # is the scope that must reach ES.
+        mock_conn = _mock_conn()
+        with patch('api.files.es.search', new_callable=AsyncMock) as mock_search, \
+             _patch_get_conn('api.files', mock_conn):
+            mock_search.return_value = {'data': [], 'total': 0}
+            user = User({'id': 1, 'admin': True, 'tenant': 'home',
+                         'permissions': ['FILE_READ']})
+            client = TestClient(self._make_app(user=user))
+            resp = client.post('/files', json={'query': 'chest'},
+                               headers={'X-Tenant-ID': 'other-clinic'})
+        assert resp.status_code == 200
+        # effective_tenant falls back to the home claim when the middleware
+        # did not resolve a scope — the API test app has no TenantMiddleware.
+        mock_search.assert_called_once_with(
+            {'query': 'chest', 'results': 10, 'page': 1},
+            tenant_slug='home',
+        )
+
+    def test_search_unscoped_passes_no_tenant(self):
+        # Platform users (no tenant claim, no header) keep the historical
+        # unfiltered behaviour — a falsy slug skips the tenant term in ES.
+        mock_conn = _mock_conn()
+        with patch('api.files.es.search', new_callable=AsyncMock) as mock_search, \
+             _patch_get_conn('api.files', mock_conn):
+            mock_search.return_value = {'data': [], 'total': 0}
+            client = TestClient(self._make_app())
+            resp = client.post('/files', json={'query': 'CT chest'})
+        assert resp.status_code == 200
+        mock_search.assert_called_once_with(
+            {'query': 'CT chest', 'results': 10, 'page': 1},
+            tenant_slug=None,
+        )
+
+    def test_search_validation_bounds(self):
+        mock_conn = _mock_conn()
+        client = TestClient(self._make_app())
+        with _patch_get_conn('api.files', mock_conn):
+            for bad in (
+                {'results': 0},
+                {'results': 1000},
+                {'page': 0},
+                {'page': 10_001},
+                {'query': 'x' * 2001},
+                {'results': 'ten'},
+            ):
+                resp = client.post('/files', json=bad)
+            assert resp.status_code == 422
+
+    def test_search_rejects_non_string_query(self):
+        mock_conn = _mock_conn()
+        client = TestClient(self._make_app())
+        with _patch_get_conn('api.files', mock_conn):
+            resp = client.post('/files', json={'query': {'match_all': {}}})
+        assert resp.status_code == 422
 
 
 class TestFileHandler:
@@ -236,7 +311,9 @@ class TestShareFilesHandler:
     def test_create_share(self):
         mock_conn = _mock_conn()
         with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as mock_extra, \
              patch('api.files.SharedFiles.share', new_callable=AsyncMock) as mock_share:
+            mock_extra.return_value = dict(FILE_EXTRA)
             mock_share.return_value = 'share-key-123'
             client = TestClient(self._make_app())
             resp = client.post('/files/1/share', json={'duration': 3600})
@@ -248,6 +325,41 @@ class TestShareFilesHandler:
         client = TestClient(self._make_app(user=user))
         resp = client.post('/files/1/share', json={'duration': 3600})
         assert resp.status_code == 403
+
+    def test_create_share_file_not_found(self):
+        mock_conn = _mock_conn()
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as mock_extra:
+            mock_extra.return_value = None
+            client = TestClient(self._make_app())
+            resp = client.post('/files/999/share', json={'duration': 3600})
+        assert resp.status_code == 404
+
+    def test_create_share_deleted_file_rejected(self):
+        mock_conn = _mock_conn()
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as mock_extra:
+            mock_extra.return_value = dict(FILE_EXTRA, deleted=True)
+            client = TestClient(self._make_app())
+            resp = client.post('/files/1/share', json={'duration': 3600})
+        assert resp.status_code == 404
+
+    def test_create_share_duration_bounds(self):
+        mock_conn = _mock_conn()
+        client = TestClient(self._make_app())
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as mock_extra:
+            mock_extra.return_value = dict(FILE_EXTRA)
+            for bad in ({'duration': 59}, {'duration': 2_592_001}, {'duration': 'soon'}):
+                resp = client.post('/files/1/share', json=bad)
+                assert resp.status_code == 422, f'duration {bad} must be rejected'
+
+    def test_create_share_missing_duration(self):
+        mock_conn = _mock_conn()
+        client = TestClient(self._make_app())
+        with _patch_get_conn('api.files', mock_conn):
+            resp = client.post('/files/1/share', json={})
+        assert resp.status_code == 422
 
 
 class TestShareFilesListHandler:

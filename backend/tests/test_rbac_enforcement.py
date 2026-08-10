@@ -54,8 +54,8 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _http_exception(request, exc):
-    from starlette.responses import JSONResponse
-    return JSONResponse({'error': exc.detail}, status_code=exc.status_code)
+    from api.response import server_error
+    return server_error(str(exc.detail), status_code=exc.status_code)
 
 
 def _make_app(route, user):
@@ -112,7 +112,7 @@ def _check_read_group(route, code, conn_module, db_patch=None, url=None):
                 resp = client.get(url or route.path)
         if expected == 403:
             assert resp.status_code == 403
-            assert resp.json()['error'] == f'Missing permission: {code}'
+            assert resp.json()['error']['message'] == f'Missing permission: {code}'
         else:
             assert resp.status_code == 200
 
@@ -124,7 +124,7 @@ def test_unauthenticated_request_returns_401():
     with TestClient(_make_app(route, UnauthenticatedUser())) as client:
         resp = client.get('/api/worklist')
     assert resp.status_code == 401
-    assert resp.json()['error'] == 'Not authenticated'
+    assert resp.json()['error']['message'] == 'Not authenticated'
 
 
 def test_super_admin_wildcard_grant_passes_any_guard():
@@ -283,7 +283,7 @@ def test_file_update_route_requires_file_write():
         with TestClient(_make_app(route, _make_user([Permission.FILE_READ.value]))) as client:
             resp = client.post('/api/files/1', json={})
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'Missing permission: FILE_WRITE'
+    assert resp.json()['error']['message'] == 'Missing permission: FILE_WRITE'
 
     with p, q:
         with TestClient(_make_app(route, _make_user([Permission.FILE_WRITE.value]))) as client:
@@ -302,7 +302,7 @@ def test_file_changes_route_requires_file_read():
         with TestClient(_make_app(route, _make_user([]))) as client:
             resp = client.get('/api/files/1/changes')
     assert resp.status_code == 403
-    assert resp.json()['error'] == 'Missing permission: FILE_READ'
+    assert resp.json()['error']['message'] == 'Missing permission: FILE_READ'
 
     with p, q:
         with TestClient(_make_app(route, _make_user([Permission.FILE_READ.value]))) as client:
@@ -315,7 +315,7 @@ def test_guarded_route_unauthenticated_returns_401():
     with TestClient(_make_app(route, UnauthenticatedUser())) as client:
         resp = client.post('/api/files/1', json={})
     assert resp.status_code == 401
-    assert resp.json()['error'] == 'Not authenticated'
+    assert resp.json()['error']['message'] == 'Not authenticated'
 
 
 # ------------------------------------------------- token_version bump on role change

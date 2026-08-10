@@ -47,6 +47,13 @@ describe("LoginForm", () => {
     expect(screen.getByText("Sign In")).toBeInTheDocument();
   });
 
+  // (R1-05) Accessible names come from aria-label, not the placeholder.
+  it("labels the username and password inputs (R1-05)", () => {
+    renderWithAuth(<LoginForm />);
+    expect(screen.getByLabelText("Username")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
   it("renders SSO section with provider buttons", async () => {
     renderWithAuth(<LoginForm />);
 

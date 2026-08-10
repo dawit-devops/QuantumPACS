@@ -181,6 +181,20 @@ class Users(Table):
         return await self.fetchval(q)
 
     async def deactivate(self, user_id):
+        # Harden: never deactivate the last active platform admin (lockout
+        # protection) and fail loudly on a nonexistent user instead of
+        # silently updating zero rows.
+        target = await self.fetchone(
+            self.select('id', 'admin', 'status').where(self.table.id == user_id)
+        )
+        if not target:
+            raise ApiException('User not found')
+        if target['admin'] and target['status'] == 'active':
+            active_admins = await self.fetchval(
+                "SELECT COUNT(1) FROM users WHERE admin AND status = 'active'"
+            )
+            if active_admins <= 1:
+                raise ApiException('Cannot deactivate the last active admin')
         q = self.update().where(self.table.id == user_id).set(self.table.status, 'deactivated')
         await self.exec(q)
         await self.increment_token_version(user_id)

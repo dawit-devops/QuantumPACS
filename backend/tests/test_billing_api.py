@@ -174,7 +174,7 @@ class TestPayments:
                 'method': 'cash', 'amount': 100, 'idempotency_key': 'k-2',
             })
         assert resp.status_code == 400
-        assert 'exceeds' in resp.json()['error']
+        assert 'exceeds' in resp.json()['error']['message']
 
     def test_payment_success_creates_receipt(self):
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})
@@ -325,7 +325,7 @@ class TestReconciliation:
                 'variance_reason': '',
             })
         assert resp.status_code == 400
-        assert 'Variance reason' in resp.json()['error']
+        assert 'Variance reason' in resp.json()['error']['message']
 
     def test_close_success(self):
         user = User({'id': 1, 'permissions': ['BILLING_WRITE']})

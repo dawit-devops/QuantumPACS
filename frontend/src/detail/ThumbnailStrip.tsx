@@ -16,11 +16,10 @@ export default function ThumbnailStrip({
   if (!files || files.length <= 1) return null;
 
   return (
-    <div
-      className="thumbnail-strip"
-      role="listbox"
-      aria-label="Series thumbnails"
-    >
+    // (R1-05) Plain tab-ordered buttons instead of a listbox/option pair —
+    // the listbox contract demands arrow-key navigation that was never
+    // implemented, so it misled AT users into expecting it.
+    <div className="thumbnail-strip" aria-label="Series thumbnails">
       {files.map((f, index) => (
         <ThumbnailItem
           key={f.id}
@@ -95,8 +94,6 @@ function ThumbnailItem({
       onClick={() => onSelect(index)}
       title={file.name}
       aria-label={`${file.name}${isActive ? " (active)" : ""}`}
-      aria-selected={isActive}
-      role="option"
     >
       {src && !error ? (
         <img src={src} alt={file.name} className="thumbnail-image" />

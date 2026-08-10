@@ -22,6 +22,10 @@ import PermissionRoute, {
 } from "./auth/PermissionRoute";
 import { ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
 
+// (L8) Stable no-op: a fresh arrow per render would hand OnboardingTour a new
+// onComplete reference each time ThemedApp re-renders, defeating memoization.
+const NOOP = () => {};
+
 // Clinical surfaces (Reading / Acquisition / QA) belong to clinical roles.
 // Admin-scoped roles manage the platform and never work clinical queues, so
 // their routes are closed to those roles even when the permission passes —
@@ -489,7 +493,7 @@ function ThemedApp() {
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
-              <OnboardingTour onComplete={() => {}} />
+              <OnboardingTour onComplete={NOOP} />
               <HelpButton />
             </ErrorBoundary>
           </AuthProvider>

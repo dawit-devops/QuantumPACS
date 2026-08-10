@@ -87,11 +87,31 @@ class TestUsers:
     @pytest.mark.asyncio
     async def test_deactivate_updates_status(self):
         conn = AsyncMock()
+        conn.fetchrow.return_value = {'id': 5, 'admin': False, 'status': 'active'}
         u = Users(conn=conn)
         await u.deactivate(5)
         sql = conn.execute.call_args[0][0]
         assert 'UPDATE' in sql
         assert '"users"' in sql
+
+    @pytest.mark.asyncio
+    async def test_deactivate_last_active_admin_raises(self):
+        conn = AsyncMock()
+        conn.fetchrow.return_value = {'id': 1, 'admin': True, 'status': 'active'}
+        conn.fetchval.return_value = 1
+        u = Users(conn=conn)
+        with pytest.raises(ApiException, match='last active admin'):
+            await u.deactivate(1)
+        conn.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_deactivate_nonexistent_user_raises(self):
+        conn = AsyncMock()
+        conn.fetchrow.return_value = None
+        u = Users(conn=conn)
+        with pytest.raises(ApiException, match='User not found'):
+            await u.deactivate(999)
+        conn.execute.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_change_password_updates_password(self):

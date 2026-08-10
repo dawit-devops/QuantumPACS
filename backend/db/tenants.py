@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import asyncpg
@@ -6,44 +7,105 @@ from config import config
 from db.table import Table
 
 
+def uses_main_database(tenant_info) -> bool:
+    """True when a tenant's data store IS the main database (the seeded
+    `default` tenant): same db, host, user, password, port as the main
+    config. Such tenants share the main pool — no per-tenant pool or
+    notify listener is created for them."""
+    main_port = int(config.get('db_port', '5432'))
+    return (
+        tenant_info.get('db_name') == config['db_database']
+        and tenant_info.get('db_host', config['db_host']) == config['db_host']
+        and tenant_info.get('db_user', config['db_user']) == config['db_user']
+        and int(tenant_info.get('db_port', main_port)) == main_port
+        and tenant_info.get('db_password', config['db_password']) == config['db_password']
+    )
+
+
 class TenantConnectionPool:
     _pools: dict = {}
     _last_used: dict = {}
     _max_pools: int = 50
     _ttl: int = 300
+    # Per-slug creation locks: concurrent misses must not both create a pool
+    # (ME-02) — the winner creates, the loser re-checks and reuses.
+    _locks: dict = {}
+    # Outstanding lease counts per slug — incremented by get() (a pool is in
+    # flight for the duration of a request), decremented by release(). LRU
+    # eviction must not close a pool with open leases (ME-02).
+    _leases: dict = {}
+    # References to eviction tasks so GC cannot reap them mid-close (ME-02).
+    _eviction_tasks: set = set()
+    # Leases older than this are treated as stale (evictable): one-shot
+    # callers that cannot release (e.g. the health probe) must not pin a pool
+    # forever.
+    _lease_ttl: int = 600
+
+    @classmethod
+    def _lock_for(cls, tenant_slug):
+        lock = cls._locks.get(tenant_slug)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._locks[tenant_slug] = lock
+        return lock
 
     @classmethod
     async def get(cls, tenant_slug: str, tenant_info: dict | None = None):
         now = time.monotonic()
         if tenant_slug in cls._pools:
-            pool = cls._pools[tenant_slug]
             cls._last_used[tenant_slug] = now
+            cls._leases[tenant_slug] = cls._leases.get(tenant_slug, 0) + 1
+            return cls._pools[tenant_slug]
+
+        async with cls._lock_for(tenant_slug):
+            # Double-check: a concurrent get() may have created the pool while
+            # we waited for the lock.
+            if tenant_slug in cls._pools:
+                cls._last_used[tenant_slug] = now
+                cls._leases[tenant_slug] = cls._leases.get(tenant_slug, 0) + 1
+                return cls._pools[tenant_slug]
+
+            if len(cls._pools) >= cls._max_pools:
+                cls._evict_lru()
+
+            if not tenant_info:
+                raise KeyError(f'No connection info for tenant: {tenant_slug}')
+
+            pool = await asyncpg.create_pool(
+                user=tenant_info.get('db_user', config['db_user']),
+                password=tenant_info.get('db_password', config['db_password']),
+                database=tenant_info['db_name'],
+                host=tenant_info.get('db_host', config['db_host']),
+                port=int(tenant_info.get('db_port', config.get('db_port', '5432'))),
+                min_size=1,
+                max_size=4,
+                command_timeout=30,
+            )
+            cls._pools[tenant_slug] = pool
+            cls._last_used[tenant_slug] = now
+            cls._leases[tenant_slug] = 1
             return pool
 
-        if len(cls._pools) >= cls._max_pools:
-            cls._evict_lru()
+    @classmethod
+    def release(cls, tenant_slug: str):
+        """Decrement the outstanding lease count for a pool.
 
-        if not tenant_info:
-            raise KeyError(f'No connection info for tenant: {tenant_slug}')
-
-        pool = await asyncpg.create_pool(
-            user=tenant_info.get('db_user', config['db_user']),
-            password=tenant_info.get('db_password', config['db_password']),
-            database=tenant_info['db_name'],
-            host=tenant_info.get('db_host', config['db_host']),
-            port=int(tenant_info.get('db_port', config.get('db_port', '5432'))),
-            min_size=1,
-            max_size=4,
-            command_timeout=30,
-        )
-        cls._pools[tenant_slug] = pool
-        cls._last_used[tenant_slug] = now
-        return pool
+        Call when the scoped request ends (middleware finally / DICOM store
+        scope). Eviction skips pools with open leases, so a lease must never
+        outlive the acquire it represents.
+        """
+        count = cls._leases.get(tenant_slug, 0)
+        if count > 0:
+            if count == 1:
+                cls._leases.pop(tenant_slug, None)
+            else:
+                cls._leases[tenant_slug] = count - 1
 
     @classmethod
     async def close(cls, tenant_slug: str):
         pool = cls._pools.pop(tenant_slug, None)
         cls._last_used.pop(tenant_slug, None)
+        cls._leases.pop(tenant_slug, None)
         if pool:
             await pool.close()
 
@@ -56,9 +118,20 @@ class TenantConnectionPool:
     def _evict_lru(cls):
         if not cls._last_used:
             return
-        oldest = min(cls._last_used, key=cls._last_used.get)
-        import asyncio
-        asyncio.create_task(cls.close(oldest))
+        now = time.monotonic()
+        evictable = {
+            slug: ts for slug, ts in cls._last_used.items()
+            if slug in cls._pools and (
+                cls._leases.get(slug, 0) == 0
+                or now - ts > cls._lease_ttl
+            )
+        }
+        if not evictable:
+            return
+        oldest = min(evictable, key=evictable.get)
+        task = asyncio.create_task(cls.close(oldest))
+        cls._eviction_tasks.add(task)
+        task.add_done_callback(cls._eviction_tasks.discard)
 
 
 class Tenants(Table):
@@ -173,16 +246,21 @@ class Tenants(Table):
 
     async def get_stats(self, tenant_slug: str, tenant_info: dict, storage_quota_bytes: int = 0):
         pool = await TenantConnectionPool.get(tenant_slug, tenant_info)
-        async with pool.acquire() as conn:
-            user_count = await conn.fetchval('SELECT COUNT(*) FROM users')
-            study_count = await conn.fetchval('SELECT COUNT(*) FROM studies')
-            file_count = await conn.fetchval('SELECT COUNT(*) FROM files')
-            storage_used = await conn.fetchval(
-                "SELECT COALESCE(SUM(size), 0) FROM files"
-            ) or 0
-            last_activity = await conn.fetchval(
-                "SELECT MAX(created) FROM files"
-            )
+        try:
+            async with pool.acquire() as conn:
+                user_count = await conn.fetchval('SELECT COUNT(*) FROM users')
+                study_count = await conn.fetchval('SELECT COUNT(*) FROM studies')
+                file_count = await conn.fetchval('SELECT COUNT(*) FROM files')
+                storage_used = await conn.fetchval(
+                    "SELECT COALESCE(SUM(size), 0) FROM files"
+                ) or 0
+                last_activity = await conn.fetchval(
+                    "SELECT MAX(created) FROM files"
+                )
+        finally:
+            # ME-02: one-shot callers must drop the lease or the pool is
+            # pinned past LRU eviction.
+            TenantConnectionPool.release(tenant_slug)
         return {
             'user_count': user_count or 0,
             'study_count': study_count or 0,

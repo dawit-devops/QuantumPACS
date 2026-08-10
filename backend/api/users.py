@@ -8,7 +8,7 @@ from api.rbac import requires_permission
 from api.permissions import Permission
 from api.tokens import create_token_pair, verify_refresh_token, block_token, is_blocked
 from api.ratelimit import login_bucket, password_bucket, refresh_bucket
-from api.validate import parse_body
+from api.validate import parse_body, read_body, _BodyTooLargeException
 from api.schemas.auth import LoginRequest
 from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
@@ -127,7 +127,6 @@ class Login(HTTPEndpoint):
                 'tenant_name': tenant_name,
                 'token': access,
                 'access_token': access,
-                'refresh_token': refresh,
             })
             resp.set_cookie(
                 key='token',
@@ -223,8 +222,10 @@ class UsersHandler(HTTPEndpoint):
     @requires_permission(Permission.USER_READ)
     async def get(self, request):
         q = request.query_params.get('q')
-        offset = int(request.query_params.get('offset', 0))
-        limit = int(request.query_params.get('limit', 20))
+        # Clamp pagination: negative/oversized limits and offsets must not
+        # reach the DB (offset/limit are interpolated into the SQL).
+        offset = max(0, int(request.query_params.get('offset', 0)))
+        limit = max(1, min(200, int(request.query_params.get('limit', 20))))
 
         async with get_conn() as conn:
             data = await Users(conn).get_users(offset=offset, limit=limit, username=q)
@@ -274,7 +275,10 @@ class UsersDeactivate(HTTPEndpoint):
         body = await parse_body(UserActionRequest, request)
 
         async with get_conn() as conn:
-            await Users(conn).deactivate(body.id)
+            try:
+                await Users(conn).deactivate(body.id)
+            except ApiException as e:
+                return api_error('FORBIDDEN', str(e), status=403)
             await AuditLog(conn).log_event(
                 event_type='user.deactivated',
                 actor_id=request.user.id,
@@ -346,7 +350,12 @@ class RefreshToken(HTTPEndpoint):
         # API-client compatibility (OAuth, external integrations).
         refresh_token = request.cookies.get('refresh_token')
         if not refresh_token:
-            if await request.body():
+            try:
+                raw = await read_body(request)
+            except _BodyTooLargeException:
+                await refresh_bucket.record(ip, success=False)
+                return api_error('BODY_TOO_LARGE', 'Request body exceeds 1MB limit', status=413)
+            if raw:
                 body = await parse_body(RefreshTokenRequest, request)
                 refresh_token = body.refresh_token
         if not refresh_token:
@@ -361,7 +370,10 @@ class RefreshToken(HTTPEndpoint):
             await refresh_bucket.record(ip, success=False)
             return api_error('INVALID_TOKEN', 'Invalid refresh token', status=401)
 
-        if await is_blocked(data.get('jti', '')):
+        # R2-H4: fail CLOSED when the blocklist is unreachable — refreshing
+        # a session that may have been revoked is worse than asking the user
+        # to log in again.
+        if await is_blocked(data.get('jti', ''), fail_closed=True):
             await refresh_bucket.record(ip, success=False)
             return api_error('TOKEN_REVOKED', 'Refresh token revoked', status=401)
 
@@ -393,9 +405,10 @@ class RefreshToken(HTTPEndpoint):
             user, role=role_slug, permissions=permissions,
             token_version=user_row.get('token_version') or 0,
         )
+        # R2-LOW: refresh token is delivered ONLY via the HttpOnly cookie
+        # below — never in the JSON body.
         resp = ok({
             'access_token': access,
-            'refresh_token': refresh,
             'expires_in': 3600,
             'token_type': 'Bearer',
         })

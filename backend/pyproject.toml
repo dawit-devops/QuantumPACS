@@ -2,13 +2,13 @@
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+timeout = 300
+timeout_method = "thread"
 filterwarnings = [
     "ignore::UserWarning:jwt.warnings",
     'ignore:Using `httpx` with `starlette.testclient`:UserWarning',
-    "ignore:unclosed <socket.socket:ResourceWarning",
-    "ignore:unclosed transport:ResourceWarning",
-    "ignore:unclosed event loop:ResourceWarning",
-    "ignore:coroutine 'handle_find_async' was never awaited:RuntimeWarning",
+    # ResourceWarnings are no longer swallowed wholesale: leaking sockets,
+    # transports or unawaited coroutines fail the suite instead (M6).
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -25,6 +25,9 @@ omit = [
 ]
 
 [tool.coverage.report]
+# M4: CI runs pytest --cov and fails below this floor (measured 73% on the
+# full suite, 2026-08-10 — 70 leaves a 3-point buffer for runner variance).
+fail_under = 70
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

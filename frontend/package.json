@@ -49,7 +49,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
-    "test:fast": "vitest run src/test/AuthContext.test.tsx src/test/NotFound.test.tsx src/test/QuantumLogo.test.tsx src/test/helpers.test.ts src/test/hooks.test.ts src/test/Pwa.test.ts src/test/dicomweb.test.ts src/test/App.test.tsx src/test/FrontDesk.test.tsx src/test/Portal.test.tsx src/test/navigator.test.ts src/test/frontdesk-api.test.ts src/test/portal-api.test.ts src/test/useTenantRefetch.test.tsx src/test/useVisibilityGatedInterval.test.tsx",
+    "test:fast": "vitest run src/test/AuthContext.test.tsx src/test/NotFound.test.tsx src/test/QuantumLogo.test.tsx src/test/helpers.test.ts src/test/Pwa.test.ts src/test/dicomweb.test.ts src/test/FrontDesk.test.tsx src/test/Portal.test.tsx src/test/navigator.test.ts src/test/frontdesk-api.test.ts src/test/portal-api.test.ts src/test/useTenantRefetch.test.tsx src/test/useVisibilityGatedInterval.test.tsx",
     "test:slow": "vitest run src/test/Roles.test.tsx src/test/CornerstoneElement.test.tsx src/test/Metrics.test.tsx src/test/Sidebar.test.tsx src/test/Users.test.tsx src/test/Tenants.test.tsx src/test/TenantSelector.test.tsx src/test/Login.test.tsx src/test/StudyBrowser.test.tsx src/test/Account.test.tsx",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:all": "playwright test",

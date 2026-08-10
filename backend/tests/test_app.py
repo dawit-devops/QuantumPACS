@@ -137,7 +137,7 @@ class TestErrorHandlers:
             resp = client.get('/api/error', headers={'Host': 'localhost'})
         assert resp.status_code == 500
         body = resp.json()
-        assert 'Internal server error' in body.get('error', '')
+        assert 'Internal server error' in body['error']['message']
 
     def test_500_has_cors_headers(self):
         with patch('app.config', {'cors_origins': '*', 'allowed_hosts': '*'}):
@@ -160,7 +160,19 @@ class TestErrorHandlers:
         resp = await http_exception(req, exc)
         assert resp.status_code == 404
         body = json.loads(resp.body)
-        assert 'Custom not found' in body.get('error', '')
+        assert 'Custom not found' in body['error']['message']
+
+    async def test_http_exception_handler_bare_exception_gets_fallback_message(self):
+        # Guard code raises bare HTTPException(403) with no detail; the
+        # envelope must not carry an empty error string.
+        exc = HTTPException(status_code=403)
+        req = MagicMock()
+        req.method = 'GET'
+        req.url.path = '/api/test'
+        resp = await http_exception(req, exc)
+        assert resp.status_code == 403
+        body = json.loads(resp.body)
+        assert body['error']['message'] == 'Request failed'
 
     async def test_server_error_handler_returns_json(self):
         exc = RuntimeError('boom')
@@ -171,7 +183,7 @@ class TestErrorHandlers:
             resp = await server_error_handler(req, exc)
         assert resp.status_code == 500
         body = json.loads(resp.body)
-        assert 'Internal server error' in body.get('error', '')
+        assert 'Internal server error' in body['error']['message']
 
 
 class TestSecurityHeaders:

@@ -136,6 +136,12 @@ export default function CornerstoneElement(props: CEProps) {
   const fileRef = useRef<any>(file);
   const propsRef = useRef<CEProps>(props);
   const prevFocusRef = useRef(props.focusAnnotationUID);
+  // (R1-05) Corner readout nodes are written imperatively and state only
+  // updates when a displayed value actually changes — see updateViewportInfo.
+  const zoomOverlayRef = useRef<HTMLDivElement | null>(null);
+  const wlOverlayRef = useRef<HTMLDivElement | null>(null);
+  const pendingFrameRef = useRef<number | null>(null);
+  const lastInfoRef = useRef({ zoom: 1, ww: 0, wc: 0 });
 
   const [zoom, setZoom] = useState(1);
   const [ww, setWw] = useState(0);
@@ -223,14 +229,46 @@ export default function CornerstoneElement(props: CEProps) {
     const vp = getViewport();
     if (!vp) return;
     const info = readViewportInfo(vp);
-    setZoom(info.zoom);
-    setWw(info.ww);
-    setWc(info.wc);
+    // The corner readouts are transient chrome: write them straight to the
+    // DOM so a WL drag or cine loop (one IMAGE_RENDERED per frame) does not
+    // re-render this whole component per frame. The formatting mirrors the
+    // React-rendered output so a later state-driven commit matches exactly.
+    if (zoomOverlayRef.current) {
+      zoomOverlayRef.current.textContent = `Zoom: ${info.zoom.toFixed(2)}`;
+    }
+    if (wlOverlayRef.current) {
+      wlOverlayRef.current.textContent = `WW/WC: ${Math.round(info.ww)} / ${Math.round(info.wc)}`;
+    }
+    // State (and the aria-live readout) updates only when the *displayed*
+    // value actually changed — screen readers announce meaningful
+    // transitions, not per-frame noise.
+    const rounded = {
+      zoom: Number(info.zoom.toFixed(2)),
+      ww: Math.round(info.ww),
+      wc: Math.round(info.wc),
+    };
+    if (
+      rounded.zoom !== lastInfoRef.current.zoom ||
+      rounded.ww !== lastInfoRef.current.ww ||
+      rounded.wc !== lastInfoRef.current.wc
+    ) {
+      lastInfoRef.current = rounded;
+      setZoom(info.zoom);
+      setWw(info.ww);
+      setWc(info.wc);
+    }
   }, [getViewport]);
 
   const onImageRendered = useCallback(() => {
-    updateViewportInfo();
     setLoading(false);
+    // Coalesce bursty render events (cine, WL drag) into one state pass per
+    // animation frame; dropping the pending frame when one is queued keeps
+    // a fast loop to at most 60 setState calls/sec.
+    if (pendingFrameRef.current != null) return;
+    pendingFrameRef.current = requestAnimationFrame(() => {
+      pendingFrameRef.current = null;
+      updateViewportInfo();
+    });
   }, [updateViewportInfo]);
 
   const onWindowResize = useCallback(() => {
@@ -340,7 +378,13 @@ export default function CornerstoneElement(props: CEProps) {
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.isContentEditable;
-      if (isInput) return;
+      // (R1-05) Never steal keys while focus sits inside an antd overlay —
+      // selects, drawers, collapse panels, dialogs and menus own their
+      // keystrokes (typing to filter a Select must not trip tool shortcuts).
+      const inOverlay = !!document.activeElement?.closest(
+        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']",
+      );
+      if (isInput || inOverlay) return;
 
       if (key === "?") {
         e.preventDefault();
@@ -559,6 +603,10 @@ export default function CornerstoneElement(props: CEProps) {
 
     return () => {
       disposedRef.current = true;
+      if (pendingFrameRef.current != null) {
+        cancelAnimationFrame(pendingFrameRef.current);
+        pendingFrameRef.current = null;
+      }
       document.removeEventListener("keydown", handleKeyDown);
       if (sendInterval) clearInterval(sendInterval);
       window.removeEventListener("resize", onWindowResize);
@@ -657,9 +705,11 @@ export default function CornerstoneElement(props: CEProps) {
         aria-label="DICOM image viewport"
         tabIndex={0}
       >
-        <div style={bottomLeftStyle}>Zoom: {zoom}</div>
-        <div style={bottomRightStyle}>
-          WW/WC: {ww} / {wc}
+        <div ref={zoomOverlayRef} style={bottomLeftStyle}>
+          Zoom: {zoom.toFixed(2)}
+        </div>
+        <div ref={wlOverlayRef} style={bottomRightStyle}>
+          WW/WC: {Math.round(ww)} / {Math.round(wc)}
         </div>
       </div>
       <div
@@ -753,7 +803,6 @@ export default function CornerstoneElement(props: CEProps) {
           <Slider
             max={files.length - 1}
             value={fileIndex}
-            defaultValue={fileIndex}
             tooltip={{ formatter: (value: any) => files[value].name }}
             onChange={props.changeFile}
             aria-label={`File ${fileIndex + 1} of ${files.length}`}

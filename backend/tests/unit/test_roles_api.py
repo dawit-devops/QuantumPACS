@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,6 +35,7 @@ def make_request(method='GET', path='/roles', params=None, body=None, permission
     request.user.tenant = None
     request.user.permissions = permissions or []
     request.json = AsyncMock(return_value=body or {})
+    request._body = json.dumps(body).encode() if body else b''
     request.scope = {'type': 'http', 'path': path, 'method': method}
     return request
 

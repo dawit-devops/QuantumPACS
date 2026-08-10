@@ -328,7 +328,14 @@ def _build_v2_aliases(v1_routes):
             continue
         if any(r.path.startswith(p) for p in _V2_EXCLUDE_PREFIXES):
             continue
-        aliases.append(type(r)(_alias_path(r.path), endpoint=r.endpoint))
+        # Methods must be carried over: a v1 route restricted to POST (e.g.
+        # /oauth/token, /webhooks/test, /hl7) would otherwise get a v2 alias
+        # that accepts every method — method confusion turns a write-only
+        # endpoint into a GET-routable one. WebSocketRoute has no methods kwarg.
+        kwargs = {}
+        if isinstance(r, Route) and r.methods:
+            kwargs['methods'] = r.methods
+        aliases.append(type(r)(_alias_path(r.path), endpoint=r.endpoint, **kwargs))
     return aliases
 
 

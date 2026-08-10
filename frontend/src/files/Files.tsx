@@ -22,6 +22,7 @@ import { qidoSearch, searchFiles, DicomJsonObject } from "../api/files";
 import { useAuth } from "../auth/AuthContext";
 import { isAdminScopedRole } from "../navigator";
 import { PageState } from "../common/PageState";
+import PageHeader from "../common/PageHeader";
 import { AdminFiles } from "./AdminFiles";
 import AdvancedSearch from "./AdvancedSearch";
 import { PAGINATION } from "../config";
@@ -129,6 +130,11 @@ function Files() {
   const canUpload = hasPermission("FILE_WRITE");
 
   const [data, setData] = useState<FileRow[]>([]);
+  // (R1-05) The mobile card list paginates instead of animating up to 100
+  // cards with per-row stagger delays (each card paid a 0–3s animation-delay
+  // on scroll-in); 20-card chunks keep the initial paint cheap.
+  const MOBILE_PAGE_SIZE = 20;
+  const [mobilePage, setMobilePage] = useState(1);
   const [pagination, setPagination] = useState<{
     pageSize: number;
     current?: number;
@@ -394,25 +400,30 @@ function Files() {
     i: number,
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    advancedFields[i][0] = e.target.value;
-    setAdvancedFields([...advancedFields]);
+    // Functional update: mutating advancedFields[i] in place before setState
+    // (R1-05) could hand React an already-mutated array — the new array
+    // spread then aliased the mutated rows and the label edit leaked into
+    // onAdvancedSearch's snapshot even before commit.
+    setAdvancedFields((prev) =>
+      prev.map((f, j) => (j === i ? [e.target.value, f[1]] : f)),
+    );
   };
 
   const onAdvancedSearchChange = (
     i: number,
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    advancedFields[i][1] = e.target.value;
-    setAdvancedFields([...advancedFields]);
+    setAdvancedFields((prev) =>
+      prev.map((f, j) => (j === i ? [f[0], e.target.value] : f)),
+    );
   };
 
   const onAdvancedSearchAdd = () => {
-    setAdvancedFields([...advancedFields, ["", ""]]);
+    setAdvancedFields((prev) => [...prev, ["", ""]]);
   };
 
   const onAdvancedSearchRemove = (i: number) => {
-    advancedFields.splice(i, 1);
-    setAdvancedFields([...advancedFields]);
+    setAdvancedFields((prev) => prev.filter((_, j) => j !== i));
   };
 
   const onAdvancedSearch = () => {
@@ -508,6 +519,10 @@ function Files() {
 
   return (
     <Content className="files">
+      <PageHeader
+        title="Files"
+        description="Search uploaded studies and images"
+      />
       <Row>
         <Col span={16}>
           <Search
@@ -583,57 +598,67 @@ function Files() {
         }
       >
         {isMobile ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {data.map((item: FileRow, idx: number) => (
-              <Card
-                key={item.id}
-                className="stagger-enter"
-                size="small"
-                hoverable
-                onClick={() => navigate(`/files/${item.id}`)}
-                style={
-                  {
-                    cursor: "pointer",
-                    "--stagger-index": idx,
-                  } as React.CSSProperties
-                }
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
-                      {item["Patient ID"] || item.id}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: "var(--text-secondary)",
-                        marginTop: 2,
-                      }}
-                    >
-                      {item["Patient's Name"] || item.patient_name || "-"}
-                    </div>
-                  </div>
-                  {item.Modality && <Tag>{item.Modality}</Tag>}
-                </div>
-                {(item["Study Description"] || item.study_description) && (
+          <div
+            className="stagger-enter"
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            {data
+              .slice(0, mobilePage * MOBILE_PAGE_SIZE)
+              .map((item: FileRow) => (
+                <Card key={item.id} size="small" hoverable>
                   <div
                     style={{
-                      fontSize: 12,
-                      color: "var(--text-secondary)",
-                      marginTop: 4,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
                     }}
                   >
-                    {item["Study Description"] || item.study_description}
+                    <div>
+                      {/* (R1-05) Real link (was a div onClick) so the whole
+                        title is keyboard-activatable and mid-link
+                        open-in-new-tab works. */}
+                      <Link
+                        to={`/files/${item.id}`}
+                        style={{ fontWeight: 600, fontSize: 14 }}
+                      >
+                        {item["Patient ID"] || item.id}
+                      </Link>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "var(--text-secondary)",
+                          marginTop: 2,
+                        }}
+                      >
+                        {item["Patient's Name"] || item.patient_name || "-"}
+                      </div>
+                    </div>
+                    {item.Modality && <Tag>{item.Modality}</Tag>}
                   </div>
-                )}
-              </Card>
-            ))}
+                  {(item["Study Description"] || item.study_description) && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginTop: 4,
+                      }}
+                    >
+                      {item["Study Description"] || item.study_description}
+                    </div>
+                  )}
+                </Card>
+              ))}
+            {data.length > mobilePage * MOBILE_PAGE_SIZE && (
+              <Button
+                type="default"
+                block
+                onClick={() => setMobilePage((p) => p + 1)}
+                style={{ marginTop: 4 }}
+              >
+                Load more ({data.length - mobilePage * MOBILE_PAGE_SIZE}{" "}
+                remaining)
+              </Button>
+            )}
           </div>
         ) : (
           <Table

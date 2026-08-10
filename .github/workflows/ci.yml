@@ -48,7 +48,9 @@ jobs:
       - run: pip install -r backend/requirements.txt && pip install pytest pytest-asyncio httpx
       # Integration tests use testcontainers (postgres:16-alpine) which can
       # pull its own image, so the suite runs fully in CI.
-      - run: cd backend && python -m pytest tests/ -v
+      # M4: the backend suite now enforces a coverage floor via
+      # --cov-fail-under (matches [tool.coverage.report] fail_under).
+      - run: cd backend && python -m pytest tests/ -v --cov --cov-report=term-missing:skip-covered
         env: { DB_HOST: localhost, DB_PORT: 5432 }
   test-frontend:
     runs-on: ubuntu-latest
@@ -56,7 +58,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - run: cd frontend && npm ci && npx vitest run
+      # M4: coverage thresholds live in vite.config.js and now gate PRs here
+      # (previously only the build-gate job ran --coverage).
+      - run: cd frontend && npm ci && npx vitest run --coverage
   e2e:
     # Playwright against the real stack: postgres + redis + backend + a
     # production build served by vite preview (the playwright webServer block
@@ -92,6 +96,87 @@ jobs:
           cd backend
           python -m alembic upgrade head
           python -m management.seed_rbac
+      # Admin specs read E2E_ADMIN_PASS (helpers.ts / LoginPage.ts). GitHub
+      # Actions env blocks cannot reference sibling entries, so export it from
+      # SUPERADMIN_PASS — the backend seeds admin with the same value.
+      - name: Wire E2E admin password
+        run: echo "E2E_ADMIN_PASS=$SUPERADMIN_PASS" >> "$GITHUB_ENV"
+      # Real-role specs (real-role-login, worklist-flow) log in as
+      # test.technologist; the seeder refuses docker envs by default and needs
+      # the explicit --allow-docker opt-in. Idempotent (ON CONFLICT DO UPDATE).
+      - name: Seed test users (real-role e2e specs)
+        run: |
+          cd backend
+          python seed_test_users.py --allow-docker
+      # M9: portal-share.spec.ts needs at least one file record to share; the
+      # dev DB has none, so the e2e job inserts a fixture row (idempotent by
+      # SOPInstanceUID) before the specs run.
+      - name: Seed e2e fixture file
+        run: |
+          cd backend
+          python - <<'PY'
+          import asyncio
+          import os
+
+          import asyncpg
+
+          DSN = (
+              f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
+              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
+          )
+
+          async def main():
+              conn = await asyncpg.connect(DSN)
+              try:
+                  sop = "1.2.826.0.1.3680043.8.498.20260810-e2e-fixture-001"
+                  existing = await conn.fetchval(
+                      "SELECT id FROM files WHERE sop_instance_uid = $1", sop
+                  )
+                  if existing:
+                      print(f"fixture file already present (id={existing})")
+                      return
+                  pid = await conn.fetchval(
+                      "INSERT INTO patients (patient_id, name, birth_date, sex) "
+                      "VALUES ('E2E-FIXTURE-001', 'E2E^Fixture Patient', "
+                      "'19800101', 'O') ON CONFLICT (patient_id) DO UPDATE SET "
+                      "name = EXCLUDED.name RETURNING id"
+                  )
+                  sid = await conn.fetchval(
+                      "INSERT INTO studies (patient_id, study_id, description, "
+                      "study_instance_uid, study_status) VALUES ($1, "
+                      "'E2E-STUDY-001', 'E2E fixture study', "
+                      "'1.2.826.0.1.3680043.8.498.20260810-e2e-study-001', "
+                      "'complete') ON CONFLICT (patient_id, study_id) DO UPDATE "
+                      "SET study_status = EXCLUDED.study_status RETURNING id",
+                      pid,
+                  )
+                  ser = await conn.fetchval(
+                      "INSERT INTO series (study_id, number, modality, "
+                      "description, series_instance_uid) VALUES ($1, '1', 'CT', "
+                      "'E2E fixture series', "
+                      "'1.2.826.0.1.3680043.8.498.20260810-e2e-series-001') "
+                      "ON CONFLICT (study_id, number) DO UPDATE SET "
+                      "modality = EXCLUDED.modality RETURNING id",
+                      sid,
+                  )
+                  fid = await conn.fetchval(
+                      "INSERT INTO files (patient_id, study_id, series_id, "
+                      "name, hash, sop_instance_uid, sop_class_uid, size, "
+                      "indexed, meta) VALUES ($1, $2, $3, "
+                      "'E2E-FIXTURE-CT-001.dcm', 'e2e-fixture-hash-001', $4, "
+                      "'1.2.840.10008.5.1.4.1.1.2', 1024, false, '{}'::jsonb) "
+                      "RETURNING id",
+                      pid,
+                      sid,
+                      ser,
+                      sop,
+                  )
+                  print(f"seeded e2e fixture file id={fid}")
+              finally:
+                  await conn.close()
+
+          asyncio.run(main())
+          PY
       - name: Start backend
         run: |
           cd backend

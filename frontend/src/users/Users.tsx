@@ -115,7 +115,7 @@ function Users() {
       dataIndex: "admin",
       render: (is_admin: boolean) => {
         const string = is_admin ? "admin" : "user";
-        const color = is_admin ? "green" : "geekblue";
+        const color = is_admin ? "success" : "geekblue";
         return <Tag color={color}>{string.toUpperCase()}</Tag>;
       },
     },
@@ -123,7 +123,7 @@ function Users() {
       title: "Status",
       dataIndex: "status",
       render: (s: string) => {
-        const color = s === "active" ? "green" : "gray";
+        const color = s === "active" ? "success" : "gray";
         return <Tag color={color}>{s.toUpperCase()}</Tag>;
       },
     },

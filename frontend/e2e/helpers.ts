@@ -13,6 +13,18 @@ export function menuName(label: string) {
 }
 
 /**
+ * End-anchored menu-name match. Sidebar items carry an icon whose aria-label
+ * joins the accessible name ("lock Admin"), so exact-name locators never
+ * match; the plain menuName() regex would also match same-suffix labels
+ * ("Worklist" inside "Reading Worklist"). Anchoring the tail picks the
+ * label while staying robust to the icon prefix — safe as long as no two
+ * visible items end with the same label.
+ */
+export function menuNameEnd(label: string) {
+  return new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$");
+}
+
+/**
  * Resets storage and loads the app from a clean slate. Two-step goto because
  * the first load lets the SPA boot and hydrate before storage is cleared.
  * Also pre-seeds the onboarding tour's done-flag: the tour mounts a full-screen
@@ -26,7 +38,10 @@ export async function clearAndGo(page: Page, path = "") {
     sessionStorage.clear();
     localStorage.setItem("quantumpacs-tour-done", "true");
   });
-  await page.goto(BASE + path, { waitUntil: "networkidle" });
+  // domcontentloaded, not networkidle: the QA pages keep the network busy
+  // (polling / websocket), so networkidle hangs under parallel load — and
+  // against a built preview there is no HMR websocket to settle at all.
+  await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
 }
 
 /**
@@ -41,11 +56,21 @@ export async function waitForShell(page: Page) {
   try {
     await filesItem.waitFor({ state: "visible", timeout: 5000 });
   } catch {
-    const menuBtn = page.getByRole("button", { name: "Menu" });
-    if (await menuBtn.isVisible().catch(() => false)) {
-      await menuBtn.click();
+    // Mobile: the nav lives in a closed drawer. The sidebar drawer opens via
+    // "Open navigation menu"; MobileNav's bottom drawer ("Menu") shows only a
+    // curated subset (no Files), so click the first — the sidebar's. Under
+    // load the opener can be slow to appear, so WAIT for it (a one-shot
+    // isVisible probe skipped the click entirely when it raced the boot).
+    const opener = page
+      .getByRole("button", { name: /Open navigation menu|Menu/ })
+      .first();
+    try {
+      await opener.waitFor({ state: "visible", timeout: 15000 });
+      await opener.click();
+    } catch {
+      // fall through — the shell may already be visible on desktop
     }
-    await filesItem.waitFor({ state: "visible", timeout: 15000 });
+    await filesItem.waitFor({ state: "visible", timeout: 10000 });
   }
 }
 
@@ -61,10 +86,14 @@ export async function openSubmenu(
   title: string,
   probeChild: string,
 ) {
-  const child = page.getByRole("menuitem", { name: menuName(probeChild) });
+  // End-anchored names: sidebar labels carry an icon aria-label prefix
+  // ("lock Admin"), and some share suffixes ("Worklist" vs "Reading
+  // Worklist") — exact matching never finds the icon-prefixed names, while
+  // the tail anchor stays unique per section.
+  const child = page.getByRole("menuitem", { name: menuNameEnd(probeChild) });
   const childVisible = await child.isVisible().catch(() => false);
   if (!childVisible) {
-    await page.getByRole("menuitem", { name: menuName(title) }).click();
+    await page.getByRole("menuitem", { name: menuNameEnd(title) }).click();
   }
   await child.waitFor({ state: "visible", timeout: 5000 });
 }
@@ -78,9 +107,22 @@ export async function openSubmenu(
 export async function openAdminItem(page: Page, name: string) {
   await openSubmenu(page, "Admin", "Users");
   await page
-    .getByRole("menuitem", { name: menuName(name) })
+    .getByRole("menuitem", { name: menuNameEnd(name) })
     .filter({ visible: true })
     .first()
+    .click();
+}
+
+/**
+ * The MWL worklist moved out of the Admin section into the Acquisition group
+ * (d4abc25 workspace restructure). Opens Acquisition and clicks its Worklist
+ * child — the tail anchor skips Reading's "Reading Worklist".
+ */
+export async function openWorklist(page: Page) {
+  await openSubmenu(page, "Acquisition", "Worklist");
+  await page
+    .getByRole("menuitem", { name: menuNameEnd("Worklist") })
+    .filter({ visible: true })
     .click();
 }
 
@@ -91,11 +133,32 @@ export async function openAdminItem(page: Page, name: string) {
  * Keying by path makes the next drift surface here instead of at runtime:
  * every front-office / patient seed returns `{data, total}` (object shape)
  * for everything, with the specific list endpoints called out.
+ *
+ * M2: requests without a seeded session shape (userId + access_token missing
+ * from localStorage) are fulfilled 401 instead of a blanket 200 — the stub
+ * must not mask auth gaps by rendering a fake shell for a spec that forgot
+ * to seed a session.
  */
-export function stubApiRoutes(page: Page) {
+export async function stubApiRoutes(page: Page) {
   await page.route(
     (u) => u.pathname.startsWith("/api/"),
-    (route) => {
+    async (route) => {
+      const hasSession = await page
+        .evaluate(
+          () =>
+            Boolean(
+              localStorage.getItem("userId") &&
+                localStorage.getItem("access_token"),
+            ),
+        )
+        .catch(() => false);
+      if (!hasSession) {
+        return route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        });
+      }
       const path = new URL(route.request().url()).pathname;
       const keyed: Record<string, object> = {
         // R19 scope + R08 queue unwrap res.data as arrays — keep them literal.
@@ -169,9 +232,28 @@ export async function seedPatient(page: Page) {
 }
 
 export async function loginAsAdmin(page: Page) {
+  const { username, password } = adminCredentials();
+  await loginAs(page, username, password);
+}
+
+/** Admin credentials: CI exports E2E_ADMIN_PASS from the seeded SUPERADMIN_PASS
+ * (ci.yml), a direct SUPERADMIN_PASS env covers standalone stacks, and
+ * pa55w0rd is the default superadmin pass of dev configs. */
+export function adminCredentials() {
+  return {
+    username: process.env.E2E_ADMIN_USER || "admin",
+    password:
+      process.env.E2E_ADMIN_PASS ||
+      process.env.SUPERADMIN_PASS ||
+      "pa55w0rd",
+  };
+}
+
+/** Real login via the UI (used when the test hits the live backend). */
+export async function loginAs(page: Page, username: string, password: string) {
   await clearAndGo(page);
-  await page.getByPlaceholder("Username").fill("admin");
-  await page.getByPlaceholder("Password").fill("pa55w0rd");
+  await page.getByPlaceholder("Username").fill(username);
+  await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
   await waitForShell(page);
 }
@@ -181,7 +263,8 @@ export async function loginAsAdmin(page: Page) {
  * (the same keys AuthContext reads on boot) and stubs every /api/** request so the
  * fake token can never 401-bounce to /login — which would mask the PermissionRoute
  * redirect we are asserting. Lets the deep-link denial suite run without a real
- * technologist user in the backend.
+ * technologist user in the backend. WORKLIST grants are included so the MWL
+ * Worklist surface (Acquisition workspace) renders for specs that navigate to it.
  */
 export async function seedTechnologist(page: Page) {
   await page.route(
@@ -190,7 +273,10 @@ export async function seedTechnologist(page: Page) {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: "[]",
+        // Envelope shape: list pages read res.data / res.total; a bare [] makes
+        // Files.tsx crash (data.data is undefined) when the technologist
+        // landing renders before any navigation.
+        body: JSON.stringify({ data: [], total: 0 }),
       }),
   );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -203,7 +289,13 @@ export async function seedTechnologist(page: Page) {
     localStorage.setItem("role", "technologist");
     localStorage.setItem(
       "permissions",
-      JSON.stringify(["FILE_READ", "STUDY_READ", "PATIENT_READ"]),
+      JSON.stringify([
+        "FILE_READ",
+        "STUDY_READ",
+        "PATIENT_READ",
+        "WORKLIST_READ",
+        "WORKLIST_WRITE",
+      ]),
     );
     localStorage.setItem("access_token", "e2e-technologist-token");
     localStorage.setItem("refresh_token", "e2e-technologist-token");

@@ -208,3 +208,60 @@ class TestOAuthProvidersDB:
         p = OAuthProviders(conn=conn)
         result = await p.get_by_slug('unknown-provider')
         assert result is None
+
+
+class TestOAuthProvidersGroupsMap:
+    """R2-M7: groups_map (IdP group → role slug) is stored as JSONB and
+    normalized to a dict for consumers."""
+
+    @pytest.mark.asyncio
+    async def test_create_includes_groups_map_json(self):
+        conn = AsyncMock()
+        conn.fetchval.return_value = 'pid-1'
+        p = OAuthProviders(conn=conn)
+        await p.create(
+            issuer='https://idp.example.com',
+            client_id='c',
+            slug='idp',
+            groups_map={'radiologists': 'radiologist', 'admins': 'platform_admin'},
+        )
+        sql = conn.fetchval.call_args[0][0]
+        assert '"radiologists":"radiologist"' in sql.replace(' ', '')
+        assert 'groups_map' in sql
+
+    @pytest.mark.asyncio
+    async def test_create_defaults_groups_map_to_empty_object(self):
+        conn = AsyncMock()
+        conn.fetchval.return_value = 'pid-1'
+        p = OAuthProviders(conn=conn)
+        await p.create(issuer='https://idp.example.com', client_id='c', slug='idp')
+        sql = conn.fetchval.call_args[0][0]
+        assert '{}' in sql
+
+    @pytest.mark.asyncio
+    async def test_to_json_normalizes_groups_map(self):
+        p = OAuthProviders(conn=AsyncMock())
+        result = p.to_json({
+            'id': 'p1', 'issuer': 'https://idp.example.com',
+            'created_at': '2026-01-01', 'updated_at': '2026-01-01',
+            'groups_map': '{"radiologists": "radiologist"}',
+        })
+        assert result['groups_map'] == {'radiologists': 'radiologist'}
+
+    @pytest.mark.asyncio
+    async def test_to_json_handles_dict_groups_map(self):
+        p = OAuthProviders(conn=AsyncMock())
+        result = p.to_json({
+            'id': 'p1', 'issuer': 'https://idp.example.com',
+            'created_at': '2026-01-01', 'updated_at': '2026-01-01',
+            'groups_map': {'admins': 'platform_admin'},
+        })
+        assert result['groups_map'] == {'admins': 'platform_admin'}
+
+    @pytest.mark.asyncio
+    async def test_patch_serializes_groups_map_as_json(self):
+        conn = AsyncMock()
+        p = OAuthProviders(conn=conn)
+        await p.patch('p1', {'groups_map': {'technologists': 'technologist'}})
+        sql = conn.execute.call_args[0][0]
+        assert '{"technologists": "technologist"}' in sql

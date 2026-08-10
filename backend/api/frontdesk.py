@@ -114,8 +114,16 @@ class VisitsHandler(HTTPEndpoint):
     async def get(self, request):
         status = request.query_params.get('status')
         date_str = request.query_params.get('date')
-        page = int(request.query_params.get('page', '1'))
-        per_page = int(request.query_params.get('per_page', '20'))
+        # Clamp pagination like users.py: oversized/negative page and
+        # per_page must not reach the SQL (they are interpolated into the
+        # query); non-numeric values are a client error, not a 500.
+        try:
+            page = int(request.query_params.get('page', '1'))
+            per_page = int(request.query_params.get('per_page', '20'))
+        except (TypeError, ValueError):
+            return validation_error('Invalid pagination parameters')
+        page = max(1, page)
+        per_page = max(1, min(200, per_page))
         async with get_conn() as conn:
             rows, total = await FrontDesk(conn).list_visits(
                 status=status, date=date_str, page=page, per_page=per_page,

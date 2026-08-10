@@ -20,7 +20,7 @@ from api.response import ok, not_found, no_content, api_error, paginated
 from api.tokens import create_token as gen_token
 from api.utils import get_id
 from api.validate import parse_body
-from api.schemas.files import FileUpdateRequest, ShareRequest
+from api.schemas.files import FileUpdateRequest, SearchRequest, ShareRequest
 from api.notify import notify_role
 from config import config as app_config
 from db.conn import get_conn
@@ -196,6 +196,10 @@ class Upload(HTTPEndpoint):
                 # Byte count is authoritative — set after DICOM tags merge so a
                 # tag named `size` can never shadow it.
                 file_data['size'] = new_bytes
+                # HI-2: tag the row with the owning tenant (None → platform/
+                # main store) so the files.tenant guard and ES indexer scope
+                # by it. Set last so a DICOM tag can never shadow it either.
+                file_data['tenant'] = tenant_slug or None
                 filedata = await Files(conn).insert_or_select(file_data)
 
                 buf.seek(0)
@@ -315,9 +319,16 @@ class FilesHandler(HTTPEndpoint):
 
     @requires_permission(Permission.FILE_READ)
     async def post(self, request):
-        data = await request.json()
+        # The body is validated before it reaches ES: unbounded `results`/
+        # `page` values and oversized query strings would otherwise be passed
+        # straight into the search call.
+        body = await parse_body(SearchRequest, request)
 
-        results = await es.search(data)
+        # CR-1: the shared index holds every tenant's documents — a search
+        # MUST be scoped to the effective tenant or other tenants' SERIAL-id
+        # docs leak into results. Platform (un-scoped) requests keep the
+        # historical unfiltered behaviour via ''.
+        results = await es.search(body.model_dump(), tenant_slug=effective_tenant(request))
         return ok(results)
 
 
@@ -436,6 +447,12 @@ class ShareFilesHandler(HTTPEndpoint):
         body = await parse_body(ShareRequest, request)
 
         async with get_conn() as conn:
+            # Refuse to mint links for missing or deleted files: a share key
+            # for a phantom id would silently authorize nothing but the 404s
+            # it returns, and the row would linger until expiry.
+            file = await Files(conn).get_extra(file_id)
+            if not file or file.get('deleted'):
+                return not_found('File not found')
             key = await SharedFiles(conn).share(file_id, body.duration)
         return ok({'key': key})
 

@@ -214,7 +214,10 @@ test.describe("Front-office roles denied clinical surfaces", () => {
   // R4-05 inverse: scheduler/receptionist/front_desk hold no clinical grants,
   // so deep-linking the reading worklist or the exam console must bounce them
   // back to their front-office landing (not render a clinical surface).
-  for (const path of ["/reading", "/exams", "/worklist"]) {
+  // /worklist is deliberately absent: Matrix A grants the scheduler
+  // WORKLIST_READ (the MWL list is part of scheduling), so the gate lets them
+  // in — covered by the positive control below.
+  for (const path of ["/reading", "/exams"]) {
     test(`scheduler is denied deep-link ${path}`, async ({ page }) => {
       await seedFrontDesk(page, "scheduler");
       await page.goto(BASE + path, { waitUntil: "domcontentloaded" });
@@ -223,6 +226,14 @@ test.describe("Front-office roles denied clinical surfaces", () => {
       });
     });
   }
+
+  test("scheduler is allowed deep-link /worklist (WORKLIST_READ)", async ({
+    page,
+  }) => {
+    await seedFrontDesk(page, "scheduler");
+    await page.goto(BASE + "/worklist", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/worklist$/, { timeout: 10000 });
+  });
 
   test("front_desk with a clinical grant follows the permission-based gate", async ({
     page,

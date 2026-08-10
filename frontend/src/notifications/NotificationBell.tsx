@@ -152,9 +152,12 @@ function NotificationBell() {
   return (
     <>
       <Badge count={unread} size="small" offset={[2, -2]}>
-        <BellOutlined
+        <Button
+          type="text"
+          aria-label="Notifications"
+          icon={<BellOutlined style={{ fontSize: 16 }} />}
           onClick={handleOpen}
-          style={{ fontSize: 16, cursor: "pointer", color: "#fff" }}
+          style={{ color: "#fff", padding: 4, height: "auto" }}
         />
       </Badge>
       <Drawer
@@ -194,12 +197,10 @@ function NotificationBell() {
               renderItem={(n: Notification) => (
                 <List.Item
                   style={{
-                    cursor: n.link ? "pointer" : "default",
                     background: n.read ? "transparent" : "#f0f5ff",
                     padding: "12px 16px",
                     borderLeft: n.read ? "none" : "3px solid #1677ff",
                   }}
-                  onClick={() => handleClick(n)}
                   actions={[
                     !n.read && (
                       <Button
@@ -225,41 +226,56 @@ function NotificationBell() {
                     />,
                   ].filter(Boolean)}
                 >
-                  <List.Item.Meta
-                    title={
-                      <Space size={6}>
-                        <Tag
-                          color={EVENT_LABELS[n.event_type] || "default"}
-                          style={{ fontSize: 10, lineHeight: "16px" }}
-                        >
-                          {n.event_type}
-                        </Tag>
-                        <Text strong={!n.read} style={{ fontSize: 13 }}>
-                          {n.title}
-                        </Text>
-                      </Space>
-                    }
-                    description={
-                      <div>
-                        {n.body && (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "#888",
-                              marginBottom: 2,
-                            }}
+                  {/* A real button so keyboard users can open/read a
+                      notification; the old div onClick was mouse-only. */}
+                  <Button
+                    type="text"
+                    block
+                    onClick={() => handleClick(n)}
+                    style={{
+                      height: "auto",
+                      padding: 0,
+                      textAlign: "left",
+                      whiteSpace: "normal",
+                      cursor: n.link ? "pointer" : "default",
+                    }}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <Space size={6}>
+                          <Tag
+                            color={EVENT_LABELS[n.event_type] || "default"}
+                            style={{ fontSize: 10, lineHeight: "16px" }}
                           >
-                            {n.body}
+                            {n.event_type}
+                          </Tag>
+                          <Text strong={!n.read} style={{ fontSize: 13 }}>
+                            {n.title}
+                          </Text>
+                        </Space>
+                      }
+                      description={
+                        <div>
+                          {n.body && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#888",
+                                marginBottom: 2,
+                              }}
+                            >
+                              {n.body}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: "#aaa" }}>
+                            {n.created_at
+                              ? new Date(n.created_at).toLocaleString()
+                              : ""}
                           </div>
-                        )}
-                        <div style={{ fontSize: 11, color: "#aaa" }}>
-                          {n.created_at
-                            ? new Date(n.created_at).toLocaleString()
-                            : ""}
                         </div>
-                      </div>
-                    }
-                  />
+                      }
+                    />
+                  </Button>
                 </List.Item>
               )}
             />

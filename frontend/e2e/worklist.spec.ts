@@ -1,13 +1,15 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, API_BASE } from "./helpers";
+import { seedTechnologist, API_BASE } from "./helpers";
 import { WorklistPage } from "./pages/WorklistPage";
 
 test.describe("Worklist (MWL)", () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    // Worklist is an Acquisition-workspace surface (d4abc25): admin-scoped
+    // roles never see the sidebar entry, so specs drive it as a technologist.
+    await seedTechnologist(page);
   });
 
-  test("worklist page loads via admin submenu", async ({ page }) => {
+  test("worklist page loads via the Acquisition submenu", async ({ page }) => {
     const worklist = new WorklistPage(page);
     await worklist.openViaAdminSidebar();
     await expect(worklist.createEntryButton).toBeVisible({ timeout: 10000 });

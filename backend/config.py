@@ -45,6 +45,10 @@ default_config = {
     'oauth_token_url': '',
     'oauth_default_role': 'patient',
     'oauth_scope': 'openid email profile',
+    # R2-M5: single source of truth for the JWT `iss` claim — the OIDC
+    # discovery document advertises this value too. Empty = legacy
+    # 'quantumpacs' issuer (minted iss and discovery both fall back).
+    'token_issuer': '',
     # Path to the RSA signing key (PEM) used for RS256 access/refresh tokens.
     # Auto-generated on first use; jwks_uri serves the matching public key.
     'jwt_key_path': 'certs/jwt-rsa.pem',
@@ -57,6 +61,10 @@ default_config = {
     'dicom_aet_allowed': '',
     'dicom_allowed_ips': '',
     'dicom_require_called_aet': 'false',
+    # AE-title -> tenant slug mapping for the DICOM SCP: comma-separated
+    # `AE:slug` pairs, e.g. 'CT_ROOM_A:b,MR_ROOM_A:c'. A calling AE absent
+    # from the map falls back to the seeded `default` tenant (documented).
+    'dicom_ae_tenant_map': '',
     'hl7_mllp_port': '12579',
     'hl7_mllp_tls_cert': '',
     'hl7_mllp_tls_key': '',

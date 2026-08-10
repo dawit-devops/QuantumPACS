@@ -27,7 +27,15 @@ test.describe("Role Management", () => {
 
   test("roles page lists existing roles", async ({ page }) => {
     await openRoles(page);
+    // The list loads over the real API; wait for a row before asserting the
+    // body — capturing innerText during the fetch race produced flakes.
+    await expect(page.getByText("Administrator").first()).toBeVisible({
+      timeout: 15000,
+    });
     const bodyText = await page.locator("body").innerText({ timeout: 15000 });
-    expect(bodyText).toContain("admin");
+    // Dev-DB roles are Administrator/Biller/etc. — "admin" only appears in
+    // the seeded username, not the roles list, so assert real role names.
+    expect(bodyText).toContain("Administrator");
+    expect(bodyText).toContain("Biller");
   });
 });

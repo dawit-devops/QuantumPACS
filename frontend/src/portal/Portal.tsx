@@ -18,9 +18,9 @@ import {
   FileTextOutlined,
   MedicineBoxOutlined,
   SolutionOutlined,
-  LockOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
 import {
   listScope,
   getPortalPatient,
@@ -181,20 +181,13 @@ function Portal() {
   const patient = bundle?.patient;
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
-      <div className="portal-header">
-        <div className="portal-header-title">
-          <LockOutlined
-            style={{ fontSize: 22, color: "var(--color-primary)" }}
-          />
-          <div>
-            <h2>My Records</h2>
-            <span className="portal-subtitle">
-              Your imaging history — shared with you securely
-            </span>
-          </div>
-        </div>
-      </div>
+    <Content style={{ padding: 24 }} role="main">
+      {/* (R1-05) PageHeader renders the single h1 — the old h2 skipped the
+          heading level. */}
+      <PageHeader
+        title="My Records"
+        description="Your imaging history — shared with you securely"
+      />
 
       {loadingScope ? (
         <div className="portal-loading">

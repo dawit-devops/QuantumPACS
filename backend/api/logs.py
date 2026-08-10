@@ -3,6 +3,7 @@ from starlette.endpoints import HTTPEndpoint
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok, forbidden
+from api.tenant_middleware import effective_tenant
 from db.conn import get_conn
 from db.audit_log import AuditLog
 
@@ -28,7 +29,12 @@ class LogsHandler(HTTPEndpoint):
         user = request.user
         perms = getattr(user, 'permissions', [])
 
-        tenant = getattr(user, 'tenant', None)
+        # LO-02: the effective tenant scope (X-Tenant-ID override or JWT
+        # claim) gates what audit rows a user can see — reading the home
+        # tenant alone would let a cross-tenant operator leak the audited
+        # activity of their current scope. The explicit ?tenant= filter keeps
+        # its TENANT_READ gating for admins.
+        tenant = effective_tenant(request)
         if tenant_filter:
             if Permission.TENANT_READ.value not in perms:
                 return forbidden('Missing permission: TENANT_READ')

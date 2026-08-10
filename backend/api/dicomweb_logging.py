@@ -103,7 +103,15 @@ class DicomWebLogMiddleware:
             # (or is absent for rejected requests).
             user = scope.get('user')
             actor = getattr(user, 'id', None)
-            tenant = getattr(user, 'tenant', None)
+            # LO-02: stamp the effective tenant scope — the slug
+            # TenantMiddleware resolved into scope['state'] (X-Tenant-ID
+            # override or JWT claim) — not just the user's home claim. Under
+            # an override the home claim is where the user *belongs*, not
+            # where the audited request actually landed. Same resolution
+            # order as api.tenant_middleware.effective_tenant.
+            state = scope.get('state') or {}
+            slug = state.get('tenant_slug')
+            tenant = slug if isinstance(slug, str) and slug else getattr(user, 'tenant', None)
             payload = json.dumps({
                 'event': 'dicomweb.request',
                 'actor': actor,

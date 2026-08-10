@@ -26,6 +26,9 @@ _GATING_STATUSES = frozenset({'suspended', 'quarantined', 'decommissioned'})
 _ADMIN_ONLY_FIELDS = frozenset(
     {'status', 'db_name', 'db_host', 'db_port', 'db_user', 'db_password'}
 )
+# Fields that re-point the tenant's data store: a live pool created with the
+# old connection config must be closed so the next request re-connects (HI-3).
+_DB_FIELDS = frozenset({'db_name', 'db_host', 'db_port', 'db_user', 'db_password'})
 
 
 def _is_platform_admin(user) -> bool:
@@ -152,7 +155,11 @@ class TenantHandler(HTTPEndpoint):
                     tenant=tenant.get('slug'),
                     request_id=request_id_var.get(),
                 )
-        if status in _GATING_STATUSES:
+        if status in _GATING_STATUSES or (set(data) & _DB_FIELDS):
+            # Gating statuses and DB-endpoint changes both invalidate the
+            # tenant's live pool: it must be recreated from the registry row
+            # on the next request (HI-3 — a stale pool would keep pointing
+            # at the old host/credentials).
             await TenantConnectionPool.close(tenant['slug'])
         return ok({})
 

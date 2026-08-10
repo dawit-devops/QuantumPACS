@@ -10,6 +10,17 @@ body,
   height: 100%;
 }
 
+/* R1-02: tell the UA which palette is active so native widgets (scrollbars,
+   form controls, ::selection) render in the right scheme instead of
+   defaulting to light in dark mode. */
+:root {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 body {
   font-family:
     Inter,
@@ -85,6 +96,22 @@ a:hover {
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
+}
+
+/* (L9) Interactive queue/slot/thumbnail/schedule elements get an explicit
+   focus-visible ring with the shared tokens so keyboard users always see
+   where focus is, regardless of hover state or scroll-container clipping. */
+.fd-queue-item:focus-visible,
+.fd-slot:focus-visible,
+.thumbnail-item:focus-visible,
+.schedule-block:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.skip-link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 4px;
 }
 
 ::selection {

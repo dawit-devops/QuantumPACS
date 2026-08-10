@@ -30,7 +30,10 @@ class SharedFiles(Table):
 
     async def share(self, file_id, duration):
         key = rand_str()
-        expires = datetime.now(timezone.utc) + relativedelta(hours=duration)
+        # duration is seconds — the API contract (ShareRequest) is documented
+        # in seconds, so interpreting it as hours here would silently extend a
+        # 1-hour link to 150 days.
+        expires = datetime.now(timezone.utc) + relativedelta(seconds=duration)
         q = self.insert().columns(
             'file_id', 'hash', 'expires'
         ).insert(

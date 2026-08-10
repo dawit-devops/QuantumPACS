@@ -67,6 +67,10 @@ async def _noop(request):
 def _clean_pools():
     TenantConnectionPool._pools.clear()
     TenantConnectionPool._last_used.clear()
+    # ME-02 lease/lock bookkeeping must not leak across tests.
+    TenantConnectionPool._leases.clear()
+    TenantConnectionPool._locks.clear()
+    TenantConnectionPool._eviction_tasks.clear()
 
 
 # ── 1. Pool Identity Isolation ───────────────────────────────────────────
@@ -265,6 +269,10 @@ class TestLruEvictionIsolation:
         with patch('asyncpg.create_pool', new=mkpool):
             for t in TENANT_FIXTURES[:3]:
                 await TenantConnectionPool.get(t['slug'], t)
+            # ME-02: eviction only closes unleased pools; drop the leases the
+            # gets above took, as the middleware would at request end.
+            for t in TENANT_FIXTURES[:3]:
+                TenantConnectionPool.release(t['slug'])
 
         slugs_before = set(TenantConnectionPool._pools.keys())
         TenantConnectionPool._evict_lru()

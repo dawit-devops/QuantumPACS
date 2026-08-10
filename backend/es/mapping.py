@@ -29,6 +29,9 @@ INDEX = {
                 "type": "long",
                 "coerce": False
             },
+            "tenant": {
+                "type": "keyword"
+            },
             "patient_id": {
                 "type": "long"
             },

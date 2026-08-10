@@ -1,5 +1,5 @@
 import { Page, expect } from "@playwright/test";
-import { clearAndGo, waitForShell } from "../helpers";
+import { clearAndGo, waitForShell, adminCredentials } from "../helpers";
 
 export class LoginPage {
   constructor(private readonly page: Page) {}
@@ -22,10 +22,16 @@ export class LoginPage {
     await this.submit();
   }
 
-  /** Full admin flow: open login, sign in, wait for the authenticated shell. */
+  /** Full admin flow: open login, sign in, wait for the authenticated shell.
+   * Credentials come from adminCredentials() — CI exports E2E_ADMIN_PASS from
+   * SUPERADMIN_PASS (the value the backend seeds admin with) so specs share
+   * one constant; pa55w0rd is only the local-dev fallback. */
   async loginAsAdmin() {
     await this.open();
-    await this.login("admin", "pa55w0rd");
+    await this.login(
+      adminCredentials().username,
+      adminCredentials().password,
+    );
     await waitForShell(this.page);
   }
 

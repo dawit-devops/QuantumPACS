@@ -22,6 +22,15 @@ _request_tenant_pool: contextvars.ContextVar = contextvars.ContextVar(
     'request_tenant_pool', default=None,
 )
 
+# Slug of the tenant scope in effect for the current task ('' → main pool /
+# no tenant). Set wherever the request-tenant pool ContextVar is set (the
+# HTTP TenantMiddleware and the DICOM tenant_db_scope), so out-of-request
+# helpers — e.g. the Files ES indexer — can tag their work with the tenant
+# that owns the rows they are processing (CR-01).
+_tenant_slug: contextvars.ContextVar = contextvars.ContextVar(
+    'tenant_slug', default='',
+)
+
 
 def set_request_tenant(pool_acquire):
     """Scope get_conn() to the given tenant pool for the current request."""
@@ -36,6 +45,21 @@ def reset_request_tenant():
 def get_request_tenant():
     """Current request's tenant pool acquire callable, or None (main pool)."""
     return _request_tenant_pool.get()
+
+
+def set_tenant_slug(slug):
+    """Record the tenant slug for the current task ('' for no tenant)."""
+    _tenant_slug.set(slug or '')
+
+
+def reset_tenant_slug():
+    """Clear the task's tenant slug (must run in a finally)."""
+    _tenant_slug.set('')
+
+
+def get_tenant_slug():
+    """Current task's tenant slug, or '' when running un-scoped."""
+    return _tenant_slug.get()
 
 
 async def init_db():

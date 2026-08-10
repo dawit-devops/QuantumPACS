@@ -29,6 +29,7 @@ class OAuthProvidersHandler(HTTPEndpoint):
                 jwks_uri=body.jwks_uri, token_url=body.token_url,
                 redirect_uri=body.redirect_uri, scope=body.scope,
                 groups_claim=body.groups_claim,
+                groups_map=body.groups_map,
                 auto_provision=body.auto_provision, enabled=body.enabled,
                 tenant_id=body.tenant_id,
                 slug=body.slug,

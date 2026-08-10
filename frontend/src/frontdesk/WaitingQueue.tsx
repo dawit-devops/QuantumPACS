@@ -1,8 +1,9 @@
 import { useDocumentTitle, useTenantRefetch, useVisibilityGatedInterval } from "../hooks";
 import React, { useCallback, useEffect, useState } from "react";
 import { Layout, Tag, Spin, Alert, Button, DatePicker } from "antd";
-import { TeamOutlined, LockOutlined, ReloadOutlined } from "@ant-design/icons";
+import { LockOutlined, ReloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import PageHeader from "../common/PageHeader";
 import { getWaitingQueue, type QueueEntry } from "../api/frontdesk";
 import dayjs from "dayjs";
 import "./FrontDesk.css";
@@ -51,30 +52,26 @@ function WaitingQueue() {
   useTenantRefetch(fetch);
 
   return (
-    <Content style={{ padding: 24 }} role="main" id="main-content">
-      <div className="fd-header">
-        <div className="fd-header-title">
-          <TeamOutlined
-            style={{ fontSize: 22, color: "var(--color-primary)" }}
-          />
-          <div>
-            <h2>Waiting Queue</h2>
-            <span className="fd-subtitle">
-              Privacy-limited view — auto-refreshes every 30s
-            </span>
+    <Content style={{ padding: 24 }} role="main">
+      {/* (R1-05) PageHeader renders the single h1 (was an h2 under no h1) and
+          hosts the date picker + refresh in `extra`. */}
+      <PageHeader
+        title="Waiting Queue"
+        description="Privacy-limited view — auto-refreshes every 30s"
+        extra={
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <DatePicker
+              aria-label="Queue date"
+              value={dayjs(day)}
+              onChange={(d) => d && setDay(d.format("YYYY-MM-DD"))}
+              allowClear={false}
+            />
+            <Button icon={<ReloadOutlined />} onClick={fetch}>
+              Refresh
+            </Button>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <DatePicker
-            value={dayjs(day)}
-            onChange={(d) => d && setDay(d.format("YYYY-MM-DD"))}
-            allowClear={false}
-          />
-          <Button icon={<ReloadOutlined />} onClick={fetch}>
-            Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="fd-privacy-note">
         <LockOutlined />

@@ -4,6 +4,12 @@ import { defineConfig } from "@playwright/test";
 // the dev server the webServer block starts (or reuses) locally.
 const baseURL = process.env.E2E_BASE_URL || "http://localhost:5173";
 
+const chromiumArgs = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+];
+
 export default defineConfig({
   testDir: "./e2e",
   // Backend logins run PBKDF2-SHA256 with 600k iterations (~3.5s per call on
@@ -27,15 +33,12 @@ export default defineConfig({
     trace: "retain-on-failure",
     actionTimeout: 15000,
     launchOptions: {
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
+      args: chromiumArgs,
     },
   },
   // Start (or reuse) the Vite dev server so specs never depend on a manually
-  // running server; CI reuses it too and only needs the backend booted.
+  // running server; CI reuses it too and only needs the backend booted. The
+  // `preview` project below overrides this with the production build.
   webServer: {
     command: "npm run start",
     url: baseURL,
@@ -49,17 +52,36 @@ export default defineConfig({
         browserName: "chromium",
         viewport: { width: 1280, height: 720 },
         launchOptions: {
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-          ],
+          args: chromiumArgs,
         },
       },
     },
     {
-      // Optional extra coverage — CI gates on chromium only; run locally with
-      // `npm run test:e2e:all` (requires `npx playwright install firefox`).
+      // CI runs --project=preview: it builds the app and serves the built
+      // artifact via `vite preview` (preview inherits server.proxy, so /api
+      // still reaches the backend), then waits on port 4173. Local dev
+      // workflow keeps the 5173 dev server via the default `chromium` project.
+      name: "preview",
+      use: {
+        browserName: "chromium",
+        baseURL: "http://localhost:4173",
+        viewport: { width: 1280, height: 720 },
+        launchOptions: {
+          args: chromiumArgs,
+        },
+      },
+      webServer: {
+        command: "npm run build && npm run preview",
+        url: "http://localhost:4173",
+        reuseExistingServer: false,
+        // Build takes ~1 min on CI runners; give it generous headroom.
+        timeout: 300000,
+      },
+    },
+    {
+      // Optional extra coverage — CI gates on chromium/preview only; run
+      // locally with `npm run test:e2e:all` (requires `npx playwright install
+      // firefox`).
       name: "firefox",
       use: {
         browserName: "firefox",

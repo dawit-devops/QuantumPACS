@@ -116,6 +116,22 @@ class TestTokens:
         assert isinstance(payload['iat'], int)
         assert payload['typ'] == 'at+jwt'
 
+    def test_minted_iss_follows_configured_token_issuer(self):
+        # R2-M5: iss is config-derived — the same `token_issuer` key the
+        # OIDC discovery document advertises, so the minted claim and the
+        # advertised issuer can never drift apart.
+        cfg = {'secret': self.SECRET, 'token_issuer': 'https://pacs.example.com/api'}
+        with patch('api.tokens.config', cfg):
+            token = create_token({'id': 42, 'admin': True})
+            payload = verify_token(token)
+        assert payload['iss'] == 'https://pacs.example.com/api'
+
+        # Refresh tokens share the same issuer.
+        from api.tokens import create_token_pair, verify_refresh_token
+        with patch('api.tokens.config', cfg):
+            _, refresh = create_token_pair({'id': 42, 'admin': True})
+        assert verify_refresh_token(refresh)['iss'] == 'https://pacs.example.com/api'
+
     def test_verify_token_rejects_refresh_token(self):
         # AT-1: a refresh token must never authorize API requests even though
         # it is a validly signed, unexpired token.

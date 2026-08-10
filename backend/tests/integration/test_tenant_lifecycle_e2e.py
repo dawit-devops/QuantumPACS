@@ -13,10 +13,10 @@ so it is deliberately not repeated per test); the DB pool and all tests share
 one event loop (`loop_scope='module'`) because asyncpg pools are loop-bound.
 
 Environment gaps the fixture works around (kept visible by the canary test):
-- TenantProvisioner.create_database connects as a superuser named `postgres`,
-  but the dev container's superuser is `config['db_user']` (quantumpacs). The
-  fixture tries the real provisioner and replicates its steps with the working
-  superuser when that fails.
+- TenantProvisioner.create_database connects as the configured db_user
+  (the container superuser in CI and the compose stack) and falls back to
+  `postgres` only when that user cannot connect. The fixture's manual
+  fallback remains as a belt-and-braces path for exotic deployments.
 - Migration 032 uses CREATE INDEX CONCURRENTLY, which cannot run inside
   alembic's transaction on a fresh tenant DB; the fixture pre-creates those
   indexes outside the transaction so the tenant DB can reach head.
@@ -149,10 +149,11 @@ async def tenant_env():
         info['tenant_id'] = str(result['tenant_id'])
         info['admin_password'] = result['admin_password']
     except Exception as e:
-        # provision() needs a superuser role named `postgres`
-        # (db/tenant_provisioner.py), which this deployment lacks; replicate
-        # its steps with config['db_user'] so the lifecycle still runs
-        # end-to-end. Fixed upstream -> provision path used.
+        # provision() needs a role that can CREATE DATABASE
+        # (db/tenant_provisioner.py resolves config['db_user'] first, then
+        # `postgres`); the fixture replicates its steps with the same
+        # configured user when provisioning still fails. Fixed upstream ->
+        # provision path used.
         info['provisioned_via'] = 'fallback'
         info['provisioner_error'] = f'{type(e).__name__}: {e}'
         async with get_conn() as conn:
@@ -287,17 +288,19 @@ class TestProvision:
 
     @pytest.mark.asyncio(loop_scope='module')
     async def test_registry_admin_user_with_tenant_claim(self, tenant_env):
-        """ADR-026 (g): auth lives on the registry DB — admin also exists there with users.tenant = slug."""
+        """ADR-026 (g): auth lives on the registry DB — admin also exists there with users.tenant = slug.
+        Formerly guarded by a skip (BLOCKED_ON_S1); TenantProvisioner.create_initial_admin
+        now creates the main-DB user tagged with the slug, so the guard is gone — a
+        regression here must fail, not skip."""
         async with get_conn() as conn:
             row = await conn.fetchrow(
                 'SELECT username, tenant, status FROM users WHERE username = $1',
                 f"admin-{tenant_env['slug']}",
             )
-        if row is None:
-            pytest.skip(
-                'BLOCKED_ON_S1: provisioner does not yet create a registry-DB admin '
-                'with users.tenant = slug (ADR-026 g)',
-            )
+        assert row is not None, (
+            'registry-DB admin missing — TenantProvisioner.create_initial_admin '
+            'must create the main-DB user with users.tenant = slug (ADR-026 g)'
+        )
         assert row['tenant'] == tenant_env['slug']
         assert row['status'] == 'active'
 
@@ -445,11 +448,9 @@ class TestStatusGating:
 class TestMeteringAndHealth:
     @pytest.mark.asyncio(loop_scope='module')
     async def test_usage_metering_rolls_up_daily(self, tenant_env):
-        usage_table = None
-        async with get_conn() as conn:
-            usage_table = await conn.fetchval("SELECT to_regclass('tenant_usage_daily')")
-        if usage_table is None:
-            pytest.skip('BLOCKED_ON_S1: tenant_usage_daily table not migrated yet')
+        # Migration 039 (tenant_data_plane) creates tenant_usage_daily; the
+        # former skip guard (BLOCKED_ON_S1) is gone — a missing table now
+        # fails loudly instead of skipping.
         await record_request(tenant_env['slug'])
         await record_request(tenant_env['slug'])
         rows = await get_usage(tenant_env['slug'], days=1)
@@ -459,13 +460,17 @@ class TestMeteringAndHealth:
 
     @pytest.mark.asyncio(loop_scope='module')
     async def test_default_tenant_seed(self, tenant_env):
+        # The `default` tenant (data store = main DB) is seeded at backend
+        # startup by lifecycle._ensure_default_tenant; the former skip guard
+        # (BLOCKED_ON_S1) is gone — the row must exist wherever the suite's
+        # registry runs, otherwise the middleware's default-tenant shortcut
+        # is untested.
         async with get_conn() as conn:
             row = await Tenants(conn).get_by_slug('default')
-        if row is None:
-            pytest.skip(
-                'default tenant seed runs at backend startup (lifecycle._ensure_default_tenant); '
-                'not seeded in this dev DB yet',
-            )
+        assert row is not None, (
+            'default tenant missing from the registry — backend startup '
+            'seeds it via lifecycle._ensure_default_tenant'
+        )
         assert row['db_name'] == config['db_database']
 
     @pytest.mark.asyncio(loop_scope='module')

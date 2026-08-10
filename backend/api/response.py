@@ -3,14 +3,14 @@ All endpoints should use these helpers instead of raw JSONResponse."""
 
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
-from starlette.responses import JSONResponse as _StarletteJSONResponse
+from starlette.responses import JSONResponse as _StarletteJSONResponse, Response
 from config import config as _config
 
 
 def _default(obj):
-    if isinstance(obj, (datetime, date)):
+    if isinstance(obj, (datetime, date, time)):
         return obj.isoformat()
     if isinstance(obj, uuid.UUID):
         return str(obj)
@@ -38,19 +38,21 @@ def created(data=None):
 
 
 def no_content():
-    return _JSONResponse({}, status_code=204)
+    # 204 must not carry a body (RFC 9110 §15.3.5): some proxies and clients
+    # reject or strip a body on 204, and TestClient raises on read.
+    return Response(status_code=204)
 
 
 def not_found(message="Not found"):
-    return _JSONResponse({"error": message}, status_code=404)
+    return api_error('NOT_FOUND', message, status=404)
 
 
 def validation_error(message="Validation error"):
-    return _JSONResponse({"error": message}, status_code=400)
+    return api_error('VALIDATION_ERROR', message, status=400)
 
 
 def server_error(message="Internal server error", status_code=500):
-    return _JSONResponse({"error": message}, status_code=status_code)
+    return api_error('SERVER_ERROR', message, status=status_code)
 
 
 # Error responses produced by the exception handlers bypass the middleware
@@ -83,11 +85,11 @@ def apply_cors_headers(request, response):
 
 
 def unauthorized(message="Unauthorized"):
-    return _JSONResponse({"error": message}, status_code=401)
+    return api_error('UNAUTHORIZED', message, status=401)
 
 
 def forbidden(message="Forbidden"):
-    return _JSONResponse({"error": message}, status_code=403)
+    return api_error('FORBIDDEN', message, status=403)
 
 
 def paginated(data, total, page=1, per_page=20, request=None):

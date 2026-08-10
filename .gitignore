@@ -25,3 +25,5 @@ opencode.json
 SCRATCH
 .opencode/teams/
 /backend/certs/
+/certs/
+cov-json-report.json

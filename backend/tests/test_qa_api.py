@@ -205,7 +205,7 @@ def test_qa_review_rejects_duplicate():
                     'exam_id': 'exam-1', 'pass_fail': 'pass',
                 })
                 assert r.status_code == 400
-                assert 'already been QA-reviewed' in r.json()['error']
+                assert 'already been QA-reviewed' in r.json()['error']['message']
 
 
 
@@ -239,7 +239,7 @@ def test_qa_protocol_create_requires_code_uniqueness():
                     'modality': 'CT', 'sequences': [],
                 })
                 assert r.status_code == 400
-                assert 'already exists' in r.json()['error']
+                assert 'already exists' in r.json()['error']['message']
 
 
 def test_qa_protocol_crud_create_update_delete():
@@ -332,7 +332,7 @@ def test_qa_incident_requires_exam_link():
             'incident_type': 'artifact', 'description': 'no exam',
         })
         assert r.status_code == 400
-        assert 'exam_id is required' in r.json()['error']
+        assert 'exam_id is required' in r.json()['error']['message']
 
 
 def test_qa_incident_invalid_type_rejected():

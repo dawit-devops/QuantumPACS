@@ -1,11 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { seedQAUser, BASE } from "./helpers";
+import { loginAsAdmin, BASE } from "./helpers";
 
 test.describe("STOW-RS Upload", () => {
   test.beforeEach(async ({ page }) => {
-    // QA carries DICOMWEB_READ, which gates the /dicomweb/store route; the
-    // seeded session also stubs /api/** so the fake token never 401-bounces.
-    await seedQAUser(page);
+    // /dicomweb/store is an AdminConsoleRoute surface (admin-scoped, even
+    // though the gate permission is DICOMWEB_READ): clinical roles such as
+    // qa_team are excluded by scope, so the suite uses the real admin login.
+    await loginAsAdmin(page);
   });
 
   test("store page renders with dropzone and submit action", async ({

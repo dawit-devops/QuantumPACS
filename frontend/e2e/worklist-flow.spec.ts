@@ -1,9 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, API_BASE, openAdminItem } from "./helpers";
+import { loginAs, API_BASE, openWorklist } from "./helpers";
 
 test.describe("Worklist Flow (real backend)", () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
+    // The create/delete cycle writes real rows, so it runs against the live
+    // backend as the seeded technologist (WORKLIST_READ + WORKLIST_WRITE).
+    // Admin cannot reach /worklist (Acquisition workspace, clinical-only).
+    await loginAs(page, "test.technologist", "Test@123456");
   });
 
   test("creates a worklist entry via the UI and cancels it via the API", async ({
@@ -11,7 +14,7 @@ test.describe("Worklist Flow (real backend)", () => {
   }) => {
     const patientId = `E2E-FLOW-${Date.now()}`;
 
-    await openAdminItem(page, "Worklist");
+    await openWorklist(page);
     await expect(
       page.getByRole("button", { name: "Create worklist entry" }),
     ).toBeVisible({ timeout: 10000 });
@@ -23,10 +26,23 @@ test.describe("Worklist Flow (real backend)", () => {
     await dialog.getByPlaceholder("e.g., PAT-00123").fill(patientId);
     await dialog.getByPlaceholder("Last^First Middle").fill("E2E^Flow Patient");
     await dialog.getByPlaceholder("e.g., ACC-98765").fill(`ACC-${Date.now()}`);
-    await dialog.getByPlaceholder("Select modality").click();
-    await page.getByTitle("CT").click();
-    await dialog.getByPlaceholder("Select or type AE title").click();
-    await page.getByTitle("CT_ROOM_1").click();
+    // antd v6 Selects are native combobox inputs with no [placeholder]
+    // attribute and plain-text dropdown options — drive them by typing and
+    // Enter (showSearch filters, tags mode creates the tag directly).
+    await dialog
+      .locator(".ant-form-item")
+      .filter({ hasText: "Modality" })
+      .locator(".ant-select-input")
+      .click();
+    await page.keyboard.type("CT");
+    await page.keyboard.press("Enter");
+    await dialog
+      .locator(".ant-form-item")
+      .filter({ hasText: "Station AE Title" })
+      .locator(".ant-select-input")
+      .click();
+    await page.keyboard.type("CT_ROOM_1");
+    await page.keyboard.press("Enter");
 
     await dialog.getByRole("button", { name: "OK" }).click();
 
@@ -56,7 +72,7 @@ test.describe("Worklist Flow (real backend)", () => {
     const delResp = await page.request.delete(
       `${API_BASE}/api/worklist/${entry.id}`,
       {
-        headers: { "X-Auth-Pacs": token! },
+        headers: { "X-Auth-Pacs": token!, "X-CSRF-Token": "1" },
       },
     );
     expect(delResp.status()).toBe(200);

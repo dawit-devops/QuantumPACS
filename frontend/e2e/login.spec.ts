@@ -34,7 +34,7 @@ test.describe("Login Flow", () => {
   });
 
   test("redirects unauthenticated user to login", async ({ page }) => {
-    await page.goto(BASE + "/users", { waitUntil: "networkidle" });
+    await page.goto(BASE + "/users", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
   });
 });

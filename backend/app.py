@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 import time
 
 import sentry_sdk
@@ -109,6 +110,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         '/api/auth/logout', '/api/v2/auth/logout',
         '/api/oauth/login', '/api/v2/oauth/login',
         '/api/oauth/callback', '/api/v2/oauth/callback',
+        '/api/oauth/token', '/api/v2/oauth/token',
     })
 
     async def dispatch(self, request, call_next):
@@ -135,7 +137,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
 
 async def http_exception(request, exc):
-    resp = server_error(exc.detail if hasattr(exc, 'detail') else '', status_code=exc.status_code)
+    # HTTPException.detail is optional — guard code raises bare
+    # HTTPException(403) — so an empty detail must fall back to a generic
+    # description instead of emitting an envelope with an empty error string.
+    # starlette >= 1.x also defaults detail to the status phrase, which is
+    # equally generic and safe to replace.
+    detail = getattr(exc, 'detail', None)
+    if not detail or detail == HTTPStatus(exc.status_code).phrase:
+        detail = 'Request failed'
+    resp = server_error(str(detail), status_code=exc.status_code)
     return apply_cors_headers(request, resp)
 
 
@@ -161,10 +171,10 @@ async def lifespan(app):
     from storage.storage import Storage as _Storage
     from db.files import set_es_indexer as _set_files_es, set_storage_provider as _set_files_storage
     from db.replica import set_storage_provider as _set_replica_storage, set_storage_default_config
-    _set_files_es(lambda data, delete=False, reset=False: (
-        _es_mod.delete(data) if delete else
+    _set_files_es(lambda data, delete=False, reset=False, tenant_slug='': (
+        _es_mod.delete(data, tenant_slug) if delete else
         _es_mod.reset_index() if reset else
-        _es_mod.index_file(data)
+        _es_mod.index_file(data, tenant_slug)
     ))
     _set_files_storage(lambda replica: _Storage.get(replica))
     _set_replica_storage(lambda replica: _Storage.get(replica))

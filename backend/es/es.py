@@ -61,17 +61,35 @@ def get_client():
     return client.get(os.getpid())
 
 
-async def index(data):
+def _doc_id(data_id, tenant_slug=''):
+    """ES document _id for a file.
+
+    Per-tenant SERIAL ids collide across tenants (each tenant DB has its own
+    sequence), so a bare `str(id)` would let tenant B's file overwrite tenant
+    A's document. Tenant-scoped docs get a `slug:id` composite id; un-scoped
+    docs (reindex/sync of the main DB) keep the bare id for back-compat.
+    """
+    return f'{tenant_slug}:{data_id}' if tenant_slug else str(data_id)
+
+
+async def index(data, tenant_slug=''):
     c = get_client()
     if c:
-        await c.index(index=INDEX_NAME, id=str(data['id']), document=data)
+        payload = dict(data)
+        if tenant_slug:
+            payload['tenant'] = tenant_slug
+        await c.index(
+            index=INDEX_NAME,
+            id=_doc_id(data['id'], tenant_slug),
+            document=payload,
+        )
 
 
-async def delete(id_):
+async def delete(id_, tenant_slug=''):
     c = get_client()
     if c:
         try:
-            await c.delete(index=INDEX_NAME, id=str(id_))
+            await c.delete(index=INDEX_NAME, id=_doc_id(id_, tenant_slug))
         except NotFoundError:
             pass
 
@@ -82,7 +100,7 @@ columns = [
 ]
 
 
-async def search(data):
+async def search(data, tenant_slug=''):
     c = get_client()
     if not c:
         return {'data': [], 'total': 0}
@@ -122,6 +140,12 @@ async def search(data):
     else:
         es_q = {"match_all": {}}
 
+    if tenant_slug:
+        # The shared index holds every tenant's documents — a tenant-scoped
+        # search MUST filter on the tenant keyword or SERIAL-id docs from
+        # other tenants leak into results (CR-01).
+        es_q = {"bool": {"must": [es_q], "filter": [{"term": {"tenant": tenant_slug}}]}}
+
     res = await get_client().search(
         index=INDEX_NAME,
         query=es_q,
@@ -137,7 +161,7 @@ async def search(data):
     }
 
 
-async def index_file(file):
+async def index_file(file, tenant_slug=''):
     data = {
         'id': file['id'],
         'patient_db_id': file['patient_db_id'],
@@ -145,7 +169,7 @@ async def index_file(file):
         'series_db_id': file['series_db_id'],
     }
     data.update(file['meta'])
-    await index(data)
+    await index(data, tenant_slug=tenant_slug)
 
 
 async def reset_index():
