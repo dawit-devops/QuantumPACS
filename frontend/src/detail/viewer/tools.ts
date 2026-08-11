@@ -7,6 +7,9 @@ import {
   ArrowAnnotateTool,
   EllipticalROITool,
   EraserTool,
+  CobbAngleTool,
+  ProbeTool,
+  CircleROITool,
 } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./setup";
 
@@ -32,6 +35,9 @@ export function activateDrag(): void {
   tg.setToolPassive(RectangleROITool.toolName);
   tg.setToolPassive(EllipticalROITool.toolName);
   tg.setToolPassive(EraserTool.toolName);
+  tg.setToolPassive(CobbAngleTool.toolName);
+  tg.setToolPassive(ProbeTool.toolName);
+  tg.setToolPassive(CircleROITool.toolName);
   (tg as any).setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
 }
 
@@ -57,4 +63,16 @@ export function activateArrow(): void {
 
 export function activateEraser(): void {
   setPrimaryTool(EraserTool.toolName);
+}
+
+export function activateCobbAngle(): void {
+  setPrimaryTool(CobbAngleTool.toolName);
+}
+
+export function activateProbe(): void {
+  setPrimaryTool(ProbeTool.toolName);
+}
+
+export function activateCircleRoi(): void {
+  setPrimaryTool(CircleROITool.toolName);
 }
