@@ -37,4 +37,3 @@ jobs:
       - name: npm audit
         run: npm audit --audit-level=high
         working-directory: frontend
-        continue-on-error: true
