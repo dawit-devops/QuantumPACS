@@ -22,7 +22,10 @@ function QuantumLogo({ size = 40, showText = true }: Props) {
         .q-stop-3 { stop-color: var(--color-accent); }
         .q-fill-secondary { fill: var(--color-secondary); }
         .q-fill-accent { fill: var(--color-accent); }
-        .q-fill-text { fill: var(--text-primary); }
+        /* The wordmark sits on the dark sidebar (slate-900 in BOTH themes),
+           so --text-primary is wrong: slate-800 in light mode is near-black
+           on black. --sidebar-text is slate-300 in both themes — ~10:1. */
+        .q-fill-text { fill: var(--sidebar-text); }
       `}</style>
       <defs>
         <linearGradient id={QP_GRADIENT_ID} x1="0%" y1="0%" x2="100%" y2="100%">
