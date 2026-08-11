@@ -24,6 +24,27 @@ vi.mock("../api/roles", () => ({
   listRoleUsers: mockListRoleUsers,
   roleDisplayName: (slug?: string, fallback?: string) => fallback ?? slug,
   permissionLabel: (code: string) => code,
+  builtinRoleEditable: (slug?: string, isAdmin = false) =>
+    ![
+      "super_admin",
+      "tenant_admin",
+      "pacs_admin",
+      "emr_admin",
+      "patient",
+    ].includes(slug ?? "") &&
+    (slug !== "teleradiologist" || isAdmin),
+  builtinRoleEditTooltip: (slug?: string, isAdmin = false) =>
+    [
+      "super_admin",
+      "tenant_admin",
+      "pacs_admin",
+      "emr_admin",
+      "patient",
+    ].includes(slug ?? "")
+      ? "Cannot modify immutable built-in role"
+      : slug === "teleradiologist" && !isAdmin
+        ? "Only the platform admin can modify this role"
+        : "",
 }));
 
 vi.mock("../hooks", () => ({
@@ -35,7 +56,7 @@ const mockRoles = [
   {
     id: 1,
     name: "Administrator",
-    slug: "admin",
+    slug: "super_admin",
     permissions: ["FILE_READ", "FILE_WRITE"],
     built_in: true,
   },
@@ -52,6 +73,13 @@ const mockRoles = [
     slug: "custom",
     permissions: ["PATIENT_READ"],
     built_in: false,
+  },
+  {
+    id: 4,
+    name: "Teleradiologist",
+    slug: "teleradiologist",
+    permissions: ["STUDY_READ"],
+    built_in: true,
   },
 ];
 
@@ -157,15 +185,35 @@ describe("Roles", () => {
     });
   });
 
-  it("renders built-in roles with disabled edit and no delete", async () => {
+  it("tiers built-in edit access (immutable locked, others open)", async () => {
     renderWithAuth(<Roles />);
     await waitForTable();
 
     const editBtns = screen.getAllByText("Edit");
-    expect(editBtns.length).toBe(3);
+    expect(editBtns.length).toBe(4);
+    // super_admin (immutable) — locked
     expect(editBtns[0].closest("button")).toBeDisabled();
-    expect(editBtns[1].closest("button")).toBeDisabled();
+    // technologist (facility-editable) — open
+    expect(editBtns[1].closest("button")).toBeEnabled();
+    // custom role — editable, deletable
     expect(editBtns[2].closest("button")).toBeEnabled();
+    // teleradiologist — open for the platform admin (admin=true here)
+    expect(editBtns[3].closest("button")).toBeEnabled();
     expect(screen.queryAllByText("Delete").length).toBe(1);
+  });
+
+  it("keeps teleradiologist locked for non-platform admins", async () => {
+    localStorage.setItem("admin", "false");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["ROLE_WRITE", "ROLE_DELETE"]),
+    );
+    renderWithAuth(<Roles />);
+    await waitForTable();
+
+    const editBtns = screen.getAllByText("Edit");
+    expect(editBtns[0].closest("button")).toBeDisabled();
+    expect(editBtns[1].closest("button")).toBeEnabled();
+    expect(editBtns[3].closest("button")).toBeDisabled();
   });
 });

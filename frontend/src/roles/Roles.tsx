@@ -34,6 +34,8 @@ import {
   listRoleUsers,
   roleDisplayName,
   permissionLabel,
+  builtinRoleEditable,
+  builtinRoleEditTooltip,
   type Role,
 } from "../api/roles";
 import { PageState } from "../common/PageState";
@@ -178,10 +180,22 @@ function Roles() {
             </Space>
           );
         }
+        // R2-16 tiers: immutable built-ins (super/tenant/pacs/emr admin,
+        // patient) stay locked; teleradiologist opens only for the platform
+        // admin; the remaining 8 built-ins are editable by any ROLE_WRITE
+        // holder. Deletion stays blocked for every built-in.
         if (record.built_in && canWrite) {
+          const editable = builtinRoleEditable(record.slug, isAdmin);
+          const tip = builtinRoleEditTooltip(record.slug, isAdmin);
           return (
-            <Tooltip title="Built-in roles cannot be edited or deleted">
-              <Button type="link" size="small" disabled icon={<EditOutlined />}>
+            <Tooltip title={tip || undefined}>
+              <Button
+                type="link"
+                size="small"
+                disabled={!editable}
+                icon={<EditOutlined />}
+                onClick={editable ? () => handleEdit(record) : undefined}
+              >
                 Edit
               </Button>
             </Tooltip>

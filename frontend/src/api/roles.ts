@@ -49,6 +49,38 @@ export function roleDisplayName(slug?: string, fallback?: string): string {
   return NAME_MAP[slug] ?? fallback ?? slug;
 }
 
+// R2-16 built-in role tiers (mirrors backend/api/permissions.py):
+//  - immutable: never editable or deletable
+//  - platform-admin-only: only the platform admin (admin flag) may modify
+//  - facility-editable: any ROLE_WRITE holder may modify the permission list
+export const IMMUTABLE_ROLE_SLUGS: readonly string[] = [
+  "super_admin",
+  "tenant_admin",
+  "pacs_admin",
+  "emr_admin",
+  "patient",
+];
+
+export const PLATFORM_ADMIN_ONLY_ROLE_SLUGS: readonly string[] = [
+  "teleradiologist",
+];
+
+export function builtinRoleEditable(slug?: string, isAdmin = false): boolean {
+  if (!slug) return true;
+  if (IMMUTABLE_ROLE_SLUGS.includes(slug)) return false;
+  if (PLATFORM_ADMIN_ONLY_ROLE_SLUGS.includes(slug)) return isAdmin;
+  return true;
+}
+
+export function builtinRoleEditTooltip(slug?: string, isAdmin = false): string {
+  if (!slug) return "";
+  if (IMMUTABLE_ROLE_SLUGS.includes(slug))
+    return "Cannot modify immutable built-in role";
+  if (PLATFORM_ADMIN_ONLY_ROLE_SLUGS.includes(slug))
+    return "Only the platform admin can modify this role";
+  return "";
+}
+
 // Permission codes -> human-readable labels. Covers the canonical codes from
 // RBAC spec §3/§8 plus the legacy codes already emitted by the backend.
 export const PERMISSION_LABELS: Record<string, string> = {
