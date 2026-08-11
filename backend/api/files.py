@@ -48,7 +48,10 @@ def _is_dicom(content: bytes) -> bool:
     return len(content) > 132 and content[128:132] == b'DICM'
 
 
-_REQUIRED_DICOM_TAGS = ['PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'SOPInstanceUID']
+# Keys must match the `get_meta()` output format (snake_case), not DICOM
+# keyword names — parse_dcm returns the former, and a keyword lookup like
+# ds.get('patientid') would never match and reject every valid upload.
+_REQUIRED_DICOM_TAGS = ['patient_id', 'study_instance_uid', 'series_instance_uid', 'sop_instance_uid']
 
 
 async def _tenant_storage_used(request, tenant_info):
@@ -152,7 +155,7 @@ class Upload(HTTPEndpoint):
         except Exception as e:
             return api_error('PARSE_ERROR', f'Could not parse DICOM: {e}', status=400)
 
-        missing = [t for t in _REQUIRED_DICOM_TAGS if not ds.get(t.lower())]
+        missing = [t for t in _REQUIRED_DICOM_TAGS if not ds.get(t)]
         if missing:
             return api_error('INVALID_DICOM', f'Missing required DICOM tags: {", ".join(missing)}', status=400)
 

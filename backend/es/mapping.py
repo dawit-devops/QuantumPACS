@@ -32,8 +32,10 @@ INDEX = {
             "tenant": {
                 "type": "keyword"
             },
+            # `patient_id` is the DICOM PatientID string (e.g. "SMOKE001"),
+            # never the numeric DB row id — long would reject every doc (CR-02).
             "patient_id": {
-                "type": "long"
+                "type": "keyword"
             },
             "Patient's Name": {
                 "type": "text",

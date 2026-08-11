@@ -136,6 +136,8 @@ function ReportEditor() {
       setDirty(false);
       try {
         await request(`reports/${examId}`, {
+          // ExamReportHandler only implements GET/PUT — POST returns 405
+          method: "PUT",
           data: {
             findings,
             impression,

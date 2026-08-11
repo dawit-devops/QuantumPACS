@@ -72,10 +72,22 @@ def _doc_id(data_id, tenant_slug=''):
     return f'{tenant_slug}:{data_id}' if tenant_slug else str(data_id)
 
 
+def _indexable_field_name(key):
+    """True when ES accepts `key` as a document field name.
+
+    ES splits field names on '.' and rejects names where any path segment is
+    empty or whitespace-only — DICOM element names like
+    "[Number of channels (1...512)]" (triple dot) trip that rule and fail the
+    WHOLE document with document_parsing_exception. Skip those keys instead
+    of losing the entire file from the index.
+    """
+    return bool(key) and all(seg.strip() for seg in key.split('.'))
+
+
 async def index(data, tenant_slug=''):
     c = get_client()
     if c:
-        payload = dict(data)
+        payload = {k: v for k, v in data.items() if _indexable_field_name(k)}
         if tenant_slug:
             payload['tenant'] = tenant_slug
         await c.index(
@@ -107,7 +119,9 @@ async def search(data, tenant_slug=''):
     size = data.get('results', 10)
     page = data.get('page', 1)
 
-    query = data.get('query', '').lower()
+    # The frontend sends `query: null` for an empty search box — treat any
+    # falsy value as "match everything", never crash on None.lower().
+    query = (data.get('query') or '').lower()
     if query != '':
         es_q = {
             "multi_match": {
