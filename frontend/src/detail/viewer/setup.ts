@@ -13,6 +13,9 @@ import {
   EllipticalROITool,
   EraserTool,
   StackScrollTool,
+  CobbAngleTool,
+  ProbeTool,
+  CircleROITool,
 } from "@cornerstonejs/tools";
 import { init as initDicomImageLoader } from "@cornerstonejs/dicom-image-loader";
 
@@ -53,6 +56,9 @@ export async function ensureGlobalInit() {
   addTool(EllipticalROITool);
   addTool(EraserTool);
   addTool(StackScrollTool);
+  addTool(CobbAngleTool);
+  addTool(ProbeTool);
+  addTool(CircleROITool);
 
   let tg = ToolGroupManager.getToolGroup(TOOL_GROUP_ID);
   if (!tg) {
@@ -70,6 +76,9 @@ export async function ensureGlobalInit() {
   tg.addTool(EllipticalROITool.toolName);
   tg.addTool(EraserTool.toolName);
   tg.addTool(StackScrollTool.toolName);
+  tg.addTool(CobbAngleTool.toolName);
+  tg.addTool(ProbeTool.toolName);
+  tg.addTool(CircleROITool.toolName);
 
   const setActive = (tg as any).setToolActive;
   setActive.call(tg, PanTool.toolName, { mouseButtonMask: 1 });

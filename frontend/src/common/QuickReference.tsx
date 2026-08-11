@@ -18,6 +18,9 @@ const SHORTCUTS: ShortcutEntry[] = [
   { key: "5", action: "Angle measurement", group: "Tool Selection" },
   { key: "6", action: "Arrow annotation", group: "Tool Selection" },
   { key: "7 / E", action: "Eraser", group: "Tool Selection" },
+  { key: "8", action: "Cobb angle measurement", group: "Tool Selection" },
+  { key: "9", action: "Probe pixel value", group: "Tool Selection" },
+  { key: "0", action: "Circle ROI", group: "Tool Selection" },
   { key: "R", action: "Rotate 90° CW", group: "Viewer Controls" },
   { key: "H", action: "Horizontal flip", group: "Viewer Controls" },
   { key: "V", action: "Vertical flip", group: "Viewer Controls" },
@@ -209,6 +212,21 @@ export function QuickReference({ open, onClose }: QuickReferenceProps) {
                       tool: "Eraser",
                       key: "7 / E",
                       desc: "Delete individual annotations",
+                    },
+                    {
+                      tool: "Cobb Angle",
+                      key: "8",
+                      desc: "Measure scoliosis angle between two lines",
+                    },
+                    {
+                      tool: "Probe",
+                      key: "9",
+                      desc: "Read pixel value at a point",
+                    },
+                    {
+                      tool: "Circle ROI",
+                      key: "0",
+                      desc: "Draw circular region of interest",
                     },
                   ]}
                   columns={[

@@ -5,7 +5,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import CornerstoneElement from "../detail/CornerstoneElement";
 
 // (H2) Captured cornerstone eventTarget listeners so tests can fire
-// IMAGE_RENDERED bursts and observe the per-frame coalescing.
+// render-ish event bursts (IMAGE_LOADED is the event the component actually
+// listens to on the shared eventTarget in v5.6.10) and observe the per-frame
+// coalescing.
 const coreListeners = vi.hoisted(
   () => new Map<string, Array<(data?: any) => void>>(),
 );
@@ -32,6 +34,15 @@ let engineMock: {
   resize: ReturnType<typeof vi.fn>;
   disableElement: ReturnType<typeof vi.fn>;
 };
+// (CobbAngle) Shared tool-group instance so tests can assert tool activation.
+const toolGroupMock = vi.hoisted(() => ({
+  addTool: vi.fn(),
+  addViewport: vi.fn(),
+  removeViewports: vi.fn(),
+  setToolPassive: vi.fn(),
+  setToolActive: vi.fn(),
+  setToolConfiguration: vi.fn(),
+}));
 
 beforeEach(() => {
   viewportInstance = viewportMock();
@@ -56,7 +67,13 @@ vi.mock("@cornerstonejs/core", () => ({
     }),
     removeEventListener: vi.fn(),
   },
-  EVENTS: { IMAGE_RENDERED: "imageRendered", STACK_NEW_IMAGE: "stackNewImage" },
+  EVENTS: {
+    IMAGE_LOADED: "imageLoaded",
+    IMAGE_LOAD_ERROR: "imageLoadError",
+    STACK_NEW_IMAGE: "stackNewImage",
+    VOI_MODIFIED: "voiModified",
+    CAMERA_MODIFIED: "cameraModified",
+  },
   getRenderingEngine: vi.fn(() => engineMock),
   StackViewport: vi.fn(),
 }));
@@ -64,22 +81,8 @@ vi.mock("@cornerstonejs/core", () => ({
 vi.mock("@cornerstonejs/tools", () => ({
   init: vi.fn(),
   ToolGroupManager: {
-    getToolGroup: vi.fn(() => ({
-      addTool: vi.fn(),
-      addViewport: vi.fn(),
-      removeViewports: vi.fn(),
-      setToolPassive: vi.fn(),
-      setToolActive: vi.fn(),
-      setToolConfiguration: vi.fn(),
-    })),
-    createToolGroup: vi.fn(() => ({
-      addTool: vi.fn(),
-      addViewport: vi.fn(),
-      removeViewports: vi.fn(),
-      setToolPassive: vi.fn(),
-      setToolActive: vi.fn(),
-      setToolConfiguration: vi.fn(),
-    })),
+    getToolGroup: vi.fn(() => toolGroupMock),
+    createToolGroup: vi.fn(() => toolGroupMock),
   },
   addTool: vi.fn(),
   annotation: {
@@ -110,6 +113,9 @@ vi.mock("@cornerstonejs/tools", () => ({
   EllipticalROITool: { toolName: "EllipticalROI" },
   EraserTool: { toolName: "Eraser" },
   StackScrollTool: { toolName: "StackScroll" },
+  CobbAngleTool: { toolName: "CobbAngle" },
+  ProbeTool: { toolName: "Probe" },
+  CircleROITool: { toolName: "CircleROI" },
 }));
 
 vi.mock("@cornerstonejs/dicom-image-loader", () => ({
@@ -178,6 +184,51 @@ describe("CornerstoneElement", () => {
       expect(btn.style.minHeight).toBe("44px");
       expect(btn.style.minWidth).toBe("44px");
     });
+  });
+
+  it("activates the Cobb angle tool when the '8' key is pressed", async () => {
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
+    await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "8" }));
+    });
+
+    await waitFor(() =>
+      expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("CobbAngle", {
+        mouseButtonMask: 1,
+      }),
+    );
+  });
+
+  it("activates the Probe tool when the '9' key is pressed", async () => {
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
+    await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "9" }));
+    });
+
+    await waitFor(() =>
+      expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("Probe", {
+        mouseButtonMask: 1,
+      }),
+    );
+  });
+
+  it("activates the Circle ROI tool when the '0' key is pressed", async () => {
+    renderWithApp(<CornerstoneElement {...defaultProps} />);
+    await waitFor(() => expect(engineMock.enableElement).toHaveBeenCalled());
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "0" }));
+    });
+
+    await waitFor(() =>
+      expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("CircleROI", {
+        mouseButtonMask: 1,
+      }),
+    );
   });
 
   it("uses wadoRsImage when provided instead of fallback image", () => {
@@ -270,20 +321,20 @@ describe("CornerstoneElement", () => {
   // (H2) A 100-event burst inside one animation frame must produce exactly one
   // update pass: the imperative readout write plus the state commit that
   // React reconciles into the same node. A second pass would add mutations.
-  it("coalesces an IMAGE_RENDERED burst into one update per frame", async () => {
+  it("coalesces an IMAGE_LOADED burst into one update per frame", async () => {
     const { EVENTS } = await import("@cornerstonejs/core");
     const { container } = renderWithApp(
       <CornerstoneElement {...defaultProps} />,
     );
     await waitFor(() => {
       expect(
-        coreListeners.get(EVENTS.IMAGE_RENDERED)?.length ?? 0,
+        coreListeners.get(EVENTS.IMAGE_LOADED)?.length ?? 0,
       ).toBeGreaterThan(0);
     });
 
     let zoom = 1;
-    let upper = 100;
-    let lower = 0;
+    const upper = 100;
+    const lower = 0;
     viewportInstance.getZoom = () => zoom;
     viewportInstance.voiRange = { upper, lower };
 
@@ -298,8 +349,8 @@ describe("CornerstoneElement", () => {
       subtree: true,
     });
 
-    const listeners = coreListeners.get(EVENTS.IMAGE_RENDERED)!;
-    const evt = { type: EVENTS.IMAGE_RENDERED };
+    const listeners = coreListeners.get(EVENTS.IMAGE_LOADED)!;
+    const evt = { type: EVENTS.IMAGE_LOADED };
     zoom = 2.5;
     viewportInstance.voiRange = { upper: 200, lower: 50 };
     await act(async () => {
@@ -325,11 +376,11 @@ describe("CornerstoneElement", () => {
     );
     await waitFor(() => {
       expect(
-        coreListeners.get(EVENTS.IMAGE_RENDERED)?.length ?? 0,
+        coreListeners.get(EVENTS.IMAGE_LOADED)?.length ?? 0,
       ).toBeGreaterThan(0);
     });
 
-    let zoom = 1;
+    const zoom = 1;
     viewportInstance.getZoom = () => zoom;
     viewportInstance.voiRange = { upper: 100, lower: 0 };
 
@@ -347,8 +398,8 @@ describe("CornerstoneElement", () => {
       subtree: true,
     });
 
-    const listeners = coreListeners.get(EVENTS.IMAGE_RENDERED)!;
-    const evt = { type: EVENTS.IMAGE_RENDERED };
+    const listeners = coreListeners.get(EVENTS.IMAGE_LOADED)!;
+    const evt = { type: EVENTS.IMAGE_LOADED };
     await act(async () => {
       // First burst settles state to the initial values (ww 0 -> 100).
       for (let i = 0; i < 10; i++) listeners.forEach((cb) => cb(evt));

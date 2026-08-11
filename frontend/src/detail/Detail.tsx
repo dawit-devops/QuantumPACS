@@ -35,7 +35,6 @@ import {
   type FileSeries,
   type FileNode,
 } from "../api/files";
-import { wadoRsUrl } from "../api/studies";
 import { useAuth } from "../auth/AuthContext";
 import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import { isAdminScopedRole } from "../navigator";
@@ -78,7 +77,6 @@ function Detail() {
   const [study, setStudy] = useState<FileStudy | null>(null);
   const [series, setSeries] = useState<FileSeries | null>(null);
   const [image, setImage] = useState(imagePath);
-  const [wadoRsImage, setWadoRsImage] = useState<string | null>(null);
   const tempKey = sessionStorage.getItem("tempKey");
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -88,7 +86,18 @@ function Detail() {
     null,
   );
 
-  const imageUrl = wadoRsImage || image;
+  // Pixels always come from the self-contained wadouri loader
+  // (`wadouri:/files/{id}/data`): the v5 dicom-image-loader naturalized path
+  // parses the served file and registers every metadata module (IMAGE_PIXEL
+  // included) itself, so no separate metadata fetch is needed. The DICOMweb
+  // `wadors:` route is NOT used for rendering — it requires the app to
+  // pre-register instance metadata (addDicomWebInstance) and the backend
+  // WADO-RS response to carry a transfer-syntax Content-Type parameter;
+  // without either, wadors imageIds crash in getImageFrame with "Cannot read
+  // properties of undefined (reading 'samplesPerPixel')". Study-level
+  // DICOMweb queries (searchStudies / StudyBrowser) are unaffected — only
+  // pixel retrieval is switched.
+  const imageUrl = image;
 
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
 
@@ -113,13 +122,6 @@ function Detail() {
 
     getFile(id as string)
       .then((data: FileRecord) => {
-        const meta: Record<string, unknown> = data?.meta || {};
-        const studyUid = String(meta.study_instance_uid || "");
-        const seriesUid = String(meta.series_instance_uid || "");
-        const sopUid = String(meta.sop_instance_uid || "");
-        if (studyUid && seriesUid && sopUid) {
-          setWadoRsImage(wadoRsUrl(studyUid, seriesUid, sopUid));
-        }
         // Mount the viewer only once all metadata is in place: the remount
         // hack below used to force a second mount because the viewer could
         // initialize with empty props. CornerstoneElement now mounts
@@ -322,7 +324,6 @@ function Detail() {
                   if (target) navigate(`/files/${target.id}`);
                 }}
                 image={image}
-                wadoRsImage={wadoRsImage}
                 progressive={true}
                 visible={tab === "image"}
                 onRequestHelp={() => setShowShortcuts(true)}

@@ -53,7 +53,7 @@
     "test:slow": "vitest run src/test/Roles.test.tsx src/test/CornerstoneElement.test.tsx src/test/Metrics.test.tsx src/test/Sidebar.test.tsx src/test/Users.test.tsx src/test/Tenants.test.tsx src/test/TenantSelector.test.tsx src/test/Login.test.tsx src/test/StudyBrowser.test.tsx src/test/Account.test.tsx",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:all": "playwright test",
-    "test:e2e:fast": "playwright test --project=chromium e2e/login.spec.ts e2e/role-based-access.spec.ts e2e/qa.spec.ts e2e/stow-upload.spec.ts e2e/share-link.spec.ts e2e/study-viewer.spec.ts",
+    "test:e2e:fast": "playwright test --project=chromium e2e/login.spec.ts e2e/role-based-access.spec.ts e2e/qa.spec.ts e2e/stow-upload.spec.ts e2e/share-link.spec.ts e2e/study-viewer.spec.ts e2e/viewer-render.spec.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:unit && npm run test:e2e:all"
   },

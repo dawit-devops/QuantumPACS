@@ -15,6 +15,9 @@ const SHORTCUTS: ShortcutEntry[] = [
   { key: "5", action: "Angle measurement", group: "Tool Selection" },
   { key: "6", action: "Arrow annotation", group: "Tool Selection" },
   { key: "7 / E", action: "Eraser", group: "Tool Selection" },
+  { key: "8", action: "Cobb angle measurement", group: "Tool Selection" },
+  { key: "9", action: "Probe pixel value", group: "Tool Selection" },
+  { key: "0", action: "Circle ROI", group: "Tool Selection" },
   { key: "R", action: "Rotate 90° CW", group: "Viewer Controls" },
   { key: "H", action: "Horizontal flip", group: "Viewer Controls" },
   { key: "V", action: "Vertical flip", group: "Viewer Controls" },
@@ -142,6 +145,9 @@ export function getToolShortcut(toolName: string): string {
     Angle: "5",
     ArrowAnnotate: "6",
     Eraser: "7 / E",
+    CobbAngle: "8",
+    Probe: "9",
+    CircleROI: "0",
   };
   return map[toolName] || "";
 }

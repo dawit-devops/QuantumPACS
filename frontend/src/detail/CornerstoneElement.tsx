@@ -11,6 +11,9 @@ import {
   BorderOutlined,
   PlusCircleOutlined,
   ScissorOutlined,
+  NodeIndexOutlined,
+  EnvironmentOutlined,
+  RadiusUprightOutlined,
   SaveOutlined,
   CloseCircleOutlined,
   DownloadOutlined,
@@ -37,6 +40,9 @@ import {
   activateAngle,
   activateArrow,
   activateEraser,
+  activateCobbAngle,
+  activateProbe,
+  activateCircleRoi,
 } from "./viewer/tools";
 import {
   readViewportInfo,
@@ -261,6 +267,8 @@ export default function CornerstoneElement(props: CEProps) {
 
   const onImageRendered = useCallback(() => {
     setLoading(false);
+    // A render/load succeeding invalidates any earlier load error.
+    setViewportError(null);
     // Coalesce bursty render events (cine, WL drag) into one state pass per
     // animation frame; dropping the pending frame when one is queued keeps
     // a fast loop to at most 60 setState calls/sec.
@@ -270,6 +278,36 @@ export default function CornerstoneElement(props: CEProps) {
       updateViewportInfo();
     });
   }, [updateViewportInfo]);
+
+  // v5.6.10 never emits EVENTS.IMAGE_RENDERED (the enum value exists but no
+  // code path fires it), so the loading overlay can only clear via the events
+  // that DO fire: IMAGE_LOADED on the shared eventTarget, and
+  // STACK_NEW_IMAGE / VOI_MODIFIED / CAMERA_MODIFIED on the viewport
+  // element. Failures surface through IMAGE_LOAD_ERROR.
+  //
+  // IMAGE_LOADED is global (every viewport/engine fires it on the shared
+  // eventTarget), so it is guarded by imageId — a companion viewport's decode
+  // must not clear this viewport's loading overlay. The element-scoped
+  // listeners below already only fire for this element.
+  const onImageLoaded = useCallback(
+    (evt: any) => {
+      const loadedId = evt?.detail?.imageId;
+      if (loadedId && loadedId !== imageRef.current) return;
+      onImageRendered();
+    },
+    [onImageRendered],
+  );
+
+  const onImageLoadError = useCallback((evt: any) => {
+    // Only surface failures for the image this viewport asked for. Requiring
+    // the id also ignores the array-detail CustomEvent that
+    // StackViewport.loadImages dispatches (detail.imageId would be undefined
+    // and the failure may belong to another viewport).
+    const failedId = evt?.detail?.imageId;
+    if (!failedId || failedId !== imageRef.current) return;
+    setViewportError("Failed to load DICOM image");
+    setLoading(false);
+  }, []);
 
   const onWindowResize = useCallback(() => {
     const re = getRenderingEngine(ENGINE_ID);
@@ -423,6 +461,18 @@ export default function CornerstoneElement(props: CEProps) {
           e.preventDefault();
           activateEraser();
           break;
+        case "8":
+          e.preventDefault();
+          activateCobbAngle();
+          break;
+        case "9":
+          e.preventDefault();
+          activateProbe();
+          break;
+        case "0":
+          e.preventDefault();
+          activateCircleRoi();
+          break;
         case "r":
         case "R":
           e.preventDefault();
@@ -547,10 +597,23 @@ export default function CornerstoneElement(props: CEProps) {
         const viewport = renderingEngine.getViewport(
           viewportIdRef.current,
         ) as StackViewport;
-        await viewport.setStack([imageRef.current as string]);
 
-        eventTarget.addEventListener(EVENTS.IMAGE_RENDERED, onImageRendered);
-        eventTarget.addEventListener(EVENTS.STACK_NEW_IMAGE, onImageRendered);
+        // Listeners MUST be attached before setStack so the load/render
+        // events fired while the first image is displayed are not missed.
+        eventTarget.addEventListener(EVENTS.IMAGE_LOADED, onImageLoaded);
+        eventTarget.addEventListener(EVENTS.IMAGE_LOAD_ERROR, onImageLoadError);
+        elementRef.current.addEventListener(
+          EVENTS.STACK_NEW_IMAGE,
+          onImageRendered,
+        );
+        elementRef.current.addEventListener(
+          EVENTS.VOI_MODIFIED,
+          onImageRendered,
+        );
+        elementRef.current.addEventListener(
+          EVENTS.CAMERA_MODIFIED,
+          onImageRendered,
+        );
         eventTarget.addEventListener(
           ToolsEnums.Events.ANNOTATION_ADDED,
           saveToolState,
@@ -568,6 +631,8 @@ export default function CornerstoneElement(props: CEProps) {
           saveToolState,
         );
         window.addEventListener("resize", onWindowResize);
+
+        await viewport.setStack([imageRef.current as string]);
 
         // Wait for the engine to expose a ready viewport, but bound the
         // attempts and stop on unmount — the old loop polled forever even
@@ -612,8 +677,23 @@ export default function CornerstoneElement(props: CEProps) {
       window.removeEventListener("resize", onWindowResize);
       ws.removeEventListener(onStateUpdate);
       ws.removeOpenListener(openCb);
-      eventTarget.removeEventListener(EVENTS.IMAGE_RENDERED, onImageRendered);
-      eventTarget.removeEventListener(EVENTS.STACK_NEW_IMAGE, onImageRendered);
+      eventTarget.removeEventListener(EVENTS.IMAGE_LOADED, onImageLoaded);
+      eventTarget.removeEventListener(
+        EVENTS.IMAGE_LOAD_ERROR,
+        onImageLoadError,
+      );
+      elementRef.current?.removeEventListener(
+        EVENTS.STACK_NEW_IMAGE,
+        onImageRendered,
+      );
+      elementRef.current?.removeEventListener(
+        EVENTS.VOI_MODIFIED,
+        onImageRendered,
+      );
+      elementRef.current?.removeEventListener(
+        EVENTS.CAMERA_MODIFIED,
+        onImageRendered,
+      );
       eventTarget.removeEventListener(
         ToolsEnums.Events.ANNOTATION_ADDED,
         saveToolState,
@@ -867,6 +947,21 @@ export default function CornerstoneElement(props: CEProps) {
           aria-label="Eraser tool"
           icon={<ScissorOutlined />}
           onClick={stopAndRun(activateEraser)}
+        />
+        <ActionBtn
+          aria-label="Cobb angle measurement"
+          icon={<NodeIndexOutlined />}
+          onClick={stopAndRun(activateCobbAngle)}
+        />
+        <ActionBtn
+          aria-label="Probe pixel value"
+          icon={<EnvironmentOutlined />}
+          onClick={stopAndRun(activateProbe)}
+        />
+        <ActionBtn
+          aria-label="Circle ROI"
+          icon={<RadiusUprightOutlined />}
+          onClick={stopAndRun(activateCircleRoi)}
         />
         <ActionBtn
           aria-label="Save annotations"

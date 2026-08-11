@@ -8,6 +8,9 @@ import {
   PlusCircleOutlined,
   RightOutlined,
   ArrowRightOutlined,
+  NodeIndexOutlined,
+  EnvironmentOutlined,
+  RadiusUprightOutlined,
 } from "@ant-design/icons";
 import { useTheme } from "../common/ThemeProvider";
 
@@ -37,6 +40,9 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   ArrowAnnotate: <ArrowRightOutlined />,
   RectangleROI: <BorderOutlined />,
   EllipticalROI: <PlusCircleOutlined />,
+  CobbAngle: <NodeIndexOutlined />,
+  Probe: <EnvironmentOutlined />,
+  CircleROI: <RadiusUprightOutlined />,
 };
 
 const TOOL_COLORS: Record<string, string> = {
@@ -45,6 +51,9 @@ const TOOL_COLORS: Record<string, string> = {
   ArrowAnnotate: "#A78BFA",
   RectangleROI: "#34D399",
   EllipticalROI: "#F87171",
+  CobbAngle: "#F472B6",
+  Probe: "#60A5FA",
+  CircleROI: "#FB923C",
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -53,6 +62,18 @@ const TOOL_LABELS: Record<string, string> = {
   ArrowAnnotate: "Arrow",
   RectangleROI: "Rectangle ROI",
   EllipticalROI: "Ellipse ROI",
+  CobbAngle: "Cobb Angle",
+  Probe: "Probe",
+  CircleROI: "Circle ROI",
+};
+
+// ROI annotation classes -> display type. Unknown tools yield "" so a future
+// ROI added without a mapping surfaces as skipped, never mislabeled as an
+// Ellipse (a nested ternary would silently fall through to EllipticalROI).
+const ROI_TYPES: Record<string, string> = {
+  RectangleROITool: "RectangleROI",
+  EllipticalROITool: "EllipticalROI",
+  CircleROITool: "CircleROI",
 };
 
 function MeasurementPanel({
@@ -275,6 +296,29 @@ export function parseAnnotations(
         value = angle ? `${angle.toFixed(1)}°` : "";
         break;
       }
+      case "CobbAngleTool": {
+        type = "CobbAngle";
+        const angle = stats?.angle;
+        value = angle ? `${angle.toFixed(1)}°` : "";
+        break;
+      }
+      case "ProbeTool": {
+        // Single-click pixel readout. `value` is a scalar (most modalities)
+        // or an array for multi-value ones (ECG/US); `modalityUnit` carries
+        // the display unit (e.g. "HU") when available.
+        type = "Probe";
+        const raw = stats?.value;
+        if (raw === undefined || raw === null) break;
+        const formatted = Array.isArray(raw)
+          ? (raw.filter((v: unknown) => v != null) as number[])
+              .map((v: number) => Number(v).toFixed(1))
+              .join(" / ")
+          : Number(raw).toFixed(1);
+        value = stats?.modalityUnit
+          ? `${formatted} ${stats.modalityUnit}`
+          : formatted;
+        break;
+      }
       case "ArrowAnnotateTool": {
         type = "ArrowAnnotate";
         value = a.data?.text || "";
@@ -282,9 +326,9 @@ export function parseAnnotations(
         break;
       }
       case "RectangleROITool":
-      case "EllipticalROITool": {
-        type =
-          toolName === "RectangleROITool" ? "RectangleROI" : "EllipticalROI";
+      case "EllipticalROITool":
+      case "CircleROITool": {
+        type = ROI_TYPES[toolName] || "";
         const area = stats?.area;
         const mean = stats?.mean;
         const stdDev = stats?.stdDev;
