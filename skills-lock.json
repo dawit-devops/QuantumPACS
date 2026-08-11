@@ -78,6 +78,18 @@
       "sourceType": "github",
       "skillPath": "skills/vitest/SKILL.md",
       "computedHash": "943d436114c677802426741980146c07560bf375297666b03062444f4b98a785"
+    },
+    "devops-engineer": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "skillPath": "skills/devops-engineer/SKILL.md",
+      "computedHash": "bd17df11a066010e1cf4cb5a593c6d523274b0db66459134436b3be249337ea2"
+    },
+    "postgres": {
+      "source": "planetscale/database-skills",
+      "sourceType": "github",
+      "skillPath": "skills/postgres/SKILL.md",
+      "computedHash": "2acf9fae4fcdb6c392923708b67234828f8a9f10b10dfa5d228eaab6e9108245"
     }
   }
 }
