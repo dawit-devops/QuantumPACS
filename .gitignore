@@ -4,6 +4,9 @@
 /es
 /db
 /storage
+# Local DICOM test data (may contain real patient imaging — PHI).
+# Referenced only via E2E_DICOM_PATH in e2e specs; never commit.
+/DICOM
 __pycache__
 /backend/venv
 /backend/static
