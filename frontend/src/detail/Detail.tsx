@@ -254,7 +254,11 @@ function Detail() {
               }}
             >
               <Tooltip title="Toggle measurements panel">
-                <Badge count={measurements.length} size="small" offset={[2, -4]}>
+                <Badge
+                  count={measurements.length}
+                  size="small"
+                  offset={[2, -4]}
+                >
                   <DashboardOutlined />
                 </Badge>
               </Tooltip>
@@ -272,9 +276,11 @@ function Detail() {
           >
             <Breadcrumb.Item>
               {isAdminScoped ? (
-                isMobile
-                  ? data.patient.name
-                  : `${data.patient.name} (${data.patient.patient_id})`
+                isMobile ? (
+                  data.patient.name
+                ) : (
+                  `${data.patient.name} (${data.patient.patient_id})`
+                )
               ) : (
                 <Link to={`/patients/${data.patient_id}`}>
                   {isMobile
@@ -329,7 +335,9 @@ function Detail() {
                 onAnnotationsChange={handleAnnotationsChange}
                 focusAnnotationUID={focusAnnotationUID}
                 isMobile={isMobile}
-                enableReadingPresets={!isAdminScoped && hasPermission("REPORT_READ")}
+                enableReadingPresets={
+                  !isAdminScoped && hasPermission("REPORT_READ")
+                }
               />
             </Suspense>
           </div>
