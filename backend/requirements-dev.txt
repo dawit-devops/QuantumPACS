@@ -1,0 +1,15 @@
+# Development/test overlay — install alongside requirements.txt:
+#   pip install -r requirements-dev.txt
+# Kept out of requirements.txt so test frameworks never ship in the
+# production image (container image bloat + attack surface).
+-r requirements.txt
+
+pytest>=8.0,<10.0
+pytest-asyncio>=0.24,<2.0
+pytest-cov>=7.0,<8.0
+pytest-timeout>=2.4.0,<3.0
+# Container-backed E2E suite (tests/integration/test_e2e.py) — skipped at
+# runtime when these are absent (pytest.importorskip).
+testcontainers>=4.0
+docker>=7.0
+psycopg2-binary>=2.9,<3.0

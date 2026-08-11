@@ -16,7 +16,7 @@ pytest.importorskip('docker')
 @pytest.fixture(scope='class')
 def postgres_container():
     from testcontainers.community.postgres import PostgresContainer
-    with PostgresContainer('postgres:16-alpine') as pg:
+    with PostgresContainer('postgres:18-alpine') as pg:
         yield pg
 
 

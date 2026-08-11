@@ -59,7 +59,7 @@ Services managed via systemd user services — auto-start on boot:
 - `es/es.py`: prepends `http://` scheme + `:9200` port to bare hostnames for the elasticsearch 9.x client compat
 - `db_init.py`: replaced `asyncio.get_event_loop()` with `asyncio.run()` for Python 3.14 compat
 - `config.local.yaml`: uses dedicated QuantumPACS postgres on port 5432
-- `docker-compose.yaml`: removed deprecated `version` key; uses custom `quantumpacs-postgres:16` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image); full stack services (redis/backend/frontend) added — `docker compose up -d` is now a runnable prod-like runtime, smoke-tested in CI (`docker-smoke` job)
+- `docker-compose.yaml`: removed deprecated `version` key; uses custom `quantumpacs-postgres:18` image built from `docker/postgres/Dockerfile` (strips dcm4chee init scripts from base image); full stack services (redis/backend/frontend) added — `docker compose up -d` is now a runnable prod-like runtime, smoke-tested in CI (`docker-smoke` job)
 - `frontend/vite.config.js`: set `host: '0.0.0.0'` for LAN access, port changed to 5173
 - Backend runs via `uvicorn app:app --host 0.0.0.0 --port 8080`
 - Frontend runs via `vite --host 0.0.0.0 --port 5173`
@@ -78,7 +78,7 @@ Services managed via systemd user services — auto-start on boot:
 
 ## Common Gotchas
 - `network_mode: host` in docker-compose — services bind directly to host ports
-- Elasticsearch 9 (pinned 9.4.4 in docker-compose) needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
+- Elasticsearch 9 (pinned 9.5.0 in docker-compose) needs `xpack.security.enabled=false` for dev (configured in docker-compose), but ES is **not running** in this dev env — search is disabled gracefully
 - Database init (`./manage db init`) generates a random password — capture it from output
 - Token expiry defaults to 14 days — extend via `create_token(user, expire={'days': 30})`
 - CORS allows all origins — tighten before production deployment
@@ -88,5 +88,6 @@ Services managed via systemd user services — auto-start on boot:
 - Elasticsearch Docker image cannot be pulled (network issues) — search disabled at startup, no impact on basic functionality
 - **PWA service worker cache**: `frontend/dist/` build contains `sw.js` that caches stale frontend assets. When visiting the Vite dev server, previously-installed service workers intercept API calls to `/api/*` and fail with "NetworkError". Fix: `rm -rf frontend/dist/` + browser hard refresh (Ctrl+Shift+R) + unregister SW in DevTools → Application → Service Workers. VitePWA `selfDestroying: true` auto-clears stale SWs in dev mode.
 - `backend/lifecycle.py` `_run_dicom()` must run in a **daemon thread** — `ae.start_server()` from pynetdicom 3.x blocks the main thread, preventing uvicorn HTTP startup. Use `threading.Thread(target=_run_dicom, daemon=True)`. Run `scripts/verify_config.sh` after any change.
+- **Container migrations**: the backend image entrypoint (`backend/docker-entrypoint.sh`) runs `python -m alembic upgrade head` (fail-fast) before uvicorn; URLs come from `DB_*` env vars via `migrations/env.py._env_url()` (asyncpg). Set `SKIP_MIGRATIONS=1` to bypass. The `alembic.ini` URL is host-dev-only (psycopg2, default `pa55w0rd`).
 - `backend/api/tracing.py` `traced_connection()` must use `_TracedPool` wrapper — Python 3.14 enforces read-only on `Pool.acquire` attribute (both direct assignment and `object.__setattr__` fail). Wrap pool in a proxy class.
 - Backend fails to start if `backend/config.local.yaml` has `db_port: 5432` (wrong) or a default `secret` (rejected by `assert_production_secret()`). Run `scripts/dev.sh start` which auto-fixes both.

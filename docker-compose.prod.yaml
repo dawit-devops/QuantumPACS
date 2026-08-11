@@ -1,16 +1,21 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: quantumpacs-postgres-prod
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: quantumpacs
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
+      # D-M5: never ship defaults — fail fast if the operator forgot .env.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — no default is ever used in production}
       POSTGRES_DB: quantumpacs
     volumes:
-      - quantumpacs_pgdata:/var/lib/postgresql/data
+      # PG18+ single-mount convention (see docker-compose.yaml).
+      # WARNING: pre-18 volumes (old /var/lib/postgresql/data layout) will
+      # NOT start under postgres:18 — migrate via pg_dump/restore or
+      # pg_upgrade BEFORE switching, and never reuse the old volume here.
+      - quantumpacs_pgdata18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quantumpacs"]
       interval: 10s
@@ -28,7 +33,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: quantumpacs-backend:latest
+    # Versioned tags only — IMAGE_TAG is required (e.g. a git commit sha),
+    # so 'latest' can never be deployed here.
+    image: quantumpacs-backend:${IMAGE_TAG:?Set IMAGE_TAG (e.g. $(git rev-parse --short HEAD)) — 'latest' is never allowed in production}
     container_name: quantumpacs-backend-prod
     restart: unless-stopped
     ports:
@@ -39,8 +46,9 @@ services:
       DB_PORT: "5432"
       DB_DATABASE: quantumpacs
       DB_USER: quantumpacs
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
-      SECRET: ${SECRET}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET: ${SECRET:?Set SECRET in .env — known/committed values are refused by assert_production_secret}
+      SUPERADMIN_PASS: ${SUPERADMIN_PASS:?Set SUPERADMIN_PASS in .env — the committed default is refused}
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,13 +69,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: quantumpacs-frontend:latest
+    image: quantumpacs-frontend:${IMAGE_TAG:?Set IMAGE_TAG (e.g. $(git rev-parse --short HEAD)) — 'latest' is never allowed in production}
     container_name: quantumpacs-frontend-prod
     restart: unless-stopped
+    # nginx-unprivileged listens on 8080 inside the container.
     ports:
-      - "5173:5173"
+      - "5173:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -76,4 +86,6 @@ services:
           memory: 128M
 
 volumes:
-  quantumpacs_pgdata:
+  # Fresh name (18 suffix): a leftover pre-18 volume must never be picked
+  # up silently — the postgres:18 entrypoint would refuse to boot on it.
+  quantumpacs_pgdata18:

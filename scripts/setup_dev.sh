@@ -57,11 +57,11 @@ else
         pass "Redis running in Docker"
     else
         warn "Redis not running — starting container"
-        if docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:7 >/dev/null 2>&1; then
+        if docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:8-alpine >/dev/null 2>&1; then
             pass "Redis container started"
         else
             fail "Could not start Redis container (image pull likely blocked)"
-            warn "Start manually once network allows: docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:7"
+            warn "Start manually once network allows: docker run -d --name quantumpacs-redis --restart unless-stopped -p 6379:6379 redis:8-alpine"
         fi
     fi
 fi
@@ -76,8 +76,8 @@ if [ ! -f "$VENV_PYTHON" ]; then
 fi
 pass "Virtual env found"
 
-# Install from requirements.txt
-"$VENV_PIP" install -r "$DIR/backend/requirements.txt" -q 2>&1 | tail -1 || true
+# Install from requirements-dev.txt (runtime + dev/test overlay)
+"$VENV_PIP" install -r "$DIR/backend/requirements-dev.txt" -q 2>&1 | tail -1 || true
 
 # Verify key packages
 for pkg in "pydicom" "PIL" "pynetdicom" "asyncpg" "starlette" "uvicorn"; do

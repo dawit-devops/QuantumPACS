@@ -905,7 +905,7 @@ Set `QUANTUMPACS_DOCKER=true` to enable:
 # Runtime: single container
 services:
   postgres:
-    image: quantumpacs-postgres:16
+    image: quantumpacs-postgres:18
     ports: ["5432:5432"]
   app:
     image: quantumpacs:latest

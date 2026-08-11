@@ -38,7 +38,15 @@ async def async_get_tenant_url(slug=None):
     host = info.get('db_host', app_config['db_host'])
     port = info.get('db_port', int(app_config.get('db_port', '5432')))
     db = info['db_name']
-    return f'postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}'
+    from sqlalchemy.engine import URL
+    return URL.create(
+        'postgresql+psycopg2',
+        username=user,
+        password=password,
+        host=host,
+        port=int(port),
+        database=db,
+    ).render_as_string(hide_password=False)
 
 
 def get_tenant_url(slug=None):
