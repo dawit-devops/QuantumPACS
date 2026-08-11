@@ -99,11 +99,15 @@ class Login(HTTPEndpoint):
             tenant_name = None
             if data.get('tenant'):
                 # Registry lookup on the MAIN pool (login is un-scoped) so the
-                # frontend can populate the tenant switcher without a round trip.
+                # frontend can populate the tenant switcher without a round
+                # trip. tenant_id is the tenant SLUG — the frontend sends it
+                # back as the X-Tenant-ID header, which TenantMiddleware
+                # resolves via Tenants.get_by_slug(). The DB UUID stays in the
+                # tenants registry; it is never exposed here.
                 from db.tenants import Tenants
-                tenant_row = await Tenants(conn).get_by_slug(data['tenant'])
+                tenant_id = data.get('tenant')
+                tenant_row = await Tenants(conn).get_by_slug(tenant_id)
                 if tenant_row:
-                    tenant_id = str(tenant_row.get('id'))
                     tenant_name = tenant_row.get('name')
             access, refresh = create_token_pair(
                 data, role=role_slug, permissions=permissions,

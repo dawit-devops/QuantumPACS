@@ -187,3 +187,40 @@ class TestLoginResponse:
         set_cookie = resp.headers.get('set-cookie', '')
         assert 'refresh_token=' in set_cookie
         assert 'HttpOnly' in set_cookie
+
+    def test_login_body_tenant_id_is_slug(self):
+        # R2-16 regression: the login body's tenant_id is sent back by the
+        # frontend as the X-Tenant-ID header, which TenantMiddleware resolves
+        # via Tenants.get_by_slug(). Returning the DB UUID here 403'd every
+        # tenant-scoped request after sign-in ("You do not have access to
+        # this tenant").
+        mock_conn = _mock_conn()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_users = MagicMock()
+        mock_users.return_value.login = AsyncMock(return_value={
+            'id': 7, 'admin': False, 'tenant': 'hospital-a',
+        })
+        mock_users.return_value.update_last_login = AsyncMock()
+        mock_users.return_value.get_user_role = AsyncMock(return_value=(
+            'radiologist', ['STUDY_READ'],
+        ))
+        mock_users.return_value.get_token_version = AsyncMock(return_value=0)
+
+        with (
+            patch('api.users.Users', mock_users),
+            patch('api.users.get_conn', return_value=mock_conn),
+            patch('api.users.login_bucket') as mock_bucket,
+            patch('api.ratelimit._get_rate_redis', new=AsyncMock(return_value=None)),
+        ):
+            mock_bucket.check = AsyncMock(return_value=(True, ''))
+            mock_bucket.record_db = AsyncMock()
+            mock_conn.fetchrow = AsyncMock(return_value={
+                'id': 'uuid-1', 'name': 'Hospital A', 'slug': 'hospital-a',
+            })
+            client = TestClient(self._make_app())
+            resp = client.post('/login', json={'username': 'u', 'password': 'pw'})
+
+        data = resp.json()
+        assert resp.status_code == 200
+        assert data['tenant_id'] == 'hospital-a'
+        assert data['tenant_name'] == 'Hospital A'
