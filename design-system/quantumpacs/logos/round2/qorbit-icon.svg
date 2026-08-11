@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t d">
+  <title id="t">QuantumPACS — Q-Orbit (refined)</title>
+  <desc id="d">A Q letterform whose tail is a curved orbital path carrying an electron node, with a gradient nucleus.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- Q bowl: optically biased toward top-left so the tail+electron balance the glyph -->
+  <circle cx="42" cy="42" r="27" fill="none" stroke="url(#g)" stroke-width="8"/>
+  <!-- tail as a curved orbit: exits along the bowl tangent, sweeps into the electron -->
+  <path d="M61.1,61.1 C69.1,53.1 76,72 84,84" fill="none" stroke="url(#g)" stroke-width="8" stroke-linecap="round"/>
+  <!-- electron node at the end of the orbit -->
+  <circle cx="84" cy="84" r="6.5" fill="#059669"/>
+  <!-- nucleus: ties the mark to the current Orbit's patient-focused core -->
+  <circle cx="42" cy="42" r="6.5" fill="url(#g)"/>
+</svg>

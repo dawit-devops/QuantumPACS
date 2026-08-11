@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS — Brand Kit Board</title>
+<style>
+  /* ────────────────────────────────────────────────────────────
+     QuantumPACS Brand Kit Board
+     Values mirror frontend/src/common/tokens.css (source of truth)
+     ──────────────────────────────────────────────────────────── */
+
+  :root {
+    /* brand */
+    --qp-blue: #0077B6;
+    --qp-primary-l: #0E7490;   --qp-primary-d: #22D3EE;
+    --qp-secondary-l: #22D3EE; --qp-secondary-d: #67E8F9;
+    --qp-accent-l: #059669;    --qp-accent-d: #34D399;
+    /* status */
+    --qp-success-l: #10B981;   --qp-success-d: #34D399;
+    --qp-success-aa: #047857;
+    --qp-warning-l: #F59E0B;   --qp-warning-d: #FBBF24;
+    --qp-error-l: #DC2626;     --qp-error-d: #F87171;
+    --qp-info-l: #0E7490;      --qp-info-d: #22D3EE;
+    /* slate */
+    --sl-50:#F8FAFC; --sl-100:#F1F5F9; --sl-200:#E2E8F0; --sl-300:#CBD5E1;
+    --sl-400:#94A3B8; --sl-500:#64748B; --sl-600:#475569; --sl-700:#334155;
+    --sl-800:#1E293B; --sl-900:#0F172A;
+    /* fonts */
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    --font-heading: Figtree, var(--font-sans);
+    --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  }
+
+  /* Orbit mark — theme-aware gradient & rings, mirrors QuantumLogo.tsx
+     (q-stop-2/q-stop-3 flip with data-theme like --color-secondary/--color-accent) */
+  .q-stop-1 { stop-color: #0077B6; }
+  .q-stop-2 { stop-color: #22D3EE; }
+  .q-stop-3 { stop-color: #059669; }
+  .q-ring { stroke: #22D3EE; }
+  .q-ellipse { stroke: #059669; }
+  [data-theme="dark"] .q-stop-2 { stop-color: #67E8F9; }
+  [data-theme="dark"] .q-stop-3 { stop-color: #34D399; }
+  [data-theme="dark"] .q-ring { stroke: #67E8F9; }
+  [data-theme="dark"] .q-ellipse { stroke: #34D399; }
+
+  /* Board theming: light board / dark board (matches app themes) */
+  [data-theme="dark"] {
+    --canvas: #0F172A;
+    --panel: #1E293B;
+    --panel-2: #334155;
+    --ink: #F1F5F9;
+    --ink-2: #CBD5E1;
+    --ink-3: #94A3B8;
+    --rule: #334155;
+    --chip: #22D3EE;
+    --chip-ink: #0F172A;
+    --swatch-ink: #FFFFFF;
+  }
+  [data-theme="light"] {
+    --canvas: #F8FAFC;
+    --panel: #FFFFFF;
+    --panel-2: #F1F5F9;
+    --ink: #1E293B;
+    --ink-2: #475569;
+    --ink-3: #64748B;
+    --rule: #E2E8F0;
+    --chip: #0E7490;
+    --chip-ink: #FFFFFF;
+    --swatch-ink: #FFFFFF;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    transition: background 250ms cubic-bezier(0.4,0,0.2,1), color 250ms cubic-bezier(0.4,0,0.2,1);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto; } }
+
+  /* subtle grid texture on canvas */
+  .board {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+    background-image:
+      linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* ── Masthead ── */
+  .masthead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 24px; flex-wrap: wrap; margin-bottom: 40px;
+  }
+  .masthead .brand { display: flex; align-items: center; gap: 14px; }
+  .masthead h1 { font-family: var(--font-heading); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .sub { font-size: 12px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .masthead .tools { display: flex; align-items: center; gap: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--rule);
+    font-size: 12px; font-weight: 600; color: var(--ink-2);
+  }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip); display: inline-block; }
+  .toggle {
+    font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    background: var(--chip); color: var(--chip-ink); border: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .toggle:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+  .toggle:focus-visible { outline: 2px solid var(--chip); outline-offset: 2px; }
+
+  /* ── Board grid ── */
+  .grid {
+    display: grid; gap: 20px;
+    grid-template-columns: repeat(12, 1fr);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 24px;
+    position: relative;
+    transition: background 250ms ease, border-color 250ms ease;
+  }
+  .panel-label {
+    font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3);
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .panel-label .num { color: var(--chip); font-weight: 700; }
+
+  .c-4 { grid-column: span 4; }
+  .c-5 { grid-column: span 5; }
+  .c-6 { grid-column: span 6; }
+  .c-7 { grid-column: span 7; }
+  .c-8 { grid-column: span 8; }
+  .c-12 { grid-column: span 12; }
+
+  @media (max-width: 900px) {
+    .c-4, .c-5, .c-6, .c-7, .c-8 { grid-column: span 12; }
+    .board { padding: 32px 16px 60px; }
+  }
+
+  /* ── Panel 01: Logo cover ── */
+  .cover { display: flex; flex-direction: column; justify-content: center; min-height: 380px; text-align: center; }
+  .cover .mark-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
+  .cover h2 { font-family: var(--font-heading); font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .cover h2 em { font-style: normal; color: var(--chip); }
+  .cover .tagline { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+  .cover .caps { margin-top: 26px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* ── Panel 02: Construction ── */
+  .construction { display: flex; flex-direction: column; }
+  .construction svg { width: 100%; max-width: 260px; margin: 0 auto; }
+  .construction .notes { margin-top: 16px; display: grid; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  .construction .notes code { font-family: var(--font-mono); font-size: 11px; color: var(--chip); }
+
+  /* ── Panels 03/04: Color ── */
+  .swatch-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .swatch {
+    border-radius: 8px; padding: 14px; min-height: 96px;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    position: relative; overflow: hidden;
+  }
+  .swatch .name { font-size: 12px; font-weight: 600; }
+  .swatch .hex { font-family: var(--font-mono); font-size: 11px; opacity: 0.85; }
+  .swatch .mode { position: absolute; top: 8px; right: 10px; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; opacity: 0.75; }
+  .swatch-ink-light { color: #fff; }
+  .swatch-ink-dark { color: #1E293B; }
+
+  .neutral-strip { display: flex; border-radius: 8px; overflow: hidden; height: 44px; }
+  .neutral-strip div { flex: 1; display: flex; align-items: flex-end; justify-content: center; font-family: var(--font-mono); font-size: 9px; padding-bottom: 4px; }
+
+  /* ── Panel 05: Typography ── */
+  .type-hero { display: flex; align-items: baseline; gap: 18px; margin-bottom: 18px; }
+  .type-hero .aa { font-family: var(--font-heading); font-size: 84px; font-weight: 700; line-height: 1; color: var(--ink); }
+  .type-hero .meta { font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+  .type-scale { display: grid; gap: 10px; }
+  .type-row { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px dashed var(--rule); padding-bottom: 8px; }
+  .type-row .spec { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); width: 64px; flex-shrink: 0; }
+  .type-row .sample { font-weight: 600; color: var(--ink); }
+  .type-row .sample.sans { font-family: var(--font-sans); }
+  .type-row .sample.heading { font-family: var(--font-heading); }
+  .type-row .sample.mono { font-family: var(--font-mono); }
+  .weights { display: flex; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+  .weights span { font-size: 18px; }
+  .w-400 { font-weight: 400; } .w-500 { font-weight: 500; } .w-600 { font-weight: 600; } .w-700 { font-weight: 700; }
+
+  /* ── Panels 06/07: Application mockups ── */
+  .login-mock {
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%);
+    border-radius: 10px; padding: 22px; width: 100%; max-width: 300px; margin: 0 auto;
+  }
+  .login-mock .lm-logo { display: flex; justify-content: center; margin-bottom: 16px; }
+  .login-mock .lm-field {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px; height: 36px; margin-bottom: 10px; display: flex; align-items: center;
+    padding: 0 12px; color: rgba(255,255,255,0.5); font-size: 12px;
+  }
+  .login-mock .lm-btn {
+    background: #0E7490; color: #fff; border-radius: 6px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; margin-top: 4px;
+  }
+  .login-mock .lm-foot { text-align: center; margin-top: 14px; font-size: 10px; color: rgba(255,255,255,0.4); }
+
+  .sidebar-mock {
+    background: #0F172A; border-radius: 10px; padding: 14px; width: 100%; max-width: 260px; margin: 0 auto;
+  }
+  .sidebar-mock .sm-logo { display: flex; align-items: center; gap: 8px; padding: 4px 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .sidebar-mock .sm-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 6px;
+    color: rgba(255,255,255,0.65); font-size: 12px; margin-top: 4px;
+  }
+  .sidebar-mock .sm-item.on { background: rgba(6,182,212,0.2); color: #22D3EE; }
+  .sidebar-mock .sm-item .dot { width: 14px; height: 14px; border-radius: 4px; background: rgba(255,255,255,0.14); }
+  .sidebar-mock .sm-item.on .dot { background: #22D3EE; }
+
+  .app-row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+
+  /* ── Panel 07: Logo system ── */
+  .ls-grid { display: grid; gap: 22px; }
+  .ls-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 900px) { .ls-row { grid-template-columns: 1fr; } }
+  .ls-title { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 12px; }
+  .ls-note { font-size: 12px; color: var(--ink-2); margin-top: 10px; line-height: 1.5; }
+  .ls-sizes { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .ls-size { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ls-size .ls-tile { display: flex; align-items: center; justify-content: center; background: var(--panel-2); border: 1px dashed var(--rule); border-radius: 8px; padding: 10px; }
+  .ls-size span { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .ls-lockups { display: grid; gap: 10px; }
+  .ls-lockup { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 8px; font-size: 14px; font-weight: 700; }
+  .ls-lockup .cap { font-size: 10px; font-weight: 400; margin-left: auto; font-family: var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+  .ls-lockup.dark { background: #0F172A; color: #CBD5E1; }
+  .ls-lockup.dark em { color: #22D3EE; font-style: normal; }
+  .ls-lockup.light { background: #FFFFFF; color: #1E293B; border: 1px solid #E2E8F0; }
+  .ls-lockup.light em { color: #0E7490; font-style: normal; }
+  .ls-clear-row { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 700px) { .ls-clear-row { grid-template-columns: 1fr; } }
+  .ls-clear svg { width: 100%; max-width: 220px; display: block; margin: 0 auto; }
+  .ls-min { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .ls-min .tile { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .ls-min .tile-box { background: var(--panel-2); border: 1px dashed var(--rule); border-radius: 8px; padding: 14px; display: flex; align-items: center; justify-content: center; min-width: 56px; min-height: 56px; }
+  .min-label { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+  .min-label.ok { color: var(--qp-success-l); }
+  .min-label.no { color: var(--qp-error-l); }
+  [data-theme="light"] .min-label.ok { color: var(--qp-success-aa); }
+
+  .ls-mono-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .ls-mono-tile { border-radius: 8px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .ls-mono-tile.light { background: #FFFFFF; border: 1px solid #E2E8F0; }
+  .ls-mono-tile.dark { background: #0F172A; }
+  .ls-mono-tile img { width: 40px; height: 40px; }
+  .ls-mono-tile span { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; }
+  /* labels sit on fixed tile colors (white/slate-900) — use fixed inks, not theme vars */
+  .ls-mono-tile.light span { color: #475569; }
+  .ls-mono-tile.dark span { color: #CBD5E1; }
+  .ls-vert-lockup {
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px;
+    padding: 16px 20px; display: flex; align-items: center; justify-content: center;
+  }
+  .ls-vert-lockup img { width: 110px; height: auto; }
+  /* round-2 visual previews — same mono-tile treatment, plus vertical + favicon tiles */
+  .ls-preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .ls-vert-tile {
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px;
+    padding: 12px 14px; display: flex; align-items: center; justify-content: center;
+  }
+  .ls-vert-tile img { width: 74px; height: auto; }
+  .ls-fav-tile {
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; justify-content: center;
+  }
+  .ls-fav-tile img { width: 24px; height: 24px; }
+  .ls-fav-tile span { font-family: var(--font-mono); font-size: 10px; color: #475569; letter-spacing: 0.05em; }
+  .ls-files { list-style: none; display: grid; gap: 6px; }
+  .ls-files code {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--chip);
+    background: var(--panel-2); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 3px 8px; display: inline-block;
+  }
+  .ls-files .ls-link {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--chip);
+    background: var(--panel-2); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 3px 8px; display: inline-block; text-decoration: none;
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+  .ls-files .ls-link:hover { border-color: var(--chip); background: var(--canvas); }
+  .ls-files .ls-link:focus-visible { outline: 2px solid var(--chip); outline-offset: 1px; }
+  .ls-fav { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .tab { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--rule); border-radius: 8px 8px 0 0; padding: 8px 12px; font-size: 12px; color: var(--ink-2); min-width: 230px; }
+  .tab .dots { display: flex; gap: 4px; margin-right: 6px; }
+  .tab .dots i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .tab .addr { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ls-misuse-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .ls-misuse-grid { grid-template-columns: 1fr; } }
+  .misuse { border: 1px dashed var(--rule); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; background: var(--panel-2); }
+  .misuse .x { color: var(--qp-error-l); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; }
+  .misuse .cap { font-size: 11px; color: var(--ink-2); text-align: center; line-height: 1.4; }
+  .misuse .stage { display: flex; align-items: center; justify-content: center; min-height: 60px; }
+  .misuse-busy { background: linear-gradient(135deg, #F59E0B, #EF4444, #6366F1, #10B981); border-radius: 50%; padding: 8px; }
+
+  /* ── Panel 08: Rules ── */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .rules h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; color: var(--ink-2); }
+  .rules ul { list-style: none; display: grid; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .rules li { display: flex; gap: 8px; align-items: flex-start; }
+  .rules .ok { color: var(--qp-success-l); font-weight: 700; }
+  .rules .no { color: var(--qp-error-l); font-weight: 700; }
+  [data-theme="light"] .rules .ok { color: var(--qp-success-aa); }
+  @media (max-width: 700px) { .rules { grid-template-columns: 1fr; } }
+
+  /* footer */
+  .foot {
+    margin-top: 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    border-top: 1px solid var(--rule); padding-top: 18px;
+  }
+  .foot code { color: var(--chip); }
+</style>
+</head>
+<body>
+<!-- Orbit mark — single source of truth, reused via <use> (geometry mirrors QuantumLogo.tsx) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="q-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" class="q-stop-1"/><stop offset="50%" class="q-stop-2"/><stop offset="100%" class="q-stop-3"/>
+    </linearGradient>
+  </defs>
+  <symbol id="orbit-mark">
+    <circle cx="20" cy="20" r="18" stroke="url(#q-grad)" stroke-width="3" fill="none"/>
+    <circle cx="20" cy="20" r="10" stroke="currentColor" stroke-width="2" fill="none" opacity="0.5" class="q-ring"/>
+    <line x1="20" y1="2" x2="20" y2="10" stroke="url(#q-grad)" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="30" x2="20" y2="38" stroke="url(#q-grad)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.6" class="q-ellipse"/>
+    <circle cx="20" cy="20" r="2.5" fill="url(#q-grad)"/>
+  </symbol>
+  <symbol id="favicon-mark">
+    <circle cx="20" cy="20" r="18" stroke="url(#q-grad)" stroke-width="3" fill="none"/>
+    <circle cx="20" cy="20" r="2.5" fill="url(#q-grad)"/>
+  </symbol>
+</svg>
+
+<div class="board">
+
+  <!-- ── Masthead ── -->
+  <header class="masthead">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg>
+      <div>
+        <h1>QuantumPACS</h1>
+        <div class="sub">Brand Kit — Overview Board</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span class="chip"><i></i>v1.0 · tokens.css</span>
+      <button class="toggle" id="themeToggle" type="button" aria-pressed="false">Switch to light board</button>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <!-- ── 01 · Logo cover ── -->
+    <section class="panel c-5 cover">
+      <div class="panel-label"><span>01 — The Orbit</span><span class="num">SYMBOL</span></div>
+      <div class="mark-wrap">
+        <svg width="150" height="150" viewBox="0 0 40 40" fill="none" role="img" aria-label="QuantumPACS Orbit logo"><use href="#orbit-mark"/></svg>
+      </div>
+      <h2>Quantum<em>PACS</em></h2>
+      <div class="tagline">Diagnostic Clarity, Quantum Fast.</div>
+      <div class="caps">
+        <span class="chip">nucleus · patient</span>
+        <span class="chip">orbit · study flow</span>
+        <span class="chip">axis · scan plane</span>
+      </div>
+    </section>
+
+    <!-- ── 02 · Construction ── -->
+    <section class="panel c-7 construction">
+      <div class="panel-label"><span>02 — Logo construction</span><span class="num">GEOMETRY</span></div>
+      <svg viewBox="0 0 200 200" fill="none" aria-hidden="true">
+        <!-- construction grid -->
+        <line x1="100" y1="6" x2="100" y2="194" stroke="#64748B" stroke-width="0.6" stroke-dasharray="3 5" opacity="0.4"/>
+        <line x1="6" y1="100" x2="194" y2="100" stroke="#64748B" stroke-width="0.6" stroke-dasharray="3 5" opacity="0.4"/>
+        <!-- construction circles -->
+        <circle cx="100" cy="100" r="90" stroke="#64748B" stroke-width="0.6" stroke-dasharray="2 6" opacity="0.35"/>
+        <circle cx="100" cy="100" r="50" stroke="#64748B" stroke-width="0.6" stroke-dasharray="2 6" opacity="0.35"/>
+        <!-- axis ticks -->
+        <line x1="100" y1="10" x2="100" y2="50" stroke="url(#q-grad)" stroke-width="5" stroke-linecap="round"/>
+        <line x1="100" y1="150" x2="100" y2="190" stroke="url(#q-grad)" stroke-width="5" stroke-linecap="round"/>
+        <!-- rings -->
+        <circle cx="100" cy="100" r="90" stroke="url(#q-grad)" stroke-width="7.5" fill="none"/>
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="5" fill="none" opacity="0.5" class="q-ring"/>
+        <!-- orbit ellipse -->
+        <ellipse cx="100" cy="100" rx="30" ry="12.5" stroke="currentColor" stroke-width="3.75" fill="none" opacity="0.6" class="q-ellipse"/>
+        <!-- nucleus -->
+        <circle cx="100" cy="100" r="12.5" fill="url(#q-grad)"/>
+        <!-- dimension markers -->
+        <text x="196" y="96" text-anchor="end" style="font-family:var(--font-mono)" font-size="8" fill="#94A3B8">r18</text>
+        <text x="118" y="56" style="font-family:var(--font-mono)" font-size="8" fill="#94A3B8">r10</text>
+        <text x="70" y="96" style="font-family:var(--font-mono)" font-size="8" fill="#94A3B8">rx6 · ry2.5</text>
+      </svg>
+      <div class="notes">
+        <div><code>outer ring</code> — r 18 · stroke 3 · brand gradient</div>
+        <div><code>inner ring</code> — r 10 · stroke 2 · secondary @ 50%</div>
+        <div><code>orbit ellipse</code> — rx 6 · ry 2.5 · accent @ 60%</div>
+        <div><code>axis ticks</code> — 2px rounded · gradient · top/bottom</div>
+        <div><code>nucleus</code> — r 2.5 · gradient fill · the patient</div>
+      </div>
+    </section>
+
+    <!-- ── 03 · Brand palette ── -->
+    <section class="panel c-8">
+      <div class="panel-label"><span>03 — Brand palette</span><span class="num">COLOR · LIVE TOKENS</span></div>
+      <div class="swatch-row">
+        <div class="swatch swatch-ink-light" style="background: var(--qp-primary-l)">
+          <div class="mode">LIGHT</div>
+          <div class="name">Primary</div>
+          <div class="hex">#0E7490 · cyan-700</div>
+        </div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-primary-d)">
+          <div class="mode">DARK</div>
+          <div class="name">Primary</div>
+          <div class="hex">#22D3EE · cyan-400</div>
+        </div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-secondary-l)">
+          <div class="mode">LIGHT</div>
+          <div class="name">Secondary</div>
+          <div class="hex">#22D3EE · cyan-400</div>
+        </div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-secondary-d)">
+          <div class="mode">DARK</div>
+          <div class="name">Secondary</div>
+          <div class="hex">#67E8F9 · cyan-300</div>
+        </div>
+        <div class="swatch swatch-ink-light" style="background: var(--qp-accent-l)">
+          <div class="mode">LIGHT</div>
+          <div class="name">Accent</div>
+          <div class="hex">#059669 · teal-600</div>
+        </div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-accent-d)">
+          <div class="mode">DARK</div>
+          <div class="name">Accent</div>
+          <div class="hex">#34D399 · teal-400</div>
+        </div>
+        <div class="swatch swatch-ink-light" style="background: var(--qp-blue)">
+          <div class="mode">BOTH</div>
+          <div class="name">Quantum Blue</div>
+          <div class="hex">#0077B6 · logo start</div>
+        </div>
+        <div class="swatch swatch-ink-light" style="background: #0F172A">
+          <div class="mode">BOTH</div>
+          <div class="name">Deep Slate</div>
+          <div class="hex">#0F172A · sidebar</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--ink-3)">
+        Primary is <strong style="color:var(--chip)">cyan-700</strong> in light mode for AA (≈5.1:1 on white); cyan-600 (≈3.7:1) is never used for actions.
+      </div>
+    </section>
+
+    <!-- ── 04 · Neutrals + status ── -->
+    <section class="panel c-4">
+      <div class="panel-label"><span>04 — Neutrals</span><span class="num">SLATE</span></div>
+      <div class="neutral-strip">
+        <div style="background:#F8FAFC;color:#334155">50</div>
+        <div style="background:#F1F5F9;color:#334155">100</div>
+        <div style="background:#E2E8F0;color:#334155">200</div>
+        <div style="background:#CBD5E1;color:#334155">300</div>
+        <div style="background:#94A3B8;color:#0F172A">400</div>
+        <div style="background:#64748B;color:#fff">500</div>
+        <div style="background:#475569;color:#fff">600</div>
+        <div style="background:#334155;color:#fff">700</div>
+        <div style="background:#1E293B;color:#fff">800</div>
+        <div style="background:#0F172A;color:#fff">900</div>
+      </div>
+      <div class="panel-label" style="margin-top:22px"><span>Status</span><span class="num">SEMANTIC</span></div>
+      <div class="swatch-row" style="grid-template-columns: 1fr 1fr;">
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-success-l)"><div class="mode">LIGHT</div><div class="name">Success</div><div class="hex">#10B981</div></div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-success-d)"><div class="mode">DARK</div><div class="name">Success</div><div class="hex">#34D399</div></div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-warning-l)"><div class="mode">LIGHT</div><div class="name">Warning</div><div class="hex">#F59E0B</div></div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-warning-d)"><div class="mode">DARK</div><div class="name">Warning</div><div class="hex">#FBBF24</div></div>
+        <div class="swatch swatch-ink-light" style="background: var(--qp-error-l)"><div class="mode">LIGHT</div><div class="name">Error</div><div class="hex">#DC2626</div></div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-error-d)"><div class="mode">DARK</div><div class="name">Error</div><div class="hex">#F87171</div></div>
+        <div class="swatch swatch-ink-light" style="background: var(--qp-info-l)"><div class="mode">LIGHT</div><div class="name">Info</div><div class="hex">#0E7490</div></div>
+        <div class="swatch swatch-ink-dark" style="background: var(--qp-info-d)"><div class="mode">DARK</div><div class="name">Info</div><div class="hex">#22D3EE</div></div>
+      </div>
+    </section>
+
+    <!-- ── 05 · Typography ── -->
+    <section class="panel c-7">
+      <div class="panel-label"><span>05 — Typography</span><span class="num">SPECIMEN</span></div>
+      <div class="type-hero">
+        <div class="aa">Aa</div>
+        <div class="meta">
+          <strong>Figtree</strong> · headings<br/>
+          <strong>Inter</strong> · UI &amp; body<br/>
+          <span style="font-family:var(--font-mono)">SF Mono · Fira Code</span> — data &amp; IDs
+        </div>
+      </div>
+      <div class="type-scale">
+        <div class="type-row"><span class="spec">32 / H1</span><span class="sample heading" style="font-size:32px">The study is ready</span></div>
+        <div class="type-row"><span class="spec">24 / H2</span><span class="sample heading" style="font-size:24px">Reading worklist</span></div>
+        <div class="type-row"><span class="spec">20 / H3</span><span class="sample heading" style="font-size:20px">Patient summary</span></div>
+        <div class="type-row"><span class="spec">16 / LG</span><span class="sample sans" style="font-size:16px">Report draft v2</span></div>
+        <div class="type-row"><span class="spec">14 / BODY</span><span class="sample sans" style="font-size:14px">Body default — the clinical signal wins.</span></div>
+        <div class="type-row"><span class="spec">13 / SM</span><span class="sample sans" style="font-size:13px;color:var(--ink-2)">Secondary · labels</span></div>
+        <div class="type-row"><span class="spec">12 / XS</span><span class="sample sans" style="font-size:12px;color:var(--ink-3)">Meta · timestamps</span></div>
+        <div class="type-row"><span class="spec">MONO</span><span class="sample mono" style="font-size:13px;color:var(--chip)">1.2.840.113619.2.55.3.1 — accession</span></div>
+      </div>
+      <div class="weights">
+        <span class="w-400">Aa 400</span>
+        <span class="w-500">Aa 500</span>
+        <span class="w-600">Aa 600</span>
+        <span class="w-700">Aa 700</span>
+      </div>
+    </section>
+
+    <!-- ── 06 · Application mockups ── -->
+    <section class="panel c-12">
+      <div class="panel-label"><span>06 — Application</span><span class="num">LOGIN · SIDEBAR</span></div>
+      <div class="app-row">
+        <div class="login-mock">
+          <div class="lm-logo">
+            <svg width="44" height="44" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg>
+          </div>
+          <div class="lm-field">Username</div>
+          <div class="lm-field">Password</div>
+          <div class="lm-btn">Sign In</div>
+          <div class="lm-foot">Diagnostic Clarity, Quantum Fast</div>
+        </div>
+        <div class="sidebar-mock">
+          <div class="sm-logo">
+            <svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg>
+            <span style="color:#CBD5E1;font-size:13px;font-weight:700">Quantum<span style="color:#22D3EE">PACS</span></span>
+          </div>
+          <div class="sm-item"><span class="dot"></span>Files</div>
+          <div class="sm-item on"><span class="dot"></span>Reading Worklist</div>
+          <div class="sm-item"><span class="dot"></span>Exams</div>
+          <div class="sm-item"><span class="dot"></span>Admin</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 07 · Logo system ── -->
+    <section class="panel c-12">
+      <div class="panel-label"><span>07 — Logo system</span><span class="num">VARIANTS · CLEARSPACE · MIN-SIZE · MISUSE</span></div>
+      <div class="ls-grid">
+        <div class="ls-row">
+          <div>
+            <div class="ls-title">Icon-only scale</div>
+            <div class="ls-sizes">
+              <div class="ls-size"><div class="ls-tile"><svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div><span>24 · min</span></div>
+              <div class="ls-size"><div class="ls-tile"><svg width="32" height="32" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div><span>32 · sidebar</span></div>
+              <div class="ls-size"><div class="ls-tile"><svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div><span>40 · default</span></div>
+              <div class="ls-size"><div class="ls-tile"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div><span>48 · login</span></div>
+            </div>
+            <p class="ls-note">Below 24px the axis ticks and ellipse lose legibility — use the simplified favicon ring instead.</p>
+          </div>
+          <div>
+            <div class="ls-title">Lockup · icon + wordmark</div>
+            <div class="ls-lockups">
+              <div class="ls-lockup dark"><svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg>Quantum<em>PACS</em><span class="cap">sidebar · slate-900</span></div>
+              <div class="ls-lockup light"><svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg>Quantum<em>PACS</em><span class="cap">print · white</span></div>
+            </div>
+            <p class="ls-note">Wordmark is system-ui 700; “PACS” carries the secondary cyan (slate-300 on the dark rail). Minimum lockup width: 140px.</p>
+          </div>
+          <div>
+            <div class="ls-title">Favicon · simplified ring</div>
+            <div class="ls-fav">
+              <div class="tab">
+                <span class="dots"><i style="background:#F87171"></i><i style="background:#FBBF24"></i><i style="background:#34D399"></i></span>
+                <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#favicon-mark"/></svg>
+                <span>QuantumPACS</span>
+                <span class="addr">pacs.quantum.example</span>
+              </div>
+            </div>
+            <p class="ls-note">Two-ring mark (outer ring + nucleus) on the brand gradient — shipped in <code style="color:var(--chip)">frontend/index.html</code>.</p>
+          </div>
+        </div>
+
+        <div class="ls-row" style="margin-top:6px">
+          <div>
+            <div class="ls-title">Color variants · monochrome</div>
+            <div class="ls-mono-row">
+              <div class="ls-mono-tile light"><img src="logos/orbit-current-icon-mono-dark.svg" alt="Orbit monochrome dark on light" /><span>mono dark · #1E293B</span></div>
+              <div class="ls-mono-tile dark"><img src="logos/orbit-current-icon-mono-light.svg" alt="Orbit monochrome light on dark" /><span>mono light · #FFFFFF</span></div>
+            </div>
+            <p class="ls-note">Single-color marks for light backgrounds / B&amp;W print (dark) and dark surfaces (light, reversed). Gradient is for brand moments only.</p>
+          </div>
+          <div>
+            <div class="ls-title">Vertical lockup</div>
+            <div class="ls-vert-lockup"><img src="logos/orbit-current-lockup-vertical.svg" alt="Orbit vertical lockup" /></div>
+            <p class="ls-note">Icon above wordmark — social profiles, app-store listing, signage. Light/print variant (wordmark slate-800); use the mono-light icon on dark surfaces. Minimum width 120px.</p>
+          </div>
+          <div>
+            <div class="ls-title">Asset files · Orbit family</div>
+            <ul class="ls-files">
+              <li><code>logos/orbit-current-icon.svg</code></li>
+              <li><code>logos/orbit-current-icon-mono-dark.svg</code></li>
+              <li><code>logos/orbit-current-icon-mono-light.svg</code></li>
+              <li><code>logos/orbit-current-lockup.svg</code></li>
+              <li><code>logos/orbit-current-lockup-vertical.svg</code></li>
+              <li><code>logos/orbit-current-favicon.svg</code></li>
+              <li><code>frontend/index.html</code> · inlined favicon ring</li>
+            </ul>
+            <p class="ls-note">Shipped mark. Same family treatment below for the recommended round-2 refinements.</p>
+          </div>
+        </div>
+
+        <div class="ls-row" style="margin-top:22px; align-items:start">
+          <div>
+            <div class="ls-title">Q-Orbit · round 2</div>
+            <div class="ls-mono-row">
+              <div class="ls-mono-tile light"><img src="logos/round2/qorbit-icon-mono-dark.svg" alt="Q-Orbit monochrome dark on light" /><span>mono dark · #1E293B</span></div>
+              <div class="ls-mono-tile dark"><img src="logos/round2/qorbit-icon-mono-light.svg" alt="Q-Orbit monochrome light on dark" /><span>mono light · #FFFFFF</span></div>
+            </div>
+            <div class="ls-preview-row">
+              <div class="ls-vert-tile"><img src="logos/round2/qorbit-lockup-vertical.svg" alt="Q-Orbit vertical lockup" /></div>
+              <div class="ls-fav-tile"><img src="logos/round2/qorbit-favicon.svg" alt="Q-Orbit favicon" /><span>favicon</span></div>
+            </div>
+            <ul class="ls-files" style="margin-top:12px">
+              <li><code>logos/round2/qorbit-icon.svg</code></li>
+              <li><code>logos/round2/qorbit-icon-mono-dark.svg</code></li>
+              <li><code>logos/round2/qorbit-icon-mono-light.svg</code></li>
+              <li><code>logos/round2/qorbit-favicon.svg</code></li>
+              <li><code>logos/round2/qorbit-lockup-horizontal.svg</code></li>
+              <li><code>logos/round2/qorbit-lockup-vertical.svg</code></li>
+            </ul>
+          </div>
+          <div>
+            <div class="ls-title">Aperture · round 2</div>
+            <div class="ls-mono-row">
+              <div class="ls-mono-tile light"><img src="logos/round2/aperture-icon-mono-dark.svg" alt="Aperture monochrome dark on light" /><span>mono dark · #1E293B</span></div>
+              <div class="ls-mono-tile dark"><img src="logos/round2/aperture-icon-mono-light.svg" alt="Aperture monochrome light on dark" /><span>mono light · #FFFFFF</span></div>
+            </div>
+            <div class="ls-preview-row">
+              <div class="ls-vert-tile"><img src="logos/round2/aperture-lockup-vertical.svg" alt="Aperture vertical lockup" /></div>
+              <div class="ls-fav-tile"><img src="logos/round2/aperture-favicon.svg" alt="Aperture favicon" /><span>favicon</span></div>
+            </div>
+            <ul class="ls-files" style="margin-top:12px">
+              <li><code>logos/round2/aperture-icon.svg</code></li>
+              <li><code>logos/round2/aperture-icon-mono-dark.svg</code></li>
+              <li><code>logos/round2/aperture-icon-mono-light.svg</code></li>
+              <li><code>logos/round2/aperture-favicon.svg</code></li>
+              <li><code>logos/round2/aperture-lockup-horizontal.svg</code></li>
+              <li><code>logos/round2/aperture-lockup-vertical.svg</code></li>
+            </ul>
+          </div>
+          <div>
+            <div class="ls-title">Round-2 docs &amp; gallery</div>
+            <ul class="ls-files">
+              <li><code>logos/round2/ROUND2-REFINEMENT.md</code></li>
+              <li><code>logos/CONCEPTS-EXPLORATION.md</code></li>
+              <li><code>logos/COMPARISON-GALLERY.html</code> · board + scoring</li>
+              <li><a class="ls-link" href="logos/EMAIL-SIGNATURE-KIT.html">logos/EMAIL-SIGNATURE-KIT.html</a> · copy-paste signatures</li>
+            </ul>
+            <p class="ls-note">Recommended refinements — one owns the <em>name</em> (Q), the other the <em>promise</em> (clarity).</p>
+          </div>
+        </div>
+
+        <div class="ls-clear-row">
+          <div class="ls-clear">
+            <div class="ls-title">Clearspace · exclusion zone</div>
+            <svg viewBox="0 0 52 52" fill="none" role="img" aria-label="Orbit logo with clearspace exclusion zone">
+              <!-- mark: ink edge = symbol 0.5..39.5 + translate 6 → 6.5..45.5
+                   exclusion zone inset 2.5u from ink edge → rect 4..48 -->
+              <g transform="translate(6,6)"><use href="#orbit-mark"/></g>
+              <!-- exclusion zone -->
+              <rect x="4" y="4" width="44" height="44" stroke="var(--chip)" stroke-width="0.8" stroke-dasharray="3 3" opacity="0.75"/>
+              <!-- clearspace measurement: from ink edge (6.5) to zone edge (4) = 2.5u -->
+              <line x1="4" y1="50.5" x2="6.5" y2="50.5" stroke="#94A3B8" stroke-width="0.5"/>
+              <line x1="4" y1="49.8" x2="4" y2="51.2" stroke="#94A3B8" stroke-width="0.5"/>
+              <line x1="6.5" y1="49.8" x2="6.5" y2="51.2" stroke="#94A3B8" stroke-width="0.5"/>
+              <text x="5.25" y="49.6" text-anchor="middle" style="font-family:var(--font-mono)" font-size="2.6" fill="#94A3B8">2.5u</text>
+            </svg>
+            <p class="ls-note">Keep the nucleus height (2.5u) clear on all sides of the icon. For the lockup, use the wordmark's x-height.</p>
+          </div>
+          <div>
+            <div class="ls-title">Minimum size</div>
+            <div class="ls-min">
+              <div class="tile">
+                <div class="tile-box"><svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div>
+                <span class="min-label ok">24px ✓ min</span>
+              </div>
+              <div class="tile">
+                <div class="tile-box"><svg width="12" height="12" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div>
+                <span class="min-label no">12px ✗ too small</span>
+              </div>
+              <div class="tile">
+                <div class="tile-box"><svg width="12" height="12" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#favicon-mark"/></svg></div>
+                <span class="min-label ok">12px ✓ favicon ring</span>
+              </div>
+            </div>
+            <p class="ls-note">Below 24px the axis ticks and orbit ellipse blur — switch to the simplified favicon ring.</p>
+          </div>
+        </div>
+
+        <div class="ls-title" style="margin-top:6px">Misuse — never</div>
+        <div class="ls-misuse-grid">
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="18" stroke="#0E7490" stroke-width="3" fill="none"/><circle cx="20" cy="20" r="10" stroke="#0E7490" stroke-width="2" fill="none" opacity="0.5"/><ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="#0E7490" stroke-width="1.5" fill="none" opacity="0.6"/><circle cx="20" cy="20" r="2.5" fill="#0E7490"/></svg></div>
+            <div class="cap">Flattened to a single color — gradient is non-negotiable</div>
+          </div>
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark" transform="rotate(45 20 20)"/></svg></div>
+            <div class="cap">Rotated — the orbit must stay upright</div>
+          </div>
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><svg width="64" height="38" viewBox="0 0 40 40" preserveAspectRatio="none" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div>
+            <div class="cap">Stretched or squished — preserve aspect ratio</div>
+          </div>
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true"><defs><linearGradient id="bad-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs><circle cx="20" cy="20" r="18" stroke="url(#bad-g)" stroke-width="3" fill="none"/><circle cx="20" cy="20" r="10" stroke="#6366F1" stroke-width="2" fill="none" opacity="0.5"/><ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="#A855F7" stroke-width="1.5" fill="none" opacity="0.6"/><circle cx="20" cy="20" r="2.5" fill="url(#bad-g)"/></svg></div>
+            <div class="cap">Foreign indigo/purple gradient — brand gradient only</div>
+          </div>
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true" style="filter:drop-shadow(0 0 6px rgba(34,211,238,0.9))"><use href="#orbit-mark"/></svg></div>
+            <div class="cap">Glows, shadows, 3D effects — keep it flat-crisp</div>
+          </div>
+          <div class="misuse">
+            <span class="x">✗</span>
+            <div class="stage"><div class="misuse-busy"><svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><use href="#orbit-mark"/></svg></div></div>
+            <div class="cap">Busy or mid-tone backgrounds — slate-900 / white only</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 08 · Rules ── -->
+    <section class="panel c-12">
+      <div class="panel-label"><span>08 — Usage rules</span><span class="num">DO · DON'T</span></div>
+      <div class="rules">
+        <div>
+          <h4>Do</h4>
+          <ul>
+            <li><span class="ok">✓</span> Keep the blue→cyan→teal gradient on the mark</li>
+            <li><span class="ok">✓</span> Use cyan-700 as the light-mode action color (AA)</li>
+            <li><span class="ok">✓</span> Render the wordmark on slate-900 only</li>
+            <li><span class="ok">✓</span> Cyan for action · teal for state · red for danger</li>
+            <li><span class="ok">✓</span> Mono type for DICOM IDs &amp; accessions</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Don't</h4>
+          <ul>
+            <li><span class="no">✗</span> Flatten or recolor the gradient mark</li>
+            <li><span class="no">✗</span> Use cyan-600 for buttons/links on white</li>
+            <li><span class="no">✗</span> slate-400 as body text in light mode (≈2.7:1)</li>
+            <li><span class="no">✗</span> Purple "AI" gradients or neon accents</li>
+            <li><span class="no">✗</span> Emojis as icons — SVG only</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>QuantumPACS Brand Kit · v1.0</span>
+    <span>tokens: <code>frontend/src/common/tokens.css</code> · <code>docs/design-tokens.json</code></span>
+    <span>full kit: <code>design-system/quantumpacs/BRAND-KIT.md</code></span>
+  </footer>
+</div>
+
+<script>
+  const toggle = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  toggle.addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    toggle.textContent = next === "dark" ? "Switch to light board" : "Switch to dark board";
+    toggle.setAttribute("aria-pressed", next === "light" ? "true" : "false");
+  });
+</script>
+</body>
+</html>

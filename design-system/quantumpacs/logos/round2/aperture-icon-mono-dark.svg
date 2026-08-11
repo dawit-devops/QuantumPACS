@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t d">
+  <title id="t">QuantumPACS — The Aperture monochrome dark (for light backgrounds)</title>
+  <desc id="d">Single-color Aperture mark in slate-800.</desc>
+  <rect x="14" y="14" width="72" height="72" rx="10" fill="none" stroke="#1E293B" stroke-width="5.5"/>
+  <circle cx="50" cy="50" r="24" fill="none" stroke="#1E293B" stroke-width="3.5" opacity="0.55"/>
+  <path d="M17,24 V17 H24 M83,24 V83 H76 M17,76 V83 H24 M83,76 V17 H76" stroke="#1E293B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="50" cy="50" r="4.5" fill="#1E293B"/>
+</svg>

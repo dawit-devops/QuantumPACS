@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS — Diagnostic Imaging Report Template</title>
+<style>
+  /* ── Kit page styling (the report paper itself prints in light ink) ── */
+  :root {
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", "Fira Code", Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --canvas: #0F172A; --panel: #1E293B; --panel-2: #334155;
+    --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #94A3B8;
+    --rule: #334155; --chip: #22D3EE; --chip-ink: #0F172A;
+  }
+  [data-theme="light"] {
+    --canvas: #F8FAFC; --panel: #FFFFFF; --panel-2: #F1F5F9;
+    --ink: #1E293B; --ink-2: #475569; --ink-3: #64748B;
+    --rule: #E2E8F0; --chip: #0E7490; --chip-ink: #FFFFFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-sans); background: var(--canvas); color: var(--ink);
+         -webkit-font-smoothing: antialiased; transition: background 250ms ease, color 250ms ease; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .board { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
+  .masthead h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .sub { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 3px; }
+  .tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toggle { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+            background: var(--chip); color: var(--chip-ink); border: none; }
+  .toggle:hover { transform: translateY(-1px); }
+  .toggle:focus-visible { outline: 2px solid var(--chip); outline-offset: 2px; }
+  .btn { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+         border: 1px solid var(--rule); background: var(--panel-2); color: var(--ink-2); font-family: var(--font-sans); }
+  .btn:hover { border-color: var(--chip); color: var(--chip); }
+  .btn:focus-visible { outline: 2px solid var(--chip); outline-offset: 1px; }
+
+  .lede { font-size: 14px; color: var(--ink-2); max-width: 720px; line-height: 1.65; margin: 16px 0 22px; }
+  .lede code { font-family: var(--font-mono); font-size: 12px; color: var(--chip); }
+
+  /* control bar */
+  .ctlbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 22px;
+            background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
+  .ctlbar label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+  .ctlbar select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--canvas);
+                   color: var(--ink); font-family: var(--font-sans); font-size: 12.5px; min-width: 210px; }
+  .ctlbar select:focus, .ctlbar input:focus { outline: 2px solid var(--chip); outline-offset: 1px; border-color: transparent; }
+  .ctlbar input[type="text"] { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--canvas);
+                   color: var(--ink); font-family: var(--font-sans); font-size: 12.5px; min-width: 230px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .seg button { font-size: 12px; font-weight: 600; padding: 7px 12px; cursor: pointer; border: none;
+                background: var(--panel-2); color: var(--ink-2); font-family: var(--font-sans); }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button.active { background: var(--chip); color: var(--chip-ink); }
+  .seg button:focus-visible { outline: 2px solid var(--chip); outline-offset: -2px; }
+
+  /* ── The report paper ── */
+  .report { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+            box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0,0,0,0.2)); }
+
+  /* masthead band — always the dark rail, matching the app sidebar */
+  .rp-head { background: #0F172A; padding: 20px 26px 16px; display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+  .rp-brand { display: flex; align-items: center; gap: 12px; }
+  .rp-brand .logo { flex-shrink: 0; }
+  .rp-brand .wordmark { color: #CBD5E1; font-size: 17px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
+  .rp-brand .wordmark .pacs { color: #22D3EE; }
+  .rp-brand .facility { color: #64748B; font-size: 11px; margin-top: 2px; letter-spacing: 0.04em; }
+  .rp-title { text-align: right; }
+  .rp-title .doctype { color: #E2E8F0; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; }
+  .rp-title .docstatus { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+                         text-transform: uppercase; color: #34D399; border: 1px solid #34D399; border-radius: 999px; padding: 2px 10px; }
+  .rp-title .docid { color: #64748B; font-size: 10.5px; font-family: var(--font-mono); margin-top: 5px; }
+
+  /* paper body — fixed light-ink palette so print is always correct */
+  .rp-body { background: #FFFFFF; color: #1E293B; padding: 24px 28px 28px; }
+
+  .rp-kv { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .rp-kv th, .rp-kv td { border: 1px solid #E2E8F0; padding: 7px 10px; font-size: 12.5px; text-align: left; vertical-align: top; }
+  .rp-kv th { background: #F8FAFC; color: #475569; font-weight: 600; width: 16%; white-space: nowrap; }
+  .rp-kv td { color: #1E293B; }
+  .rp-kv .mono { font-family: var(--font-mono); font-size: 12px; }
+  .rp-kv td .ph { color: #64748B; font-style: italic; }
+
+  .rp-section { margin-top: 16px; }
+  .rp-section + .rp-section { margin-top: 18px; }
+  .rp-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
+              color: #0E7490; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .rp-label::after { content: ""; flex: 1; height: 1px; background: #E2E8F0; }
+  .rp-text { font-size: 13px; line-height: 1.65; color: #1E293B; }
+  .rp-text .ph { color: #64748B; font-style: italic; }
+  .rp-findings { list-style: none; display: grid; gap: 5px; }
+  .rp-findings li { font-size: 13px; line-height: 1.6; color: #1E293B; display: flex; gap: 8px; }
+  .rp-findings .flabel { font-weight: 600; color: #0E7490; flex-shrink: 0; min-width: 96px; }
+  .rp-findings .flabel::after { content: ":"; }
+  .rp-findings .ph { color: #64748B; font-style: italic; }
+
+  .rp-impression { margin-top: 18px; border: 1px solid #99F6E4; background: #F0FDFA; border-left: 4px solid #0D9488;
+                   border-radius: 10px; padding: 14px 16px; }
+  .rp-impression .rp-label { color: #0F766E; margin-bottom: 4px; }
+  .rp-impression .rp-label::after { background: #CCFBF1; }
+  .rp-impression .rp-text { font-size: 13.5px; font-weight: 500; color: #134E4A; }
+  .rp-impression .ph { color: #0D9488; font-style: italic; }
+
+  .rp-sign { margin-top: 22px; padding-top: 14px; border-top: 1px solid #E2E8F0; display: flex; justify-content: space-between;
+             gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .rp-sign .sig-name { font-size: 14px; font-weight: 700; color: #1E293B; }
+  .rp-sign .sig-creds { font-size: 12px; color: #475569; margin-top: 2px; }
+  .rp-sign .sig-line { font-family: var(--font-mono); font-size: 12.5px; color: #0E7490; font-weight: 600; }
+  .rp-sign .sig-meta { text-align: right; font-size: 12px; color: #475569; line-height: 1.6; }
+  .rp-sign .sig-meta .mono { font-family: var(--font-mono); font-size: 11.5px; }
+
+  .rp-foot { background: #F8FAFC; border-top: 1px solid #E2E8F0; padding: 10px 26px 12px; }
+  .rp-foot p { font-size: 10px; color: #64748B; line-height: 1.55; }
+  .rp-foot .phi { font-weight: 700; color: #B45309; letter-spacing: 0.03em; }
+
+  .notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; margin-top: 22px; }
+  .notes h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); margin-bottom: 8px; }
+  .notes ul { list-style: none; display: grid; gap: 6px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+  .notes li { display: flex; gap: 8px; }
+  .notes .k { color: var(--chip); font-weight: 700; flex-shrink: 0; }
+
+  .foot { margin-top: 26px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+          border-top: 1px solid var(--rule); padding-top: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .foot a { color: var(--chip); text-decoration: none; }
+
+  /* ── Print: always light paper, no chrome, Letter size ── */
+  @page { size: Letter; margin: 16mm 14mm; }
+  @media print {
+    body { background: #FFFFFF !important; }
+    .board { max-width: none; padding: 0; }
+    .no-print { display: none !important; }
+    .report { border: none; border-radius: 0; box-shadow: none; background: #FFFFFF !important; }
+    .rp-body { padding: 20px 0 16px; }
+    .rp-foot { padding: 10px 0 0; }
+    .notes, .foot { display: none; }
+    .rp-head { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rp-kv th { background: #F8FAFC !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rp-impression { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rp-section { break-inside: avoid; }
+    .rp-sign { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="masthead">
+    <div>
+      <h1>Diagnostic Imaging Report Template</h1>
+      <div class="sub">QuantumPACS · structured radiology report · ACR-style sections</div>
+    </div>
+    <div class="tools no-print">
+      <button class="btn" id="printBtn" type="button">Print / PDF</button>
+      <button class="toggle" id="themeToggle" type="button">Switch to light board</button>
+    </div>
+  </header>
+
+  <p class="lede no-print">
+    A print-ready structured report scaffold that mirrors the app's <code>ReportEditor</code>:
+    the six modality templates seeded by the backend (<code>reports/templates</code>) drive the
+    <strong>Findings</strong> and <strong>Impression</strong> text. Use <strong>Template</strong> view to see the
+    bracketed placeholder structure, or <strong>Sample</strong> for a filled CT Head example.
+  </p>
+
+  <div class="ctlbar no-print">
+    <label for="preset">Modality template</label>
+    <select id="preset">
+      <option value="ct-head">CT Head — Routine</option>
+      <option value="ct-chest">CT Chest — Routine</option>
+      <option value="mr-brain">MRI Brain — Routine</option>
+      <option value="dx-chest">DX Chest PA/LAT — Routine</option>
+      <option value="us-abdomen">US Abdomen — Complete</option>
+      <option value="pet-wb">PET Whole Body — Routine</option>
+    </select>
+    <div class="seg" role="group" aria-label="Report view">
+      <button type="button" data-view="sample" class="active" aria-pressed="true">Sample</button>
+      <button type="button" data-view="blank" aria-pressed="false">Template</button>
+    </div>
+    <label for="facility">Facility</label>
+    <input type="text" id="facility" value="St. Helier Medical Imaging Center" spellcheck="false" autocomplete="off" />
+    <label for="radiologist">Signing radiologist</label>
+    <select id="radiologist" aria-label="Signing radiologist"></select>
+  </div>
+
+  <!-- ── The report ── -->
+  <div class="report">
+    <div class="rp-head">
+      <div class="rp-brand">
+        <svg class="logo" width="34" height="34" viewBox="0 0 40 40" fill="none" role="img" aria-label="QuantumPACS Orbit logo">
+          <circle cx="20" cy="20" r="18" stroke="#22D3EE" stroke-width="3"/>
+          <circle cx="20" cy="20" r="10" stroke="#67E8F9" stroke-width="2" opacity="0.55"/>
+          <line x1="20" y1="2" x2="20" y2="10" stroke="#22D3EE" stroke-width="2" stroke-linecap="round"/>
+          <line x1="20" y1="30" x2="20" y2="38" stroke="#22D3EE" stroke-width="2" stroke-linecap="round"/>
+          <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="#34D399" stroke-width="1.5" opacity="0.7"/>
+          <circle cx="20" cy="20" r="2.5" fill="#22D3EE"/>
+        </svg>
+        <div>
+          <div class="wordmark">Quantum<span class="pacs">PACS</span></div>
+          <div class="facility">St. Helier Medical Imaging Center</div>
+        </div>
+      </div>
+      <div class="rp-title">
+        <div class="doctype">Diagnostic Imaging Report</div>
+        <div class="docstatus" id="docStatus">Final</div>
+        <div class="docid" id="docId">DOC-RPT · RPT-2026-008431</div>
+      </div>
+    </div>
+
+    <div class="rp-body">
+      <table class="rp-kv" role="presentation">
+        <tbody>
+          <tr>
+            <th scope="row">Patient Name</th>
+            <td id="f-patientName">Mitchell, Sarah R.</td>
+            <th scope="row">Patient ID / MRN</th>
+            <td id="f-patientId" class="mono">MRN-20488173</td>
+          </tr>
+          <tr>
+            <th scope="row">Date of Birth</th>
+            <td id="f-dob">1968-03-14 (58y)</td>
+            <th scope="row">Sex</th>
+            <td id="f-sex">Female</td>
+          </tr>
+          <tr>
+            <th scope="row">Accession #</th>
+            <td id="f-accession" class="mono">20260811004</td>
+            <th scope="row">Study Date / Time</th>
+            <td id="f-studyDatetime" class="mono">2026-08-11 09:42</td>
+          </tr>
+          <tr>
+            <th scope="row">Modality</th>
+            <td id="f-modality">CT</td>
+            <th scope="row">Study Description</th>
+            <td id="f-studyDesc">CT HEAD WITHOUT CONTRAST</td>
+          </tr>
+          <tr>
+            <th scope="row">Referring Physician</th>
+            <td id="f-referring">Dr. A. Okafor, MD — Neurology</td>
+            <th scope="row">Priority</th>
+            <td id="f-priority">Routine</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <section class="rp-section">
+        <h2 class="rp-label">Clinical Indication</h2>
+        <p class="rp-text" id="s-indication">Acute onset headache with nausea for 2 days; rule out intracranial hemorrhage.</p>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-label">Technique</h2>
+        <p class="rp-text" id="s-technique">Non-contrast head CT. Axial images acquired at 5&nbsp;mm slice thickness; reconstructed in soft-tissue and bone windows.</p>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-label">Comparison</h2>
+        <p class="rp-text" id="s-comparison">None available.</p>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-label">Findings</h2>
+        <ul class="rp-findings" id="s-findings"></ul>
+      </section>
+
+      <div class="rp-impression">
+        <h2 class="rp-label">Impression</h2>
+        <p class="rp-text" id="s-impression">No acute intracranial abnormality.</p>
+      </div>
+
+      <section class="rp-section">
+        <h2 class="rp-label">Recommendations</h2>
+        <p class="rp-text" id="s-recommendations">None. Findings are compatible with the clinical diagnosis; no follow-up imaging indicated.</p>
+      </section>
+
+      <div class="rp-sign">
+        <div>
+          <div class="sig-line">Electronically signed</div>
+          <div class="sig-name" id="s-radiologist">Elena Vasquez, MD, FACR</div>
+          <div class="sig-creds" id="f-creds">Staff Radiologist · Diagnostic Radiology</div>
+        </div>
+        <div class="sig-meta">
+          <div id="s-signedAt" class="mono">2026-08-11 11:05</div>
+          <div>Report status: <strong id="s-status">FINAL</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rp-foot">
+      <p><span class="phi">CONFIDENTIAL — PROTECTED HEALTH INFORMATION.</span> This report is intended solely for the use of the patient and their
+      healthcare providers. Unauthorized use or disclosure is prohibited by law. Generated by QuantumPACS — St. Helier Medical Imaging Center.
+      Reports are archived for the retention period mandated by applicable regulation.</p>
+    </div>
+  </div>
+
+  <div class="notes no-print">
+    <h3>Structure notes</h3>
+    <ul>
+      <li><span class="k">Sections</span> Clinical Indication → Technique → Comparison → Findings → Impression → Recommendations, per ACR structured-reporting practice. Impression is the clinical signal and is always required before sign-off.</li>
+      <li><span class="k">Templates</span> The six presets above are the exact <code>findings_template</code> / <code>impression_template</code> rows seeded by <code>backend/api/reports.py</code> — brackets denote placeholders the radiologist tailors.</li>
+      <li><span class="k">Status</span> Draft → Preliminary → Final matches the app workflow; the badge here shows FINAL.</li>
+      <li><span class="k">Print</span> The paper always prints in light ink (Letter, 16&nbsp;mm margins); the dark/light toggle only affects the screen canvas.</li>
+    </ul>
+  </div>
+
+  <footer class="foot no-print">
+    <span>QuantumPACS · Diagnostic Imaging Report Template v1.0</span>
+    <span>· <a href="brand-board.html">brand board</a> · <a href="logos/EMAIL-SIGNATURE-KIT.html">email signatures</a></span>
+  </footer>
+</div>
+
+<script>
+  const html = document.documentElement;
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    document.getElementById("themeToggle").textContent = next === "dark" ? "Switch to light board" : "Switch to dark board";
+  });
+  document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+  function ph(text) { return '<span class="ph">' + text + "</span>"; }
+
+  /* The six backend report templates (api/reports.py) — findings and impression
+     seed text, plus demo metadata for the Sample view and placeholders for Template view. */
+  const PRESETS = {
+    "ct-head": {
+      modality: "CT", studyDesc: "CT HEAD WITHOUT CONTRAST",
+      findings: [
+        { label: "Ventricles", filled: "Normal in size and position; no hydrocephalus.", blank: "[normal size and position]" },
+        { label: "Midline", filled: "No midline shift.", blank: "[no shift]" },
+        { label: "Parenchyma", filled: "No acute intracranial hemorrhage, mass, or infarct. Gray-white differentiation preserved; no extra-axial collection.", blank: "[no acute intracranial hemorrhage, mass, or infarct]" },
+        { label: "Skull", filled: "No fracture or lytic lesion.", blank: "[no fracture]" },
+      ],
+      impression: "No acute intracranial abnormality.",
+    },
+    "ct-chest": {
+      modality: "CT", studyDesc: "CT CHEST WITH CONTRAST",
+      findings: [
+        { label: "Technique", filled: "Contrast-enhanced chest CT with multiplanar reformats.", blank: "Technique: Contrast-enhanced chest CT." },
+        { label: "Lungs", filled: "Clear. No nodules, consolidation, or pleural effusion.", blank: "[no nodules, consolidation, or effusion]" },
+        { label: "Mediastinum", filled: "No lymphadenopathy or mediastinal mass.", blank: "[no lymphadenopathy or mass]" },
+        { label: "Pleura", filled: "No pleural effusion or thickening.", blank: "[clear]" },
+      ],
+      impression: "No acute cardiopulmonary abnormality.",
+    },
+    "mr-brain": {
+      modality: "MR", studyDesc: "MRI BRAIN WITHOUT CONTRAST",
+      findings: [
+        { label: "Technique", filled: "Multiplanar brain MRI: T1, T2, FLAIR, DWI/ADC.", blank: "Technique: Multiplanar brain MRI (T1, T2, FLAIR, DWI)." },
+        { label: "Parenchyma", filled: "No acute infarct, mass, or demyelinating lesion. No abnormal enhancement.", blank: "[no acute infarct, mass, or demyelinating lesion]" },
+        { label: "Ventricles", filled: "Normal size and configuration.", blank: "[normal]" },
+        { label: "Vascular", filled: "No acute arterial occlusion or dissection; flow voids intact.", blank: "[no acute occlusion]" },
+      ],
+      impression: "No acute intracranial abnormality.",
+    },
+    "dx-chest": {
+      modality: "DX", studyDesc: "CHEST 2 VIEWS",
+      findings: [
+        { label: "Lungs", filled: "Clear without focal opacity, consolidation, or effusion.", blank: "[clear, no focal opacity]" },
+        { label: "Cardiac silhouette", filled: "Normal size; no mediastinal widening.", blank: "[normal size]" },
+        { label: "Bones", filled: "No acute fracture or destructive lesion.", blank: "[no acute fracture]" },
+      ],
+      impression: "No acute cardiopulmonary abnormality.",
+    },
+    "us-abdomen": {
+      modality: "US", studyDesc: "ABDOMEN COMPLETE ULTRASOUND",
+      findings: [
+        { label: "Liver", filled: "Normal echotexture; no focal mass or biliary dilatation.", blank: "[normal echotexture, no mass]" },
+        { label: "Gallbladder", filled: "No gallstones or wall thickening.", blank: "[no stones or wall thickening]" },
+        { label: "Pancreas / spleen / kidneys", filled: "Unremarkable. No hydronephrosis.", blank: "[unremarkable]" },
+        { label: "Peritoneal cavity", filled: "No free fluid.", blank: "No free fluid." },
+      ],
+      impression: "Normal abdominal ultrasound.",
+    },
+    "pet-wb": {
+      modality: "PET", studyDesc: "PET/CT WHOLE BODY",
+      findings: [
+        { label: "Tracer distribution", filled: "No abnormal FDG-avid focus to suggest malignancy.", blank: "No abnormal FDG-avid focus to suggest malignancy." },
+        { label: "Background", filled: "Physiologic distribution of tracer; no hypermetabolic lymphadenopathy.", blank: "Physiologic distribution of tracer." },
+      ],
+      impression: "Negative whole-body PET.",
+    },
+  };
+
+  const SAMPLES = {
+    patientName: "Mitchell, Sarah R.", patientId: "MRN-20488173", dob: "1968-03-14 (58y)", sex: "Female",
+    accession: "20260811004", studyDatetime: "2026-08-11 09:42", referring: "Dr. A. Okafor, MD — Neurology",
+    priority: "Routine", indication: "Acute onset headache with nausea for 2 days; rule out intracranial hemorrhage.",
+    technique: "Non-contrast head CT. Axial images acquired at 5 mm slice thickness; reconstructed in soft-tissue and bone windows.",
+    comparison: "None available.", recommendations: "None. Findings are compatible with the clinical diagnosis; no follow-up imaging indicated.",
+    signedAt: "2026-08-11 11:05",
+  };
+  const BLANKS = {
+    patientName: "[Patient name]", patientId: "[MRN]", dob: "[Date of birth]", sex: "[Sex]",
+    accession: "[Accession #]", studyDatetime: "[YYYY-MM-DD HH:MM]", referring: "[Referring physician]", priority: "[Priority]",
+    indication: "[Clinical indication]", technique: "[Technique description]", comparison: "[Prior study for comparison]",
+    recommendations: "[Optional recommendations]", signedAt: "[Signature timestamp]",
+  };
+
+  const presetSel = document.getElementById("preset");
+  const viewBtns = [...document.querySelectorAll(".seg button")];
+  let view = "sample";
+
+  /* ── Per-tenant configuration: facility name + signing radiologist ── */
+  const FACILITY_DEFAULT = "St. Helier Medical Imaging Center";
+  const RADIOLOGISTS = [
+    { name: "Elena Vasquez, MD, FACR", creds: "Staff Radiologist · Diagnostic Radiology" },
+    { name: "Marcus Chen, MD, PhD", creds: "Neuroradiologist · Fellowship-trained" },
+    { name: "Priya Nair, MD", creds: "Abdominal Imaging · Body MRI" },
+    { name: "Daniel Osei, MD", creds: "Cardiothoracic Imaging" },
+  ];
+
+  // Persisted per browser/tenant so the paper is configured before printing.
+  function loadPref(key, fallback) {
+    try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+  }
+  function savePref(key, val) {
+    try { localStorage.setItem(key, val); } catch (e) { /* private mode — ignore */ }
+  }
+
+  const facilityInput = document.getElementById("facility");
+  const radSelect = document.getElementById("radiologist");
+  facilityInput.value = loadPref("rpt.facility", FACILITY_DEFAULT);
+  RADIOLOGISTS.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r.name;
+    opt.textContent = r.name + " — " + r.creds;
+    radSelect.appendChild(opt);
+  });
+  const savedRad = loadPref("rpt.radiologist", RADIOLOGISTS[0].name);
+  radSelect.value = RADIOLOGISTS.some((r) => r.name === savedRad) ? savedRad : RADIOLOGISTS[0].name;
+
+  // Config applies in both Sample and Template views — it is tenant setup, not report content.
+  function applyConfig() {
+    document.querySelector(".facility").textContent =
+      facilityInput.value.trim() || FACILITY_DEFAULT;
+    const r = RADIOLOGISTS.find((x) => x.name === radSelect.value) || RADIOLOGISTS[0];
+    document.getElementById("s-radiologist").textContent = r.name;
+    document.getElementById("f-creds").textContent = r.creds;
+  }
+  facilityInput.addEventListener("input", () => { savePref("rpt.facility", facilityInput.value); applyConfig(); });
+  radSelect.addEventListener("change", () => { savePref("rpt.radiologist", radSelect.value); applyConfig(); });
+
+  function render() {
+    const p = PRESETS[presetSel.value];
+    const m = view === "blank" ? BLANKS : SAMPLES;
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      el.innerHTML = view === "blank" && !val.startsWith("[") ? ph("[" + val + "]") : val;
+    };
+    set("f-patientName", m.patientName);
+    set("f-patientId", m.patientId);
+    set("f-dob", m.dob);
+    set("f-sex", m.sex);
+    set("f-accession", m.accession);
+    set("f-studyDatetime", m.studyDatetime);
+    document.getElementById("f-modality").textContent = p.modality;
+    document.getElementById("f-studyDesc").textContent = p.studyDesc;
+    set("f-referring", m.referring);
+    set("f-priority", m.priority);
+
+    set("s-indication", m.indication);
+    set("s-technique", m.technique);
+    set("s-comparison", m.comparison);
+
+    const ul = document.getElementById("s-findings");
+    ul.innerHTML = p.findings.map((f) =>
+      "<li><span class='flabel'>" + f.label + "</span><span>" + (view === "blank" ? ph(f.blank) : f.filled) + "</span></li>",
+    ).join("");
+
+    set("s-impression", p.impression);
+    set("s-recommendations", m.recommendations);
+    set("s-signedAt", m.signedAt);
+    document.getElementById("s-status").textContent = "FINAL";
+    applyConfig(); // radiologist name/creds come from the tenant picker, not the content map
+  }
+
+  presetSel.addEventListener("change", render);
+  viewBtns.forEach((b) =>
+    b.addEventListener("click", () => {
+      view = b.dataset.view;
+      viewBtns.forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      render();
+    }),
+  );
+
+  render();
+</script>
+</body>
+</html>

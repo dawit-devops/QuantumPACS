@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS — Logo Concept Comparison</title>
+<style>
+  /* ────────────────────────────────────────────────────────────
+     QuantumPACS Logo Concept Comparison Gallery
+     Values mirror frontend/src/common/tokens.css
+     ──────────────────────────────────────────────────────────── */
+  :root {
+    /* brand tokens (corrected palette) — used by the masthead mark below */
+    --qp-primary: #0E7490;   /* cyan-700 */
+    --qp-secondary: #22D3EE; /* cyan-400 */
+    --qp-accent: #059669;    /* teal-600 */
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    --font-heading: Figtree, var(--font-sans);
+    --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #0F172A; --panel: #1E293B; --panel-2: #334155;
+    --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #94A3B8;
+    --rule: #334155; --chip: #22D3EE; --chip-ink: #0F172A;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+    --canvas: #F8FAFC; --panel: #FFFFFF; --panel-2: #F1F5F9;
+    --ink: #1E293B; --ink-2: #475569; --ink-3: #64748B;
+    --rule: #E2E8F0; --chip: #0E7490; --chip-ink: #FFFFFF;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--font-sans); background: var(--canvas); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    transition: background 250ms cubic-bezier(0.4,0,0.2,1), color 250ms cubic-bezier(0.4,0,0.2,1);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .board {
+    max-width: 1280px; margin: 0 auto; padding: 48px 32px 80px;
+    background-image:
+      linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* masthead */
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; }
+  .masthead .brand { display: flex; align-items: center; gap: 14px; }
+  .masthead h1 { font-family: var(--font-heading); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .sub { font-size: 12px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--rule); font-size: 12px; font-weight: 600; color: var(--ink-2);
+  }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip); display: inline-block; }
+  .toggle {
+    font-family: var(--font-sans); font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; background: var(--chip); color: var(--chip-ink); border: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .toggle:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+  .toggle:focus-visible { outline: 2px solid var(--chip); outline-offset: 2px; }
+
+  .lede { font-size: 14px; color: var(--ink-2); max-width: 640px; line-height: 1.6; margin-bottom: 32px; }
+
+  /* concept cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 24px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 22px;
+    display: flex; flex-direction: column; gap: 14px;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.18); border-color: var(--chip); }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .card-head h2 { font-family: var(--font-heading); font-size: 17px; font-weight: 700; }
+  .card-head .idea { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .badge-rec {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--chip); border: 1px solid var(--chip); border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+  }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { border-radius: 10px; padding: 18px 10px; display: flex; align-items: center; justify-content: center; min-height: 96px; }
+  .tile.dark { background: #0F172A; }
+  .tile.light { background: #FFFFFF; border: 1px solid #E2E8F0; }
+  .tile img { max-width: 88px; height: auto; }
+  .tile-cap { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 6px; text-align: center; }
+  .lockup-tile { border-radius: 10px; padding: 18px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: center; }
+  .lockup-tile img { max-width: 100%; height: auto; }
+  .lockup-cap { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 6px; }
+
+  .rationale { font-size: 12px; color: var(--ink-2); line-height: 1.55; }
+
+  /* benchmark strip — current Orbit vs the candidates */
+  .bench { margin-bottom: 40px; }
+  .bench-head h2 { font-family: var(--font-heading); font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .bench-head p { font-size: 12px; color: var(--ink-3); margin-bottom: 16px; max-width: 640px; line-height: 1.5; }
+  .bench-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+  .bench-cell {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 14px 12px 12px; display: flex; flex-direction: column; gap: 10px; position: relative;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .bench-cell:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.18); }
+  .bench-cell.current { border-color: var(--chip); }
+  .bench-badge {
+    position: absolute; top: 10px; right: 10px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--chip); border: 1px solid var(--chip); border-radius: 999px; padding: 2px 8px;
+  }
+  .bench-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bench-tiles .tile { min-height: 84px; padding: 12px 6px; }
+  .bench-tiles .tile img { max-width: 52px; }
+  .bench-name { font-family: var(--font-mono); font-size: 10px; color: var(--ink-2); text-align: center; letter-spacing: 0.05em; }
+  .bench-lockups { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-top: 14px; }
+  .bench-lockups .lockup-tile { padding: 14px 10px; }
+  .bench-lockups .lockup-cap { margin-top: 8px; }
+  @media (max-width: 1100px) { .bench-grid { grid-template-columns: repeat(3, 1fr); } .bench-lockups { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px) { .bench-grid, .bench-lockups { grid-template-columns: 1fr; } }
+
+  /* scoring matrix */
+  .bench-matrix { margin-top: 22px; }
+  .matrix-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .matrix-head h3 { font-family: var(--font-heading); font-size: 14px; font-weight: 700; }
+  .matrix-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); }
+  table.matrix { width: 100%; border-collapse: collapse; min-width: 680px; }
+  .matrix thead th {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-3); text-align: center; padding: 12px 10px; border-bottom: 1px solid var(--rule);
+  }
+  .matrix thead th:first-child { text-align: left; padding-left: 16px; }
+  .matrix tbody td { padding: 10px; text-align: center; border-bottom: 1px solid var(--rule); }
+  .matrix tbody tr:last-child td { border-bottom: none; }
+  .matrix td.mark { text-align: left; padding-left: 16px; }
+  .matrix .mark-preview { display: flex; align-items: center; gap: 10px; }
+  .matrix .mark-preview img { width: 24px; height: 24px; flex-shrink: 0; }
+  .matrix .mark-preview .mname { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .matrix .mark-preview .mmeta { font-size: 11px; color: var(--ink-3); }
+  .matrix .mark-preview .mchip {
+    display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--chip); border: 1px solid var(--chip); border-radius: 999px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px;
+  }
+  .steppers { display: inline-flex; align-items: center; gap: 4px; }
+  .stepper {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--rule);
+    background: var(--panel-2); color: var(--ink-2); font-size: 14px; line-height: 1;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+  }
+  .stepper:hover:not(:disabled) { border-color: var(--chip); color: var(--chip); }
+  .stepper:focus-visible { outline: 2px solid var(--chip); outline-offset: 1px; }
+  .stepper:disabled { opacity: 0.3; cursor: not-allowed; }
+  .stepper.val { width: auto; min-width: 26px; border: none; background: none; cursor: default; font-weight: 700; font-size: 13px; color: var(--ink); }
+  td.total-cell {
+    font-family: var(--font-mono); font-size: 15px; font-weight: 700;
+    color: var(--ink-2); width: 92px;
+  }
+  tr.leader td.total-cell { color: var(--chip); }
+  tr.leader td { background: rgba(34,211,238,0.06); background: color-mix(in srgb, var(--chip) 6%, transparent); }
+  tr.leader .total-cell::after { content: " ★"; font-size: 11px; }
+  .matrix-note { font-size: 11px; color: var(--ink-3); margin-top: 10px; line-height: 1.5; }
+  @media (max-width: 700px) { .matrix .mmeta { display: none; } }
+
+  .foot {
+    margin-top: 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    border-top: 1px solid var(--rule); padding-top: 18px;
+  }
+  .foot code { color: var(--chip); }
+  .foot a { color: var(--chip); text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="masthead">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="mh" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--qp-primary)"/><stop offset="50%" stop-color="var(--qp-secondary)"/><stop offset="100%" stop-color="var(--qp-accent)"/>
+          </linearGradient>
+        </defs>
+        <circle cx="20" cy="20" r="18" stroke="url(#mh)" stroke-width="3" fill="none"/>
+        <circle cx="20" cy="20" r="10" stroke="var(--qp-secondary)" stroke-width="2" fill="none" opacity="0.5"/>
+        <line x1="20" y1="2" x2="20" y2="10" stroke="url(#mh)" stroke-width="2" stroke-linecap="round"/>
+        <line x1="20" y1="30" x2="20" y2="38" stroke="url(#mh)" stroke-width="2" stroke-linecap="round"/>
+        <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="var(--qp-accent)" stroke-width="1.5" fill="none" opacity="0.6"/>
+        <circle cx="20" cy="20" r="2.5" fill="url(#mh)"/>
+      </svg>
+      <div>
+        <h1>QuantumPACS</h1>
+        <div class="sub">Logo Concept Comparison · Stakeholder Review</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span class="chip"><i></i>current + 5 concepts · light &amp; dark</span>
+      <button class="toggle" id="themeToggle" type="button" aria-pressed="false">Switch to light board</button>
+    </div>
+  </header>
+
+  <p class="lede">
+    Five new logo directions beyond the current Orbit mark — each shown as an icon on light and dark surfaces,
+    plus a horizontal lockup. Two are marked <strong style="color:var(--chip)">recommended</strong> for refinement.
+    Full rationale: <code style="color:var(--chip)">CONCEPTS-EXPLORATION.md</code>
+  </p>
+
+  <!-- Benchmark: current Orbit vs the candidates -->
+  <section class="bench" aria-labelledby="bench-title">
+    <div class="bench-head">
+      <h2 id="bench-title">Benchmark · current Orbit vs the five candidates</h2>
+      <p>Every mark at the same size on the same two surfaces, side by side — judge scale, legibility, and distinctness at a glance. Lockups compared below.</p>
+    </div>
+    <div class="bench-grid">
+      <figure class="bench-cell current">
+        <span class="bench-badge">current</span>
+        <div class="bench-tiles">
+          <div class="tile light"><img src="orbit-current-icon.svg" alt="Current Orbit mark on light" /></div>
+          <div class="tile dark"><img src="orbit-current-icon.svg" alt="Current Orbit mark on dark" /></div>
+        </div>
+        <figcaption class="bench-name">Orbit · the incumbent</figcaption>
+      </figure>
+      <figure class="bench-cell">
+        <div class="bench-tiles">
+          <div class="tile light"><img src="concept1-slice-icon.svg" alt="Slice concept icon on light" /></div>
+          <div class="tile dark"><img src="concept1-slice-icon.svg" alt="Slice concept icon on dark" /></div>
+        </div>
+        <figcaption class="bench-name">1 · The Slice</figcaption>
+      </figure>
+      <figure class="bench-cell">
+        <div class="bench-tiles">
+          <div class="tile light"><img src="concept2-signal-icon.svg" alt="Signal concept icon on light" /></div>
+          <div class="tile dark"><img src="concept2-signal-icon.svg" alt="Signal concept icon on dark" /></div>
+        </div>
+        <figcaption class="bench-name">2 · The Signal</figcaption>
+      </figure>
+      <figure class="bench-cell">
+        <span class="bench-badge">recommended</span>
+        <div class="bench-tiles">
+          <div class="tile light"><img src="concept3-qorbit-icon.svg" alt="Q-Orbit concept icon on light" /></div>
+          <div class="tile dark"><img src="concept3-qorbit-icon.svg" alt="Q-Orbit concept icon on dark" /></div>
+        </div>
+        <figcaption class="bench-name">3 · The Q-Orbit</figcaption>
+      </figure>
+      <figure class="bench-cell">
+        <div class="bench-tiles">
+          <div class="tile light"><img src="concept4-stack-icon.svg" alt="Stack concept icon on light" /></div>
+          <div class="tile dark"><img src="concept4-stack-icon.svg" alt="Stack concept icon on dark" /></div>
+        </div>
+        <figcaption class="bench-name">4 · The Stack</figcaption>
+      </figure>
+      <figure class="bench-cell">
+        <span class="bench-badge">recommended</span>
+        <div class="bench-tiles">
+          <div class="tile light"><img src="concept5-aperture-icon.svg" alt="Aperture concept icon on light" /></div>
+          <div class="tile dark"><img src="concept5-aperture-icon.svg" alt="Aperture concept icon on dark" /></div>
+        </div>
+        <figcaption class="bench-name">5 · The Aperture</figcaption>
+      </figure>
+    </div>
+    <div class="bench-lockups">
+      <div>
+        <div class="lockup-tile"><img src="orbit-current-lockup.svg" alt="Current Orbit lockup" /></div>
+        <div class="lockup-cap">Orbit lockup · current</div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept1-slice-lockup.svg" alt="Slice concept lockup" /></div>
+        <div class="lockup-cap">Slice lockup</div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept2-signal-lockup.svg" alt="Signal concept lockup" /></div>
+        <div class="lockup-cap">Signal lockup</div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept3-qorbit-lockup.svg" alt="Q-Orbit concept lockup" /></div>
+        <div class="lockup-cap">Q-Orbit lockup</div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept4-stack-lockup.svg" alt="Stack concept lockup" /></div>
+        <div class="lockup-cap">Stack lockup</div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept5-aperture-lockup.svg" alt="Aperture concept lockup" /></div>
+        <div class="lockup-cap">Aperture lockup</div>
+      </div>
+    </div>
+
+    <!-- Scoring matrix -->
+    <div class="bench-matrix">
+      <div class="matrix-head">
+        <h3 id="matrix-title">Quick scoring matrix</h3>
+        <span class="chip"><i></i>1–5 per criterion · total /15</span>
+      </div>
+      <div class="matrix-wrap">
+        <table class="matrix" aria-labelledby="matrix-title">
+          <thead>
+            <tr>
+              <th scope="col">Mark · 24px preview</th>
+              <th scope="col">Distinctness</th>
+              <th scope="col">Legibility</th>
+              <th scope="col">Fit @ 24px</th>
+              <th scope="col">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="orbit-current-icon.svg" alt="Current Orbit mark at 24px" />
+                  <span class="mname">Orbit<span class="mchip">current</span></span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="4" data-crit="distinctness">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="4" data-crit="legibility">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="2" data-crit="fit24">2</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="10">10</td>
+            </tr>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="concept1-slice-icon.svg" alt="Slice concept mark at 24px" />
+                  <span class="mname">1 · The Slice</span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="3" data-crit="distinctness">3</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="5" data-crit="legibility">5</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="4" data-crit="fit24">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="12">12</td>
+            </tr>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="concept2-signal-icon.svg" alt="Signal concept mark at 24px" />
+                  <span class="mname">2 · The Signal</span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="3" data-crit="distinctness">3</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="5" data-crit="legibility">5</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="4" data-crit="fit24">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="12">12</td>
+            </tr>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="concept3-qorbit-icon.svg" alt="Q-Orbit concept mark at 24px" />
+                  <span class="mname">3 · The Q-Orbit<span class="mchip">recommended</span></span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="5" data-crit="distinctness">5</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="4" data-crit="legibility">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="3" data-crit="fit24">3</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="12">12</td>
+            </tr>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="concept4-stack-icon.svg" alt="Stack concept mark at 24px" />
+                  <span class="mname">4 · The Stack</span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="3" data-crit="distinctness">3</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="4" data-crit="legibility">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="5" data-crit="fit24">5</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="12">12</td>
+            </tr>
+            <tr>
+              <td class="mark">
+                <span class="mark-preview">
+                  <img src="concept5-aperture-icon.svg" alt="Aperture concept mark at 24px" />
+                  <span class="mname">5 · The Aperture<span class="mchip">recommended</span></span>
+                </span>
+              </td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower distinctness score">−</button><span class="stepper val" data-score="4" data-crit="distinctness">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise distinctness score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower legibility score">−</button><span class="stepper val" data-score="4" data-crit="legibility">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise legibility score">+</button></span></td>
+              <td><span class="steppers"><button type="button" class="stepper" data-dir="-1" data-min="1" data-max="5" aria-label="Lower 24px fit score">−</button><span class="stepper val" data-score="4" data-crit="fit24">4</span><button type="button" class="stepper" data-dir="1" data-min="1" data-max="5" aria-label="Raise 24px fit score">+</button></span></td>
+              <td class="total-cell" data-total="12">12</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="matrix-note">Scores are editable — click +/− on any criterion. Leader row(s) at the highest total highlight automatically (★). The matrix rates operational criteria only; the RECOMMENDED badges weigh brand strategy (name equity + promise fit). Working notes for the review session, not final decisions.</p>
+    </div>
+  </section>
+
+  <main class="grid">
+
+    <!-- 1 · The Slice -->
+    <section class="card">
+      <div class="card-head">
+        <div><h2>1 · The Slice</h2><div class="idea">scan plane &amp; precision</div></div>
+      </div>
+      <div class="tiles">
+        <div><div class="tile light"><img src="concept1-slice-icon.svg" alt="Slice concept icon" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="concept1-slice-icon.svg" alt="Slice concept icon on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept1-slice-lockup.svg" alt="Slice concept lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">A rounded detector plate with a crosshair and focus nucleus — the exact axial plane being imaged. Planar and clinical: “we see precisely where it matters.”</p>
+    </section>
+
+    <!-- 2 · The Signal -->
+    <section class="card">
+      <div class="card-head">
+        <div><h2>2 · The Signal</h2><div class="idea">study in motion</div></div>
+      </div>
+      <div class="tiles">
+        <div><div class="tile light"><img src="concept2-signal-icon.svg" alt="Signal concept icon" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="concept2-signal-icon.svg" alt="Signal concept icon on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept2-signal-lockup.svg" alt="Signal concept lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">A calm medical pulse on a stable baseline — the study flowing modality → archive → reading room. Life and motion without chaos.</p>
+    </section>
+
+    <!-- 3 · The Q-Orbit (recommended) -->
+    <section class="card">
+      <div class="card-head">
+        <div><h2>3 · The Q-Orbit</h2><div class="idea">monogram + quantum</div></div>
+        <span class="badge-rec">recommended</span>
+      </div>
+      <div class="tiles">
+        <div><div class="tile light"><img src="concept3-qorbit-icon.svg" alt="Q-Orbit concept icon" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="concept3-qorbit-icon.svg" alt="Q-Orbit concept icon on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept3-qorbit-lockup.svg" alt="Q-Orbit concept lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">The brand initial whose tail doubles as an orbital path carrying an electron node. Keeps the quantum equity while becoming a clean, trademark-strong letterform.</p>
+    </section>
+
+    <!-- 4 · The Stack -->
+    <section class="card">
+      <div class="card-head">
+        <div><h2>4 · The Stack</h2><div class="idea">volume &amp; archive</div></div>
+      </div>
+      <div class="tiles">
+        <div><div class="tile light"><img src="concept4-stack-icon.svg" alt="Stack concept icon" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="concept4-stack-icon.svg" alt="Stack concept icon on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept4-stack-lockup.svg" alt="Stack concept lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">Three descending axial slices with a scan line — depth, data, completeness. The most radiology-native symbol: the whole study in one mark.</p>
+    </section>
+
+    <!-- 5 · The Aperture (recommended) -->
+    <section class="card">
+      <div class="card-head">
+        <div><h2>5 · The Aperture</h2><div class="idea">viewport · clarity</div></div>
+        <span class="badge-rec">recommended</span>
+      </div>
+      <div class="tiles">
+        <div><div class="tile light"><img src="concept5-aperture-icon.svg" alt="Aperture concept icon" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="concept5-aperture-icon.svg" alt="Aperture concept icon on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-tile"><img src="concept5-aperture-lockup.svg" alt="Aperture concept lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">An imaging viewport: aperture frame, lens ring, and the actual window/level corner markers radiologists use. Clarity on demand — closest to the brand promise.</p>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <span>QuantumPACS · Logo Concept Comparison v1.0</span>
+    <span>assets: <code>design-system/quantumpacs/logos/*.svg</code></span>
+    <span>rationale: <a href="CONCEPTS-EXPLORATION.md">CONCEPTS-EXPLORATION.md</a> · <a href="../brand-board.html">brand board</a></span>
+  </footer>
+</div>
+
+<script>
+  const toggle = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  toggle.addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    toggle.textContent = next === "dark" ? "Switch to light board" : "Switch to dark board";
+    toggle.setAttribute("aria-pressed", next === "light" ? "true" : "false");
+  });
+
+  /* scoring matrix — live totals + leader highlight */
+  const matrix = document.querySelector(".matrix");
+  if (matrix) {
+    const rows = matrix.querySelectorAll("tbody tr");
+
+    const recompute = () => {
+      const totals = [...rows].map((row) =>
+        [...row.querySelectorAll(".stepper.val")].reduce((sum, el) => sum + parseInt(el.dataset.score, 10), 0)
+      );
+      const best = Math.max(...totals);
+      rows.forEach((row, i) => {
+        const totalCell = row.querySelector(".total-cell");
+        totalCell.textContent = String(totals[i]);
+        totalCell.setAttribute("aria-live", "polite");
+        row.classList.toggle("leader", totals[i] === best);
+      });
+    };
+
+    matrix.querySelectorAll(".stepper[data-dir]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const val = btn.parentElement.querySelector(".stepper.val");
+        const next = Math.min(btn.dataset.max, Math.max(btn.dataset.min, parseInt(val.dataset.score, 10) + parseInt(btn.dataset.dir, 10)));
+        val.dataset.score = String(next);
+        val.textContent = String(next);
+        recompute();
+      });
+    });
+
+    recompute();
+  }
+</script>
+</body>
+</html>

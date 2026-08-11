@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 80" role="img" aria-labelledby="t4l d4l">
+  <title id="t4l">QuantumPACS — The Stack concept, horizontal lockup</title>
+  <desc id="d4l">Stacked-slices mark with the QuantumPACS wordmark.</desc>
+  <defs>
+    <linearGradient id="g4l" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.55" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <g id="icon" transform="translate(8,8)">
+    <rect x="20" y="2" width="48" height="18" rx="5" fill="none" stroke="#94A3B8" stroke-width="4" opacity="0.6"/>
+    <rect x="18" y="24" width="48" height="18" rx="5" fill="none" stroke="#22D3EE" stroke-width="4"/>
+    <rect x="16" y="46" width="48" height="18" rx="5" fill="none" stroke="url(#g4l)" stroke-width="5"/>
+    <line x1="40" y1="0" x2="40" y2="68" stroke="#64748B" stroke-width="2" stroke-dasharray="4 5" opacity="0.7"/>
+  </g>
+  <text x="88" y="50" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="34" font-weight="700" fill="#1E293B">
+    Quantum<tspan fill="#0E7490">PACS</tspan>
+  </text>
+</svg>

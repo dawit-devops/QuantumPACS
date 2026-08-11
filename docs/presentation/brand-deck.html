@@ -16,14 +16,14 @@ h1 { font-size: 48px; font-weight: 700; line-height: 1.1; }
 h2 { font-size: 32px; font-weight: 600; margin-bottom: 12px; }
 h3 { font-size: 20px; font-weight: 500; color: #64748B; margin-bottom: 24px; }
 p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
-.tagline { font-size: 22px; color: #6366F1; font-weight: 500; margin-top: 12px; }
-.highlight { color: #0077B6; font-weight: 600; }
+.tagline { font-size: 22px; color: #0E7490; font-weight: 500; margin-top: 12px; }
+.highlight { color: #0E7490; font-weight: 600; }
 
 .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; margin: 4px; }
-.badge-blue { background: #0077B6; color: #fff; }
-.badge-indigo { background: #6366F1; color: #fff; }
-.badge-cyan { background: #06B6D4; color: #fff; }
-.badge-emerald { background: #10B981; color: #fff; }
+.badge-blue { background: #0E7490; color: #fff; }
+.badge-indigo { background: #22D3EE; color: #0F172A; }
+.badge-cyan { background: #059669; color: #fff; }
+.badge-emerald { background: #047857; color: #fff; }
 
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 32px; }
 .card { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
@@ -33,7 +33,7 @@ p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
 .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
 .logo svg { width: 40px; height: 40px; }
 .logo span { font-size: 24px; font-weight: 700; }
-.logo span em { font-style: normal; color: #6366F1; }
+.logo span em { font-style: normal; color: #0E7490; }
 
 .nav { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; align-items: center; z-index: 10; background: #fff; padding: 12px 24px; border-radius: 40px; box-shadow: 0 4px 24px rgba(0,0,0,0.12); }
 .nav button { background: #0077B6; color: #fff; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
@@ -55,11 +55,14 @@ p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
 <!-- ─── SLIDE 1: TITLE ─── -->
 <div class="slide active" id="s1">
   <div class="logo">
-    <svg viewBox="0 0 60 40">
-      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0077B6"/><stop offset="50%" stop-color="#6366F1"/><stop offset="100%" stop-color="#06B6D4"/></linearGradient></defs>
-      <circle cx="20" cy="20" r="10" stroke="#6366F1" stroke-width="2" fill="none" opacity="0.5"/>
-      <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="#06B6D4" stroke-width="1.5" fill="none" opacity="0.6"/>
-      <text x="44" y="26" font-family="Inter" font-size="16" font-weight="700" fill="#1E293B">Quantum<tspan fill="#6366F1">PACS</tspan></text>
+    <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0077B6"/><stop offset="50%" stop-color="#22D3EE"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
+      <circle cx="20" cy="20" r="18" stroke="url(#g)" stroke-width="3" fill="none"/>
+      <circle cx="20" cy="20" r="10" stroke="#22D3EE" stroke-width="2" fill="none" opacity="0.5"/>
+      <line x1="20" y1="2" x2="20" y2="10" stroke="url(#g)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="20" y1="30" x2="20" y2="38" stroke="url(#g)" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="#059669" stroke-width="1.5" fill="none" opacity="0.6"/>
+      <circle cx="20" cy="20" r="2.5" fill="url(#g)"/>
     </svg>
     <span>Quantum<em>PACS</em></span>
   </div>
@@ -73,12 +76,12 @@ p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
   <h2>Brand Identity</h2>
   <h3>Color Palette — Medical precision meets modern design</h3>
   <div class="swatch-grid">
-    <div class="swatch" style="background:#0077B6">Primary<br/>#0077B6</div>
-    <div class="swatch" style="background:#6366F1">Secondary<br/>#6366F1</div>
-    <div class="swatch" style="background:#06B6D4">Accent<br/>#06B6D4</div>
-    <div class="swatch" style="background:#10B981">Success<br/>#10B981</div>
-    <div class="swatch" style="background:#F59E0B">Warning<br/>#F59E0B</div>
-    <div class="swatch" style="background:#EF4444">Error<br/>#EF4444</div>
+    <div class="swatch" style="background:#0E7490">Primary<br/>#0E7490</div>
+    <div class="swatch" style="background:#22D3EE;color:#0F172A">Secondary<br/>#22D3EE</div>
+    <div class="swatch" style="background:#059669">Accent<br/>#059669</div>
+    <div class="swatch" style="background:#10B981;color:#1E293B">Success<br/>#10B981</div>
+    <div class="swatch" style="background:#F59E0B;color:#0F172A">Warning<br/>#F59E0B</div>
+    <div class="swatch" style="background:#DC2626">Error<br/>#DC2626</div>
     <div class="swatch swatch-light" style="background:#F8FAFC;color:#1E293B">Bg<br/>#F8FAFC</div>
     <div class="swatch" style="background:#0F172A">Dark<br/>#0F172A</div>
     <div class="swatch swatch-light" style="background:#1E293B">Text<br/>#1E293B</div>
@@ -89,7 +92,7 @@ p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
       <canvas id="colorChart"></canvas>
     </div>
   </div>
-  <p style="margin-top:24px;font-size:14px">Typography: Inter (system font stack fallback) · Radius: 4–8px · Design tokens in <code>docs/design-tokens.json</code></p>
+  <p style="margin-top:24px;font-size:14px">Typography: Inter (system font stack fallback) · Radius: 4–8px · Design tokens in <code>docs/design-tokens.json</code> · <a href="../../design-system/quantumpacs/brand-board.html" style="color:#0E7490;font-weight:600">View the Brand Board →</a></p>
 </div>
 
 <!-- ─── SLIDE 3: ARCHITECTURE ─── -->
@@ -112,19 +115,19 @@ p { font-size: 18px; line-height: 1.7; color: #475569; max-width: 720px; }
   <h3>End-to-end study management in under 5 clicks</h3>
   <div style="display:flex;flex-direction:column;gap:16px;margin-top:32px">
     <div style="display:flex;align-items:center;gap:16px;background:#fff;padding:16px 24px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06)">
-      <span style="background:#0077B6;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">1</span>
+      <span style="background:#0E7490;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">1</span>
       <div><strong>Login</strong><br/><span style="font-size:14px;color:#64748B">JWT authentication with role-based access (admin/user)</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;background:#fff;padding:16px 24px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06)">
-      <span style="background:#6366F1;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">2</span>
+      <span style="background:#22D3EE;color:#0F172A;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">2</span>
       <div><strong>Browse Studies</strong><br/><span style="font-size:14px;color:#64748B">Searchable, paginated file list with modality/date filters</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;background:#fff;padding:16px 24px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06)">
-      <span style="background:#06B6D4;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">3</span>
+      <span style="background:#059669;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">3</span>
       <div><strong>View Study</strong><br/><span style="font-size:14px;color:#64748B">Series list → Cornerstone3D viewport with toolbar controls</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;background:#fff;padding:16px 24px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.06)">
-      <span style="background:#10B981;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">4</span>
+      <span style="background:#047857;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">4</span>
       <div><strong>Upload / Admin</strong><br/><span style="font-size:14px;color:#64748B">File upload, directory upload, bulk actions for admin users</span></div>
     </div>
   </div>
@@ -177,10 +180,10 @@ document.addEventListener('keydown', e => { if (e.key === 'ArrowRight') nextSlid
 new Chart(document.getElementById('colorChart'), {
   type: 'doughnut',
   data: {
-    labels: ['Primary #0077B6','Secondary #6366F1','Accent #06B6D4','Success #10B981','Warning #F59E0B','Error #EF4444'],
+    labels: ['Primary #0E7490','Secondary #22D3EE','Accent #059669','Success #10B981','Warning #F59E0B','Error #DC2626'],
     datasets: [{
       data: [30,25,15,10,10,10],
-      backgroundColor: ['#0077B6','#6366F1','#06B6D4','#10B981','#F59E0B','#EF4444'],
+      backgroundColor: ['#0E7490','#22D3EE','#059669','#10B981','#F59E0B','#DC2626'],
       borderWidth: 3, borderColor: '#F8FAFC',
     }]
   },
@@ -195,7 +198,7 @@ new Chart(document.getElementById('covChart'), {
     datasets: [{
       label: 'Tests',
       data: [103, 33, 5],
-      backgroundColor: ['#0077B6','#6366F1','#06B6D4'],
+      backgroundColor: ['#0E7490','#22D3EE','#059669'],
       borderRadius: 4,
     }]
   },
@@ -210,10 +213,10 @@ new Chart(document.getElementById('secChart'), {
     datasets: [{
       label: 'Maturity Score',
       data: [90, 70, 40, 60, 85, 75],
-      backgroundColor: 'rgba(99,102,241,0.2)',
-      borderColor: '#6366F1',
+      backgroundColor: 'rgba(34,211,238,0.2)',
+      borderColor: '#22D3EE',
       borderWidth: 2,
-      pointBackgroundColor: '#6366F1',
+      pointBackgroundColor: '#22D3EE',
     }]
   },
   options: { responsive: true, scales: { r: { min: 0, max: 100, ticks: { stepSize: 20, font: { size: 10 } } } }, plugins: { legend: { display: false } } }

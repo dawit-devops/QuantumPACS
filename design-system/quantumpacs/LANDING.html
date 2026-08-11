@@ -1,0 +1,2083 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS | Enterprise Imaging, One Continuous Orbit</title>
+<meta name="description" content="QuantumPACS is the enterprise PACS that carries images, worklists, and reports from acquisition to signed result with clarity under pressure." />
+<style>
+  /* ── Tokens: QuantumPACS brand system (tokens.css mirrored) ── */
+  :root {
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    --font-heading: Figtree, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --canvas: #0F172A; --panel: #1E293B; --panel-2: #334155; --panel-3: #475569;
+    --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #94A3B8;
+    --rule: rgba(148, 163, 184, 0.18);
+    --cyan: #22D3EE; --cyan-soft: #67E8F9; --teal: #34D399; --amber: #FBBF24;
+    --btn-bg: #22D3EE; --btn-ink: #0F172A; --btn-bg-hover: #67E8F9;
+    --hair: rgba(148, 163, 184, 0.14);
+  }
+  [data-theme="light"] {
+    --canvas: #F8FAFC; --panel: #FFFFFF; --panel-2: #F1F5F9; --panel-3: #E2E8F0;
+    --ink: #1E293B; --ink-2: #475569; --ink-3: #64748B;
+    --rule: rgba(100, 116, 139, 0.22);
+    --cyan: #0E7490; --cyan-soft: #0891B2; --teal: #059669; --amber: #B45309;
+    --btn-bg: #0E7490; --btn-ink: #FFFFFF; --btn-bg-hover: #0891B2;
+    --hair: rgba(100, 116, 139, 0.16);
+    --stat-ink: #DC2626;
+  }
+  [data-theme="dark"] { --stat-ink: #F87171; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--font-sans); background: var(--canvas); color: var(--ink);
+         -webkit-font-smoothing: antialiased; line-height: 1.6;
+         transition: background 250ms ease, color 250ms ease; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+  ::selection { background: var(--cyan); color: var(--btn-ink); }
+  a { color: var(--cyan); }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
+
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+
+  /* ── Nav ── */
+  .skip { position: absolute; left: -9999px; top: 0; z-index: 99; background: var(--cyan); color: var(--btn-ink);
+          padding: 10px 16px; border-radius: 0 0 8px 0; font-weight: 600; text-decoration: none; }
+  .skip:focus { left: 0; }
+  .nav { position: sticky; top: 0; z-index: 40; height: 64px; display: flex; align-items: center;
+         background: var(--canvas);
+         background: color-mix(in srgb, var(--canvas) 82%, transparent);
+         backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+         border-bottom: 1px solid var(--rule); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+  .brand .wordmark { font-weight: 700; font-size: 15px; letter-spacing: 0.01em; }
+  .brand .wordmark .pacs { color: var(--cyan); }
+  .nav-links { display: flex; gap: 26px; list-style: none; }
+  .nav-links a { color: var(--ink-2); text-decoration: none; font-size: 13.5px; font-weight: 500;
+                 padding: 6px 2px; border-bottom: 1px solid transparent; }
+  .nav-links a:hover { color: var(--ink); border-bottom-color: var(--cyan); }
+  .nav-cta { display: flex; align-items: center; gap: 10px; }
+  @media (max-width: 860px) { .nav-links { display: none; } }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-sans);
+         font-size: 14px; font-weight: 600; padding: 11px 20px; border-radius: 8px; cursor: pointer;
+         text-decoration: none; border: 1px solid transparent; transition: transform 150ms ease, background 150ms ease, border-color 150ms ease; }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--btn-bg); color: var(--btn-ink); }
+  .btn-primary:hover { background: var(--btn-bg-hover); }
+  .btn-ghost { border-color: var(--rule); color: var(--ink-2); background: transparent; }
+  .btn-ghost:hover { border-color: var(--cyan); color: var(--ink); }
+  .btn-sm { font-size: 13px; padding: 8px 14px; }
+
+  /* ── Theme toggle ── */
+  .theme-toggle { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--rule); cursor: pointer;
+                  background: var(--panel-2); color: var(--ink-2); font-size: 15px; line-height: 1;
+                  display: inline-flex; align-items: center; justify-content: center; }
+  .theme-toggle:hover { border-color: var(--cyan); color: var(--cyan); }
+
+  /* ── Hero ── */
+  .hero { position: relative; overflow: hidden; padding: 96px 0 88px; }
+  .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+                  background:
+                    radial-gradient(560px 420px at 82% 12%, rgba(34, 211, 238, 0.10), transparent 65%),
+                    radial-gradient(420px 380px at 8% 88%, rgba(5, 150, 105, 0.07), transparent 60%); }
+  .hero-inner { position: relative; display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+  .hero-eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+                  color: var(--cyan); margin-bottom: 20px; }
+  .hero h1 { font-family: var(--font-heading); font-size: clamp(40px, 5.4vw, 60px); line-height: 1.05;
+             letter-spacing: -0.02em; font-weight: 700; margin-bottom: 20px; max-width: 14ch; }
+  .hero h1 .accent { color: var(--cyan); }
+  .hero-sub { font-size: 16.5px; color: var(--ink-2); max-width: 46ch; line-height: 1.65; margin-bottom: 30px; }
+  .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* orbit animation - the signature */
+  .orbit-stage { display: flex; align-items: center; justify-content: center; position: relative; }
+  .orbit { width: min(420px, 78vw); aspect-ratio: 1; }
+  .orbit .rings { transform-origin: 50% 50%; animation: spin 18s linear infinite; }
+  .orbit .electron { transform-origin: 50% 50%; animation: spin 7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .orbit .nucleus { animation: pulse 4s ease-in-out infinite; transform-origin: 50% 50%; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+  .orbit-caption { position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+                   font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.18em; text-transform: uppercase; }
+
+  /* ── Logo wall ── */
+  .logowall { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 26px 0; }
+  .logowall-head { text-align: center; font-size: 12px; color: var(--ink-3); letter-spacing: 0.14em;
+                   text-transform: uppercase; margin-bottom: 22px; }
+  .logowall-row { display: flex; justify-content: center; align-items: center; gap: 48px; flex-wrap: wrap; }
+  .logowall-row .mark { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-3); text-decoration: none;
+                        font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.85; transition: opacity 150ms ease, color 150ms ease; }
+  .logowall-row .mark:hover { opacity: 1; color: var(--ink-2); }
+
+  /* ── Sections base ── */
+  .sec { padding: 96px 0; }
+  .sec-head { max-width: 640px; margin-bottom: 52px; }
+  .sec-head h2 { font-family: var(--font-heading); font-size: clamp(28px, 3.4vw, 38px); line-height: 1.12;
+                 letter-spacing: -0.015em; margin-bottom: 14px; }
+  .sec-head p { font-size: 15.5px; color: var(--ink-2); max-width: 56ch; line-height: 1.65; }
+
+  /* ── Reading room spotlight ── */
+  .spot { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .spot-facts { display: grid; gap: 12px; margin-top: 28px; }
+  .fact { display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: var(--ink-2); }
+  .fact .k { font-family: var(--font-mono); font-size: 12px; color: var(--cyan); font-weight: 700; flex-shrink: 0; }
+
+  /* report preview - a real component, scaled */
+  .report-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden;
+                 box-shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.45); }
+  .report-card .rc-head { background: #0F172A; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; }
+  .report-card .rc-word { color: #CBD5E1; font-size: 12px; font-weight: 700; }
+  .report-card .rc-word .pacs { color: #22D3EE; }
+  .report-card .rc-badge { font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+                           color: #34D399; border: 1px solid #34D399; border-radius: 999px; padding: 2px 9px; }
+  .report-card .rc-body { padding: 16px 18px 18px; background: #FFFFFF; color: #1E293B; }
+  .report-card .rc-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding-bottom: 12px;
+                         border-bottom: 1px solid #E2E8F0; margin-bottom: 12px; }
+  .report-card .rc-cell .lab { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748B; margin-bottom: 2px; }
+  .report-card .rc-cell .val { font-size: 11px; color: #1E293B; font-weight: 500; }
+  .report-card .rc-cell .val.mono { font-family: var(--font-mono); font-size: 10px; }
+  .report-card .rc-finding { font-size: 11.5px; color: #334155; display: flex; gap: 7px; padding: 3px 0; }
+  .report-card .rc-finding .fl { color: #0E7490; font-weight: 600; min-width: 78px; }
+  .report-card .rc-imp { margin-top: 10px; border: 1px solid #99F6E4; background: #F0FDFA; border-left: 3px solid #0D9488;
+                         border-radius: 8px; padding: 9px 12px; font-size: 12px; font-weight: 600; color: #134E4A; }
+  .report-card .rc-foot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 10.5px; color: #64748B; }
+  .report-card .rc-foot .sig { font-family: var(--font-mono); color: #0E7490; font-weight: 600; }
+
+  /* ── Process rail (a real sequence) ── */
+  .rail { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; position: relative; }
+  .rail::before { content: ""; position: absolute; top: 17px; left: 6%; right: 6%; height: 1px;
+                  background: linear-gradient(90deg, var(--hair), var(--hair)); }
+  .step { position: relative; }
+  .step .n { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+             font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; color: var(--btn-ink);
+             background: var(--cyan); margin-bottom: 14px; position: relative; z-index: 1; }
+  .step h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; font-family: var(--font-heading); }
+  .step p { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+  @media (max-width: 860px) { .rail { grid-template-columns: 1fr; } .rail::before { display: none; } }
+
+  /* ── Bento ── */
+  .bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cell { border: 1px solid var(--rule); border-radius: 12px; padding: 26px; min-height: 200px; display: flex;
+          flex-direction: column; gap: 12px; transition: border-color 150ms ease, transform 150ms ease; }
+  .cell:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .cell .mono { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); }
+  .cell h3 { font-size: 16px; font-weight: 700; font-family: var(--font-heading); }
+  .cell p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+  .cell .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+  .chip.stat { background: rgba(239, 68, 68, 0.14); color: var(--stat-ink); border: 1px solid rgba(239, 68, 68, 0.35); }
+  .chip.urgent { background: rgba(251, 191, 36, 0.12); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); }
+  .chip.routine { background: rgba(148, 163, 184, 0.12); color: var(--ink-2); border: 1px solid var(--rule); }
+  .cell.tint { background: linear-gradient(150deg, color-mix(in srgb, var(--cyan) 9%, transparent), transparent 55%); }
+  .cell.tint2 { background: linear-gradient(150deg, color-mix(in srgb, var(--teal) 8%, transparent), transparent 55%); }
+  .cell.wide { grid-column: span 2; }
+  .audit-lines { display: grid; gap: 6px; margin-top: auto; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .audit-lines div { display: flex; gap: 10px; }
+  .audit-lines .t { color: var(--teal); }
+  @media (max-width: 860px) { .bento { grid-template-columns: 1fr; } .cell.wide { grid-column: span 1; } }
+
+  /* ── Security band ── */
+  .band { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 48px 46px; }
+  .band-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .band-item { padding: 22px 0; }
+  .band-item:nth-child(odd) { padding-right: 34px; }
+  .band-item:nth-child(even) { padding-left: 34px; border-left: 1px solid var(--hair); }
+  .band-item:nth-child(n+3) { border-top: 1px solid var(--hair); }
+  .band-item h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; font-family: var(--font-heading); }
+  .band-item p { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+  @media (max-width: 860px) { .band-grid { grid-template-columns: 1fr; }
+    .band-item:nth-child(even) { padding-left: 0; border-left: none; }
+    .band-item:nth-child(n+2) { border-top: 1px solid var(--hair); } }
+
+  /* ── Testimonial ── */
+  .quote { max-width: 780px; margin: 0 auto; text-align: left; }
+  .quote blockquote { font-family: var(--font-heading); font-size: clamp(21px, 2.6vw, 28px); line-height: 1.4;
+                      letter-spacing: -0.01em; margin-bottom: 26px; }
+  .quote blockquote::before { content: "\201C"; display: block; font-size: 44px; color: var(--cyan); line-height: 0.6; margin-bottom: 14px; }
+  .quote .attr { display: flex; align-items: center; gap: 14px; }
+  .quote .avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(140deg, var(--cyan), var(--teal));
+                   color: #0F172A; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .quote .attr .who { font-size: 14px; font-weight: 700; }
+  .quote .attr .role { font-size: 12.5px; color: var(--ink-3); }
+
+  /* ── CTA band ── */
+  .cta-band { position: relative; overflow: hidden; text-align: center; }
+  .cta-inner { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 64px 40px; position: relative; overflow: hidden; }
+  .cta-inner::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+                       background: radial-gradient(480px 300px at 50% -20%, rgba(34, 211, 238, 0.12), transparent 65%); }
+  .cta-inner h2 { font-family: var(--font-heading); font-size: clamp(28px, 3.4vw, 40px); letter-spacing: -0.02em; margin-bottom: 14px; position: relative; }
+  .cta-inner p { color: var(--ink-2); max-width: 52ch; margin: 0 auto 30px; font-size: 15.5px; position: relative; }
+  .cta-inner .btn { position: relative; }
+
+  /* ── Footer ── */
+  .foot { border-top: 1px solid var(--rule); padding: 44px 0 54px; }
+  .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; }
+  .foot .brand { margin-bottom: 12px; }
+  .foot p { font-size: 13px; color: var(--ink-3); max-width: 34ch; line-height: 1.6; }
+  .foot h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-3); margin-bottom: 12px; }
+  .foot ul { list-style: none; display: grid; gap: 8px; }
+  .foot a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
+  .foot a:hover { color: var(--cyan); }
+  .foot-legal { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--hair); font-size: 12px; color: var(--ink-3);
+                display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 860px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
+
+  /* ── Live viewer demo (the reading room is always dark, per brand §5.3) ── */
+  .viewer-frame { border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+                  background: #000; box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.55); }
+  .vw-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+            padding: 10px 14px; background: #0F172A; border-bottom: 1px solid #1E293B; }
+  .vw-crumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #CBD5E1; max-width: 70%; min-width: 0; }
+  .vw-crumb .muted { color: #64748B; }
+  .vw-crumb .file { color: #22D3EE; font-family: var(--font-mono); }
+  /* Worklist switcher: patient button + dropdown panel (always-dark reading room) */
+  .vw-patient-wrap { position: relative; flex-shrink: 0; }
+  .vw-patient { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid transparent; border-radius: 6px;
+                background: transparent; color: #E2E8F0; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .vw-patient:hover { border-color: #334155; background: rgba(255, 255, 255, 0.05); }
+  .vw-patient[aria-expanded="true"] { border-color: #22D3EE; background: rgba(34, 211, 238, 0.1); color: #67E8F9; }
+  .vw-patient .chev { width: 12px; height: 12px; color: #64748B; transition: transform 160ms ease; flex-shrink: 0; }
+  .vw-patient[aria-expanded="true"] .chev { transform: rotate(180deg); color: #67E8F9; }
+  .crumb-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vw-worklist { position: absolute; top: calc(100% + 8px); left: 0; z-index: 30; width: 348px; max-height: 330px; overflow-y: auto;
+                 background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 6px;
+                 box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7); display: none; }
+  .vw-worklist.open { display: block; }
+  .vw-wl-label { padding: 5px 10px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: #64748B; }
+  .vw-wl-item { display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; width: 100%; text-align: left;
+                background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-family: inherit; }
+  .vw-wl-item:hover { background: rgba(255, 255, 255, 0.05); border-color: #1E293B; }
+  .vw-wl-item.active { background: rgba(34, 211, 238, 0.1); border-color: rgba(34, 211, 238, 0.35); }
+  .vw-wl-item .wl-name { font-size: 12.5px; font-weight: 700; color: #E2E8F0; }
+  .vw-wl-item .wl-mrn { font-family: var(--font-mono); font-size: 10.5px; color: #64748B; align-self: center; }
+  .vw-wl-item .wl-study { grid-column: 1 / -1; font-size: 11px; color: #94A3B8; }
+  .vw-wl-item .wl-meta { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 10.5px; color: #64748B; }
+  .vw-wl-item .wl-meta .mono { font-family: var(--font-mono); }
+  .vw-wl-item .wl-stat { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 800;
+                         letter-spacing: 0.08em; color: #0F172A; background: #FBBF24; }
+  @media (max-width: 480px) { .vw-worklist { width: min(348px, calc(100vw - 48px)); } }
+  .vw-tabs { display: flex; gap: 2px; font-size: 12px; color: #94A3B8; }
+  .vw-tabs span { padding: 4px 10px; border-radius: 6px; }
+  .vw-tabs span.on { color: #22D3EE; background: rgba(34, 211, 238, 0.12); }
+  .vw-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px;
+                background: rgba(30, 41, 59, 0.92); border-bottom: 1px solid #1E293B; }
+  .vw-tools { display: flex; gap: 6px; }
+  .vw-tool { height: 30px; min-width: 32px; padding: 0 8px; border-radius: 6px; border: 1px solid transparent; cursor: pointer;
+             background: transparent; color: #CBD5E1; font-size: 12px; font-weight: 700; display: inline-flex;
+             align-items: center; justify-content: center; gap: 6px; }
+  .vw-tool:hover { color: #67E8F9; background: rgba(103, 232, 249, 0.1); }
+  .vw-tool.active { color: #0F172A; background: #22D3EE; }
+  .vw-tool svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .vw-readout { font-family: var(--font-mono); font-size: 11.5px; color: #94A3B8; margin-left: auto; }
+  .vw-readout b { color: #67E8F9; font-weight: 600; }
+  .vw-layout { display: flex; gap: 4px; }
+  .vw-layout button { font-size: 10.5px; font-weight: 700; font-family: var(--font-mono); padding: 4px 8px;
+                      border-radius: 5px; border: 1px solid #334155; background: transparent; color: #94A3B8; cursor: pointer; }
+  .vw-layout button:hover { color: #E2E8F0; border-color: #475569; }
+  .vw-layout button.active { color: #0F172A; background: #22D3EE; border-color: #22D3EE; }
+  .vw-body { display: flex; min-height: 380px; }
+  .vw-views { flex: 1; display: grid; gap: 2px; background: #000; padding: 2px; min-width: 0; }
+  .vw-views.l1 { grid-template-columns: 1fr; }
+  .vw-views.l2 { grid-template-columns: 1fr 1fr; }
+  .vw-views.l4 { grid-template-columns: 1fr 1fr; }
+  .vw-viewport { position: relative; background: #000; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .vw-viewport canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+  .vw-viewport .pos { position: absolute; top: 8px; left: 10px; font-family: var(--font-mono); font-size: 11px; color: rgba(148, 163, 184, 0.85); }
+  .vw-rail { width: 208px; flex-shrink: 0; background: rgba(0, 0, 0, 0.85); border-left: 1px solid #1E293B;
+             display: flex; flex-direction: column; }
+  .vw-thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 12px; }
+  .vw-thumb { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 2px solid transparent;
+              background: rgba(255, 255, 255, 0.08); cursor: pointer; padding: 0; }
+  .vw-thumb:hover { border-color: rgba(255, 255, 255, 0.5); }
+  .vw-thumb.active { border-color: #22D3EE; }
+  .vw-thumb canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+  .vw-thumb .n { position: absolute; right: 2px; bottom: 1px; font-family: var(--font-mono); font-size: 8px; color: rgba(226, 232, 240, 0.8); }
+  .vw-presets { padding: 10px 12px 12px; border-top: 1px solid #1E293B; display: grid; gap: 6px; }
+  .vw-panel-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: #64748B; margin-bottom: 2px; }
+  .vw-preset { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; padding: 5px 9px;
+               border-radius: 6px; border: 1px solid transparent; background: rgba(255, 255, 255, 0.06); color: #CBD5E1; cursor: pointer; }
+  .vw-preset:hover { background: rgba(255, 255, 255, 0.12); }
+  .vw-preset.active { border-color: #22D3EE; color: #67E8F9; background: rgba(34, 211, 238, 0.1); }
+  .vw-preset span { font-family: var(--font-mono); font-size: 10.5px; color: #94A3B8; }
+  .vw-preset.active span { color: #67E8F9; }
+  .vw-status { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 14px;
+               background: #0F172A; border-top: 1px solid #1E293B; font-family: var(--font-mono); font-size: 11px; color: #64748B; }
+  .vw-status .live { color: #34D399; }
+  @media (max-width: 860px) { .vw-body { flex-direction: column; min-height: 0; }
+    .vw-rail { width: 100%; border-left: none; border-top: 1px solid #1E293B; }
+    .vw-crumb { max-width: 100%; } .crumb-path { white-space: normal; overflow: visible; } }
+
+  /* ── Product demo shell: theme-aware app mockups ── */
+  .demo-shell { border: 1px solid var(--rule); border-radius: 16px; overflow: hidden;
+                background: var(--panel); box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.4); }
+  .demo-chrome { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+                 background: var(--panel-2); border-bottom: 1px solid var(--rule); }
+  .demo-dots { display: flex; gap: 6px; }
+  .demo-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .demo-dots i:nth-child(1) { background: #F87171; }
+  .demo-dots i:nth-child(2) { background: #FBBF24; }
+  .demo-dots i:nth-child(3) { background: #34D399; }
+  .demo-url { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3);
+              background: var(--canvas); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 14px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .demo-url b { color: var(--cyan); font-weight: 600; }
+  .demo-tabs { display: flex; gap: 2px; padding: 12px 16px 0; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+  .demo-tab { border: none; background: transparent; font-family: var(--font-sans); font-size: 13px; font-weight: 600;
+              color: var(--ink-3); padding: 9px 16px; border-radius: 8px 8px 0 0; cursor: pointer;
+              border-bottom: 2px solid transparent; }
+  .demo-tab:hover { color: var(--ink); }
+  .demo-tab.active { color: var(--cyan); border-bottom-color: var(--cyan);
+                     background: color-mix(in srgb, var(--cyan) 7%, transparent); }
+  .demo-panel { display: none; padding: 18px; }
+  .demo-panel.active { display: block; animation: dmFade 250ms cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes dmFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .dm-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .dm-title h3 { font-family: var(--font-heading); font-size: 15px; font-weight: 700; }
+  .dm-title p { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .dm-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .dm-chip { font-size: 11.5px; font-weight: 600; padding: 5px 13px; border-radius: 999px; cursor: pointer;
+             border: 1px solid var(--rule); background: transparent; color: var(--ink-2); font-family: inherit;
+             transition: border-color 150ms ease, background 150ms ease, color 150ms ease; }
+  .dm-chip:hover { border-color: var(--cyan); color: var(--ink); }
+  .dm-chip.active { background: rgba(148, 163, 184, 0.14); border-color: var(--rule); color: var(--ink); }
+  .dm-chip.stat.active { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.45); color: var(--stat-ink); }
+  .dm-chip.urgent.active { background: rgba(251, 191, 36, 0.13); border-color: rgba(251, 191, 36, 0.4); color: var(--amber); }
+  .dm-search { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--rule); border-radius: 8px;
+               padding: 6px 12px; background: var(--canvas); }
+  .dm-search:focus-within { border-color: var(--cyan); }
+  .dm-search svg { width: 14px; height: 14px; color: var(--ink-3); flex-shrink: 0; }
+  .dm-search input { border: none; background: transparent; color: var(--ink); font-family: inherit; font-size: 12.5px;
+                     outline: none; width: 180px; }
+  .dm-scroll { overflow-x: auto; }
+  .dm-table { width: 100%; min-width: 740px; border-collapse: collapse; font-size: 12.5px; }
+  .dm-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;
+                 color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  .dm-table td { padding: 9px 10px; border-bottom: 1px solid var(--hair); color: var(--ink-2); white-space: nowrap; }
+  .dm-table tbody tr { transition: background 120ms ease; }
+  .dm-table tbody tr:hover td { background: color-mix(in srgb, var(--cyan) 4%, transparent); }
+  .dm-table tbody tr.dm-row.selected td { background: color-mix(in srgb, var(--cyan) 7%, transparent); }
+  .dm-table .mono { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .dm-table .strong { color: var(--ink); font-weight: 600; }
+  .dm-tag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px;
+            border-radius: 999px; text-transform: uppercase; border: 1px solid transparent; }
+  .dm-tag.stat { color: var(--stat-ink); background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.35); }
+  .dm-tag.urgent { color: var(--amber); background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.3); }
+  .dm-tag.routine { color: var(--ink-3); background: rgba(148, 163, 184, 0.12); border-color: var(--rule); }
+  .dm-tag.report-none { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 10%, transparent); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+  .dm-tag.report-draft { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
+  .dm-tag.report-preliminary { color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); border-color: color-mix(in srgb, var(--teal) 40%, transparent); }
+  .dm-tag.complete { color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); border-color: color-mix(in srgb, var(--teal) 40%, transparent); }
+  .dm-tag.incomplete { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
+  .dm-tag.qa { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 10%, transparent); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+  .dm-me { font-size: 11px; font-weight: 700; color: var(--teal); }
+  .dm-btn { font-size: 11.5px; font-weight: 600; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-family: inherit;
+            border: 1px solid transparent; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; }
+  .dm-btn.primary { background: var(--btn-bg); color: var(--btn-ink); }
+  .dm-btn.primary:hover { background: var(--btn-bg-hover); }
+  .dm-btn.ghost { background: transparent; border: 1px solid var(--rule); color: var(--ink-2); }
+  .dm-btn.ghost:hover { border-color: var(--cyan); color: var(--ink); }
+  .dm-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .dm-empty { text-align: center; color: var(--ink-3); padding: 22px 10px; font-size: 12.5px; }
+  .dm-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;
+             font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .dm-foot .live { color: var(--teal); }
+  .dm-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
+  .dm-kpi { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--canvas);
+            transition: border-color 150ms ease, transform 150ms ease; }
+  .dm-kpi:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .dm-kpi .lab { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); }
+  .dm-kpi .val { font-size: 21px; font-weight: 700; font-family: var(--font-heading); margin: 3px 0 1px; letter-spacing: -0.01em; }
+  .dm-kpi .hint { font-size: 10px; color: var(--ink-3); }
+  .dm-health { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .dm-hpill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 11px;
+              border-radius: 999px; border: 1px solid var(--rule); background: var(--canvas); color: var(--ink-2); }
+  .dm-hpill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dm-hpill .dot.ok { background: var(--teal); }
+  .dm-hpill .lat { font-family: var(--font-mono); color: var(--ink-3); }
+  .dm-charts { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .dm-chart { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--canvas); }
+  .dm-chart h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 8px; font-weight: 600; }
+  .dm-chart svg { display: block; width: 100%; height: 76px; overflow: visible; }
+  .dm-bar { display: grid; grid-template-columns: 30px 1fr 36px; align-items: center; gap: 8px; font-size: 11px; margin: 7px 0; }
+  .dm-bar-lab { font-family: var(--font-mono); color: var(--ink-3); }
+  .dm-bar-track { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+  .dm-bar-track i { display: block; height: 100%; border-radius: 999px;
+                    background: linear-gradient(90deg, var(--cyan), var(--teal)); transition: width 300ms ease; }
+  .dm-bar-val { font-family: var(--font-mono); color: var(--ink-2); text-align: right; }
+  .dm-activity { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--canvas); }
+  .dm-activity h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 8px; font-weight: 600; }
+  .dm-alines { display: grid; gap: 5px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .dm-alines div { display: flex; gap: 12px; }
+  .dm-alines .t { color: var(--teal); }
+  .dm-check { display: inline-flex; width: 16px; height: 16px; border-radius: 5px; border: 1px solid var(--rule);
+              align-items: center; justify-content: center; color: transparent; font-size: 11px; font-weight: 700;
+              transition: all 120ms ease; }
+  .dm-row.selected .dm-check { background: var(--cyan); border-color: var(--cyan); color: var(--btn-ink); }
+  .dm-row { cursor: pointer; }
+  .dm-pager { display: flex; gap: 10px; align-items: center; }
+  .dm-pager span { font-size: 11px; }
+  .dm-pager .dm-btn:disabled { opacity: 0.4; cursor: default; }
+  .dm-pager .dm-btn:disabled:hover { border-color: var(--rule); color: var(--ink-2); }
+  @media (max-width: 860px) {
+    .demo-panel { padding: 14px; }
+    .dm-kpis { grid-template-columns: repeat(2, 1fr); }
+    .dm-charts { grid-template-columns: 1fr; }
+  }
+
+  /* ── Teaching activity demo (R13 resident-attending workflow) ── */
+  .dm-role { display: inline-flex; gap: 3px; padding: 3px; border-radius: 9px; border: 1px solid var(--rule); background: var(--canvas); }
+  .dm-role button { border: none; background: transparent; font-family: inherit; font-size: 12px; font-weight: 600;
+                    color: var(--ink-3); padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: background 150ms ease, color 150ms ease; }
+  .dm-role button:hover { color: var(--ink); }
+  .dm-role button.active { background: var(--btn-bg); color: var(--btn-ink); }
+  .dm-teach { display: grid; grid-template-columns: 300px 1fr; gap: 14px; }
+  .dm-teach[hidden] { display: none; }
+  .dm-teach-side, .dm-teach-main { border: 1px solid var(--rule); border-radius: 10px; background: var(--canvas); padding: 14px; }
+  .dm-teach-side h4, .dm-teach-main h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 10px; font-weight: 600; }
+  .dm-tc-list { display: grid; gap: 6px; }
+  .dm-tc-item { width: 100%; text-align: left; background: transparent; border: 1px solid var(--rule); border-radius: 8px;
+                padding: 9px 11px; cursor: pointer; font-family: inherit; transition: border-color 150ms ease, background 150ms ease; }
+  .dm-tc-item:hover { border-color: var(--cyan); }
+  .dm-tc-item.active { border-color: var(--cyan); background: color-mix(in srgb, var(--cyan) 7%, transparent); }
+  .dm-tc-item .t { font-size: 12px; font-weight: 700; color: var(--ink); }
+  .dm-tc-item .m { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; font-family: var(--font-mono); }
+  .dm-tc-item .row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .dm-tc-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .dm-tag.draft { color: var(--ink-3); background: rgba(148, 163, 184, 0.12); border-color: var(--rule); }
+  .dm-tag.pending { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
+  .dm-tag.revision { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 10%, transparent); border-color: color-mix(in srgb, var(--cyan) 40%, transparent); }
+  .dm-tag.published { color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); border-color: color-mix(in srgb, var(--teal) 40%, transparent); }
+  .dm-field { margin-bottom: 10px; }
+  .dm-field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 4px; font-weight: 600; }
+  .dm-field input, .dm-field textarea { width: 100%; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); color: var(--ink);
+              font-family: inherit; font-size: 12.5px; padding: 7px 10px; outline: none; }
+  .dm-field input:focus, .dm-field textarea:focus { border-color: var(--cyan); }
+  .dm-field input:disabled, .dm-field textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+  .dm-field textarea { resize: vertical; min-height: 52px; }
+  .dm-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dm-thumb2 { width: 46px; height: 46px; border-radius: 6px; border: 2px solid transparent; background: rgba(255, 255, 255, 0.08);
+              position: relative; cursor: pointer; padding: 0; transition: border-color 150ms ease; }
+  .dm-thumb2:hover { border-color: rgba(255, 255, 255, 0.4); }
+  .dm-thumb2::after { content: "✓"; position: absolute; right: 2px; top: 0; font-size: 10px; font-weight: 700; color: transparent; }
+  .dm-thumb2.sel { border-color: var(--cyan); }
+  .dm-thumb2.sel::after { color: var(--cyan); }
+  .dm-thumb2:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dm-deid { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--ink-3); border: 1px dashed var(--rule);
+            border-radius: 8px; padding: 6px 10px; }
+  .dm-deid .ok { color: var(--teal); font-weight: 700; }
+  .dm-feedback { border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); background: color-mix(in srgb, var(--amber) 8%, transparent);
+                 border-radius: 8px; padding: 9px 12px; font-size: 11.5px; color: var(--ink-2); margin-bottom: 10px; }
+  .dm-feedback b { color: var(--amber); }
+  .dm-feedback .t { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); display: block; margin-top: 3px; }
+  .dm-actions2 { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dm-quick-add { display: inline-flex; align-items: center; gap: 6px; width: 100%; justify-content: center; margin-bottom: 8px; }
+  .dm-readonly { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+  .dm-readonly .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-3); font-weight: 600; display: block; margin-bottom: 2px; }
+  .dm-readonly ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; }
+  .dm-chipx { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); background: var(--panel); }
+  .dm-toast { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--btn-ink); background: var(--cyan); border-radius: 8px;
+              padding: 8px 12px; opacity: 0; transform: translateY(4px); transition: opacity 200ms ease, transform 200ms ease; pointer-events: none; }
+  .dm-toast.show { opacity: 1; transform: none; }
+  @media (max-width: 860px) { .dm-teach { grid-template-columns: 1fr; } }
+
+  /* ── Device switcher + container-driven responsiveness for the demo shell ── */
+  .demo-container { container-type: inline-size; max-width: 1160px; margin: 0 auto;
+                    transition: max-width 300ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .demo-container[data-size="laptop"] { max-width: 1024px; }
+  .demo-container[data-size="tablet"] { max-width: 768px; }
+  .demo-container[data-size="phone"] { max-width: 390px; }
+  .demo-devices { display: inline-flex; gap: 3px; padding: 3px; border-radius: 9px; border: 1px solid var(--rule); background: var(--canvas); flex-shrink: 0; }
+  .demo-devices button { border: none; background: transparent; font-family: inherit; font-size: 11.5px; font-weight: 600;
+                         color: var(--ink-3); padding: 5px 10px; border-radius: 6px; cursor: pointer; transition: background 150ms ease, color 150ms ease; }
+  .demo-devices button:hover { color: var(--ink); }
+  .demo-devices button.active { background: var(--btn-bg); color: var(--btn-ink); }
+  @container (max-width: 860px) {
+    .demo-panel { padding: 14px; }
+    .dm-kpis { grid-template-columns: repeat(2, 1fr); }
+    .dm-charts { grid-template-columns: 1fr; }
+    .dm-teach { grid-template-columns: 1fr; }
+    .vw-body { flex-direction: column; min-height: 0; }
+    .vw-rail { width: 100%; border-left: none; border-top: 1px solid #1E293B; }
+    .vw-crumb { max-width: 100%; }
+  }
+  @container (max-width: 520px) {
+    .dm-kpis { grid-template-columns: 1fr; }
+    .demo-dots { display: none; }
+    .demo-url { font-size: 10px; }
+    .demo-tabs { flex-wrap: nowrap; overflow-x: auto; }
+    .dm-search input { width: 120px; }
+    .dm-head { align-items: flex-start; }
+    .vw-readout { display: none; }
+  }
+
+  /* ── Device frames showcase ── */
+  .frames { display: flex; justify-content: center; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .dev { --dw: 1280px; --dh: 800px; --ds: 0.19; --bd: 12px; }
+  .dev .dev-bezel { width: calc(var(--dw) * var(--ds) + var(--bd) * 2); height: calc(var(--dh) * var(--ds) + var(--bd) * 2);
+                    padding: var(--bd); border-radius: 18px; position: relative;
+                    background: linear-gradient(155deg, #334155, #0F172A 70%); border: 1px solid var(--rule);
+                    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5); }
+  .dev .dev-screen-wrap { overflow: hidden; width: 100%; height: 100%; border-radius: 6px; }
+  .dev .dev-screen { width: var(--dw); height: var(--dh); transform: scale(var(--ds));
+                     transform-origin: top left; background: var(--panel); color: var(--ink);
+                     font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
+  .dev figcaption { margin-top: 14px; text-align: center; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+  .dev figcaption span { display: block; font-size: 11px; font-weight: 500; color: var(--ink-3); margin-top: 2px; }
+  .dev-monitor { --dw: 1440px; --dh: 900px; --ds: 0.18; --bd: 10px; }
+  .dev-laptop { --dw: 1280px; --dh: 800px; --ds: 0.19; --bd: 12px; }
+  .dev-tablet { --dw: 820px; --dh: 1100px; --ds: 0.24; --bd: 18px; }
+  .dev-phone { --dw: 390px; --dh: 844px; --ds: 0.52; --bd: 10px; }
+  .dev-monitor .dev-bezel::after, .dev-laptop .dev-bezel::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--bd) * -1 - 16px); width: 38%; height: 14px; background: linear-gradient(#475569, #1E293B); border-radius: 0 0 6px 6px; }
+  .dev-monitor .dev-bezel::before, .dev-laptop .dev-bezel::before { content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--bd) * -1 - 30px); width: 20%; height: 7px; background: #1E293B; border-radius: 4px 4px 0 0; }
+  .dev-laptop .dev-bezel::after { bottom: calc(var(--bd) * -1 - 20px); width: 72%; height: 20px; border-radius: 4px 4px 12px 12px; background: linear-gradient(#64748B, #1E293B); }
+  .dev-laptop .dev-bezel::before { bottom: calc(var(--bd) * -1 - 24px); width: 66%; height: 5px; background: #0F172A; border-radius: 2px 2px 0 0; }
+  .dev-tablet .dev-bezel::before { content: ""; position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 8px; height: 8px; border-radius: 50%; background: #475569; }
+  .dev-phone .dev-bezel::before { content: ""; position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 34%; height: 14px; border-radius: 999px; background: #0F172A; }
+  .dev-phone .dev-bezel::after { content: ""; position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 34%; height: 3px; border-radius: 999px; background: #475569; }
+
+  /* frame content */
+  .fw-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+  .fw-head h3 { font-size: 12px; font-family: var(--font-heading); font-weight: 700; }
+  .fw-live { font-size: 9.5px; font-weight: 700; color: var(--teal); letter-spacing: 0.06em; }
+  .fw-refresh { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+  .fw-filters { display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap; }
+  .fw-table { min-width: 0; font-size: 11px; }
+  .fw-table th { padding: 5px 10px; font-size: 9px; }
+  .fw-table td { padding: 6px 10px; }
+  .fw-card { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; margin: 6px 8px; background: var(--canvas); }
+  .fw-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .fw-card-mod { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+  .fw-card .strong { font-size: 11.5px; }
+  .fw-card .muted { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+  /* viewer frame (the reading room is always dark) */
+  .fw-vw-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; background: #0F172A; color: #CBD5E1; font-size: 10.5px; }
+  .fw-vw-top b { color: #E2E8F0; }
+  .fw-vw-tabs { color: #64748B; font-size: 9.5px; }
+  .fw-vw-tabs b { color: #22D3EE; margin-right: 6px; }
+  .fw-vw-toolbar { display: flex; gap: 6px; align-items: center; padding: 6px 10px; background: rgba(30, 41, 59, 0.92); border-bottom: 1px solid #1E293B; }
+  .fw-tool { font-size: 9.5px; font-weight: 700; color: #CBD5E1; padding: 3px 7px; border-radius: 5px; }
+  .fw-tool.on { color: #0F172A; background: #22D3EE; }
+  .fw-tool.mono { font-family: var(--font-mono); color: #67E8F9; }
+  .fw-vw-body { flex: 1; display: flex; min-height: 0; }
+  .fw-img { flex: 1; position: relative; background: #000;
+            background-image:
+              radial-gradient(circle at 50% 46%, #4a4f57 0 34%, #2b2f36 34.5% 36%, #000 36.5%),
+              radial-gradient(circle at 38% 40%, #2b2f36 0 6%, transparent 6.5%),
+              radial-gradient(circle at 62% 40%, #2b2f36 0 6%, transparent 6.5%); }
+  .fw-img::after { content: "31 / 46"; position: absolute; top: 6px; left: 8px; font-family: var(--font-mono); font-size: 9px; color: rgba(148, 163, 184, 0.9); }
+  .fw-rail { width: 26%; background: rgba(0, 0, 0, 0.85); border-left: 1px solid #1E293B; display: flex; flex-direction: column; padding: 6px; }
+  .fw-thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .fw-thumb { aspect-ratio: 1; border-radius: 4px; background: rgba(255, 255, 255, 0.08); border: 1.5px solid transparent; }
+  .fw-thumb.on { border-color: #22D3EE; }
+  .fw-presets { margin-top: 6px; display: grid; gap: 3px; }
+  .fw-p { font-size: 8.5px; color: #94A3B8; padding: 3px 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.06); display: flex; justify-content: space-between; }
+  .fw-p.on { color: #67E8F9; border: 1px solid #22D3EE; }
+  .fw-p i { font-style: normal; font-family: var(--font-mono); }
+  .fw-vw-status { display: flex; justify-content: space-between; padding: 5px 10px; background: #0F172A; font-family: var(--font-mono); font-size: 9px; color: #64748B; }
+  .fw-vw-status .fw-live { color: #34D399; }
+  /* dashboard frame */
+  .fw-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 12px; }
+  .fw-kpi { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; background: var(--canvas); }
+  .fw-kpi .lab { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+  .fw-kpi .val { font-size: 14px; font-weight: 700; font-family: var(--font-heading); }
+  .fw-spark { padding: 4px 12px 0; }
+  .fw-spark svg { display: block; width: 100%; height: 54px; }
+  .fw-bars { display: grid; gap: 5px; padding: 8px 12px 12px; }
+  .fw-bar { display: grid; grid-template-columns: 22px 1fr 28px; align-items: center; gap: 6px; font-size: 9.5px; }
+  .fw-bar span { font-family: var(--font-mono); color: var(--ink-3); }
+  .fw-bar i { height: 7px; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--teal)); }
+  .fw-bar b { font-family: var(--font-mono); color: var(--ink-2); text-align: right; font-weight: 500; }
+  .fw-note { text-align: center; margin-top: 28px; font-size: 12.5px; color: var(--ink-3); }
+  .fw-note b { color: var(--cyan); font-weight: 600; }
+
+  /* ── Scroll reveal ── */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } }
+
+  @media (max-width: 860px) {
+    .hero { padding: 64px 0 56px; }
+    .hero-inner, .spot { grid-template-columns: 1fr; gap: 36px; }
+    .sec { padding: 72px 0; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<nav class="nav" aria-label="Primary">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="QuantumPACS home">
+      <svg width="26" height="26" viewBox="0 0 40 40" fill="none" role="img" aria-label="QuantumPACS Orbit logo">
+        <circle cx="20" cy="20" r="18" stroke="var(--cyan)" stroke-width="3"/>
+        <circle cx="20" cy="20" r="10" stroke="var(--cyan-soft)" stroke-width="2" opacity="0.55"/>
+        <line x1="20" y1="2" x2="20" y2="10" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/>
+        <line x1="20" y1="30" x2="20" y2="38" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/>
+        <ellipse cx="20" cy="20" rx="6" ry="2.5" stroke="var(--teal)" stroke-width="1.5" opacity="0.7"/>
+        <circle cx="20" cy="20" r="2.5" fill="var(--cyan)"/>
+      </svg>
+      <span class="wordmark">Quantum<span class="pacs">PACS</span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#viewer">Reading room</a></li>
+      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#capabilities">Capabilities</a></li>
+      <li><a href="#demos">Product</a></li>
+      <li><a href="#screens">Every screen</a></li>
+      <li><a href="#security">Security</a></li>
+    </ul>
+    <div class="nav-cta">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch color theme" title="Switch color theme">◐</button>
+      <a class="btn btn-primary btn-sm" href="#demo">Request a demo</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+  <!-- ── Hero ── -->
+  <section class="hero" id="top" aria-label="QuantumPACS overview">
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <p class="hero-eyebrow">Built for radiologists, by radiologists.</p>
+        <h1>Every study, one <span class="accent">orbit</span>.</h1>
+        <p class="hero-sub">QuantumPACS moves images, worklists, and reports from acquisition to signed result, with clarity under pressure.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#demo">Request a demo</a>
+          <a class="btn btn-ghost" href="#reading">Explore the reading room</a>
+        </div>
+      </div>
+      <div class="orbit-stage" aria-hidden="true">
+        <svg class="orbit" viewBox="0 0 200 200" fill="none">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--cyan)"/>
+              <stop offset="0.5" stop-color="var(--cyan-soft)"/>
+              <stop offset="1" stop-color="var(--teal)"/>
+            </linearGradient>
+          </defs>
+          <g class="rings" opacity="0.16">
+            <circle cx="100" cy="100" r="86" stroke="var(--cyan)" stroke-width="1"/>
+            <circle cx="100" cy="100" r="64" stroke="var(--cyan)" stroke-width="1" opacity="0.7"/>
+          </g>
+          <g class="rings">
+            <circle cx="100" cy="100" r="52" stroke="url(#ringGrad)" stroke-width="3.5"/>
+            <circle cx="100" cy="100" r="30" stroke="var(--cyan-soft)" stroke-width="2" opacity="0.5"/>
+          </g>
+          <line x1="100" y1="20" x2="100" y2="46" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="100" y1="154" x2="100" y2="180" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round"/>
+          <g class="electron">
+            <ellipse cx="100" cy="100" rx="40" ry="15" stroke="var(--teal)" stroke-width="2" opacity="0.75"/>
+            <circle cx="140" cy="100" r="5" fill="var(--cyan)"/>
+          </g>
+          <circle class="nucleus" cx="100" cy="100" r="7" fill="var(--cyan)"/>
+        </svg>
+        <p class="orbit-caption">The study in motion</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Logo wall ── -->
+  <section class="logowall" aria-label="Customers">
+    <div class="wrap">
+      <p class="logowall-head">Used at leading imaging centers</p>
+      <div class="logowall-row">
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 14 V6 H14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>St. Helier</span>
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.3 14.6 L10 10 L15.7 14.6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>Northlake</span>
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 L18 16 H2 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="10" cy="12" r="1.6" fill="currentColor"/></svg>Harborview</span>
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="7" width="15" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="10.5" r="1.6" fill="currentColor"/></svg>Meridian</span>
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14 C5 10 8 10 10 14 C12 10 15 10 17 14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="10" cy="5" r="1.8" fill="currentColor"/></svg>Cascade</span>
+        <span class="mark"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 L18 10 L10 18 L2 10 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg>Westfield</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Reading room spotlight ── -->
+  <section class="sec" id="reading">
+    <div class="wrap spot">
+      <div>
+        <div class="sec-head" style="margin-bottom:0;">
+          <h2>Structured reports, signed in one pass.</h2>
+          <p>Templates seed the findings. Autosave protects every keystroke. The impression gates the signature, and the signature is final.</p>
+        </div>
+        <div class="spot-facts">
+          <div class="fact"><span class="k">3s autosave</span><span>Drafts are flushed continuously. No keystroke is ever lost.</span></div>
+          <div class="fact"><span class="k">draft → final</span><span>Draft, preliminary, and final states with electronic sign-off.</span></div>
+          <div class="fact"><span class="k">6 modality templates</span><span>CT, MR, DX, US, and PET scaffolds seed every new study.</span></div>
+        </div>
+      </div>
+      <div class="report-card" role="img" aria-label="Example of a QuantumPACS final radiology report">
+        <div class="rc-head">
+          <span class="rc-word">Quantum<span class="pacs">PACS</span> · Diagnostic Imaging Report</span>
+          <span class="rc-badge">Final</span>
+        </div>
+        <div class="rc-body">
+          <div class="rc-row">
+            <div class="rc-cell"><div class="lab">Patient</div><div class="val">Mitchell, Sarah R.</div></div>
+            <div class="rc-cell"><div class="lab">MRN</div><div class="val mono">20488173</div></div>
+            <div class="rc-cell"><div class="lab">Accession</div><div class="val mono">20260811004</div></div>
+            <div class="rc-cell"><div class="lab">Modality</div><div class="val">CT Head</div></div>
+          </div>
+          <div class="rc-finding"><span class="fl">Ventricles</span><span>Normal in size and position; no hydrocephalus.</span></div>
+          <div class="rc-finding"><span class="fl">Midline</span><span>No shift.</span></div>
+          <div class="rc-finding"><span class="fl">Parenchyma</span><span>No acute intracranial hemorrhage, mass, or infarct.</span></div>
+          <div class="rc-imp">Impression: No acute intracranial abnormality.</div>
+          <div class="rc-foot"><span class="sig">Electronically signed</span><span>Elena Vasquez, MD, FACR · 2026-08-11</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Live viewer demo: real reading-room interface, rendered in-browser ── -->
+  <section class="sec" id="viewer" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>The reading room, live.</h2>
+        <p>Window and level, layout, and series. Try the tools; the interface is the product.</p>
+      </div>
+      <div class="viewer-frame">
+        <div class="vw-top">
+          <div class="vw-crumb">
+            <div class="vw-patient-wrap">
+              <button type="button" class="vw-patient" id="vwPatientBtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="vwWorklist">
+                <span id="vwPatientName">Mitchell, Sarah R.</span>
+                <span class="muted" id="vwPatientMrn">(20488173)</span>
+                <svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4 4 4-4"/></svg>
+              </button>
+              <div class="vw-worklist" id="vwWorklist" role="listbox" aria-label="Reading worklist"></div>
+            </div>
+            <span class="crumb-path">
+              / Study <span id="vwStudy">1</span> <span class="muted" id="vwStudyDesc">(CT HEAD WITHOUT CONTRAST)</span>
+              / Series <span id="vwSeriesNo">2</span> <span class="muted" id="vwSeriesDesc">(Axial 5.0 mm)</span>
+              / File <span class="file" id="vwFile">031</span>
+            </span>
+          </div>
+          <div class="vw-tabs" aria-hidden="true"><span class="on">Image</span><span>Data</span><span>Share</span><span>Measures</span></div>
+        </div>
+        <div class="vw-toolbar">
+          <div class="vw-tools" role="group" aria-label="Viewer tools">
+            <button class="vw-tool active" type="button" data-tool="wl" title="Window / Level" aria-pressed="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2 a6 6 0 0 1 0 12 Z"/></svg>WL
+            </button>
+            <button class="vw-tool" type="button" data-tool="pan" title="Pan" aria-pressed="false">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5v13M1.5 8h13M5 5l3-3 3 3M5 11l3 3 3-3"/></svg>
+            </button>
+            <button class="vw-tool" type="button" data-tool="zoom" title="Zoom" aria-pressed="false">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.4"/><path d="M10 10 L14 14 M6.5 4.5v4M4.5 6.5h4"/></svg>
+            </button>
+            <button class="vw-tool" type="button" data-tool="measure" title="Measure" aria-pressed="false">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2 13 L14 4 M4 11.5 L5.5 10 M7.5 8.5 L9 7 M11 5.5 L12.5 4"/></svg>
+            </button>
+            <button class="vw-tool" type="button" data-tool="reset" title="Reset view" aria-pressed="false">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8 a5.5 5.5 0 1 1 -1.6 -3.9"/><path d="M13.5 2.5v3h-3"/></svg>
+            </button>
+          </div>
+          <div class="vw-readout">W/L <b id="vwWL">80 / 40</b></div>
+          <div class="vw-layout" role="group" aria-label="Viewport layout">
+            <button type="button" data-layout="1" aria-pressed="false">1x1</button>
+            <button type="button" data-layout="2" class="active" aria-pressed="true">1x2</button>
+            <button type="button" data-layout="4" aria-pressed="false">2x2</button>
+          </div>
+        </div>
+        <div class="vw-body">
+          <div class="vw-views l2" id="vwViews"></div>
+          <aside class="vw-rail">
+            <div class="vw-thumbs" id="vwThumbs" role="group" aria-label="Series thumbnails"></div>
+            <div class="vw-presets" role="group" aria-label="Window and level presets">
+              <div class="vw-panel-label">Window / Level</div>
+              <button class="vw-preset active" type="button" data-wl="80 40" aria-pressed="true">Brain <span>80/40</span></button>
+              <button class="vw-preset" type="button" data-wl="40 32" aria-pressed="false">Stroke <span>40/32</span></button>
+              <button class="vw-preset" type="button" data-wl="400 40" aria-pressed="false">Soft tissue <span>400/40</span></button>
+              <button class="vw-preset" type="button" data-wl="1500 450" aria-pressed="false">Bone <span>1500/450</span></button>
+              <button class="vw-preset" type="button" data-wl="1500 -500" aria-pressed="false">Lung <span>1500/-500</span></button>
+            </div>
+          </aside>
+        </div>
+        <div class="vw-status">
+          <span id="vwStatus">Window / Level tool active. Pick a preset or adjust the tools.</span>
+          <span class="live">Interactive sample series, rendered in-browser.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Process rail ── -->
+  <section class="sec" id="pipeline" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>From scanner to signature, one orbit.</h2>
+        <p>Every study passes through the same loop. Nothing waits, nothing is lost, everything is traced.</p>
+      </div>
+      <div class="rail">
+        <div class="step">
+          <div class="n">1</div>
+          <h3>Acquire</h3>
+          <p>Modalities push DICOM to a store that never drops a frame.</p>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <h3>Route</h3>
+          <p>Studies land in the right queue by priority, stat first.</p>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <h3>Read</h3>
+          <p>A worklist that sorts by urgency, not luck.</p>
+        </div>
+        <div class="step">
+          <div class="n">4</div>
+          <h3>Report</h3>
+          <p>Structured templates, autosave, one-pass sign-off.</p>
+        </div>
+        <div class="step">
+          <div class="n">5</div>
+          <h3>QA</h3>
+          <p>Peer review catches what the first read missed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Capability bento ── -->
+  <section class="sec" id="capabilities" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Built for the reading room.</h2>
+        <p>Standard-based, tenant-isolated, and quiet under load. The features a PACS needs and nothing it doesn't.</p>
+      </div>
+      <div class="bento">
+        <div class="cell tint wide">
+          <span class="mono">Reading worklist</span>
+          <h3>Stat. Urgent. Routine. The queue sorts itself.</h3>
+          <p>Handed-off exams arrive priority-tagged and physician-filterable, so the next read is always the right one.</p>
+          <div class="chips" aria-hidden="true"><span class="chip stat">stat</span><span class="chip urgent">urgent</span><span class="chip routine">routine</span></div>
+        </div>
+        <div class="cell">
+          <span class="mono">DICOMweb</span>
+          <h3>Standards in, images out.</h3>
+          <p>QIDO, WADO, and STOW over the web. No plugins, no proprietary viewers.</p>
+        </div>
+        <div class="cell tint2">
+          <span class="mono">Real-time delivery</span>
+          <h3>The study arrives before you look.</h3>
+          <p>New images ping the right reader the moment they land, over the same channel as the worklist.</p>
+        </div>
+        <div class="cell tint">
+          <span class="mono">Multi-tenant</span>
+          <h3>Every site, isolated.</h3>
+          <p>Shared infrastructure with hard tenant boundaries. One platform, many silos.</p>
+        </div>
+        <div class="cell wide">
+          <span class="mono">Audit & RBAC</span>
+          <h3>Every action logged. Every permission enforced.</h3>
+          <p>Least-privilege roles gate every endpoint, and an append-only audit trail records who saw what, and when.</p>
+          <div class="audit-lines" aria-hidden="true">
+            <div><span class="t">report.signed</span><span>radiologist · 11:05:42</span></div>
+            <div><span class="t">study.viewed</span><span>referring-physician · 11:58:03</span></div>
+            <div><span class="t">peer_review.submitted</span><span>qa · 14:20:17</span></div>
+          </div>
+        </div>
+        <div class="cell">
+          <span class="mono">FHIR</span>
+          <h3>The wider clinical record.</h3>
+          <p>Patient context flows between PACS and the EHR without breaking the imaging loop.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Product demos: the real interfaces, hands-on ── -->
+  <section class="sec" id="demos" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>The product, hands-on.</h2>
+        <p>Four screens from the running system — worklist, operations, teaching, and archive. Filter, claim, review, and page through: every control works.</p>
+      </div>
+      <div class="demo-container" id="demoShell">
+      <div class="demo-shell">
+        <div class="demo-chrome">
+          <div class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="demo-url" aria-hidden="true">app.quantumpacs / <b id="dmUrl">reading</b></div>
+          <div class="demo-devices" role="group" aria-label="Preview size">
+            <button type="button" class="active" data-device="desktop" aria-pressed="true">Desktop</button>
+            <button type="button" data-device="laptop" aria-pressed="false">Laptop</button>
+            <button type="button" data-device="tablet" aria-pressed="false">Tablet</button>
+            <button type="button" data-device="phone" aria-pressed="false">Phone</button>
+          </div>
+        </div>
+        <div class="demo-tabs" role="tablist" aria-label="Product demos">
+          <button class="demo-tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-reading" id="tab-reading" data-demo="reading" data-url="reading">Reading worklist</button>
+          <button class="demo-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-dashboard" id="tab-dashboard" data-demo="dashboard" data-url="dashboard">Operations</button>
+          <button class="demo-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-teaching" id="tab-teaching" data-demo="teaching" data-url="teaching">Teaching</button>
+          <button class="demo-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-archive" id="tab-archive" data-demo="archive" data-url="studies">Archive</button>
+        </div>
+
+        <div class="demo-panel active" id="panel-reading" role="tabpanel" aria-labelledby="tab-reading">
+          <div class="dm-head">
+            <div class="dm-title">
+              <h3>Reading Worklist</h3>
+              <p>Handed-off exams awaiting interpretation — auto-refreshes every 30s.</p>
+            </div>
+            <div class="dm-search" role="search">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.4"/><path d="M10 10 L14 14"/></svg>
+              <input type="search" id="dmWlSearch" placeholder="Patient or accession" aria-label="Filter the worklist" />
+            </div>
+          </div>
+          <div class="dm-filters" id="dmWlFilters" role="group" aria-label="Priority filter">
+            <button class="dm-chip active" type="button" data-f="all" aria-pressed="true">All</button>
+            <button class="dm-chip stat" type="button" data-f="stat" aria-pressed="false">STAT</button>
+            <button class="dm-chip urgent" type="button" data-f="urgent" aria-pressed="false">Urgent</button>
+            <button class="dm-chip routine" type="button" data-f="routine" aria-pressed="false">Routine</button>
+          </div>
+          <div class="dm-scroll">
+            <table class="dm-table">
+              <thead>
+                <tr>
+                  <th>Priority</th><th>Accession</th><th>Patient</th><th>Modality</th><th>Protocol</th><th>Report</th><th>Assigned</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="dmWlBody"></tbody>
+            </table>
+          </div>
+          <div class="dm-foot">
+            <span id="dmWlCount">7 studies</span>
+            <span class="live">● live queue · priority-sorted</span>
+          </div>
+        </div>
+
+        <div class="demo-panel" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+          <div class="dm-head">
+            <div class="dm-title">
+              <h3>Operations Dashboard</h3>
+              <p>Live system health, storage totals and recent platform activity.</p>
+            </div>
+            <button class="dm-btn ghost" type="button" id="dmRefresh">↻ Refresh</button>
+          </div>
+          <div class="dm-kpis" id="dmKpis"></div>
+          <div class="dm-health" aria-label="System health">
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>Database <span class="lat">8ms</span></span>
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>Redis <span class="lat">2ms</span></span>
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>Storage <span class="lat">14ms</span></span>
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>DICOM listener <span class="lat">4ms</span></span>
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>Ingestion <span class="lat">6ms</span></span>
+            <span class="dm-hpill"><i class="dot ok" aria-hidden="true"></i>Auth <span class="lat">9ms</span></span>
+          </div>
+          <div class="dm-charts">
+            <div class="dm-chart">
+              <h4>Ingestion · last 30 days</h4>
+              <svg id="dmSpark" viewBox="0 0 560 76" preserveAspectRatio="none" role="img" aria-label="Studies ingested per day over the last 30 days"></svg>
+            </div>
+            <div class="dm-chart">
+              <h4>Modality distribution</h4>
+              <div id="dmBars"></div>
+            </div>
+          </div>
+          <div class="dm-activity">
+            <h4>Recent activity</h4>
+            <div class="dm-alines" aria-hidden="true">
+              <div><span class="t">report.signed</span><span>E. Vasquez · 11:05:42</span></div>
+              <div><span class="t">study.ingested</span><span>CT Chest · 10:58:03</span></div>
+              <div><span class="t">study.viewed</span><span>referring-physician · 09:44:17</span></div>
+              <div><span class="t">peer_review.submitted</span><span>qa · 09:12:58</span></div>
+            </div>
+            <div class="dm-foot" style="margin-top:10px;"><span>Updated <span id="dmUpdated">just now</span></span><span class="live">● all services nominal</span></div>
+          </div>
+        </div>
+
+        <div class="demo-panel" id="panel-teaching" role="tabpanel" aria-labelledby="tab-teaching">
+          <div class="dm-head">
+            <div class="dm-title">
+              <h3>Teaching Activity</h3>
+              <p>Residents capture teaching cases from the studies they read; attendings review, annotate, and publish de-identified cases.</p>
+            </div>
+            <div class="dm-role" role="group" aria-label="Demo role">
+              <button type="button" class="active" id="dmRoleResident" aria-pressed="true">Resident</button>
+              <button type="button" id="dmRoleAttending" aria-pressed="false">Attending</button>
+            </div>
+          </div>
+
+          <div class="dm-teach" id="dmTeachResident">
+            <div class="dm-teach-side">
+              <h4>My teaching library</h4>
+              <button class="dm-btn ghost dm-quick-add" type="button" id="dmTcNew">＋ Capture new case</button>
+              <div class="dm-tc-list" id="dmTcList"></div>
+            </div>
+            <div class="dm-teach-main">
+              <h4>Case editor</h4>
+              <div id="dmTcEditor"></div>
+            </div>
+          </div>
+
+          <div class="dm-teach" id="dmTeachAttending" hidden>
+            <div class="dm-teach-side">
+              <h4>Review queue</h4>
+              <div class="dm-tc-list" id="dmAqList"></div>
+            </div>
+            <div class="dm-teach-main">
+              <h4>Attending review</h4>
+              <div id="dmAqDetail"></div>
+            </div>
+          </div>
+
+          <div class="dm-toast" id="dmTeachToast" role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="demo-panel" id="panel-archive" role="tabpanel" aria-labelledby="tab-archive">
+          <div class="dm-head">
+            <div class="dm-title">
+              <h3>Study Archive</h3>
+              <p>DICOMweb QIDO search across the tenant — filter by patient, MRN, or study.</p>
+            </div>
+            <div class="dm-search" role="search">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.4"/><path d="M10 10 L14 14"/></svg>
+              <input type="search" id="dmArcSearch" placeholder="Patient, MRN, or study" aria-label="Search the archive" />
+            </div>
+          </div>
+          <div class="dm-scroll">
+            <table class="dm-table">
+              <thead>
+                <tr>
+                  <th></th><th>Patient</th><th>MRN</th><th>Study</th><th>Modality</th><th>Date</th><th>Size</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="dmArcBody"></tbody>
+            </table>
+          </div>
+          <div class="dm-foot">
+            <span id="dmArcCount">8 studies</span>
+            <div class="dm-pager">
+              <button class="dm-btn ghost" type="button" id="dmPrev" aria-label="Previous page">‹ Prev</button>
+              <span id="dmArcPage">1 / 3</span>
+              <button class="dm-btn ghost" type="button" id="dmNext" aria-label="Next page">Next ›</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Responsive device frames: the same app, every screen ── -->
+  <section class="sec" id="screens" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>One app, every screen.</h2>
+        <p>From the reading-room monitor to a technologist's phone, the same interfaces — reshaped for the surface. Every frame below is a real slice of the product; the live demos above resize with the device switcher.</p>
+      </div>
+      <div class="frames" id="dmFrames"></div>
+      <p class="fw-note">Live and resizable in the <b>product demos</b> above — pick Desktop, Laptop, Tablet, or Phone and watch the same interfaces adapt.</p>
+    </div>
+  </section>
+
+  <!-- ── Security band ── -->
+  <section class="sec" id="security" style="padding-top:0;">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Security is the baseline, not a badge.</h2>
+      </div>
+      <div class="band">
+        <div class="band-grid">
+          <div class="band-item">
+            <h3>HIPAA posture</h3>
+            <p>PHI handling, audit coverage, and retention policies designed for regulated imaging environments.</p>
+          </div>
+          <div class="band-item">
+            <h3>Tenant isolation</h3>
+            <p>Data, users, and roles stay inside their tenant at every layer, from API to storage.</p>
+          </div>
+          <div class="band-item">
+            <h3>RBAC with least privilege</h3>
+            <p>Permission-gated endpoints and role-scoped workspaces. Read-only viewers never edit.</p>
+          </div>
+          <div class="band-item">
+            <h3>Append-only audit trail</h3>
+            <p>Sign-offs, views, and assignments are recorded immutably for review and compliance.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Testimonial ── -->
+  <section class="sec" id="proof" style="padding-top:0;">
+    <div class="wrap">
+      <div class="quote">
+        <blockquote>The worklist reads itself, the templates keep reports consistent, and the final report lands before the next study does.</blockquote>
+        <div class="attr">
+          <span class="avatar" aria-hidden="true">AO</span>
+          <div>
+            <div class="who">Dr. Amara Osei-Kofi</div>
+            <div class="role">Chief of Radiology, Meridian Health</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="sec cta-band" id="demo" style="padding-top:0;">
+    <div class="wrap">
+      <div class="cta-inner">
+        <h2>Put your reading room on one orbit.</h2>
+        <p>See QuantumPACS against your own studies, your own queues, your own compliance checklist.</p>
+        <a class="btn btn-primary" href="mailto:sales@quantumpacs.example">Request a demo</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="#top" aria-label="QuantumPACS home">
+          <svg width="24" height="24" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <circle cx="20" cy="20" r="18" stroke="var(--cyan)" stroke-width="3"/>
+            <circle cx="20" cy="20" r="10" stroke="var(--cyan-soft)" stroke-width="2" opacity="0.55"/>
+            <line x1="20" y1="2" x2="20" y2="10" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="20" y1="30" x2="20" y2="38" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="20" cy="20" r="2.5" fill="var(--cyan)"/>
+          </svg>
+          <span class="wordmark">Quantum<span class="pacs">PACS</span></span>
+        </a>
+        <p>Enterprise imaging that moves studies, worklists, and reports in one continuous orbit.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#viewer">Reading room</a></li>
+          <li><a href="#pipeline">Pipeline</a></li>
+          <li><a href="#capabilities">Capabilities</a></li>
+          <li><a href="#demos">Product demos</a></li>
+          <li><a href="#screens">Every screen</a></li>
+          <li><a href="#security">Security</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Brand</h4>
+        <ul>
+          <li><a href="brand-board.html">Brand board</a></li>
+          <li><a href="logos/COMPARISON-GALLERY.html">Logo gallery</a></li>
+          <li><a href="REPORT-TEMPLATE.html">Report template</a></li>
+          <li><a href="../LICENSE.md">License</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#demo">Request a demo</a></li>
+          <li><a href="#security">Compliance</a></li>
+          <li><a href="logos/EMAIL-SIGNATURE-KIT.html">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-legal">
+      <span>© 2025 QuantumPACS · Proprietary &amp; confidential · All rights reserved</span>
+      <span>Diagnostic Clarity, Quantum Fast.</span>
+      <span>DICOM-native · HIPAA-ready · Multi-tenant</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Theme toggle (brand artifacts pattern)
+  const html = document.documentElement;
+  const themeBtn = document.getElementById("themeToggle");
+  themeBtn.addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    themeBtn.textContent = next === "dark" ? "◐" : "◑";
+  });
+
+  // ── Live viewer demo: the reading-room interface, rendered in-browser ──
+  // A sample head-CT series is drawn on canvases; window/level is applied as a
+  // real contrast/brightness transform, so every preset visibly re-renders.
+  const CT = 240;
+  function drawCT(ctx, size, slice) {
+    const s = (slice % 8) / 8;
+    const cx = size / 2, cy = size / 2;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((s - 0.5) * 0.07);
+    // skull (bone, bright)
+    ctx.fillStyle = "#c9cdd4";
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.46, size * 0.40, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.42, size * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+    // brain parenchyma
+    ctx.fillStyle = "#565b63";
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 0.40, size * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+    // lateral ventricles (darker, drift with slice)
+    ctx.fillStyle = "#2b2f36";
+    ctx.beginPath(); ctx.ellipse(-size * 0.10 + s * 7, -size * 0.03, size * 0.055, size * 0.10, 0.35, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(size * 0.10 + s * 7, -size * 0.03, size * 0.055, size * 0.10, -0.35, 0, Math.PI * 2); ctx.fill();
+    // third ventricle + midline
+    ctx.fillStyle = "#3a3f47";
+    ctx.fillRect(-1.5 + s * 5, -size * 0.05, 3, size * 0.10);
+    ctx.strokeStyle = "#4a4f57";
+    ctx.lineWidth = Math.max(1, size * 0.006);
+    ctx.beginPath(); ctx.moveTo(0, -size * 0.34); ctx.lineTo(0, size * 0.34); ctx.stroke();
+    ctx.restore();
+    // CT speckle noise (lit pixels only, so the background stays black)
+    const img = ctx.getImageData(0, 0, size, size);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 8) {
+        const n = (Math.random() - 0.5) * 16;
+        d[i] = Math.max(0, Math.min(255, d[i] + n));
+        d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
+        d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // window/level as a contrast/brightness transform: wide window = softer,
+  // higher center = brighter (matches how W/L remaps the grayscale ramp)
+  function wlFilter(w, c) {
+    const contrast = Math.max(30, Math.min(140, 118 - (w - 60) * 0.055));
+    const brightness = Math.max(60, Math.min(190, 118 + (c - 40) * 0.06));
+    return "contrast(" + contrast.toFixed(0) + "%) brightness(" + brightness.toFixed(0) + "%)";
+  }
+
+  const vwViews = document.getElementById("vwViews");
+  const vwThumbs = document.getElementById("vwThumbs");
+  const vwWL = document.getElementById("vwWL");
+  const vwFile = document.getElementById("vwFile");
+  const vwStatus = document.getElementById("vwStatus");
+  const vwPatientBtn = document.getElementById("vwPatientBtn");
+  const vwWorklist = document.getElementById("vwWorklist");
+  const vwPatientName = document.getElementById("vwPatientName");
+  const vwPatientMrn = document.getElementById("vwPatientMrn");
+  const vwStudy = document.getElementById("vwStudy");
+  const vwStudyDesc = document.getElementById("vwStudyDesc");
+  const vwSeriesNo = document.getElementById("vwSeriesNo");
+  const vwSeriesDesc = document.getElementById("vwSeriesDesc");
+  let vwPatient = 0;
+  let vwSlices = 8;
+  let vwSlice = 1;
+  let vwLayout = 2;
+  let vwActive = { w: 80, c: 40 };
+
+  // Mock reading worklist: each entry re-hydrates the whole viewer when picked.
+  // Slice counts are per-series so switching visibly changes the thumbnails.
+  const WORKLIST = [
+    { name: "Mitchell, Sarah R.", mrn: "20488173", study: "CT HEAD WITHOUT CONTRAST", series: "Axial 5.0 mm", serNo: 2, slices: 8, stat: true },
+    { name: "Okafor, Chidi", mrn: "11845207", study: "MRI BRAIN WITH CONTRAST", series: "Axial T1 post-contrast", serNo: 1, slices: 6, stat: false },
+    { name: "Haddad, Omar", mrn: "22761049", study: "CT ABDOMEN WITH CONTRAST", series: "Axial 5.0 mm", serNo: 3, slices: 10, stat: true },
+    { name: "Delgado, Rosa", mrn: "09312864", study: "DX CHEST 2 VIEWS", series: "AP and lateral", serNo: 1, slices: 2, stat: false },
+    { name: "Lindqvist, Elin", mrn: "15476320", study: "US RIGHT UPPER QUADRANT", series: "Grayscale sweep", serNo: 1, slices: 4, stat: false },
+  ];
+
+  function buildWorklist() {
+    vwWorklist.innerHTML = "";
+    const label = document.createElement("div");
+    label.className = "vw-wl-label";
+    label.setAttribute("aria-hidden", "true");
+    label.textContent = "Reading worklist \u00b7 " + WORKLIST.length + " studies";
+    vwWorklist.appendChild(label);
+    WORKLIST.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "vw-wl-item" + (i === vwPatient ? " active" : "");
+      b.setAttribute("role", "option");
+      b.setAttribute("aria-selected", i === vwPatient ? "true" : "false");
+      const name = document.createElement("span");
+      name.className = "wl-name";
+      name.textContent = p.name;
+      const mrn = document.createElement("span");
+      mrn.className = "wl-mrn";
+      mrn.textContent = "MRN " + p.mrn;
+      const study = document.createElement("span");
+      study.className = "wl-study";
+      study.textContent = p.study;
+      const meta = document.createElement("span");
+      meta.className = "wl-meta";
+      const mono = document.createElement("span");
+      mono.className = "mono";
+      mono.textContent = p.slices + " images \u00b7 Series " + p.serNo;
+      meta.appendChild(mono);
+      if (p.stat) {
+        const st = document.createElement("span");
+        st.className = "wl-stat";
+        st.textContent = "STAT";
+        meta.appendChild(st);
+      }
+      b.append(name, mrn, study, meta);
+      b.addEventListener("click", () => selectPatient(i));
+      vwWorklist.appendChild(b);
+    });
+  }
+
+  function openWorklist() {
+    vwWorklist.classList.add("open");
+    vwPatientBtn.setAttribute("aria-expanded", "true");
+    const items = vwWorklist.querySelectorAll(".vw-wl-item");
+    if (items[vwPatient]) items[vwPatient].focus();
+  }
+  function closeWorklist() {
+    vwWorklist.classList.remove("open");
+    vwPatientBtn.setAttribute("aria-expanded", "false");
+  }
+  vwPatientBtn.addEventListener("click", () => {
+    if (vwWorklist.classList.contains("open")) closeWorklist();
+    else openWorklist();
+  });
+  vwWorklist.addEventListener("keydown", (e) => {
+    const items = vwWorklist.querySelectorAll(".vw-wl-item");
+    let idx = Array.prototype.indexOf.call(items, document.activeElement);
+    if (e.key === "Escape") { e.preventDefault(); closeWorklist(); vwPatientBtn.focus(); }
+    else if (e.key === "ArrowDown") {
+      e.preventDefault(); idx = (idx + 1) % items.length;
+      items.forEach((x) => x.setAttribute("aria-selected", "false"));
+      items[idx].setAttribute("aria-selected", "true");
+      items[idx].focus();
+    }
+    else if (e.key === "ArrowUp") {
+      e.preventDefault(); idx = (idx - 1 + items.length) % items.length;
+      items.forEach((x) => x.setAttribute("aria-selected", "false"));
+      items[idx].setAttribute("aria-selected", "true");
+      items[idx].focus();
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".vw-patient-wrap")) closeWorklist();
+  });
+
+  function selectPatient(i) {
+    if (i === vwPatient) { closeWorklist(); return; }
+    vwPatient = i;
+    const p = WORKLIST[i];
+    vwPatientName.textContent = p.name;
+    vwPatientMrn.textContent = "(" + p.mrn + ")";
+    vwStudy.textContent = String(i + 1);
+    vwStudyDesc.textContent = "(" + p.study + ")";
+    vwSeriesNo.textContent = String(p.serNo);
+    vwSeriesDesc.textContent = "(" + p.series + ")";
+    vwSlices = p.slices;
+    vwSlice = 0;
+    vwFile.textContent = "03" + vwSlice;
+    vwTransform = { x: 0, y: 0, z: 1 };
+    vwStatus.textContent = p.name.split(",")[0] + " loaded: " + p.study + " (sample series, " + p.slices + " slices).";
+    buildWorklist();
+    buildThumbs();
+    drawMain();
+    closeWorklist();
+    vwPatientBtn.focus();
+  }
+
+  function drawMain() {
+    vwViews.innerHTML = "";
+    for (let i = 0; i < vwLayout; i++) {
+      const vp = document.createElement("div");
+      vp.className = "vw-viewport";
+      const cv = document.createElement("canvas");
+      cv.width = CT; cv.height = CT;
+      cv.setAttribute("role", "img");
+      cv.setAttribute("aria-label", "Sample head CT slice " + (vwSlice + 1));
+      drawCT(cv.getContext("2d"), CT, vwSlice);
+      cv.style.filter = wlFilter(vwActive.w, vwActive.c);
+      applyTransform();
+      const pos = document.createElement("span");
+      pos.className = "pos";
+      pos.textContent = (vwSlice + 1) + "/" + vwSlices;
+      vp.appendChild(cv);
+      vp.appendChild(pos);
+      vwViews.appendChild(vp);
+    }
+  }
+
+  function buildThumbs() {
+    vwThumbs.innerHTML = "";
+    for (let i = 0; i < vwSlices; i++) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "vw-thumb" + (i === vwSlice ? " active" : "");
+      b.setAttribute("aria-label", "Slice " + (i + 1) + "/" + vwSlices + (i === vwSlice ? " (active)" : ""));
+      const cv = document.createElement("canvas");
+      cv.width = 64; cv.height = 64;
+      cv.setAttribute("aria-hidden", "true");
+      drawCT(cv.getContext("2d"), 64, i);
+      const n = document.createElement("span");
+      n.className = "n";
+      n.textContent = String(i + 1);
+      b.appendChild(cv);
+      b.appendChild(n);
+      b.addEventListener("click", () => {
+        vwSlice = i;
+        vwFile.textContent = "03" + i;
+        buildThumbs();
+        drawMain();
+      });
+      vwThumbs.appendChild(b);
+    }
+  }
+
+  document.querySelectorAll("[data-layout]").forEach((b) => {
+    b.addEventListener("click", () => {
+      vwLayout = Number(b.dataset.layout);
+      document.querySelectorAll("[data-layout]").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      vwViews.className = "vw-views l" + vwLayout;
+      drawMain();
+    });
+  });
+
+  document.querySelectorAll("[data-wl]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const parts = b.dataset.wl.split(" ");
+      vwActive = { w: Number(parts[0]), c: Number(parts[1]) };
+      vwWL.textContent = parts[0] + " / " + parts[1];
+      document.querySelectorAll("[data-wl]").forEach((x) => { x.classList.toggle("active", x === b); x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+      document.querySelectorAll(".vw-viewport canvas").forEach((cv) => { cv.style.filter = wlFilter(vwActive.w, vwActive.c); });
+    });
+  });
+
+  const TOOL_LABELS = {
+    wl: "Window / Level tool active. Pick a preset; the sample series re-renders.",
+    pan: "Pan tool active. Drag the image to move it.",
+    zoom: "Zoom tool active. Scroll the image to magnify.",
+    measure: "Measure tool active. Drag to lay down a distance annotation.",
+    reset: "View reset to the default Brain window and 1x2 layout.",
+  };
+  // Pan / zoom are real: drag pans, wheel zooms, both gated by the active tool.
+  let vwTool = "wl";
+  let vwTransform = { x: 0, y: 0, z: 1 };
+  function applyTransform() {
+    const t = vwTransform;
+    document.querySelectorAll(".vw-viewport canvas").forEach((cv) => {
+      cv.style.transform = "translate(" + t.x + "px," + t.y + "px) scale(" + t.z + ")";
+    });
+  }
+  let vwDrag = null;
+  vwViews.addEventListener("pointerdown", (e) => {
+    if (vwTool !== "pan") return;
+    vwDrag = { x: e.clientX, y: e.clientY, ox: vwTransform.x, oy: vwTransform.y };
+    vwViews.setPointerCapture(e.pointerId);
+  });
+  vwViews.addEventListener("pointermove", (e) => {
+    if (!vwDrag) return;
+    vwTransform.x = vwDrag.ox + (e.clientX - vwDrag.x);
+    vwTransform.y = vwDrag.oy + (e.clientY - vwDrag.y);
+    applyTransform();
+  });
+  vwViews.addEventListener("pointerup", () => { vwDrag = null; });
+  vwViews.addEventListener("wheel", (e) => {
+    if (vwTool !== "zoom") return;
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.12 : 0.89;
+    vwTransform.z = Math.max(0.5, Math.min(6, vwTransform.z * f));
+    applyTransform();
+  }, { passive: false });
+
+  document.querySelectorAll("[data-tool]").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("[data-tool]").forEach((x) => {
+        const on = x === b;
+        x.classList.toggle("active", on);
+        x.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      if (b.dataset.tool !== "reset") vwTool = b.dataset.tool;
+      vwStatus.textContent = TOOL_LABELS[b.dataset.tool] || "";
+      if (b.dataset.tool === "reset") {
+        vwActive = { w: 80, c: 40 };
+        vwWL.textContent = "80 / 40";
+        vwTransform = { x: 0, y: 0, z: 1 };
+        vwLayout = 2;
+        document.querySelectorAll("[data-wl]").forEach((x) => { const on = x.dataset.wl === "80 40"; x.classList.toggle("active", on); x.setAttribute("aria-pressed", on ? "true" : "false"); });
+        document.querySelectorAll("[data-layout]").forEach((x) => { const on = x.dataset.layout === "2"; x.classList.toggle("active", on); x.setAttribute("aria-pressed", on ? "true" : "false"); });
+        vwViews.className = "vw-views l2";
+        drawMain();
+      }
+    });
+  });
+
+  buildWorklist();
+  drawMain();
+  buildThumbs();
+  applyTransform();
+
+  // ── Product demos: tabbed app mockups (worklist / dashboard / archive) ──
+  const dmTabs = Array.from(document.querySelectorAll("[data-demo]"));
+  function dmActivate(tab, focus) {
+    dmTabs.forEach((t) => {
+      const on = t === tab;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.setAttribute("tabindex", on ? "0" : "-1");
+    });
+    document.querySelectorAll(".demo-panel").forEach((p) => {
+      p.classList.toggle("active", p.id === "panel-" + tab.dataset.demo);
+    });
+    const url = document.getElementById("dmUrl");
+    if (url) url.innerHTML = "app.quantumpacs / <b>" + tab.dataset.url + "</b>";
+    if (focus) tab.focus();
+  }
+  dmTabs.forEach((tab, i) => {
+    tab.setAttribute("tabindex", i === 0 ? "0" : "-1");
+    tab.addEventListener("click", () => dmActivate(tab, false));
+    tab.addEventListener("keydown", (e) => {
+      let idx = -1;
+      if (e.key === "ArrowRight") idx = (i + 1) % dmTabs.length;
+      else if (e.key === "ArrowLeft") idx = (i - 1 + dmTabs.length) % dmTabs.length;
+      else if (e.key === "Home") idx = 0;
+      else if (e.key === "End") idx = dmTabs.length - 1;
+      if (idx >= 0) { e.preventDefault(); dmActivate(dmTabs[idx], true); }
+    });
+  });
+
+  // ── Demo: reading worklist (authentic to the ReadingWorklist screen) ──
+  const dmWlBody = document.getElementById("dmWlBody");
+  if (dmWlBody) {
+    const DM_WL = [
+      { acc: "20260811002", patient: "Okafor, Chidi", mrn: "11845207", mod: "CT", proto: "Head w/ contrast", prio: "stat", report: "none", taken: false },
+      { acc: "20260811003", patient: "Haddad, Omar", mrn: "22761049", mod: "CT", proto: "Abdomen w/ contrast", prio: "stat", report: "draft", taken: true },
+      { acc: "20260810987", patient: "Lindqvist, Elin", mrn: "15476320", mod: "MR", proto: "Brain w/o contrast", prio: "urgent", report: "none", taken: false },
+      { acc: "20260810971", patient: "Mitchell, Sarah R.", mrn: "20488173", mod: "CT", proto: "Head w/o contrast", prio: "urgent", report: "preliminary", taken: true },
+      { acc: "20260810854", patient: "Delgado, Rosa", mrn: "09312864", mod: "DX", proto: "Chest 2 views", prio: "routine", report: "draft", taken: false },
+      { acc: "20260810812", patient: "Novak, Petra", mrn: "33190462", mod: "US", proto: "Right upper quadrant", prio: "routine", report: "none", taken: false },
+      { acc: "20260810766", patient: "Barnes, William", mrn: "44611908", mod: "MR", proto: "Lumbar spine", prio: "routine", report: "none", taken: false },
+    ];
+    const PRIO_LABEL = { stat: "STAT", urgent: "Urgent", routine: "Routine" };
+    const dmWlCount = document.getElementById("dmWlCount");
+    const dmWlSearch = document.getElementById("dmWlSearch");
+    let dmWlFilter = "all";
+    let dmWlQuery = "";
+
+    const dmWlVisible = () => DM_WL.filter((r) =>
+      (dmWlFilter === "all" || r.prio === dmWlFilter) &&
+      (!dmWlQuery || (r.patient + " " + r.acc).toLowerCase().includes(dmWlQuery))
+    );
+
+    function dmWlRender() {
+      const rows = dmWlVisible();
+      dmWlBody.innerHTML = "";
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 8;
+        td.className = "dm-empty";
+        td.textContent = "No studies match this filter.";
+        tr.appendChild(td);
+        dmWlBody.appendChild(tr);
+        dmWlCount.textContent = "0 studies";
+        return;
+      }
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          '<td><span class="dm-tag ' + r.prio + '">' + PRIO_LABEL[r.prio] + '</span></td>' +
+          '<td class="mono">' + r.acc + '</td>' +
+          '<td class="strong">' + r.patient + '</td>' +
+          '<td>' + r.mod + '</td>' +
+          '<td>' + r.proto + '</td>' +
+          '<td><span class="dm-tag report-' + r.report + '">' + r.report + '</span></td>' +
+          '<td>' + (r.taken ? '<span class="dm-me">You</span>' : "—") + '</td>' +
+          '<td class="dm-actions">' +
+            '<button class="dm-btn primary" type="button">' + (r.report !== "none" ? "Continue" : "Read Study") + '</button>' +
+            (r.taken ? "" : '<button class="dm-btn ghost dm-take" type="button">Take</button>') +
+          '</td>';
+        if (!r.taken) {
+          tr.querySelector(".dm-take").addEventListener("click", () => { r.taken = true; dmWlRender(); });
+        }
+        dmWlBody.appendChild(tr);
+      });
+      dmWlCount.textContent = rows.length + " of " + DM_WL.length + " studies";
+    }
+
+    document.querySelectorAll("#dmWlFilters [data-f]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        dmWlFilter = chip.dataset.f;
+        document.querySelectorAll("#dmWlFilters [data-f]").forEach((c) => {
+          const on = c === chip;
+          c.classList.toggle("active", on);
+          c.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+        dmWlRender();
+      });
+    });
+
+    dmWlSearch.addEventListener("input", () => {
+      dmWlQuery = dmWlSearch.value.trim().toLowerCase();
+      dmWlRender();
+    });
+
+    dmWlRender();
+  }
+
+  // ── Demo: operations dashboard (authentic to AdminDashboard) ──
+  const dmKpisEl = document.getElementById("dmKpis");
+  if (dmKpisEl) {
+    const DM_KPIS = [
+      { lab: "Studies", val: 12418, hint: "all time", fmt: (n) => n.toLocaleString() },
+      { lab: "Files", val: 1243820, hint: "in archive", fmt: (n) => (n / 1e6).toFixed(2) + "M" },
+      { lab: "Storage", val: 3.9, hint: "TB used", fmt: (n) => n.toFixed(1) + " TB" },
+      { lab: "Users", val: 342, hint: "active accounts", fmt: (n) => n.toLocaleString() },
+      { lab: "Turnaround", val: 28, hint: "min median", fmt: (n) => n + " min" },
+    ];
+    const dmUpdated = document.getElementById("dmUpdated");
+
+    function dmKpiRender() {
+      dmKpisEl.innerHTML = "";
+      DM_KPIS.forEach((k) => {
+        const c = document.createElement("div");
+        c.className = "dm-kpi";
+        c.innerHTML = '<div class="lab">' + k.lab + '</div><div class="val">' + k.fmt(k.val) + '</div><div class="hint">' + k.hint + '</div>';
+        dmKpisEl.appendChild(c);
+      });
+    }
+
+    const dmRefresh = document.getElementById("dmRefresh");
+    if (dmRefresh) {
+      dmRefresh.addEventListener("click", () => {
+        DM_KPIS.forEach((k) => {
+          if (k.lab === "Storage") k.val = Math.round((k.val + (Math.random() - 0.5) * 0.2) * 10) / 10;
+          else if (k.lab === "Turnaround") k.val += Math.round((Math.random() - 0.5) * 4);
+          else k.val += Math.round((Math.random() - 0.5) * 42);
+        });
+        dmKpiRender();
+        if (dmUpdated) dmUpdated.textContent = new Date().toLocaleTimeString();
+      });
+    }
+
+    const dmSpark = document.getElementById("dmSpark");
+    if (dmSpark) {
+      const ing = [22, 30, 27, 34, 31, 38, 36, 42, 39, 47, 44, 52, 49, 56];
+      const W = 560, H = 76, pad = 4;
+      const mx = Math.max.apply(null, ing), mn = Math.min.apply(null, ing);
+      const pts = ing.map((v, i) => {
+        const x = pad + (i * (W - pad * 2)) / (ing.length - 1);
+        const y = H - pad - ((v - mn) / ((mx - mn) || 1)) * (H - pad * 2);
+        return x.toFixed(1) + "," + y.toFixed(1);
+      }).join(" ");
+      dmSpark.innerHTML =
+        '<defs><linearGradient id="dmSparkFill" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0" stop-color="var(--cyan)" stop-opacity="0.35"/>' +
+        '<stop offset="1" stop-color="var(--cyan)" stop-opacity="0"/></linearGradient></defs>' +
+        '<polygon points="' + pts + " " + (W - pad) + "," + (H - pad) + " " + pad + "," + (H - pad) + '" fill="url(#dmSparkFill)"/>' +
+        '<polyline points="' + pts + '" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+
+    const dmBars = document.getElementById("dmBars");
+    if (dmBars) {
+      const mods = [["CT", 42], ["MR", 31], ["DX", 18], ["US", 9]];
+      mods.forEach((m) => {
+        const row = document.createElement("div");
+        row.className = "dm-bar";
+        row.innerHTML = '<span class="dm-bar-lab">' + m[0] + '</span>' +
+          '<span class="dm-bar-track"><i style="width:' + m[1] + '%"></i></span>' +
+          '<span class="dm-bar-val">' + m[1] + '%</span>';
+        dmBars.appendChild(row);
+      });
+    }
+
+    dmKpiRender();
+  }
+
+  // ── Demo: study archive (DICOMweb QIDO-style search + paging) ──
+  const dmArcBody = document.getElementById("dmArcBody");
+  if (dmArcBody) {
+    const DM_STUDIES = [
+      { patient: "Peterson, Dana", mrn: "55821047", study: "CT Chest w/ contrast", mod: "CT", date: "2026-08-10", size: "214 MB", status: "complete" },
+      { patient: "Wenzel, Klaus", mrn: "66173082", study: "MR Knee", mod: "MR", date: "2026-08-10", size: "96 MB", status: "complete" },
+      { patient: "Adeyemi, Tolu", mrn: "07742193", study: "DX Shoulder 2 views", mod: "DX", date: "2026-08-09", size: "4 MB", status: "qa" },
+      { patient: "Rivera, Carmen", mrn: "88321065", study: "US Pelvis", mod: "US", date: "2026-08-09", size: "31 MB", status: "complete" },
+      { patient: "Nguyen, Bao", mrn: "90214038", study: "PET Whole body", mod: "PET", date: "2026-08-08", size: "612 MB", status: "incomplete" },
+      { patient: "Osei, Kwame", mrn: "11905426", study: "CT Sinus w/o contrast", mod: "CT", date: "2026-08-08", size: "158 MB", status: "complete" },
+      { patient: "Kaur, Simran", mrn: "24088714", study: "MR Abdomen w/ contrast", mod: "MR", date: "2026-08-07", size: "187 MB", status: "complete" },
+      { patient: "Martin, Elena", mrn: "31479052", study: "MG Screening", mod: "MG", date: "2026-08-07", size: "22 MB", status: "qa" },
+    ];
+    const STATUS_LABEL = { complete: "Complete", incomplete: "Incomplete", qa: "In QA" };
+    const dmArcCount = document.getElementById("dmArcCount");
+    const dmArcPage = document.getElementById("dmArcPage");
+    const dmPrev = document.getElementById("dmPrev");
+    const dmNext = document.getElementById("dmNext");
+    const dmArcSearch = document.getElementById("dmArcSearch");
+    const PER = 3;
+    let dmArcPageIdx = 0;
+    let dmArcQuery = "";
+
+    function dmArcRender() {
+      const rows = DM_STUDIES.filter((s) =>
+        !dmArcQuery || (s.patient + " " + s.mrn + " " + s.study).toLowerCase().includes(dmArcQuery)
+      );
+      const pages = Math.max(1, Math.ceil(rows.length / PER));
+      if (dmArcPageIdx >= pages) dmArcPageIdx = pages - 1;
+      const slice = rows.slice(dmArcPageIdx * PER, dmArcPageIdx * PER + PER);
+      dmArcBody.innerHTML = "";
+      slice.forEach((s) => {
+        const tr = document.createElement("tr");
+        tr.className = "dm-row";
+        tr.innerHTML =
+          '<td><span class="dm-check" aria-hidden="true">✓</span></td>' +
+          '<td class="strong">' + s.patient + '</td>' +
+          '<td class="mono">' + s.mrn + '</td>' +
+          '<td>' + s.study + '</td>' +
+          '<td>' + s.mod + '</td>' +
+          '<td class="mono">' + s.date + '</td>' +
+          '<td class="mono">' + s.size + '</td>' +
+          '<td><span class="dm-tag ' + s.status + '">' + STATUS_LABEL[s.status] + '</span></td>';
+        tr.tabIndex = 0;
+        tr.setAttribute("aria-pressed", "false");
+        const toggle = () => {
+          const on = tr.classList.toggle("selected");
+          tr.setAttribute("aria-pressed", on ? "true" : "false");
+        };
+        tr.addEventListener("click", toggle);
+        tr.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+        });
+        dmArcBody.appendChild(tr);
+      });
+      dmArcCount.textContent = rows.length + " studies";
+      dmArcPage.textContent = (dmArcPageIdx + 1) + " / " + pages;
+      dmPrev.disabled = dmArcPageIdx <= 0;
+      dmNext.disabled = dmArcPageIdx >= pages - 1;
+    }
+
+    dmPrev.addEventListener("click", () => { if (dmArcPageIdx > 0) { dmArcPageIdx--; dmArcRender(); } });
+    dmNext.addEventListener("click", () => { dmArcPageIdx++; dmArcRender(); });
+    dmArcSearch.addEventListener("input", () => {
+      dmArcQuery = dmArcSearch.value.trim().toLowerCase();
+      dmArcPageIdx = 0;
+      dmArcRender();
+    });
+
+    dmArcRender();
+  }
+
+  // ── Demo: teaching activity (R13 resident-attending workflow) ──
+  const dmTcList = document.getElementById("dmTcList");
+  if (dmTcList) {
+    const esc = (s) => String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    const DM_TEACH = [
+      { id: "TC-2026-014", title: "Subarachnoid hemorrhage — convexity", diagnosis: "Subarachnoid hemorrhage (SAH)",
+        diff: ["Venous sinus thrombosis", "Reversible cerebral vasoconstriction", "Meningitis"],
+        points: ["SAH tracks the sulci, not the ventricles", "Non-contrast CT within 6h of onset is the study of choice"],
+        tags: ["neuro", "vascular", "CT"], modality: "CT", images: 6, resident: "J. Novak, MD", attending: "Dr. E. Vasquez",
+        status: "published", feedback: "", feedbackAt: "", publishedAt: "2026-08-06", viewed: 124 },
+      { id: "TC-2026-013", title: "Pyogenic liver abscess", diagnosis: "Pyogenic liver abscess",
+        diff: ["Complex hepatic cyst", "Necrotic metastasis"],
+        points: ["Target sign on the portal venous phase", "Always correlate with the clinical picture"],
+        tags: ["abdomen", "infection", "CT"], modality: "CT", images: 4, resident: "J. Novak, MD", attending: "Dr. E. Vasquez",
+        status: "pending", feedback: "", feedbackAt: "", publishedAt: "", viewed: 0 },
+      { id: "TC-2026-012", title: "Posterior fossa epidural hematoma", diagnosis: "Posterior fossa epidural hematoma",
+        diff: ["Subdural hematoma", "Venous sinus thrombosis"],
+        points: ["Biconvex shape that crosses sutures", "Venous origin — delayed expansion is the risk"],
+        tags: ["neuro", "trauma", "CT"], modality: "CT", images: 5, resident: "J. Novak, MD", attending: "Dr. E. Vasquez",
+        status: "revision",
+        feedback: "Please expand the differential to include sinus thrombosis and clarify why this hematoma is venous rather than arterial.",
+        feedbackAt: "2026-08-07 09:14", publishedAt: "", viewed: 0 },
+      { id: "TC-2026-010", title: "Mediastinal lymphoma — Hodgkin", diagnosis: "Hodgkin lymphoma (nodular sclerosis)",
+        diff: ["Thymoma", "Sarcoma"],
+        points: ["Anterior mediastinal mass with calcification after therapy", "PET-CT is used for staging"],
+        tags: ["chest", "oncology", "CT"], modality: "CT", images: 3, resident: "J. Novak, MD", attending: "Dr. E. Vasquez",
+        status: "published", feedback: "", feedbackAt: "", publishedAt: "2026-07-30", viewed: 218 },
+    ];
+    const TC_STATUS = { draft: ["draft", "Draft"], pending: ["pending", "Pending approval"], revision: ["revision", "Revision requested"], published: ["published", "Published"] };
+    const imgSel = {};
+    DM_TEACH.forEach((c) => { const s = new Set(); for (let i = 0; i < c.images; i++) s.add(i); imgSel[c.id] = s; });
+    let dmTcSel = 0;
+    let dmAqSel = 0;
+    let dmTcNext = 15;
+    const dmTcEditorEl = document.getElementById("dmTcEditor");
+    const dmAqListEl = document.getElementById("dmAqList");
+    const dmAqDetailEl = document.getElementById("dmAqDetail");
+    const dmToastEl = document.getElementById("dmTeachToast");
+    let toastTimer = null;
+    function dmToast(msg) {
+      dmToastEl.textContent = msg;
+      dmToastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => dmToastEl.classList.remove("show"), 2600);
+    }
+
+    function dmTcRenderList() {
+      dmTcList.innerHTML = "";
+      DM_TEACH.forEach((c, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "dm-tc-item" + (i === dmTcSel ? " active" : "");
+        const st = TC_STATUS[c.status][0];
+        b.innerHTML =
+          '<span class="t">' + esc(c.title) + '</span>' +
+          '<span class="m">' + esc(c.id) + " · " + esc(c.modality) + (c.status === "published" ? " · " + c.viewed + " views" : "") + '</span>' +
+          '<span class="row"><span class="dm-tag ' + st + '">' + TC_STATUS[c.status][1] + '</span>' +
+          '<span class="dm-tc-tags">' + c.tags.map((t) => '<span class="dm-chipx">' + esc(t) + '</span>').join("") + '</span></span>';
+        b.addEventListener("click", () => { dmTcSel = i; dmTcRenderList(); dmTcRenderEditor(); });
+        dmTcList.appendChild(b);
+      });
+    }
+
+    function dmTcRenderEditor() {
+      const c = DM_TEACH[dmTcSel];
+      // Published cases are immutable (de-identified) — only drafts and
+      // revision-requested cases are editable; pending cases are locked.
+      const locked = c.status === "pending" || c.status === "published";
+      dmTcEditorEl.innerHTML = "";
+      const fb = c.feedback ? '<div class="dm-feedback"><b>Attending feedback</b> — ' + esc(c.feedback) + '<span class="t">' + esc(c.attending) + " · " + esc(c.feedbackAt) + "</span></div>" : "";
+      const wrap = document.createElement("div");
+      wrap.innerHTML =
+        fb +
+        '<div class="dm-field"><label for="dmTcTitle">Case title</label><input id="dmTcTitle" type="text" value="' + esc(c.title) + '"' + (locked ? " disabled" : "") + '/></div>' +
+        '<div class="dm-field"><label for="dmTcDiag">Final diagnosis</label><input id="dmTcDiag" type="text" value="' + esc(c.diagnosis) + '"' + (locked ? " disabled" : "") + '/></div>' +
+        '<div class="dm-field"><label for="dmTcDiff">Differential diagnosis <span style="text-transform:none;letter-spacing:0">(one per line)</span></label><textarea id="dmTcDiff"' + (locked ? " disabled" : "") + '>' + esc(c.diff.join("\n")) + '</textarea></div>' +
+        '<div class="dm-field"><label for="dmTcPts">Key learning points</label><textarea id="dmTcPts"' + (locked ? " disabled" : "") + '>' + esc(c.points.join("\n")) + '</textarea></div>' +
+        '<div class="dm-field"><label for="dmTcTags">Tags <span style="text-transform:none;letter-spacing:0">(comma separated)</span></label><input id="dmTcTags" type="text" value="' + esc(c.tags.join(", ")) + '"' + (locked ? " disabled" : "") + '/></div>' +
+        '<div class="dm-field"><label>Key images <span style="text-transform:none;letter-spacing:0">(' + imgSel[c.id].size + ' of ' + c.images + ' selected)</span></label><div class="dm-thumbs">' +
+          Array.from({ length: c.images }, (_, i) => '<button type="button" class="dm-thumb2' + (imgSel[c.id].has(i) ? " sel" : "") + '" data-img="' + i + '" aria-label="Select key image ' + (i + 1) + '"' + (locked ? " disabled" : "") + '></button>').join("") +
+        '</div></div>' +
+        '<div class="dm-deid"><span class="ok">●</span> De-identified on publish — PHI scan and DICOM tag stripping run automatically.</div>' +
+        '<div class="dm-actions2" style="margin-top:10px;">' +
+          '<button class="dm-btn ghost" type="button" id="dmTcSave"' + (locked ? " disabled" : "") + '>Save draft</button>' +
+          '<button class="dm-btn primary" type="button" id="dmTcSubmit"' + (locked ? " disabled" : "") + '>Submit for approval</button>' +
+        '</div>';
+      dmTcEditorEl.appendChild(wrap);
+      if (!locked) {
+        const sync = () => {
+          c.title = document.getElementById("dmTcTitle").value.trim() || c.title;
+          c.diagnosis = document.getElementById("dmTcDiag").value.trim();
+          c.diff = document.getElementById("dmTcDiff").value.split("\n").map((s) => s.trim()).filter(Boolean);
+          c.points = document.getElementById("dmTcPts").value.split("\n").map((s) => s.trim()).filter(Boolean);
+          c.tags = document.getElementById("dmTcTags").value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+        };
+        ["dmTcTitle", "dmTcDiag", "dmTcDiff", "dmTcPts", "dmTcTags"].forEach((id) => {
+          document.getElementById(id).addEventListener("input", sync);
+        });
+        wrap.querySelectorAll(".dm-thumb2").forEach((b) => {
+          b.addEventListener("click", () => {
+            const i = Number(b.dataset.img);
+            if (imgSel[c.id].has(i)) imgSel[c.id].delete(i); else imgSel[c.id].add(i);
+            dmTcRenderEditor();
+          });
+        });
+        document.getElementById("dmTcSave").addEventListener("click", () => {
+          if (c.status !== "draft") c.status = "draft";
+          dmTcRenderList(); dmTcRenderEditor();
+          dmToast("Draft saved · auto-save is on");
+        });
+        document.getElementById("dmTcSubmit").addEventListener("click", () => {
+          if (!c.diagnosis) { dmToast("Add a final diagnosis before submitting"); return; }
+          if (!imgSel[c.id].size) { dmToast("Select at least one key image"); return; }
+          c.status = "pending";
+          dmTcRenderList(); dmTcRenderEditor();
+          dmToast("Submitted for attending approval · Dr. E. Vasquez notified");
+        });
+      }
+    }
+
+    document.getElementById("dmTcNew").addEventListener("click", () => {
+      const id = "TC-2026-" + String(dmTcNext++).padStart(3, "0");
+      DM_TEACH.unshift({ id: id, title: "Untitled teaching case", diagnosis: "", diff: [], points: [], tags: ["pending-tags"],
+        modality: "CT", images: 5, resident: "J. Novak, MD", attending: "Dr. E. Vasquez", status: "draft",
+        feedback: "", feedbackAt: "", publishedAt: "", viewed: 0 });
+      const s = new Set(); for (let i = 0; i < 5; i++) s.add(i); imgSel[id] = s;
+      dmTcSel = 0;
+      dmTcRenderList(); dmTcRenderEditor();
+      dmToast("New case captured from study 20260811007 · key images attached");
+    });
+
+    // ── Attending side ──
+    function dmAqPending() { return DM_TEACH.filter((c) => c.status === "pending"); }
+    function dmAqRenderList() {
+      const pending = dmAqPending();
+      dmAqListEl.innerHTML = "";
+      if (!pending.length) {
+        const p = document.createElement("p");
+        p.style.cssText = "font-size:12.5px;color:var(--ink-3);padding:12px 4px;";
+        p.textContent = "No drafts pending review.";
+        dmAqListEl.appendChild(p);
+        dmAqSel = -1;
+        dmAqDetailEl.innerHTML = '<p style="font-size:12.5px;color:var(--ink-3);">The review queue is clear. Submitted resident drafts appear here for approval or revision.</p>';
+        return;
+      }
+      if (dmAqSel < 0 || dmAqSel >= pending.length) dmAqSel = 0;
+      pending.forEach((c, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "dm-tc-item" + (i === dmAqSel ? " active" : "");
+        b.innerHTML =
+          '<span class="t">' + esc(c.title) + '</span>' +
+          '<span class="m">' + esc(c.id) + " · " + esc(c.modality) + '</span>' +
+          '<span class="row"><span class="dm-tag pending">Pending approval</span><span class="dm-chipx">' + esc(c.resident) + '</span></span>';
+        b.addEventListener("click", () => { dmAqSel = i; dmAqRenderList(); dmAqRenderDetail(); });
+        dmAqListEl.appendChild(b);
+      });
+    }
+
+    function dmAqRenderDetail() {
+      const pending = dmAqPending();
+      dmAqDetailEl.innerHTML = "";
+      if (dmAqSel < 0 || !pending.length) {
+        dmAqDetailEl.innerHTML = "<p style='font-size:12.5px;color:var(--ink-3);'>Select a submitted draft to review it against the resident's work.</p>";
+        return;
+      }
+      const c = pending[dmAqSel];
+      const wrap = document.createElement("div");
+      wrap.innerHTML =
+        '<div class="dm-readonly" style="display:grid;gap:10px;">' +
+          '<div><span class="lbl">Resident diagnosis</span>' + (c.diagnosis ? esc(c.diagnosis) : "—") + '</div>' +
+          '<div><span class="lbl">Differential</span>' + (c.diff.length ? c.diff.map((d) => '<span class="dm-chipx">' + esc(d) + '</span>').join(" ") : "—") + '</div>' +
+          '<div><span class="lbl">Learning points</span><ul>' + c.points.map((p) => "<li>" + esc(p) + "</li>").join("") + '</ul></div>' +
+          '<div><span class="lbl">Tags</span><span class="dm-tc-tags" style="display:inline-flex;gap:6px;">' + c.tags.map((t) => '<span class="dm-chipx">' + esc(t) + '</span>').join("") + '</span></div>' +
+        '</div>' +
+        '<div class="dm-field" style="margin-top:12px;"><label for="dmAqFb">Feedback to the resident</label><textarea id="dmAqFb" placeholder="Leave a comment, or approve to publish the de-identified case."></textarea></div>' +
+        '<div class="dm-actions2">' +
+          '<button class="dm-btn primary" type="button" id="dmAqApprove">Approve & publish</button>' +
+          '<button class="dm-btn ghost" type="button" id="dmAqReturn">Return for revision</button>' +
+        '</div>';
+      dmAqDetailEl.appendChild(wrap);
+      document.getElementById("dmAqApprove").addEventListener("click", () => {
+        c.status = "published"; c.publishedAt = "2026-08-11"; c.viewed = 0; c.feedback = ""; c.feedbackAt = "";
+        dmToast("De-identifying (PHI scan)…");
+        setTimeout(() => {
+          dmAqRenderList(); dmAqRenderDetail(); dmTcRenderList();
+          dmToast("Published · de-identified copy created · J. Novak notified");
+        }, 900);
+      });
+      document.getElementById("dmAqReturn").addEventListener("click", () => {
+        const t = document.getElementById("dmAqFb").value.trim();
+        if (!t) { dmToast("Add feedback before returning the case"); return; }
+        c.status = "revision"; c.feedback = t; c.feedbackAt = new Date().toLocaleString();
+        dmAqRenderList(); dmAqRenderDetail(); dmTcRenderList();
+        dmToast("Returned to J. Novak for revision");
+      });
+    }
+
+    // ── Role switcher ──
+    const rRes = document.getElementById("dmRoleResident");
+    const rAtt = document.getElementById("dmRoleAttending");
+    const pRes = document.getElementById("dmTeachResident");
+    const pAtt = document.getElementById("dmTeachAttending");
+    function dmRole(role) {
+      const onR = role === "resident";
+      rRes.classList.toggle("active", onR); rAtt.classList.toggle("active", !onR);
+      rRes.setAttribute("aria-pressed", onR ? "true" : "false");
+      rAtt.setAttribute("aria-pressed", onR ? "false" : "true");
+      pRes.hidden = !onR; pAtt.hidden = onR;
+      if (!onR) dmAqRenderList();
+    }
+    rRes.addEventListener("click", () => dmRole("resident"));
+    rAtt.addEventListener("click", () => dmRole("attending"));
+
+    dmTcRenderList();
+    dmTcRenderEditor();
+    dmAqRenderList();
+    dmAqRenderDetail();
+  }
+
+  // ── Product demos: device-size switcher (container-query responsive) ──
+  const demoShell = document.getElementById("demoShell");
+  if (demoShell) {
+    document.querySelectorAll("[data-device]").forEach((b) => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll("[data-device]").forEach((x) => {
+          const on = x === b;
+          x.classList.toggle("active", on);
+          x.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+        demoShell.setAttribute("data-size", b.dataset.device);
+      });
+    });
+  }
+
+  // ── Device frames showcase: four bezeled devices, real mini-UI slices ──
+  const dmFrames = document.getElementById("dmFrames");
+  if (dmFrames) {
+    const F_STUDIES = [
+      { p: "Okafor, Chidi", mrn: "11845207", st: "CT Head w/ contrast", mod: "CT", prio: "stat" },
+      { p: "Haddad, Omar", mrn: "22761049", st: "CT Abdomen w/ contrast", mod: "CT", prio: "stat" },
+      { p: "Lindqvist, Elin", mrn: "15476320", st: "MR Brain w/o contrast", mod: "MR", prio: "urgent" },
+      { p: "Mitchell, Sarah R.", mrn: "20488173", st: "CT Head w/o contrast", mod: "CT", prio: "urgent" },
+      { p: "Delgado, Rosa", mrn: "09312864", st: "DX Chest 2 views", mod: "DX", prio: "routine" },
+    ];
+    const F_PRIO = { stat: "STAT", urgent: "Urgent", routine: "Routine" };
+
+    function fwWorklist() {
+      return '<div class="fw-head"><h3>Reading Worklist</h3><span class="fw-refresh">auto-refresh · 30s</span><span class="fw-live">● live</span></div>' +
+        '<div class="fw-filters"><span class="dm-chip active">All</span><span class="dm-chip stat">STAT</span><span class="dm-chip urgent">Urgent</span><span class="dm-chip routine">Routine</span></div>' +
+        '<table class="dm-table fw-table"><thead><tr><th>Priority</th><th>MRN</th><th>Patient</th><th>Mod</th><th>Study</th></tr></thead><tbody>' +
+        F_STUDIES.map((s) =>
+          '<tr><td><span class="dm-tag ' + s.prio + '">' + F_PRIO[s.prio] + '</span></td><td class="mono">' + s.mrn + '</td><td class="strong">' + s.p + '</td><td>' + s.mod + '</td><td>' + s.st + '</td></tr>'
+        ).join("") + '</tbody></table>';
+    }
+
+    function fwViewer() {
+      return '<div class="fw-vw-top"><span><b>Mitchell, Sarah R.</b> <span class="fw-muted">(20488173)</span> · CT Head · Series 2 · File 031</span><span class="fw-vw-tabs"><b>Image</b> Data Share</span></div>' +
+        '<div class="fw-vw-toolbar"><span class="fw-tool on">WL</span><span class="fw-tool">Pan</span><span class="fw-tool">Zoom</span><span class="fw-tool">Measure</span><span class="fw-tool mono">80 / 40</span></div>' +
+        '<div class="fw-vw-body"><div class="fw-img"></div>' +
+        '<div class="fw-rail"><div class="fw-thumbs">' +
+          Array.from({ length: 6 }, (_, i) => '<span class="fw-thumb' + (i === 2 ? " on" : "") + '"></span>').join("") +
+        '</div><div class="fw-presets"><span class="fw-p on">Brain <i>80/40</i></span><span class="fw-p">Bone <i>1500/450</i></span><span class="fw-p">Lung <i>1500/-500</i></span></div></div></div>' +
+        '<div class="fw-vw-status"><span>Window / Level · 2 of 2</span><span class="fw-live">● rendered in-browser</span></div>';
+    }
+
+    function fwDash() {
+      return '<div class="fw-head"><h3>Operations Dashboard</h3><span class="fw-live">● all nominal</span></div>' +
+        '<div class="fw-kpis">' +
+          [["Studies", "12,418"], ["Files", "1.24M"], ["Storage", "3.9 TB"], ["Users", "342"]].map((k) =>
+            '<div class="fw-kpi"><span class="lab">' + k[0] + '</span><span class="val">' + k[1] + '</span></div>'
+          ).join("") +
+        '</div>' +
+        '<div class="fw-spark"><svg viewBox="0 0 560 76" preserveAspectRatio="none" role="img" aria-label="Studies ingested per day"><polyline points="4,60 46,52 88,56 130,42 172,46 214,30 256,36 298,22 340,28 382,14 424,20 466,8 508,12 556,4" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
+        '<div class="fw-bars">' + [["CT", 42], ["MR", 31], ["DX", 18], ["US", 9]].map((m) =>
+          '<div class="fw-bar"><span>' + m[0] + '</span><i style="width:' + m[1] + '%"></i><b>' + m[1] + '%</b></div>'
+        ).join("") + '</div>';
+    }
+
+    function fwTeach() {
+      const cases = [
+        { t: "Subarachnoid hemorrhage — convexity", st: "Published", cls: "published" },
+        { t: "Pyogenic liver abscess", st: "Pending approval", cls: "pending" },
+        { t: "Posterior fossa epidural hematoma", st: "Revision requested", cls: "revision" },
+        { t: "Mediastinal lymphoma — Hodgkin", st: "Published", cls: "published" },
+      ];
+      return '<div class="fw-head"><h3>Teaching Library</h3><span class="fw-live">● J. Novak</span></div>' +
+        cases.map((c) =>
+          '<div class="fw-card"><div class="fw-card-top"><span class="dm-tag ' + c.cls + '">' + c.st + '</span></div>' +
+          '<div class="strong">' + c.t + '</div><div class="muted mono">TC-2026 · CT · 6 images</div></div>'
+        ).join("");
+    }
+
+    const DEVICES = [
+      { id: "monitor", label: "Desktop", sub: "27″ reading room", kind: "viewer" },
+      { id: "laptop", label: "Laptop", sub: "13″ · on call", kind: "worklist" },
+      { id: "tablet", label: "Tablet", sub: "11″ · front desk", kind: "dash" },
+      { id: "phone", label: "Phone", sub: "6.1″ · technologist", kind: "teach" },
+    ];
+    DEVICES.forEach((d) => {
+      const fig = document.createElement("figure");
+      fig.className = "dev dev-" + d.id;
+      const content = d.kind === "viewer" ? fwViewer() : d.kind === "worklist" ? fwWorklist() : d.kind === "dash" ? fwDash() : fwTeach();
+      fig.innerHTML =
+        '<div class="dev-bezel"><div class="dev-screen-wrap"><div class="dev-screen">' + content + '</div></div></div>' +
+        '<figcaption>' + d.label + '<span>' + d.sub + '</span></figcaption>';
+      dmFrames.appendChild(fig);
+    });
+  }
+
+  // Scroll reveal via IntersectionObserver (no window scroll listeners)
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce && "IntersectionObserver" in window) {
+    const els = document.querySelectorAll(".sec-head, .cell, .step, .report-card, .spot-facts, .quote, .band, .cta-inner, .hero-copy, .viewer-frame, .demo-shell, .frames");
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.14, rootMargin: "0px 0px -8% 0px" });
+    els.forEach((el) => { el.classList.add("reveal"); io.observe(el); });
+  }
+</script>
+</body>
+</html>

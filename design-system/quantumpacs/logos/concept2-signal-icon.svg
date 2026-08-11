@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t2 d2">
+  <title id="t2">QuantumPACS — The Signal concept</title>
+  <desc id="d2">A calm medical pulse waveform on a baseline, drawn in the brand gradient — the study moving through the system.</desc>
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.55" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- baseline -->
+  <line x1="10" y1="64" x2="90" y2="64" stroke="#CBD5E1" stroke-width="3" stroke-linecap="round"/>
+  <!-- pulse -->
+  <path d="M14,64 H32 L39,50 L45,74 L52,28 L60,64 H86" fill="none" stroke="url(#g2)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- peak node -->
+  <circle cx="52" cy="28" r="5" fill="#059669"/>
+</svg>

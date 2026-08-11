@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS — Email Signature Kit</title>
+<style>
+  /* ── Kit page styling (the signatures themselves are email-safe inline tables) ── */
+  :root {
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", "Fira Code", Menlo, monospace;
+  }
+  [data-theme="dark"] {
+    --canvas: #0F172A; --panel: #1E293B; --panel-2: #334155;
+    --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #94A3B8;
+    --rule: #334155; --chip: #22D3EE; --chip-ink: #0F172A;
+  }
+  [data-theme="light"] {
+    --canvas: #F8FAFC; --panel: #FFFFFF; --panel-2: #F1F5F9;
+    --ink: #1E293B; --ink-2: #475569; --ink-3: #64748B;
+    --rule: #E2E8F0; --chip: #0E7490; --chip-ink: #FFFFFF;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-sans); background: var(--canvas); color: var(--ink);
+         -webkit-font-smoothing: antialiased; transition: background 250ms ease, color 250ms ease; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .board { max-width: 1080px; margin: 0 auto; padding: 40px 28px 80px; }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+  .masthead h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .sub { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 3px; }
+  .tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .toggle { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+            background: var(--chip); color: var(--chip-ink); border: none; }
+  .toggle:hover { transform: translateY(-1px); }
+  .toggle:focus-visible { outline: 2px solid var(--chip); outline-offset: 2px; }
+
+  .lede { font-size: 14px; color: var(--ink-2); max-width: 720px; line-height: 1.65; margin: 18px 0 24px; }
+  .lede code { font-family: var(--font-mono); font-size: 12px; color: var(--chip); }
+
+  /* setup bar */
+  .setup { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 16px 18px; margin-bottom: 28px; }
+  .setup label { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); margin-bottom: 8px; }
+  .setup input[type="url"] { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--rule);
+    background: var(--canvas); color: var(--ink); font-family: var(--font-mono); font-size: 12.5px; }
+  .setup input:focus { outline: 2px solid var(--chip); outline-offset: 1px; border-color: transparent; }
+  .setup .hint { font-size: 12px; color: var(--ink-3); margin-top: 7px; line-height: 1.5; }
+
+  /* family sections */
+  .family { margin-bottom: 36px; }
+  .family-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .family-head h2 { font-size: 16px; font-weight: 700; }
+  .family-head .tag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--chip); border: 1px solid var(--chip); border-radius: 999px; padding: 2px 9px; }
+  .sig-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .sig-grid { grid-template-columns: 1fr; } }
+
+  .sig-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column; }
+  .sig-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  .sig-card-head .name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+  .sig-card-head .actions { display: flex; gap: 8px; }
+  .btn { font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 7px; cursor: pointer; border: 1px solid var(--rule);
+    background: var(--panel-2); color: var(--ink-2); font-family: var(--font-sans); transition: border-color 150ms ease, color 150ms ease; }
+  .btn:hover { border-color: var(--chip); color: var(--chip); }
+  .btn.primary { background: var(--chip); color: var(--chip-ink); border-color: transparent; }
+  .btn.primary:hover { opacity: 0.9; }
+  .btn:focus-visible { outline: 2px solid var(--chip); outline-offset: 1px; }
+
+  /* preview surface — the signature itself is table-based, shown as a recipient would see it */
+  .sig-preview { padding: 22px 18px; overflow-x: auto; }
+  .sig-preview.surface-light { background: #FFFFFF; }
+  .sig-preview.surface-dark { background: #0F172A; }
+  .sig-preview table { min-width: 260px; }
+
+  .raw { display: none; border-top: 1px solid var(--rule); background: var(--canvas); }
+  .raw.open { display: block; }
+  .raw pre { padding: 12px 14px; font-family: var(--font-mono); font-size: 10.5px; line-height: 1.55;
+    color: var(--ink-2); overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto; }
+
+  .notes { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 20px; margin-top: 8px; }
+  .notes h3 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); margin-bottom: 10px; }
+  .notes ul { list-style: none; display: grid; gap: 8px; font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+  .notes li { display: flex; gap: 8px; }
+  .notes .k { color: var(--chip); font-weight: 700; flex-shrink: 0; }
+  .notes.checklist { border-color: var(--chip); }
+  .notes.checklist h3 { color: var(--chip); }
+  .notes.checklist li { align-items: baseline; }
+  .notes.checklist .tick { color: var(--chip); flex-shrink: 0; }
+
+  .foot { margin-top: 34px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    border-top: 1px solid var(--rule); padding-top: 16px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .foot a { color: var(--chip); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="masthead">
+    <div>
+      <h1>Email Signature Kit</h1>
+      <div class="sub">QuantumPACS · Copy-paste signatures for Outlook &amp; Gmail</div>
+    </div>
+    <div class="tools">
+      <button class="toggle" id="themeToggle" type="button">Switch to light board</button>
+    </div>
+  </header>
+
+  <p class="lede">
+    Every block below is a plain, <strong>email-safe HTML table</strong> with inline styles — no flexbox, no CSS classes —
+    so it survives Outlook's Word engine and Gmail's sanitizer. Click <strong>Copy HTML</strong>, then paste into your
+    mail client's signature editor (Gmail: Settings → Signature; Outlook: File → Options → Mail → Signatures, toggle
+    "Edit with HTML"). Uses the PNG exports from <code>logos/png/</code>.
+  </p>
+
+  <div class="setup">
+    <label for="baseUrl">Image base URL (for hosted deployments — leave empty to keep relative paths)</label>
+    <input type="url" id="baseUrl" placeholder="https://static.quantumpacs.example/brand/logos" autocomplete="off" spellcheck="false" />
+    <p class="hint">If you leave this empty, the copied HTML references <code>png/&lt;family&gt;/…</code> relative to this file. For real mail, upload the PNGs to a host and paste the absolute folder URL above — every signature updates instantly and copies with absolute image paths.</p>
+  </div>
+
+  <!-- ── Orbit · shipped mark ── -->
+  <section class="family" data-family="orbit">
+    <div class="family-head"><h2>Orbit — the incumbent</h2><span class="tag">shipped</span></div>
+    <div class="sig-grid">
+      <!-- icon · light -->
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <!-- lockup · light -->
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <!-- icon · dark -->
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <!-- lockup · dark -->
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Q-Orbit · round 2 ── -->
+  <section class="family" data-family="qorbit">
+    <div class="family-head"><h2>Q-Orbit — recommended</h2><span class="tag">round 2</span></div>
+    <div class="sig-grid">
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Aperture · round 2 ── -->
+  <section class="family" data-family="aperture">
+    <div class="family-head"><h2>Aperture — recommended</h2><span class="tag">round 2</span></div>
+    <div class="sig-grid">
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · light</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-light"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Icon · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-card-head"><span class="name">Lockup · dark</span><span class="actions"><button class="btn" type="button" data-copy>Copy HTML</button><button class="btn" type="button" data-raw>Raw</button></span></div>
+        <div class="sig-preview surface-dark"></div>
+        <div class="raw"><pre></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="notes">
+    <h3>Installation &amp; usage notes</h3>
+    <ul>
+      <li><span class="k">Gmail</span> Settings → "Signature" → paste the copied HTML into the editor. Gmail keeps inline styles; block-based layout is safe.</li>
+      <li><span class="k">Outlook</span> File → Options → Mail → Signatures → New → Edit with HTML → paste. Outlook's Word engine requires the table layout used here — do not add flexbox or CSS classes.</li>
+      <li><span class="k">Images</span> Relative PNG paths render on this page only. For outgoing mail, set the base URL above and re-copy, or upload the <code>png/</code> folder and swap paths. Outlook and Gmail block remote images by default — recipients may need to click "show images"; the <code>alt="QuantumPACS"</code> text keeps the signature identifiable either way.</li>
+      <li><span class="k">Colors</span> Text is inline-styled (slate-800 on light, slate-100 on dark); the brand cyan accents the name. Font stack is Arial/Helvetica — universal in mail clients.</li>
+      <li><span class="k">Dark mode</span> Gmail/Outlook do not reliably support <code>prefers-color-scheme</code>; the dark blocks are provided for dark-themed compose windows where the light block would glare.</li>
+    </ul>
+  </div>
+
+  <div class="notes checklist">
+    <h3>Send yourself a test · 5-minute pre-flight</h3>
+    <ul>
+      <li><span class="tick">✓</span><span><strong>Light block</strong> — email yourself, open in Gmail (web + iOS/Android) and Outlook (desktop + web). The logo and all four text lines must render in one row, no wrap or overflow.</span></li>
+      <li><span class="tick">✓</span><span><strong>Dark block</strong> — repeat with the dark variant on a dark-themed compose window. Slate-900 background with no pale halo around the image, and the cyan name/link still readable.</span></li>
+      <li><span class="tick">✓</span><span><strong>Images</strong> — with "show images" enabled (Gmail) or images unblocked (Outlook), the mark loads from its hosted URL; the <code>alt="QuantumPACS"</code> text shows until then. Broken image? Wrong base URL or the PNG folder isn't reachable.</span></li>
+      <li><span class="tick">✓</span><span><strong>Links</strong> — the website link and mailto/phone text work; cyan link has no unwanted underline in Outlook's Word engine.</span></li>
+      <li><span class="tick">✓</span><span><strong>Reply-embed quirk (Outlook)</strong> — reply to your own test. Outlook pastes the <em>entire</em> message on reply; if the signature appears twice or loses its image, re-save the signature and re-test. Gmail: fine.</span></li>
+      <li><span class="tick">✓</span><span><strong>Forward test</strong> — forward the test to a colleague; confirm the table doesn't collapse into stacked lines (a sign the signature editor stripped the table — re-paste as HTML).</span></li>
+    </ul>
+  </div>
+
+  <footer class="foot">
+    <span>QuantumPACS · Email Signature Kit v1.0</span>
+    <span>assets: <code>logos/png/*</code> · <a href="brand-board.html">brand board</a> · <a href="../../LICENSE.md">license</a></span>
+  </footer>
+</div>
+
+<script>
+  const html = document.documentElement;
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    document.getElementById("themeToggle").textContent = next === "dark" ? "Switch to light board" : "Switch to dark board";
+  });
+
+  /* ── signature builder: email-safe tables ── */
+  const CONTACT = {
+    name: "Dr. Jane Smith, MD",
+    role: "Chief of Radiology",
+    org: "QuantumPACS",
+    email: "jane.smith@quantumpacs.example",
+    phone: "+1 (555) 010-2233",
+    site: "quantumpacs.example",
+  };
+
+  // family -> image paths (relative to this HTML; base URL prepended at copy time)
+  const IMG = {
+    orbit: {
+      iconLight: "png/orbit/orbit-current-icon-48.png",
+      lockupLight: "png/orbit/orbit-current-lockup-128.png",
+      iconDark: "png/orbit/orbit-current-icon-mono-light-64.png",
+      lockupDark: "png/orbit/orbit-lockup-mono-light-256.png",
+    },
+    qorbit: {
+      iconLight: "png/qorbit/qorbit-icon-48.png",
+      lockupLight: "png/qorbit/qorbit-lockup-horizontal-128.png",
+      iconDark: "png/qorbit/qorbit-icon-mono-light-64.png",
+      lockupDark: "png/qorbit/qorbit-lockup-mono-light-256.png",
+    },
+    aperture: {
+      iconLight: "png/aperture/aperture-icon-48.png",
+      lockupLight: "png/aperture/aperture-lockup-horizontal-128.png",
+      iconDark: "png/aperture/aperture-icon-mono-light-64.png",
+      lockupDark: "png/aperture/aperture-lockup-mono-light-256.png",
+    },
+  };
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /* Theme palettes — the only per-theme differences are colors + image selection */
+  const THEMES = {
+    light: {
+      imgKey: (kind) => (kind === "lockup" ? "lockupLight" : "iconLight"),
+      size: (kind) => (kind === "lockup" ? [128, 30] : [48, 48]),
+      bg: "#FFFFFF", text: "#475569", name: "#0E7490", body: "#1E293B", link: "#0E7490",
+    },
+    dark: {
+      // icon card -> mono-light icon; lockup card -> mono-light lockup (white
+      // ink, cyan PACS accent) at 256x60 — above the 140px brand minimum, crisp on retina
+      imgKey: (kind) => (kind === "lockup" ? "lockupDark" : "iconDark"),
+      size: (kind) => (kind === "lockup" ? [256, 60] : [48, 48]),
+      bg: "#0F172A", text: "#CBD5E1", name: "#22D3EE", body: "#F1F5F9", link: "#22D3EE",
+    },
+  };
+
+  /* Email-safe signature table — inline styles only, no classes/flexbox */
+  function sig(family, kind, theme) {
+    const t = THEMES[theme];
+    const [w, h] = t.size(kind);
+    const img = IMG[family][t.imgKey(kind)];
+    const imgTag = `<img src="${img}" width="${w}" height="${h}" alt="QuantumPACS" style="display:block;width:${w}px;height:${h}px;" />`;
+    return [
+      '<!-- QuantumPACS signature · ' + family + ' ' + kind + ' · ' + theme + ' -->',
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;background:' + t.bg + ';">',
+      '  <tr>',
+      '    <td style="padding:0 16px 0 0;vertical-align:middle;">' + imgTag + '</td>',
+      '    <td style="vertical-align:middle;font-size:12px;line-height:1.55;color:' + t.text + ';">',
+      '      <div style="font-size:15px;font-weight:700;color:' + t.name + ';">' + esc(CONTACT.name) + '</div>',
+      '      <div style="color:' + t.body + ';">' + esc(CONTACT.role) + ' · ' + esc(CONTACT.org) + '</div>',
+      '      <div>' + esc(CONTACT.email) + ' · ' + esc(CONTACT.phone) + '</div>',
+      '      <div><a href="https://' + esc(CONTACT.site) + '" style="color:' + t.link + ';text-decoration:none;">' + esc(CONTACT.site) + '</a></div>',
+      '    </td>',
+      '  </tr>',
+      '</table>',
+    ].join("\n");
+  }
+
+  const baseInput = document.getElementById("baseUrl");
+
+  function resolve(src) {
+    const base = baseInput.value.trim().replace(/\/+$/, "");
+    return base ? base + "/" + src : src;
+  }
+
+  /* build each signature card */
+  document.querySelectorAll(".sig-card").forEach((card) => {
+    const preview = card.querySelector(".sig-preview");
+    const surfaceDark = preview.classList.contains("surface-dark");
+    const kind = card.querySelector(".name").textContent.includes("Lockup") ? "lockup" : "icon";
+    const family = card.closest(".family").dataset.family;
+    const srcHtml = sig(family, kind, surfaceDark ? "dark" : "light");
+
+    // resolved copy (absolute image URLs)
+    const resolvedHtml = srcHtml.replace(/src="([^"]+)"/g, (m, src) => `src="${resolve(src)}"`);
+    preview.innerHTML = resolvedHtml;
+    card.querySelector(".raw pre").textContent = resolvedHtml;
+
+    card.querySelector("[data-copy]").addEventListener("click", () => {
+      const text = card.querySelector(".raw pre").textContent;
+      const done = () => {
+        const btn = card.querySelector("[data-copy]");
+        const old = btn.textContent;
+        btn.textContent = "Copied ✓";
+        setTimeout(() => { btn.textContent = old; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    });
+
+    card.querySelector("[data-raw]").addEventListener("click", () => {
+      card.querySelector(".raw").classList.toggle("open");
+    });
+  });
+
+  function fallbackCopy(text, done) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+    document.body.removeChild(ta);
+    done();
+  }
+
+  /* re-render on base-URL change so previews + copy reflect the hosted paths */
+  baseInput.addEventListener("input", () => {
+    document.querySelectorAll(".sig-card").forEach((card) => {
+      const family = card.closest(".family").dataset.family;
+      const surfaceDark = card.querySelector(".sig-preview").classList.contains("surface-dark");
+      const kind = card.querySelector(".name").textContent.includes("Lockup") ? "lockup" : "icon";
+      const srcHtml = sig(family, kind, surfaceDark ? "dark" : "light");
+      const resolvedHtml = srcHtml.replace(/src="([^"]+)"/g, (m, src) => `src="${resolve(src)}"`);
+      card.querySelector(".sig-preview").innerHTML = resolvedHtml;
+      card.querySelector(".raw pre").textContent = resolvedHtml;
+    });
+  });
+</script>
+</body>
+</html>

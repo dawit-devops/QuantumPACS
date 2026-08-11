@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantumPACS — Orbit Family: Round 1 vs Refined</title>
+<style>
+  /* ────────────────────────────────────────────────────────────
+     QuantumPACS Orbit Family Comparison (Round 2)
+     Values mirror frontend/src/common/tokens.css
+     ──────────────────────────────────────────────────────────── */
+  :root {
+    --qp-primary: #0E7490;   /* cyan-700 */
+    --qp-secondary: #22D3EE; /* cyan-400 */
+    --qp-accent: #059669;    /* teal-600 */
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+    --font-heading: Figtree, var(--font-sans);
+    --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #0F172A; --panel: #1E293B; --panel-2: #334155;
+    --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #94A3B8;
+    --rule: #334155; --chip: #22D3EE; --chip-ink: #0F172A;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+    --canvas: #F8FAFC; --panel: #FFFFFF; --panel-2: #F1F5F9;
+    --ink: #1E293B; --ink-2: #475569; --ink-3: #64748B;
+    --rule: #E2E8F0; --chip: #0E7490; --chip-ink: #FFFFFF;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--font-sans); background: var(--canvas); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    transition: background 250ms cubic-bezier(0.4,0,0.2,1), color 250ms cubic-bezier(0.4,0,0.2,1);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  .board {
+    max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px;
+    background-image:
+      linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; }
+  .masthead .brand { display: flex; align-items: center; gap: 14px; }
+  .masthead h1 { font-family: var(--font-heading); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .masthead .sub { font-size: 12px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--rule); font-size: 12px; font-weight: 600; color: var(--ink-2);
+  }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip); display: inline-block; }
+  .toggle {
+    font-family: var(--font-sans); font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; background: var(--chip); color: var(--chip-ink); border: none;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .toggle:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+  .toggle:focus-visible { outline: 2px solid var(--chip); outline-offset: 2px; }
+
+  .lede { font-size: 14px; color: var(--ink-2); max-width: 720px; line-height: 1.6; margin-bottom: 32px; }
+  .lede a { color: var(--chip); text-decoration: none; }
+  .lede a:hover { text-decoration: underline; }
+
+  .section-head { margin: 40px 0 16px; }
+  .section-head h2 { font-family: var(--font-heading); font-size: 17px; font-weight: 700; }
+  .section-head p { font-size: 12px; color: var(--ink-3); margin-top: 4px; max-width: 700px; line-height: 1.5; }
+
+  .tile { border-radius: 10px; padding: 22px 10px; display: flex; align-items: center; justify-content: center; min-height: 120px; }
+  .tile.dark { background: #0F172A; }
+  .tile.light { background: #FFFFFF; border: 1px solid #E2E8F0; }
+  .tile img { max-width: 110px; height: auto; }
+  .tile-cap { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 6px; text-align: center; }
+
+  .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  .vs-card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 22px;
+    display: flex; flex-direction: column; gap: 14px;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .vs-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.18); }
+  .vs-card.refined { border-color: var(--chip); }
+  .vs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .vs-head h3 { font-family: var(--font-heading); font-size: 16px; font-weight: 700; }
+  .vs-head .idea { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .badge {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--chip); border: 1px solid var(--chip); border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+  }
+  .vs-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .lockup-block { border-radius: 10px; padding: 18px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; }
+  .lockup-block img { display: block; width: 100%; height: auto; }
+  .lockup-cap { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 8px; }
+  .rationale { font-size: 12px; color: var(--ink-2); line-height: 1.55; }
+  .rationale code { font-family: var(--font-mono); font-size: 11px; color: var(--chip); }
+
+  .family-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .family-cell {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 12px 8px 10px; display: flex; flex-direction: column; gap: 8px;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .family-cell:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.18); }
+  .family-cell .tile { min-height: 96px; padding: 14px 8px; }
+  .family-cell .tile img { max-width: 64px; }
+  .family-name { font-family: var(--font-mono); font-size: 10px; color: var(--ink-2); text-align: center; letter-spacing: 0.05em; }
+
+  /* legibility strip */
+  .size-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .size-cell { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 10px; text-align: center; }
+  .size-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 8px; }
+  .size-row img { transition: opacity 150ms ease; }
+  .size-label { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  @media (max-width: 900px) {
+    .vs-grid { grid-template-columns: 1fr; }
+    .family-grid, .size-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) { .family-grid, .size-grid { grid-template-columns: 1fr; } }
+
+  .foot {
+    margin-top: 40px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+    border-top: 1px solid var(--rule); padding-top: 18px;
+  }
+  .foot code { color: var(--chip); }
+  .foot a { color: var(--chip); text-decoration: none; }
+  .foot a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="masthead">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="mh" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--qp-primary)"/><stop offset="50%" stop-color="var(--qp-secondary)"/><stop offset="100%" stop-color="var(--qp-accent)"/>
+          </linearGradient>
+        </defs>
+        <circle cx="20" cy="20" r="13.5" stroke="url(#mh)" stroke-width="2.6" fill="none"/>
+        <line x1="20" y1="4.5" x2="20" y2="9" stroke="url(#mh)" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="20" y1="31" x2="20" y2="35.5" stroke="url(#mh)" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="20" cy="20" r="2.8" fill="url(#mh)"/>
+      </svg>
+      <div>
+        <h1>QuantumPACS</h1>
+        <div class="sub">Orbit Family · Round 1 vs Refined</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span class="chip"><i></i>shipped mark refinements · full variant family</span>
+      <button class="toggle" id="themeToggle" type="button" aria-pressed="false">Switch to light board</button>
+    </div>
+  </header>
+
+  <p class="lede">
+    The Orbit is the <strong style="color:var(--chip)">shipped</strong> QuantumPACS mark. Round 2 refines it to the
+    same standard as the Q-Orbit and Aperture families — a 100&times;100 canvas, contained axis ticks, stronger
+    hierarchy, and the full mono / favicon / lockup variant set. Full rationale:
+    <a href="../ROUND2-REFINEMENT.md">ROUND2-REFINEMENT.md</a> · <a href="../../CONCEPTS-EXPLORATION.md">CONCEPTS-EXPLORATION.md</a>
+  </p>
+
+  <!-- Side-by-side: round 1 vs refined -->
+  <div class="section-head">
+    <h2>Head-to-head · Round 1 (shipped) vs refined</h2>
+    <p>The same surfaces, the same size — the ticks no longer bleed to the canvas edge, the nucleus anchors the center, the inner orbit supports instead of competing.</p>
+  </div>
+  <div class="vs-grid">
+    <section class="vs-card" aria-labelledby="r1-title">
+      <div class="vs-head">
+        <div><h3 id="r1-title">Round 1 · shipped</h3><div class="idea">40&times;40 canvas · <code>orbit-current-icon.svg</code></div></div>
+        <span class="badge">current</span>
+      </div>
+      <div class="vs-tiles">
+        <div><div class="tile light"><img src="../../orbit-current-icon.svg" alt="Round 1 Orbit mark on light" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="../../orbit-current-icon.svg" alt="Round 1 Orbit mark on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-block"><img src="../../orbit-current-lockup.svg" alt="Round 1 Orbit horizontal lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">Axis ticks bleed to the canvas edge (only 2u clearance), the nucleus is optically heavy against the ring, and there are no mono, favicon, or vertical variants to place elsewhere.</p>
+    </section>
+
+    <section class="vs-card refined" aria-labelledby="r2-title">
+      <div class="vs-head">
+        <div><h3 id="r2-title">Round 2 · refined</h3><div class="idea">100&times;100 canvas · <code>orbit/orbit-icon.svg</code></div></div>
+        <span class="badge">refined</span>
+      </div>
+      <div class="vs-tiles">
+        <div><div class="tile light"><img src="orbit-icon.svg" alt="Round 2 refined Orbit mark on light" /></div><div class="tile-cap">icon · light</div></div>
+        <div><div class="tile dark"><img src="orbit-icon.svg" alt="Round 2 refined Orbit mark on dark" /></div><div class="tile-cap">icon · dark</div></div>
+      </div>
+      <div>
+        <div class="lockup-block"><img src="orbit-lockup-horizontal.svg" alt="Round 2 refined Orbit horizontal lockup" /></div>
+        <div class="lockup-cap">horizontal lockup · light</div>
+      </div>
+      <p class="rationale">Ticks contained inside the outer ring, nucleus scaled to anchor the patient, stronger ring hierarchy — and a complete variant family for every surface.</p>
+    </section>
+  </div>
+
+  <!-- Variant family -->
+  <div class="section-head">
+    <h2>The refined variant family</h2>
+    <p>Every file the brand needs — full color, monochrome for print, reversed for dark surfaces, a simplified favicon, and both lockup orientations.</p>
+  </div>
+  <div class="family-grid">
+    <figure class="family-cell">
+      <div class="tile light"><img src="orbit-icon.svg" alt="Refined Orbit icon — full color" /></div>
+      <figcaption class="family-name">orbit-icon.svg</figcaption>
+    </figure>
+    <figure class="family-cell">
+      <div class="tile light"><img src="orbit-icon-mono-dark.svg" alt="Refined Orbit icon — monochrome dark" /></div>
+      <figcaption class="family-name">icon-mono-dark.svg</figcaption>
+    </figure>
+    <figure class="family-cell">
+      <div class="tile dark"><img src="orbit-icon-mono-light.svg" alt="Refined Orbit icon — monochrome light" /></div>
+      <figcaption class="family-name">icon-mono-light.svg</figcaption>
+    </figure>
+    <figure class="family-cell">
+      <div class="tile light"><img src="orbit-favicon.svg" alt="Refined Orbit favicon" /></div>
+      <figcaption class="family-name">orbit-favicon.svg</figcaption>
+    </figure>
+  </div>
+
+  <!-- Lockups -->
+  <div class="section-head">
+    <h2>Lockups</h2>
+    <p>Wordmark in slate-800 with &ldquo;PACS&rdquo; in cyan-700 — the shipped wordmark convention, at both orientations.</p>
+  </div>
+  <div class="vs-grid">
+    <section class="vs-card">
+      <div class="lockup-block"><img src="orbit-lockup-horizontal.svg" alt="Refined Orbit horizontal lockup" /></div>
+      <div class="lockup-cap">horizontal · web header, business cards</div>
+    </section>
+    <section class="vs-card">
+      <div class="lockup-block" style="background:#0F172A"><img src="orbit-lockup-vertical.svg" alt="Refined Orbit vertical lockup" /></div>
+      <div class="lockup-cap">vertical · social profiles, app store</div>
+    </section>
+  </div>
+
+  <!-- Legibility strip -->
+  <div class="section-head">
+    <h2>Legibility at scale</h2>
+    <p>The refined icon vs the favicon at the sizes real surfaces demand — 40px (login), 24px (footer), 16px (tabs), 12px (floor).</p>
+  </div>
+  <div class="size-grid">
+    <div class="size-cell">
+      <div class="size-row"><img src="orbit-icon.svg" width="40" height="40" alt="Refined Orbit at 40px" /></div>
+      <div class="size-label">40px</div>
+    </div>
+    <div class="size-cell">
+      <div class="size-row"><img src="orbit-icon.svg" width="24" height="24" alt="Refined Orbit at 24px" /></div>
+      <div class="size-label">24px</div>
+    </div>
+    <div class="size-cell">
+      <div class="size-row"><img src="orbit-favicon.svg" width="16" height="16" alt="Refined Orbit favicon at 16px" /></div>
+      <div class="size-label">16px</div>
+    </div>
+    <div class="size-cell">
+      <div class="size-row"><img src="orbit-favicon.svg" width="12" height="12" alt="Refined Orbit favicon at 12px" /></div>
+      <div class="size-label">12px</div>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <span>QuantumPACS · Orbit Family Refinement v1.0</span>
+    <span>assets: <code>round2/orbit/*.svg</code></span>
+    <span>rationale: <a href="../ROUND2-REFINEMENT.md">ROUND2-REFINEMENT.md</a> · <a href="../../BRAND-KIT.md">BRAND-KIT.md</a></span>
+  </footer>
+</div>
+
+<script>
+  const toggle = document.getElementById("themeToggle");
+  const html = document.documentElement;
+  toggle.addEventListener("click", () => {
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    toggle.textContent = next === "dark" ? "Switch to light board" : "Switch to dark board";
+    toggle.setAttribute("aria-pressed", next === "light" ? "true" : "false");
+  });
+</script>
+</body>
+</html>

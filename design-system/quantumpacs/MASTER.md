@@ -1,13 +1,19 @@
 # Design System Master File
 
+> **⚠️ SUPERSEDED — this file's palette and typography are the ORIGINAL generated spec and are OUT OF DATE.**
+>
+> **Source of truth:** `design-system/quantumpacs/BRAND-KIT.md` (mirrored by `frontend/src/common/tokens.css` and `docs/design-tokens.json`). Where this Master file conflicts with the Brand Kit, **the Brand Kit wins** — it reflects the shipped app.
+>
+> **Key deltas (do NOT use the values below):** primary is **cyan-700 `#0E7490`** (not `#0891B2`); canvas is **slate-50/slate-900** (not `#ECFEFF`); body type is **Inter** (not Noto Sans); headings **Figtree**; foreground **slate-800/slate-100** (not `#164E63`). Component spec *patterns* (buttons, cards, inputs, focus states) remain valid.
+>
 > **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
 > If that file exists, its rules **override** this Master file.
-> If not, strictly follow the rules below.
+> If not, follow the Brand Kit (above) — not the stale values in this file.
 
 ---
 
 **Project:** QuantumPACS
-**Generated:** 2026-07-29 04:46:08
+**Generated:** 2026-07-29 04:46:08 (**stale palette/type — see banner**)
 **Category:** Healthcare App
 
 ---

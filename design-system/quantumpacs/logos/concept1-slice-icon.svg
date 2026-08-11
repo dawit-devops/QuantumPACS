@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t1 d1">
+  <title id="t1">QuantumPACS — The Slice concept</title>
+  <desc id="d1">A rounded scan-plane aperture with a crosshair and focus nucleus, suggesting the axial imaging plane and precise targeting.</desc>
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- detector plate -->
+  <rect x="16" y="16" width="68" height="68" rx="14" fill="none" stroke="url(#g1)" stroke-width="5"/>
+  <!-- crosshair -->
+  <line x1="50" y1="30" x2="50" y2="70" stroke="#64748B" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="30" y1="50" x2="70" y2="50" stroke="#64748B" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- slice ticks -->
+  <line x1="42" y1="16" x2="42" y2="23" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="58" y1="16" x2="58" y2="23" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+  <!-- focus nucleus -->
+  <circle cx="50" cy="50" r="6" fill="url(#g1)"/>
+</svg>

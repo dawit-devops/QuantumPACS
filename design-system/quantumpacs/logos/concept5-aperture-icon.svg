@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t5 d5">
+  <title id="t5">QuantumPACS — The Aperture concept</title>
+  <desc id="d5">An imaging viewport: frame, lens ring, and window/level corner markers — the frame through which the image is read.</desc>
+  <defs>
+    <linearGradient id="g5" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- aperture frame -->
+  <rect x="14" y="14" width="72" height="72" rx="10" fill="none" stroke="url(#g5)" stroke-width="5"/>
+  <!-- lens / viewport ring -->
+  <circle cx="50" cy="50" r="24" fill="none" stroke="#22D3EE" stroke-width="3.5"/>
+  <!-- window/level corner markers -->
+  <path d="M50,32 V26 M50,74 V68 M32,50 H26 M74,50 H68" stroke="#059669" stroke-width="3" stroke-linecap="round"/>
+  <!-- focus dot -->
+  <circle cx="50" cy="50" r="4" fill="url(#g5)"/>
+</svg>

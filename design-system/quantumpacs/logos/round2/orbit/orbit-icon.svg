@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t d">
+  <title id="t">QuantumPACS — The Orbit (refined)</title>
+  <desc id="d">Concentric orbit rings, axis ticks contained inside the outer ring, and a gradient nucleus — the patient at the center of a study in motion.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- outer orbit ring: leads the hierarchy -->
+  <circle cx="50" cy="50" r="34" fill="none" stroke="url(#g)" stroke-width="6"/>
+  <!-- inner orbit ring: supports, half opacity -->
+  <circle cx="50" cy="50" r="20" fill="none" stroke="#22D3EE" stroke-width="3.5" opacity="0.5"/>
+  <!-- orbit ellipse: the study in motion, second-axis orbit -->
+  <ellipse cx="50" cy="50" rx="14" ry="5.5" stroke="#059669" stroke-width="2.5" fill="none" opacity="0.7"/>
+  <!-- axis ticks: contained INSIDE the outer ring (round-1 ticks bled to the canvas edge) -->
+  <line x1="50" y1="12" x2="50" y2="22" stroke="url(#g)" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="50" y1="78" x2="50" y2="88" stroke="url(#g)" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- nucleus: the patient — single source of truth, anchors the center -->
+  <circle cx="50" cy="50" r="6.5" fill="url(#g)"/>
+</svg>

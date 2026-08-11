@@ -1,34 +1,57 @@
 {
   "meta": {
     "schema": "primitive-semantic-component",
-    "version": "1.0.0",
-    "updated": "2026-07-23",
-    "source": "frontend/src/common/theme.ts",
-    "framework": "Ant Design v6"
+    "version": "1.1.0",
+    "updated": "2026-08-11",
+    "source": "frontend/src/common/tokens.css",
+    "antdSource": "frontend/src/common/theme.ts",
+    "framework": "Ant Design v6",
+    "notes": "Live source of truth. Primitive values come from tokens.css; the antd theme (theme.ts) mirrors the semantic layer. Dark mode via [data-theme='dark']."
   },
   "primitive": {
     "color": {
-      "blue-600": { "value": "#0077B6", "description": "Primary brand blue" },
-      "indigo-500": { "value": "#6366F1", "description": "Secondary brand indigo" },
+      "cyan-700": { "value": "#0E7490", "description": "Primary brand cyan (light) — ~5.1:1 on white, AA for text/buttons" },
+      "cyan-600": { "value": "#0891B2", "description": "Brand cyan — ~3.7:1 on white, interactive hover" },
       "cyan-500": { "value": "#06B6D4", "description": "Accent cyan" },
-      "emerald-500": { "value": "#10B981", "description": "Success green" },
+      "cyan-400": { "value": "#22D3EE", "description": "Primary brand cyan (dark mode)" },
+      "cyan-300": { "value": "#67E8F9", "description": "Light cyan — links on dark" },
+      "cyan-200": { "value": "#A5F3FC" },
+      "cyan-100": { "value": "#CFFAFE" },
+      "cyan-50": { "value": "#ECFEFF" },
+      "teal-600": { "value": "#059669", "description": "Brand accent (light)" },
+      "teal-500": { "value": "#10B981", "description": "Success green" },
+      "teal-400": { "value": "#34D399", "description": "Brand accent (dark) / success on dark" },
+      "teal-300": { "value": "#6EE7B7" },
+      "teal-100": { "value": "#D1FAE5" },
+      "teal-50": { "value": "#F0FDFA" },
+      "blue-600": { "value": "#0077B6", "description": "Deep quantum blue — logo gradient start" },
+      "blue-500": { "value": "#1890FF", "description": "Ant Design blue" },
+      "indigo-500": { "value": "#6366F1", "description": "Indigo (legacy secondary, retained for charts/badges)" },
+      "emerald-700": { "value": "#047857", "description": "AA-tuned success text on tinted backgrounds" },
       "amber-500": { "value": "#F59E0B", "description": "Warning amber" },
-      "red-500": { "value": "#EF4444", "description": "Error red" },
-      "slate-50": { "value": "#F8FAFC", "description": "Page background" },
+      "amber-400": { "value": "#FBBF24", "description": "Warning amber (dark)" },
+      "red-600": { "value": "#DC2626", "description": "Error red" },
+      "red-500": { "value": "#EF4444" },
+      "red-400": { "value": "#F87171", "description": "Error red (dark)" },
+      "red-100": { "value": "#FEE2E2" },
+      "red-50": { "value": "#FEF2F2" },
+      "slate-50": { "value": "#F8FAFC", "description": "Page background (light)" },
       "slate-100": { "value": "#F1F5F9", "description": "Muted background" },
       "slate-200": { "value": "#E2E8F0", "description": "Border light" },
-      "slate-300": { "value": "#CBD5E1", "description": "Border medium" },
-      "slate-500": { "value": "#64748B", "description": "Text muted" },
-      "slate-600": { "value": "#475569", "description": "Text secondary" },
-      "slate-700": { "value": "#334155", "description": "Text secondary dark" },
-      "slate-800": { "value": "#1E293B", "description": "Text primary" },
-      "slate-900": { "value": "#0F172A", "description": "Dark background" },
-      "white": { "value": "#FFFFFF", "description": "White" },
-      "blue-500": { "value": "#1890ff", "description": "Ant Design blue" }
+      "slate-300": { "value": "#CBD5E1", "description": "Border medium / sidebar text" },
+      "slate-400": { "value": "#94A3B8", "description": "Muted text (dark)" },
+      "slate-500": { "value": "#64748B", "description": "Muted text (light) — ~4.75:1 on white" },
+      "slate-600": { "value": "#475569", "description": "Secondary text (light)" },
+      "slate-700": { "value": "#334155", "description": "Elevated surface (dark) / borders" },
+      "slate-800": { "value": "#1E293B", "description": "Primary text (light) / surface (dark)" },
+      "slate-900": { "value": "#0F172A", "description": "Dark background / sidebar" },
+      "white": { "value": "#FFFFFF" },
+      "black": { "value": "#000000", "description": "Viewer background" }
     },
     "typography": {
-      "font-sans": { "value": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
-      "font-mono": { "value": "'SF Mono', 'Fira Code', 'Fira Mono', Menlo, monospace" },
+      "font-sans": { "value": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif" },
+      "font-heading": { "value": "Figtree, Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif" },
+      "font-mono": { "value": "\"SF Mono\", \"Fira Code\", \"Fira Mono\", Menlo, monospace" },
       "size-xs": { "value": "12px" },
       "size-sm": { "value": "13px" },
       "size-base": { "value": "14px" },
@@ -39,7 +62,10 @@
       "weight-normal": { "value": "400" },
       "weight-medium": { "value": "500" },
       "weight-semibold": { "value": "600" },
-      "weight-bold": { "value": "700" }
+      "weight-bold": { "value": "700" },
+      "line-height-tight": { "value": "1.25" },
+      "line-height-normal": { "value": "1.5" },
+      "line-height-relaxed": { "value": "1.75" }
     },
     "spacing": {
       "1": { "value": "4px" },
@@ -55,64 +81,171 @@
     },
     "radius": {
       "sm": { "value": "4px" },
-      "md": { "value": "6px" },
-      "lg": { "value": "8px" },
-      "xl": { "value": "12px" }
+      "md": { "value": "6px", "description": "Buttons, inputs" },
+      "lg": { "value": "8px", "description": "Cards, tables" },
+      "xl": { "value": "12px", "description": "Modals, login card" }
+    },
+    "shadow": {
+      "sm": { "value": "0 1px 2px rgba(0,0,0,0.06)" },
+      "md": { "value": "0 4px 6px -1px rgba(0,0,0,0.1)" },
+      "lg": { "value": "0 10px 15px -3px rgba(0,0,0,0.1)" },
+      "xl": { "value": "0 20px 25px -5px rgba(0,0,0,0.1)" }
+    },
+    "motion": {
+      "duration-fast": { "value": "150ms" },
+      "duration-normal": { "value": "250ms" },
+      "duration-slow": { "value": "400ms" },
+      "easing-standard": { "value": "cubic-bezier(0.4, 0, 0.2, 1)" },
+      "easing-enter": { "value": "cubic-bezier(0, 0, 0.2, 1)" },
+      "easing-exit": { "value": "cubic-bezier(0.4, 0, 1, 1)" }
     }
   },
   "semantic": {
-    "color-primary": { "ref": "primitive.color.blue-600", "description": "Primary action color" },
-    "color-secondary": { "ref": "primitive.color.indigo-500", "description": "Secondary accent" },
-    "color-accent": { "ref": "primitive.color.cyan-500", "description": "Highlight accent" },
-    "color-success": { "ref": "primitive.color.emerald-500", "description": "Success state" },
-    "color-warning": { "ref": "primitive.color.amber-500", "description": "Warning state" },
-    "color-error": { "ref": "primitive.color.red-500", "description": "Error state" },
-    "color-info": { "ref": "primitive.color.indigo-500", "description": "Info state" },
-    "bg-page": { "ref": "primitive.color.slate-50", "description": "Page background" },
-    "bg-surface": { "ref": "primitive.color.white", "description": "Card/surface background" },
-    "bg-dark": { "ref": "primitive.color.slate-900", "description": "Dark section background" },
-    "text-primary": { "ref": "primitive.color.slate-800", "description": "Body text" },
-    "text-secondary": { "ref": "primitive.color.slate-600", "description": "Secondary text" },
-    "text-muted": { "ref": "primitive.color.slate-500", "description": "Muted/placeholder text" },
-    "text-inverse": { "ref": "primitive.color.white", "description": "Text on dark backgrounds" },
-    "text-link": { "ref": "primitive.color.blue-600", "description": "Link text" },
-    "text-link-hover": { "ref": "primitive.color.indigo-500", "description": "Link hover" },
-    "border-color": { "ref": "primitive.color.slate-200", "description": "Default border" },
-    "font-family-base": { "ref": "primitive.typography.font-sans" },
-    "font-size-body": { "ref": "primitive.typography.size-base" },
-    "font-size-h1": { "ref": "primitive.typography.size-3xl" },
-    "font-size-h2": { "ref": "primitive.typography.size-2xl" },
-    "font-size-h3": { "ref": "primitive.typography.size-xl" }
+    "light": {
+      "color-primary": { "ref": "primitive.color.cyan-700", "description": "Primary action color — buttons, links, focus" },
+      "color-secondary": { "ref": "primitive.color.cyan-400", "description": "Secondary accent — logo ring, highlights" },
+      "color-accent": { "ref": "primitive.color.teal-600", "description": "Highlight accent — logo gradient end" },
+      "color-success": { "ref": "primitive.color.teal-500", "description": "Success state" },
+      "color-warning": { "ref": "primitive.color.amber-500", "description": "Warning state" },
+      "color-error": { "ref": "primitive.color.red-600", "description": "Error state" },
+      "color-info": { "ref": "primitive.color.cyan-700", "description": "Info state" },
+      "bg-page": { "ref": "primitive.color.slate-50", "description": "Page background" },
+      "bg-surface": { "ref": "primitive.color.white", "description": "Card/surface background" },
+      "bg-elevated": { "ref": "primitive.color.white", "description": "Dropdowns, modals" },
+      "bg-dark": { "ref": "primitive.color.slate-900", "description": "Dark sections, sidebar" },
+      "bg-muted": { "ref": "primitive.color.slate-100", "description": "Muted fills" },
+      "text-primary": { "ref": "primitive.color.slate-800", "description": "Body text" },
+      "text-secondary": { "ref": "primitive.color.slate-600", "description": "Secondary text" },
+      "text-muted": { "ref": "primitive.color.slate-500", "description": "Muted/placeholder text" },
+      "text-light": { "ref": "primitive.color.slate-300", "description": "Light text on dark" },
+      "text-inverse": { "ref": "primitive.color.white", "description": "Text on brand/dark fills" },
+      "text-link": { "ref": "semantic.light.color-primary", "description": "Link text" },
+      "text-link-hover": { "ref": "primitive.color.cyan-500", "description": "Link hover" },
+      "border-color": { "ref": "primitive.color.slate-200", "description": "Default border" },
+      "border-color-strong": { "ref": "primitive.color.slate-300", "description": "Strong border" },
+      "font-family-base": { "ref": "primitive.typography.font-sans" },
+      "font-family-heading": { "ref": "primitive.typography.font-heading" },
+      "font-size-body": { "ref": "primitive.typography.size-base" },
+      "font-size-h1": { "ref": "primitive.typography.size-3xl" },
+      "font-size-h2": { "ref": "primitive.typography.size-2xl" },
+      "font-size-h3": { "ref": "primitive.typography.size-xl" }
+    },
+    "dark": {
+      "color-primary": { "ref": "primitive.color.cyan-400", "description": "Primary action color on dark" },
+      "color-secondary": { "ref": "primitive.color.cyan-300", "description": "Secondary accent on dark" },
+      "color-accent": { "ref": "primitive.color.teal-400", "description": "Highlight accent on dark" },
+      "color-success": { "ref": "primitive.color.teal-400", "description": "Success state on dark" },
+      "color-warning": { "ref": "primitive.color.amber-400", "description": "Warning state on dark" },
+      "color-error": { "ref": "primitive.color.red-400", "description": "Error state on dark" },
+      "color-info": { "ref": "primitive.color.cyan-400", "description": "Info state on dark" },
+      "bg-page": { "ref": "primitive.color.slate-900", "description": "Page background" },
+      "bg-surface": { "ref": "primitive.color.slate-800", "description": "Card/surface background" },
+      "bg-elevated": { "ref": "primitive.color.slate-700", "description": "Dropdowns, modals" },
+      "bg-dark": { "ref": "primitive.color.slate-900", "description": "Dark sections, sidebar" },
+      "bg-muted": { "ref": "primitive.color.slate-700", "description": "Muted fills" },
+      "text-primary": { "ref": "primitive.color.slate-100", "description": "Body text on dark" },
+      "text-secondary": { "ref": "primitive.color.slate-300", "description": "Secondary text on dark" },
+      "text-muted": { "ref": "primitive.color.slate-400", "description": "Muted text on dark" },
+      "text-light": { "ref": "primitive.color.slate-500", "description": "Dim text on dark" },
+      "text-inverse": { "ref": "primitive.color.slate-900", "description": "Text on bright brand fills" },
+      "text-link": { "ref": "semantic.dark.color-primary", "description": "Link text on dark" },
+      "text-link-hover": { "ref": "primitive.color.cyan-300", "description": "Link hover on dark" },
+      "border-color": { "ref": "primitive.color.slate-700", "description": "Default border on dark" },
+      "border-color-strong": { "ref": "primitive.color.slate-600", "description": "Strong border on dark" },
+      "font-family-base": { "ref": "primitive.typography.font-sans" },
+      "font-family-heading": { "ref": "primitive.typography.font-heading" },
+      "font-size-body": { "ref": "primitive.typography.size-base" },
+      "font-size-h1": { "ref": "primitive.typography.size-3xl" },
+      "font-size-h2": { "ref": "primitive.typography.size-2xl" },
+      "font-size-h3": { "ref": "primitive.typography.size-xl" }
+    }
   },
   "component": {
     "Button": {
-      "bg": { "ref": "semantic.color-primary" },
-      "text": { "ref": "semantic.text-inverse" },
-      "radius": { "ref": "primitive.radius.md" }
+      "light": {
+        "bg": { "ref": "semantic.light.color-primary" },
+        "text": { "ref": "semantic.light.text-inverse" },
+        "hover-bg": { "ref": "primitive.color.cyan-600" },
+        "radius": { "ref": "primitive.radius.md" }
+      },
+      "dark": {
+        "bg": { "ref": "semantic.dark.color-primary" },
+        "text": { "ref": "semantic.dark.text-inverse" },
+        "hover-bg": { "ref": "primitive.color.cyan-300" },
+        "radius": { "ref": "primitive.radius.md" }
+      }
     },
     "Sidebar": {
-      "bg": { "ref": "semantic.bg-dark" },
-      "text": { "ref": "primitive.color.slate-300" },
-      "selected-bg": { "value": "rgba(99, 102, 241, 0.2)" },
-      "trigger-bg": { "ref": "semantic.text-inverse" },
-      "trigger-text": { "value": "#001529" }
+      "light": {
+        "bg": { "ref": "semantic.light.bg-dark", "description": "slate-900 in both themes" },
+        "text": { "ref": "primitive.color.slate-300", "description": "~10:1 contrast on slate-900" },
+        "selected-bg": { "value": "rgba(6, 182, 212, 0.2)", "description": "Cyan 20% tint" },
+        "trigger-bg": { "ref": "semantic.light.text-inverse" },
+        "trigger-text": { "ref": "semantic.light.text-primary" }
+      },
+      "dark": {
+        "bg": { "ref": "semantic.dark.bg-dark" },
+        "text": { "ref": "primitive.color.slate-300" },
+        "selected-bg": { "value": "rgba(6, 182, 212, 0.25)", "description": "Cyan 25% tint" },
+        "trigger-bg": { "ref": "primitive.color.slate-800" },
+        "trigger-text": { "ref": "primitive.color.slate-200" }
+      }
     },
     "Card": {
-      "bg": { "ref": "semantic.bg-surface" },
-      "radius": { "ref": "primitive.radius.lg" }
+      "light": {
+        "bg": { "ref": "semantic.light.bg-surface" },
+        "radius": { "ref": "primitive.radius.lg" }
+      },
+      "dark": {
+        "bg": { "ref": "semantic.dark.bg-surface" },
+        "radius": { "ref": "primitive.radius.lg" }
+      }
     },
     "Table": {
-      "radius": { "ref": "primitive.radius.lg" },
-      "highlight-bg": { "value": "#ffc069", "description": "Search term highlight" }
+      "light": {
+        "radius": { "ref": "primitive.radius.lg" },
+        "highlight-bg": { "value": "#FEF3C7", "description": "Light search-term highlight" }
+      },
+      "dark": {
+        "radius": { "ref": "primitive.radius.lg" },
+        "highlight-bg": { "value": "rgba(6, 182, 212, 0.2)", "description": "Dark search-term highlight" }
+      }
     },
     "Layout": {
-      "header-bg": { "ref": "semantic.text-inverse" },
-      "body-bg": { "ref": "semantic.bg-page" }
+      "light": {
+        "header-bg": { "ref": "semantic.light.bg-surface" },
+        "body-bg": { "ref": "semantic.light.bg-page" }
+      },
+      "dark": {
+        "header-bg": { "ref": "semantic.dark.bg-surface" },
+        "body-bg": { "ref": "semantic.dark.bg-page" }
+      }
     },
     "Login": {
-      "gradient-start": { "ref": "semantic.bg-dark" },
-      "gradient-mid": { "value": "#1E293B" },
-      "gradient-end": { "ref": "semantic.bg-dark" }
+      "light": {
+        "gradient-start": { "ref": "semantic.light.bg-dark" },
+        "gradient-mid": { "ref": "primitive.color.slate-800" },
+        "gradient-end": { "ref": "semantic.light.bg-dark" }
+      },
+      "dark": {
+        "gradient-start": { "ref": "semantic.dark.bg-dark" },
+        "gradient-mid": { "ref": "primitive.color.cyan-600", "description": "Cyan glow midpoint on dark" },
+        "gradient-end": { "ref": "semantic.dark.bg-dark" }
+      }
+    },
+    "Viewer": {
+      "light": {
+        "bg": { "ref": "primitive.color.black" },
+        "toolbar-bg": { "value": "rgba(30, 41, 59, 0.9)" },
+        "toolbar-text": { "ref": "primitive.color.slate-200" },
+        "toolbar-hover": { "ref": "primitive.color.cyan-400" }
+      },
+      "dark": {
+        "bg": { "ref": "primitive.color.black" },
+        "toolbar-bg": { "value": "rgba(15, 23, 42, 0.95)" },
+        "toolbar-text": { "ref": "primitive.color.slate-300" },
+        "toolbar-hover": { "ref": "primitive.color.cyan-300" }
+      }
     }
   }
 }

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t3 d3">
+  <title id="t3">QuantumPACS — The Q-Orbit concept</title>
+  <desc id="d3">A Q letterform whose tail doubles as an orbital path with an electron node — the brand initial fused with the quantum orbit.</desc>
+  <defs>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0077B6"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <!-- Q ring -->
+  <circle cx="46" cy="46" r="28" fill="none" stroke="url(#g3)" stroke-width="8"/>
+  <!-- Q tail = orbit path -->
+  <path d="M66,66 L84,84" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/>
+  <!-- electron node on the tail -->
+  <circle cx="84" cy="84" r="6" fill="#059669"/>
+  <!-- inner orbit hint (negative space) -->
+  <circle cx="46" cy="46" r="7" fill="#0E7490" opacity="0.35"/>
+</svg>
