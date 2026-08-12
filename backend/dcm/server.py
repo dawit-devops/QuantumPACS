@@ -29,6 +29,20 @@ def _requestor_ae_title(event):
     return getattr(requestor, 'ae_title', '') or ''
 
 
+def _reject_unmapped_ae():
+    """True when multi-tenant AE gating is active (G-1).
+
+    Both an explicit AE->tenant map and the opt-in reject flag must be set:
+    with no map there is nothing to reject against, so the historical
+    single-tenant fallback to the default tenant stays in effect.
+    """
+    raw_map = (config.get('dicom_ae_tenant_map', '') or '').strip()
+    return (
+        config.get('dicom_reject_unmapped_ae', 'false') == 'true'
+        and bool(raw_map)
+    )
+
+
 async def _tenant_scope_for_ae(ae_title):
     """Resolve the tenant scope for a DICOM calling AE (CR-02).
 
@@ -37,9 +51,19 @@ async def _tenant_scope_for_ae(ae_title):
     database. A mapped AE whose tenant is missing from the registry raises
     TenantResolutionError (ME-05): silently serving the default scope would
     leak the default tenant's data to a tenant's modality.
+
+    When multi-tenant gating is active (dicom_reject_unmapped_ae), an AE that
+    is not present in the map is refused (G-1) rather than routed to the
+    default tenant. The association layer enforces this pre-acceptance via
+    ae.require_calling_aet; this guard is defense-in-depth so an unmapped AE
+    can never reach the default scope through any tenant-resolution path.
     """
     slug = resolve_tenant_slug_for_ae(ae_title)
     if not slug or slug == 'default':
+        if _reject_unmapped_ae():
+            raise TenantResolutionError(
+                f"Calling AE {ae_title!r} is not mapped to any tenant"
+            )
         return '', {}
     from db.conn import get_conn
     from db.tenants import Tenants
@@ -340,6 +364,22 @@ def apply_association_policy(ae):
     allowed_aets = [s.strip() for s in (config.get('dicom_aet_allowed') or '').split(',') if s.strip()]
     if allowed_aets:
         ae.require_calling_aet = allowed_aets
+
+    # G-1: when multi-tenant AE gating is active, only calling AEs present in
+    # the AE->tenant map may associate. pynetdicom rejects the association
+    # pre-acceptance for any AE outside this set, so an unmapped modality
+    # can never reach the default tenant's store.
+    if _reject_unmapped_ae():
+        mapped_aets = [
+            pair.split(':', 1)[0].strip()
+            for pair in (config.get('dicom_ae_tenant_map') or '').split(',')
+            if ':' in pair and pair.strip()
+        ]
+        if mapped_aets:
+            preset = ae.require_calling_aet
+            if isinstance(preset, (list, set, tuple)):
+                mapped_aets = list(dict.fromkeys(list(preset) + mapped_aets))
+            ae.require_calling_aet = mapped_aets
 
 
 handlers = [

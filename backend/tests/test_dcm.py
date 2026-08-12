@@ -252,6 +252,64 @@ class TestAssociationPolicy:
             apply_association_policy(ae)
         assert ae.require_calling_aet == ['MODALITY-A', 'MODALITY-B']
 
+    def test_reject_unmapped_ae_sets_calling_aet_to_mapped(self):
+        """G-1: with reject-unmapped on, only mapped AEs may associate."""
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({
+            'dicom_reject_unmapped_ae': 'true',
+            'dicom_ae_tenant_map': 'MODALITY-A:clinic-a,MODALITY-B:clinic-b',
+        })):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_calling_aet == ['MODALITY-A', 'MODALITY-B']
+
+    def test_reject_unmapped_ae_combines_with_allowlist(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({
+            'dicom_reject_unmapped_ae': 'true',
+            'dicom_aet_allowed': 'EXPLICIT-1',
+            'dicom_ae_tenant_map': 'MODALITY-A:clinic-a',
+        })):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert set(ae.require_calling_aet) == {'EXPLICIT-1', 'MODALITY-A'}
+
+    def test_reject_unmapped_ae_off_keeps_allow_all(self):
+        ae = _FakeAE()
+        with patch('dcm.server.config', _config_mock({
+            'dicom_ae_tenant_map': 'MODALITY-A:clinic-a',
+        })):
+            from dcm.server import apply_association_policy
+            apply_association_policy(ae)
+        assert ae.require_calling_aet == []
+
+    @pytest.mark.asyncio
+    async def test_tenant_scope_rejects_unmapped_when_enabled(self):
+        """G-1: an unmapped AE is refused, not routed to default."""
+        with (
+            patch('dcm.server.config', _config_mock({
+                'dicom_reject_unmapped_ae': 'true',
+                'dicom_ae_tenant_map': 'MODALITY-A:clinic-a',
+            })),
+            patch('dcm.server.resolve_tenant_slug_for_ae', return_value=''),
+        ):
+            from dcm.server import TenantResolutionError, _tenant_scope_for_ae
+            with pytest.raises(TenantResolutionError):
+                await _tenant_scope_for_ae('UNMAPPED')
+
+    @pytest.mark.asyncio
+    async def test_tenant_scope_falls_back_when_reject_disabled(self):
+        with (
+            patch('dcm.server.config', _config_mock({
+                'dicom_ae_tenant_map': 'MODALITY-A:clinic-a',
+            })),
+            patch('dcm.server.resolve_tenant_slug_for_ae', return_value=''),
+        ):
+            from dcm.server import _tenant_scope_for_ae
+            slug, info = await _tenant_scope_for_ae('UNMAPPED')
+        assert slug == ''
+        assert info == {}
+
     def test_ip_allowed_matches_cidr(self):
         from dcm.server import _ip_allowed
         assert _ip_allowed('10.0.0.5', ['10.0.0.0/8'])

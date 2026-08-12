@@ -65,6 +65,12 @@ default_config = {
     # `AE:slug` pairs, e.g. 'CT_ROOM_A:b,MR_ROOM_A:c'. A calling AE absent
     # from the map falls back to the seeded `default` tenant (documented).
     'dicom_ae_tenant_map': '',
+    # When true AND dicom_ae_tenant_map is non-empty, a calling AE that is
+    # not mapped to any tenant is refused (association rejected, store fails)
+    # instead of being silently routed to the default tenant's store (G-1).
+    # Off by default so single-tenant / dev setups keep the historical
+    # fallback behaviour.
+    'dicom_reject_unmapped_ae': 'false',
     'hl7_mllp_port': '12579',
     'hl7_mllp_tls_cert': '',
     'hl7_mllp_tls_key': '',

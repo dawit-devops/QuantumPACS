@@ -8,6 +8,8 @@ No Table base class: these tables are owned by Alembic, not sync_db().
 """
 from datetime import datetime, timezone
 
+from db.conn import get_tenant_slug
+
 
 class FrontDesk:
     def __init__(self, conn):
@@ -32,12 +34,13 @@ class FrontDesk:
     async def create_patient(self, data):
         return await self.conn.fetchrow(
             """
-            INSERT INTO patients (patient_id, name, birth_date, sex, meta)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO patients (patient_id, name, birth_date, sex, meta, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, patient_id, name, birth_date, sex
             """,
             data['patient_id'], data['name'], data.get('birth_date', ''),
             data.get('sex', ''), data.get('meta'),
+            get_tenant_slug() or 'default',
         )
 
     async def find_patient_duplicate(self, name, birth_date):
@@ -219,15 +222,16 @@ class FrontDesk:
             INSERT INTO worklist_entries (patient_id, patient_name, patient_birth_date,
                                           patient_sex, scheduled_date, scheduled_time,
                                           modality, station_ae_title, requested_procedure_desc,
-                                          accession_number, status, created_by)
+                                          accession_number, status, created_by, tenant_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '',
-                    'ACC-' || upper(substr(md5(random()::text), 1, 10)), 'scheduled', $9)
+                    'ACC-' || upper(substr(md5(random()::text), 1, 10)), 'scheduled', $9, $10)
             RETURNING id
             """,
             data['patient_id'], data.get('patient_name', ''),
             data.get('patient_birth_date', ''), data.get('patient_sex', ''),
             data['scheduled_date'], data['scheduled_time'], data['modality'],
             data.get('station_ae_title', ''), data.get('created_by', ''),
+            get_tenant_slug() or 'default',
         )
 
     async def cancel_appointment(self, appointment_id):

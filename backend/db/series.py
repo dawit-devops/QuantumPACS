@@ -1,3 +1,4 @@
+from db.conn import get_tenant_slug
 from db.table import Table
 from pypika.pseudocolumns import PseudoColumn
 
@@ -14,6 +15,7 @@ class Series(Table):
             modality TEXT NOT NULL,
             description TEXT,
             series_instance_uid TEXT,
+            tenant_id TEXT,
             UNIQUE(study_id, number)
         );
         """)
@@ -25,13 +27,18 @@ class Series(Table):
         CREATE UNIQUE INDEX IF NOT EXISTS ix_series_series_instance_uid
         ON series(series_instance_uid) WHERE series_instance_uid IS NOT NULL
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_series_tenant ON series(tenant_id);
+        """)
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
             'study_id', 'number', 'modality', 'description', 'series_instance_uid',
+            'tenant_id',
         ).insert((
             data['study_db_id'], data['series_number'], data.get('modality', ''),
             data.get('series_description', ''), data.get('series_instance_uid', ''),
+            get_tenant_slug() or 'default',
         ),        ).on_conflict(
             'study_id', 'number'
         ).do_update(

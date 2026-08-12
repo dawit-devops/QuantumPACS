@@ -10,6 +10,7 @@ Schema covers the full exam lifecycle (FR-R06-01..10):
 """
 from datetime import datetime, timezone
 
+from db.conn import get_tenant_slug
 from db.table import Table
 
 
@@ -42,7 +43,8 @@ class Exams(Table):
             completed_at TIMESTAMPTZ,
             created_by TEXT DEFAULT '',
             created_at TIMESTAMPTZ DEFAULT now(),
-            updated_at TIMESTAMPTZ DEFAULT now()
+            updated_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
@@ -57,6 +59,9 @@ class Exams(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_exams_radiologist ON exams(assigned_radiologist)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_exams_tenant ON exams(tenant_id)
+        """)
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -65,7 +70,7 @@ class Exams(Table):
             'patient_sex', 'accession_number', 'requested_procedure_desc', 'modality',
             'station_ae_title', 'priority', 'protocol_name', 'status',
             'assigned_technologist', 'assigned_radiologist', 'referring_physician',
-            'created_by', 'created_at', 'updated_at',
+            'created_by', 'created_at', 'updated_at', 'tenant_id',
         ).insert((
             data.get('worklist_entry_id'),
             data['patient_id'],
@@ -84,6 +89,7 @@ class Exams(Table):
             data.get('referring_physician', ''),
             data.get('created_by', ''),
             now, now,
+            get_tenant_slug() or 'default',
         )).returning('id')
         row = await self.fetchone(q)
         if not row:
@@ -181,17 +187,21 @@ class Acquisitions(Table):
                 CHECK (status IN ('pending', 'accepted', 'rejected')),
             reject_reason TEXT DEFAULT '',
             acquired_at TIMESTAMPTZ DEFAULT now(),
-            created_at TIMESTAMPTZ DEFAULT now()
+            created_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_acquisitions_exam ON acquisitions(exam_id)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_acquisitions_tenant ON acquisitions(tenant_id)
+        """)
 
     async def create(self, data):
         q = self.insert().columns(
             'exam_id', 'series_number', 'instance_uid', 'description', 'kvp',
-            'mas', 'dlp', 'ctdivol', 'exposure_time', 'status',
+            'mas', 'dlp', 'ctdivol', 'exposure_time', 'status', 'tenant_id',
         ).insert((
             data['exam_id'],
             data.get('series_number', 1),
@@ -203,6 +213,7 @@ class Acquisitions(Table):
             data.get('ctdivol', 0),
             data.get('exposure_time', 0),
             data.get('status', 'pending'),
+            get_tenant_slug() or 'default',
         )).returning('id')
         row = await self.fetchone(q)
         if not row:
@@ -259,19 +270,24 @@ class SafetyChecks(Table):
             answer TEXT NOT NULL,
             notes TEXT DEFAULT '',
             checked_by TEXT DEFAULT '',
-            checked_at TIMESTAMPTZ DEFAULT now()
+            checked_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_safety_checks_exam ON safety_checks(exam_id)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_safety_checks_tenant ON safety_checks(tenant_id)
+        """)
 
     async def create(self, data):
         q = self.insert().columns(
-            'exam_id', 'check_item', 'answer', 'notes', 'checked_by',
+            'exam_id', 'check_item', 'answer', 'notes', 'checked_by', 'tenant_id',
         ).insert((
             data['exam_id'], data['check_item'], data['answer'],
             data.get('notes', ''), data.get('checked_by', ''),
+            get_tenant_slug() or 'default',
         )).returning('id')
         row = await self.fetchone(q)
         return dict(row) if row else None
@@ -297,19 +313,25 @@ class Incidents(Table):
                 CHECK (severity IN ('low', 'medium', 'high', 'critical')),
             description TEXT NOT NULL,
             reported_by TEXT DEFAULT '',
-            created_at TIMESTAMPTZ DEFAULT now()
+            created_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_incidents_exam ON incidents(exam_id)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_incidents_tenant ON incidents(tenant_id)
+        """)
 
     async def create(self, data):
         q = self.insert().columns(
             'exam_id', 'incident_type', 'severity', 'description', 'reported_by',
+            'tenant_id',
         ).insert((
             data['exam_id'], data['incident_type'], data['severity'],
             data['description'], data.get('reported_by', ''),
+            get_tenant_slug() or 'default',
         )).returning('id')
         row = await self.fetchone(q)
         if not row:
@@ -342,23 +364,28 @@ class ProtocolOverrides(Table):
             original_params JSONB DEFAULT '{}'::jsonb,
             overridden_params JSONB DEFAULT '{}'::jsonb,
             overridden_by TEXT DEFAULT '',
-            created_at TIMESTAMPTZ DEFAULT now()
+            created_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_protocol_overrides_exam ON protocol_overrides(exam_id)
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_protocol_overrides_tenant ON protocol_overrides(tenant_id)
         """)
 
     async def create(self, data):
         import json as _json
         q = self.insert().columns(
             'exam_id', 'justification', 'original_params', 'overridden_params',
-            'overridden_by',
+            'overridden_by', 'tenant_id',
         ).insert((
             data['exam_id'], data['justification'],
             _json.dumps(data.get('original_params') or {}),
             _json.dumps(data.get('overridden_params') or {}),
             data.get('overridden_by', ''),
+            get_tenant_slug() or 'default',
         )).returning('id')
         row = await self.fetchone(q)
         if not row:
@@ -393,11 +420,15 @@ class Protocols(Table):
             parameters JSONB DEFAULT '{}'::jsonb,
             acr_benchmark_dlp FLOAT,
             is_default BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMPTZ DEFAULT now()
+            created_at TIMESTAMPTZ DEFAULT now(),
+            tenant_id TEXT
         )
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_protocols_modality ON protocols(modality)
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_protocols_tenant ON protocols(tenant_id)
         """)
 
     async def list_by_modality(self, modality=None):

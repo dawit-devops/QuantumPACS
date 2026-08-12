@@ -118,12 +118,18 @@ async def _resolve_tenant(conn, tenant_id='', tenant_slug='', tenant_info=None, 
     return tenant_id, tenant_slug, tenant_info
 
 
-async def match_worklist_in_progress(meta):
+async def match_worklist_in_progress(meta, tenant_slug=''):
     """Transition a scheduled MWL entry to `in_progress` on first store.
 
     ME-05: a C-STORE proves the exam started, not that it completed — a
     partial study must not mark the entry performed. `performed` is
     reserved for the ORU^R01 results message (see hl7_server).
+
+    The MWL match runs inside the tenant's DB scope (store_instance opens a
+    tenant_db_scope before calling this), so get_conn() below already
+    resolves to the owning tenant's worklist_entries table. tenant_slug is
+    threaded through explicitly (G-4) as defense-in-depth documentation of
+    which tenant the accession belongs to.
     """
     try:
         accession = meta.get('accession_number', '')
@@ -279,7 +285,7 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
                     used = await conn.fetchval('SELECT COALESCE(SUM(size), 0)::bigint FROM files') or 0
                     await _persist_usage(tenant_slug, int(used))
 
-                await match_worklist_in_progress(ds)
+                await match_worklist_in_progress(ds, tenant_slug=tenant_slug)
                 await _bump_study_counts(conn, ds)
         # tenant scope ended — routing rules live in the main DB and must be
         # read from it, so routing evaluation happens outside the scope.

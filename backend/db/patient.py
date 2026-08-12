@@ -1,3 +1,4 @@
+from db.conn import get_tenant_slug
 from db.table import Table
 from pypika.pseudocolumns import PseudoColumn
 
@@ -13,19 +14,24 @@ class Patient(Table):
             name TEXT NOT NULL,
             birth_date TEXT,
             sex TEXT,
-            meta JSONB
+            meta JSONB,
+            tenant_id TEXT
         );
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS patients_patient_id ON patients(patient_id);
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_patients_tenant ON patients(tenant_id);
+        """)
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
-            'patient_id', 'name', 'birth_date', 'sex',
+            'patient_id', 'name', 'birth_date', 'sex', 'tenant_id',
         ).insert((
             data['patient_id'], data['patient_name'],
             data['patient_birth_date'], data['patient_sex'],
+            get_tenant_slug() or 'default',
         ),).on_conflict('patient_id').do_update(
             self.table.name, PseudoColumn('EXCLUDED.name'),
         ).returning('id')

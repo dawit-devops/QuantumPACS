@@ -9,6 +9,7 @@ radiologist, and incident logging (with QA notification on high/critical).
 import uuid
 from datetime import datetime, timezone
 
+from db.conn import get_tenant_slug
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
@@ -101,12 +102,13 @@ async def _seed_protocols(conn):
         # asyncpg requires JSON strings for jsonb parameters.
         await conn.execute(
             """INSERT INTO protocols (name, modality, body_part, sequences,
-               parameters, acr_benchmark_dlp, is_default)
-               VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7) """,
+               parameters, acr_benchmark_dlp, is_default, tenant_id)
+               VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8) """,
             p['name'], p['modality'], p['body_part'],
             _json.dumps(p['sequences']), _json.dumps(p['parameters']),
             p['acr_benchmark_dlp'],
             p['is_default'],
+            get_tenant_slug() or 'default',
         )
 
 

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from db.conn import get_tenant_slug
 from db.table import Table
 
 
@@ -43,7 +44,8 @@ class Worklist(Table):
             created_by TEXT DEFAULT '',
             created_at TIMESTAMPTZ DEFAULT now(),
             updated_at TIMESTAMPTZ DEFAULT now(),
-            performed_at TIMESTAMPTZ
+            performed_at TIMESTAMPTZ,
+            tenant_id TEXT
         )
         """)
         await self.exec("""
@@ -58,6 +60,9 @@ class Worklist(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_worklist_modality ON worklist_entries(modality)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_worklist_tenant ON worklist_entries(tenant_id)
+        """)
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -71,7 +76,7 @@ class Worklist(Table):
             'referring_physician', 'scheduled_station_name',
             'scheduled_performing_physician',
             'scheduled_date', 'scheduled_time', 'modality', 'station_ae_title',
-            'status', 'created_by', 'created_at', 'updated_at',
+            'status', 'created_by', 'created_at', 'updated_at', 'tenant_id',
         ).insert((
             data['patient_id'],
             data.get('patient_name', ''),
@@ -98,6 +103,7 @@ class Worklist(Table):
             data.get('status', 'scheduled'),
             data.get('created_by', ''),
             now, now,
+            get_tenant_slug() or 'default',
         ),).returning('id')
         eid = await self.fetchval(q)
         return {'id': eid}

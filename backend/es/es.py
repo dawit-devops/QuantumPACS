@@ -87,6 +87,19 @@ def _indexable_field_name(key):
 async def index(data, tenant_slug=''):
     c = get_client()
     if c:
+        # G-3: a row tagged to a tenant must never be indexed into the
+        # unscoped platform/main index. That would let a tenant's document
+        # collide with the main store's SERIAL-keyed docs (CR-01) and leak
+        # into default-tenant search results. This catches the case where the
+        # ES indexer runs outside a request/tenant scope (e.g. from a raw
+        # connection-pool context) and get_tenant_slug() comes back empty
+        # even though the row belongs to a mapped tenant.
+        data_tenant = data.get('tenant') or ''
+        if data_tenant and not tenant_slug:
+            raise RuntimeError(
+                f"Refusing to index tenant row (tenant={data_tenant!r}) "
+                f"into the unscoped index (tenant_slug is empty)"
+            )
         payload = {k: v for k, v in data.items() if _indexable_field_name(k)}
         if tenant_slug:
             payload['tenant'] = tenant_slug

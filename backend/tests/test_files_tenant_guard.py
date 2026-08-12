@@ -247,8 +247,8 @@ class TestUploadTagsRowWithTenant:
         with (
             _patch_get_conn(conn),
             patch('api.files.parse_dcm', return_value={
-                'patientid': 'P1', 'studyinstanceuid': 'S1',
-                'seriesinstanceuid': 'Se1', 'sopinstanceuid': 'So1'}),
+                'patient_id': 'P1', 'study_instance_uid': 'S1',
+                'series_instance_uid': 'Se1', 'sop_instance_uid': 'So1'}),
             patch('api.files.hash_file', return_value='hash'),
             patch('api.files._tenant_storage_used',
                   new=AsyncMock(return_value=0)),
@@ -293,8 +293,8 @@ class TestUploadTagsRowWithTenant:
         with (
             _patch_get_conn(conn),
             patch('api.files.parse_dcm', return_value={
-                'patientid': 'P1', 'studyinstanceuid': 'S1',
-                'seriesinstanceuid': 'Se1', 'sopinstanceuid': 'So1'}),
+                'patient_id': 'P1', 'study_instance_uid': 'S1',
+                'series_instance_uid': 'Se1', 'sop_instance_uid': 'So1'}),
             patch('api.files.hash_file', return_value='hash'),
             patch('api.files.Storage.get', new=AsyncMock(return_value=storage)),
             patch('api.files.Files') as m_files,
@@ -428,3 +428,38 @@ class TestTenantAuditMirroredOnTenantPool:
             resp = client.get('/api/ctx', headers={'X-Tenant-ID': 'my-clinic'})
         assert resp.status_code == 200
         mock_pool.acquire.assert_not_called()
+
+
+class TestEsTenantIndexGuard:
+    """G-3: the ES indexer must never store a tenant-tagged row into the
+    unscoped platform/main index (SERIAL-id collision / cross-tenant leak)."""
+
+    async def test_index_refuses_tenant_row_without_slug(self):
+        from es import es as es_mod
+        fake_client = MagicMock()
+        fake_client.index = AsyncMock()
+        with patch.object(es_mod, 'get_client', return_value=fake_client):
+            with pytest.raises(RuntimeError, match='unscoped index'):
+                await es_mod.index({'id': 1, 'tenant': 'clinic_b'}, tenant_slug='')
+        fake_client.index.assert_not_called()
+
+    async def test_index_allows_tenant_row_with_slug(self):
+        from es import es as es_mod
+        fake_client = MagicMock()
+        fake_client.index = AsyncMock()
+        with patch.object(es_mod, 'get_client', return_value=fake_client):
+            await es_mod.index({'id': 1, 'tenant': 'clinic_b'}, tenant_slug='clinic_b')
+        fake_client.index.assert_called_once()
+        _, kwargs = fake_client.index.call_args
+        assert kwargs['id'] == 'clinic_b:1'
+        assert kwargs['document']['tenant'] == 'clinic_b'
+
+    async def test_index_main_store_no_slug_ok(self):
+        from es import es as es_mod
+        fake_client = MagicMock()
+        fake_client.index = AsyncMock()
+        with patch.object(es_mod, 'get_client', return_value=fake_client):
+            await es_mod.index({'id': 1, 'tenant': None}, tenant_slug='')
+        fake_client.index.assert_called_once()
+        _, kwargs = fake_client.index.call_args
+        assert kwargs['id'] == '1'
