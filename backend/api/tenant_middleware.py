@@ -1,6 +1,8 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+import asyncpg
+
 from api.auth import can_access_tenant, can_mutate_tenant, _is_read_method
 from api.response import not_found, apply_cors_headers
 from db.audit_log import AuditLog
@@ -126,7 +128,22 @@ class TenantMiddleware(BaseHTTPMiddleware):
                             status_code=403,
                         ),
                     )
-                pool = await TenantConnectionPool.get(slug, info)
+                try:
+                    pool = await TenantConnectionPool.get(slug, info)
+                except asyncpg.InvalidCatalogNameError:
+                    # IAM audit M-4: a registry row whose database does not
+                    # exist (provisioned/manual row, decommissioned DB) must
+                    # surface as a clear 503, never a 500 traceback — the
+                    # tenant is real but its data plane is unavailable.
+                    log.warning('Tenant %s has no database %s', slug, info.get('db_name'))
+                    return apply_cors_headers(
+                        request,
+                        JSONResponse(
+                            {'error': 'Tenant unavailable',
+                             'message': 'Tenant database is unavailable'},
+                            status_code=503,
+                        ),
+                    )
                 acquire = _main_db_acquire(info) or pool.acquire
                 set_request_tenant(acquire)
                 set_tenant_slug(slug)

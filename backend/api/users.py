@@ -34,6 +34,9 @@ def _extract_token(request):
         auth = request.query_params.get('token')
     if not auth:
         auth = request.cookies.get('token')
+    # No query-param fallback (IAM audit M-3): JWTs must never travel in
+    # URLs — Referer headers and access logs would leak them. Share-key
+    # authentication has its own dedicated query path in AuthMiddleware.
     return auth
 
 
@@ -138,7 +141,9 @@ class Login(HTTPEndpoint):
                 httponly=True,
                 samesite='strict',
                 secure=True,
-                path='/api',
+                # Root path (IAM audit H-2): the browser auth channel must
+                # cover /api and /dicomweb (WADO-RS image fetches) alike.
+                path='/',
             )
             # Refresh token travels only as an HttpOnly cookie scoped to the
             # auth endpoints (/api/auth) — both the refresh endpoint and
@@ -196,7 +201,7 @@ class Logout(HTTPEndpoint):
         if refresh:
             await block_token(refresh)
         resp = ok({'message': 'Logged out'})
-        resp.delete_cookie('token', path='/api')
+        resp.delete_cookie('token', path='/')
         resp.delete_cookie('refresh_token', path='/api/auth')
         return resp
 
@@ -423,5 +428,16 @@ class RefreshToken(HTTPEndpoint):
             samesite='strict',
             secure=True,
             path='/api/auth',
+        )
+        # IAM audit H-2: the browser refresh channel must also rotate the
+        # access cookie — a cookie-only frontend has no other way to pick up
+        # the new access JWT.
+        resp.set_cookie(
+            key='token',
+            value=access,
+            httponly=True,
+            samesite='strict',
+            secure=True,
+            path='/',
         )
         return resp

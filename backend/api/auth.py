@@ -317,7 +317,11 @@ class TokenAuth(AuthenticationBackend):
                     if jwt_version != token_version:
                         raise AuthenticationError('Token invalidated')
         else:
-            token = request.query_params.get('token')
+            # Browser sockets cannot set headers, so the handshake authenticates
+            # via the HttpOnly access cookie first (IAM audit H-2); the query
+            # path remains for the short-lived single-use ws_token and share
+            # keys, which are minted specifically for URL transport.
+            token = request.cookies.get('token') or request.query_params.get('token')
             if not token:
                 raise AuthenticationError('Invalid auth')
             try:

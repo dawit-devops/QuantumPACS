@@ -58,7 +58,7 @@ describe("request() tenant header", () => {
     expect(headers.get("X-Tenant-ID")).toBeNull();
   });
 
-  it("keeps auth + csrf headers alongside the tenant header", async () => {
+  it("keeps csrf + credentials headers alongside the tenant header", async () => {
     localStorage.setItem("tenant_id", "north");
     stubFetch(true, { data: [] });
 
@@ -67,7 +67,10 @@ describe("request() tenant header", () => {
     const { options } = lastFetchCall();
     const headers = new Headers(options.headers);
     expect(headers.get("X-Tenant-ID")).toBe("north");
-    expect(headers.get("X-Auth-Pacs")).toBe("test-token");
+    // IAM audit H-2: auth travels as an HttpOnly cookie — never in a
+    // JS-readable header; the fetch must include credentials.
+    expect(headers.get("X-Auth-Pacs")).toBeNull();
+    expect(options.credentials).toBe("include");
     expect(headers.get("X-CSRF-Token")).toBe("1");
   });
 });

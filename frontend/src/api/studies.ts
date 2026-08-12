@@ -109,11 +109,11 @@ export function wadoRsUrl(
 }
 
 function authHeaders(): Record<string, string> {
+  // IAM audit H-2: authentication rides the HttpOnly access cookie, so no
+  // token header here — only tenant scope and the CSRF nonce.
   const headers: Record<string, string> = {
     "X-CSRF-Token": "1",
   };
-  const token = localStorage.getItem("access_token");
-  if (token) headers["X-Auth-Pacs"] = token;
   const tenantId = localStorage.getItem("tenant_id");
   if (tenantId) headers["X-Tenant-ID"] = tenantId;
   return headers;
@@ -147,6 +147,9 @@ export async function storeInstances(files: File[]): Promise<StowResult> {
   parts.push(new Blob([`--${boundary}--\r\n`]));
   const resp = await fetch(`${API_URL}/dicomweb/studies`, {
     method: "POST",
+    // IAM audit H-2: credentials so the HttpOnly access cookie authenticates
+    // the STOW-RS upload.
+    credentials: "include",
     headers: {
       ...authHeaders(),
       "Content-Type": `multipart/related; type=application/dicom; boundary=${boundary}`,
@@ -173,6 +176,7 @@ export function archiveStudyUrl(studyUid: string): string {
 
 export async function downloadStudyArchive(studyUid: string): Promise<void> {
   const resp = await fetch(archiveStudyUrl(studyUid), {
+    credentials: "include",
     headers: authHeaders(),
   });
   if (!resp.ok) {

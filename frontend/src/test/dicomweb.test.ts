@@ -49,11 +49,14 @@ describe("dicomweb", () => {
       expect(url).toContain("PatientID=P001");
     });
 
-    it("includes auth token header", async () => {
+    it("does not send a JS-readable auth header (HttpOnly cookie channel)", async () => {
       mockFetch.mockResolvedValue(mockDicomJsonResponse([]));
       await searchStudies();
       const headers = mockFetch.mock.calls[0][1]?.headers;
-      expect(headers?.get?.("X-Auth-Pacs")).toBe("test-token");
+      // IAM audit H-2: auth travels as an HttpOnly cookie.
+      expect(headers?.get?.("X-Auth-Pacs")).toBeNull();
+      const opts = mockFetch.mock.calls[0][1];
+      expect(opts?.credentials).toBe("include");
     });
 
     it("returns empty array on empty response", async () => {

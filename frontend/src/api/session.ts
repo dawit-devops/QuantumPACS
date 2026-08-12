@@ -1,7 +1,11 @@
 import { API_URL } from "../config";
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem("access_token");
+  // IAM audit H-2: the access token is no longer readable from JS. It lives
+  // exclusively in the HttpOnly `token` cookie set by the backend, which the
+  // browser attaches to same-site requests automatically. Returning null
+  // makes any leftover header-sending code a harmless no-op.
+  return null;
 }
 
 export function getRefreshToken(): string | null {
@@ -11,12 +15,14 @@ export function getRefreshToken(): string | null {
 }
 
 export function setTokens(access: string, _refresh?: string): void {
-  // Only the short-lived access token is stored; the refresh token travels
-  // via HttpOnly cookie so XSS cannot exfiltrate a long-lived credential.
-  localStorage.setItem("access_token", access);
+  // IAM audit H-2: nothing to store — the server sets the HttpOnly access
+  // cookie on login/refresh. Kept as a no-op so callers keep working.
+  void access;
 }
 
 export function clearTokens(): void {
+  // Stale keys from pre-cookie sessions; both the access and refresh cookies
+  // are cleared server-side on logout.
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
 }
@@ -27,19 +33,13 @@ export function startRefreshTimer(onRefreshFailed: () => void): void {
   stopRefreshTimer();
   refreshTimer = setInterval(
     async () => {
-      const token = getAccessToken();
-      if (!token) return;
+      // IAM audit H-2: token expiry is unreadable (HttpOnly cookie), so the
+      // timer just refreshes proactively on its cadence. The server rotates
+      // both cookies; a denied (401) refresh means a dead session, while a
+      // rate-limited (429) or failed (network) refresh is transient.
       const ok = await tryRefreshToken();
-      if (!ok) {
-        // Refresh token expiry is unreadable (HttpOnly); approximate with the
-        // access token's own expiry to avoid logging out on transient errors.
-        const payload = token.split(".")[1];
-        try {
-          const decoded = JSON.parse(atob(payload));
-          if (decoded.exp * 1000 < Date.now() + 60000) {
-            onRefreshFailed();
-          }
-        } catch {}
+      if (!ok && wasRefreshDenied()) {
+        onRefreshFailed();
       }
     },
     25 * 60 * 1000,
@@ -60,6 +60,13 @@ let lastRefreshStatus: number | null = null;
 // throttled — not dead. Callers must not bounce the user to /login on it.
 export function wasRefreshRateLimited(): boolean {
   return lastRefreshStatus === 429;
+}
+
+// A denied refresh (401) means the session is gone — the token was revoked,
+// expired, or the account is unavailable. Only this status may trigger the
+// sign-out path; network errors (status null) are transient.
+export function wasRefreshDenied(): boolean {
+  return lastRefreshStatus === 401;
 }
 
 export async function tryRefreshToken(): Promise<boolean> {

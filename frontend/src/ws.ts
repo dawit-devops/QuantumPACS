@@ -1,6 +1,5 @@
 import { API_URL } from "./config";
 import { request } from "./helpers";
-import { getAccessToken } from "./api/session";
 
 const MAX_RECONNECT_DELAY = 30000;
 
@@ -64,7 +63,9 @@ function scheduleReconnect(): void {
 export function init(): void {
   // Skip when unauthenticated: the ws_token endpoint is cookie-authenticated
   // and would 401-spam the console (and reconnect-loop) on the login screen.
-  if (!getAccessToken()) return;
+  // Identity metadata is the session gate (IAM audit H-2: tokens are no
+  // longer readable from JS).
+  if (!localStorage.getItem("userId")) return;
   // The browser API cannot set an Authorization header on a WebSocket and a
   // query-string access token would be logged by proxies, so the backend
   // issues a short-lived single-use ws_token (HttpOnly-cookie-authenticated)

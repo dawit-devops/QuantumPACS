@@ -2,7 +2,6 @@ import { useState, useCallback, useRef } from "react";
 import { message } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { API_URL } from "../config";
-import { getAccessToken } from "../helpers";
 import { UploadProgress } from "./UploadProgress";
 import type { UploadFileItem, UploadStatus } from "./UploadProgress";
 
@@ -46,7 +45,8 @@ function uploadFile(
     });
 
     xhr.open("POST", `${API_URL}/files/upload`);
-    xhr.setRequestHeader("X-Auth-Pacs", getAccessToken() || "");
+    // IAM audit H-2: the HttpOnly access cookie authenticates the upload.
+    xhr.withCredentials = true;
     xhr.setRequestHeader("X-CSRF-Token", "1");
     xhr.send(formData);
   });

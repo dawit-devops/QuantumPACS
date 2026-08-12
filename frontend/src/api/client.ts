@@ -1,11 +1,6 @@
 import { API_URL } from "../config";
 import { navigate } from "../navigator";
-import {
-  getAccessToken,
-  setTokens,
-  tryRefreshToken,
-  wasRefreshRateLimited,
-} from "./session";
+import { tryRefreshToken, wasRefreshRateLimited } from "./session";
 
 export interface RequestOptions {
   method?: string;
@@ -150,10 +145,9 @@ export const request = async <T = any>(
     "Content-Type": "application/json",
     "X-CSRF-Token": "1",
   });
-  const token = getAccessToken();
-  if (token) {
-    options.headers.set("X-Auth-Pacs", token);
-  }
+  // IAM audit H-2: authentication rides the HttpOnly access cookie, so every
+  // request must include credentials (dev is cross-origin: 5173 -> 8080).
+  options.credentials = "include";
   // Per-request tenant scoping: the backend TenantMiddleware gates every
   // request on X-Tenant-ID. Reading localStorage here (instead of importing
   // AuthContext) keeps the api layer free of React deps and avoids circular
@@ -191,10 +185,8 @@ export const request = async <T = any>(
       }
       const refreshed = await tryRefreshToken();
       if (refreshed) {
-        const newToken = getAccessToken();
-        if (newToken) {
-          options.headers.set("X-Auth-Pacs", newToken);
-        }
+        // The server rotated the HttpOnly cookie; the retried request sends
+        // it automatically via credentials: "include".
         try {
           return (await exec()) as T;
         } catch (retryError: any) {

@@ -6,11 +6,7 @@ import {
   ApiError,
   RequestOptions,
 } from "./client";
-import {
-  getAccessToken,
-  tryRefreshToken,
-  wasRefreshRateLimited,
-} from "./session";
+import { tryRefreshToken, wasRefreshRateLimited } from "./session";
 import { navigate } from "../navigator";
 
 export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
@@ -62,10 +58,8 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
         headers.set("Content-Type", "application/json");
       }
       headers.set("X-CSRF-Token", "1");
-      const token = getAccessToken();
-      if (token) {
-        headers.set("X-Auth-Pacs", token);
-      }
+      // IAM audit H-2: auth rides the HttpOnly access cookie.
+      merged.credentials = "include";
       merged.headers = headers;
       controller.current = new AbortController();
       merged.signal = controller.current.signal;
@@ -87,10 +81,6 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
         if (is401) {
           const refreshed = await tryRefreshToken();
           if (refreshed) {
-            const newToken = getAccessToken();
-            if (newToken) {
-              merged.headers.set("X-Auth-Pacs", newToken);
-            }
             try {
               const result = await doFetch();
               setData(result);

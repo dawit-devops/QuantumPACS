@@ -139,16 +139,13 @@ describe("useFetch", () => {
     expect(result.current.error?.message).toMatch(/nope/);
   });
 
-  it("refreshes the token and retries on 401", async () => {
+  it("refreshes via the HttpOnly-cookie refresh endpoint and retries on 401", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ error: "expired" }, 401))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const refreshSpy = vi
       .spyOn(session, "tryRefreshToken")
       .mockResolvedValue(true);
-    const getTokenSpy = vi
-      .spyOn(session, "getAccessToken")
-      .mockReturnValue("abc");
 
     const { result } = renderHook(() => useFetch("items"));
 
@@ -158,12 +155,10 @@ describe("useFetch", () => {
     });
 
     expect(refreshSpy).toHaveBeenCalled();
-    expect(getTokenSpy).toHaveBeenCalled();
     expect(result.current.data).toEqual({ ok: true });
     expect(result.current.error).toBeNull();
 
     refreshSpy.mockRestore();
-    getTokenSpy.mockRestore();
   });
 
   it("navigates to /login when refresh fails on 401", async () => {

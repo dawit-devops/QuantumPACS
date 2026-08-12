@@ -64,7 +64,9 @@ describe("ws client", () => {
     requestMock.mockReset();
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.useFakeTimers();
-    localStorage.setItem("access_token", "test-token");
+    // IAM audit H-2: init() gates on session identity (userId), not a
+    // JS-readable token — tokens live in HttpOnly cookies now.
+    localStorage.setItem("userId", "7");
   });
 
   afterEach(() => {

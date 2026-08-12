@@ -66,15 +66,10 @@ describe("token helpers", () => {
     vi.mocked(navigate).mockClear();
   });
 
-  it("getAccessToken returns null when no token stored", async () => {
-    const { getAccessToken } = await import("../helpers");
-    expect(getAccessToken()).toBeNull();
-  });
-
-  it("getAccessToken returns stored token", async () => {
+  it("getAccessToken always returns null (HttpOnly cookie holds it)", async () => {
     localStorage.setItem("access_token", "test-access");
     const { getAccessToken } = await import("../helpers");
-    expect(getAccessToken()).toBe("test-access");
+    expect(getAccessToken()).toBeNull();
   });
 
   it("getRefreshToken always returns null (HttpOnly cookie holds it)", async () => {
@@ -83,10 +78,10 @@ describe("token helpers", () => {
     expect(getRefreshToken()).toBeNull();
   });
 
-  it("setTokens stores only the access token", async () => {
+  it("setTokens stores nothing (server sets the HttpOnly cookie)", async () => {
     const { setTokens } = await import("../helpers");
     setTokens("access-123", "refresh-456");
-    expect(localStorage.getItem("access_token")).toBe("access-123");
+    expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 
@@ -115,7 +110,7 @@ describe("token helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("tryRefreshToken returns true and updates access token on success", async () => {
+  it("tryRefreshToken returns true but stores nothing (cookie auth)", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
@@ -130,7 +125,7 @@ describe("token helpers", () => {
     const result = await tryRefreshToken();
 
     expect(result).toBe(true);
-    expect(localStorage.getItem("access_token")).toBe("new-access");
+    expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
     vi.unstubAllGlobals();
   });
@@ -235,7 +230,7 @@ describe("token helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("request sets X-Auth-Pacs and X-CSRF-Token headers", async () => {
+  it("request sends credentials and CSRF header (cookie auth)", async () => {
     localStorage.setItem("access_token", "my-access-token");
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -246,15 +241,15 @@ describe("token helpers", () => {
     const { request } = await import("../helpers");
     await request("test-endpoint");
 
-    const callHeaders = mockFetch.mock.calls[0][1].headers;
-    expect(callHeaders.get("X-Auth-Pacs")).toBe("my-access-token");
-    expect(callHeaders.get("X-CSRF-Token")).toBe("1");
+    const { headers, credentials } = mockFetch.mock.calls[0][1];
+    expect(credentials).toBe("include");
+    // The access token never travels as a header (HttpOnly cookie instead).
+    expect(headers.get("X-Auth-Pacs")).toBeNull();
+    expect(headers.get("X-CSRF-Token")).toBe("1");
     vi.unstubAllGlobals();
   });
 
   it("request retries after successful token refresh on 401", async () => {
-    localStorage.setItem("access_token", "expired-token");
-
     let callCount = 0;
     const mockFetch = vi.fn().mockImplementation(() => {
       callCount++;
@@ -287,9 +282,11 @@ describe("token helpers", () => {
     const result = await request("test-endpoint");
 
     expect(result).toEqual({ data: "success" });
-    expect(localStorage.getItem("access_token")).toBe("new-access");
+    // Nothing is stored client-side; the server rotates the HttpOnly cookie.
+    expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
     expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch.mock.calls[2][1].credentials).toBe("include");
     expect(mockFetch.mock.calls[2][1].headers.get("X-CSRF-Token")).toBe("1");
     vi.unstubAllGlobals();
   });

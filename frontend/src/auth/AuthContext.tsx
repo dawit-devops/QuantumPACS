@@ -5,12 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
-  setTokens,
-  clearTokens,
-  startRefreshTimer,
-  stopRefreshTimer,
-} from "../helpers";
+import { clearTokens, startRefreshTimer, stopRefreshTimer } from "../helpers";
 import { navigate } from "../navigator";
 
 export interface AuthUser {
@@ -102,6 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(
     (token: string, userData: AuthUser, refreshToken?: string) => {
+      // IAM audit H-2: the token arguments are unused — the backend set both
+      // HttpOnly cookies (access + refresh) on the login response, and the
+      // browser attaches them to subsequent requests automatically.
+      void token;
+      void refreshToken;
       localStorage.setItem("userId", userData.id);
       localStorage.setItem("username", userData.username);
       localStorage.setItem("admin", String(userData.admin));
@@ -121,7 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           slug: userData.tenant_id,
         });
       }
-      setTokens(token, refreshToken || token);
       setUser(userData);
       startRefreshTimer(() => {
         signOut();

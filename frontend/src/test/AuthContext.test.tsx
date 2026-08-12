@@ -145,7 +145,9 @@ describe("AuthProvider", () => {
     expect(screen.getByTestId("auth-user")).toHaveTextContent("alice");
     expect(localStorage.getItem("userId")).toBe("u1");
     expect(localStorage.getItem("username")).toBe("alice");
-    expect(localStorage.getItem("access_token")).toBe("test-token");
+    // IAM audit H-2: access token lives in an HttpOnly cookie — never
+    // written to localStorage.
+    expect(localStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
   });
 

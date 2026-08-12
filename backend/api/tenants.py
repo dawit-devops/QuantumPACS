@@ -1,8 +1,9 @@
 from starlette.endpoints import HTTPEndpoint
+from starlette.exceptions import HTTPException
 
-from api.rbac import requires_permission
+from api.rbac import requires_permission, has_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, api_error
+from api.response import ok, created, not_found, api_error, forbidden
 from api.validate import parse_body
 from api.schemas.tenants import CreateTenantRequest, UpdateTenantRequest
 from config import config
@@ -48,10 +49,19 @@ def _tenant_scoped_403(message='You do not have access to this tenant'):
 
 
 class TenantsHandler(HTTPEndpoint):
-    @requires_permission(Permission.TENANT_READ)
     async def get(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            raise HTTPException(status_code=401, detail='Not authenticated')
+        # Replacement for the old TENANT_READ-only decorator: CROSS_TENANT_READ
+        # holders (radiologist/teleradiologist) also need the list — it is the
+        # only way the sidebar tenant switcher can surface their RT-301 grants.
+        tenant_reader = has_permission(user, Permission.TENANT_READ)
+        cross_reader = has_permission(user, Permission.CROSS_TENANT_READ)
+        if not (tenant_reader or cross_reader):
+            return forbidden(f'Missing permission: {Permission.TENANT_READ.value}')
         include_decommissioned = request.query_params.get('include_decommissioned') == 'true'
-        if include_decommissioned and not _is_platform_admin(request.user):
+        if include_decommissioned and not _is_platform_admin(user):
             # Decommissioned tenants are invisible to everyone but the
             # platform super admin.
             return api_error(
@@ -63,10 +73,23 @@ class TenantsHandler(HTTPEndpoint):
             tenants = await Tenants(conn).get_all(
                 include_decommissioned=include_decommissioned,
             )
-        if not _is_platform_admin(request.user):
-            # Tenant-scoped admins only ever see their own tenant.
-            own = getattr(request.user, 'tenant', None)
-            tenants = [t for t in tenants if t.get('slug') == own]
+        if not _is_platform_admin(user):
+            # TENANT_READ holders see only their own tenant (historical
+            # scoping); a pure CROSS_TENANT_READ reader has no TENANT_READ
+            # scoping rules to inherit, so show exactly the tenants their
+            # grant rows unlock, plus their home tenant.
+            own = getattr(user, 'tenant', None)
+            if tenant_reader:
+                tenants = [t for t in tenants if t.get('slug') == own]
+            else:
+                from db.user_tenant_grants import UserTenantGrants
+                async with get_conn() as conn:
+                    grants = await UserTenantGrants(conn).list_for_user(user.id)
+                granted = {g['tenant_slug'] for g in grants}
+                tenants = [
+                    t for t in tenants
+                    if t.get('slug') == own or t.get('slug') in granted
+                ]
         return ok({'data': tenants})
 
     @requires_permission(Permission.TENANT_ADMIN)
