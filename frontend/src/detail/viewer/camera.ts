@@ -1,9 +1,18 @@
-import type { StackViewport } from "@cornerstonejs/core";
+import { getRenderingEngine, type StackViewport } from "@cornerstonejs/core";
 
 export interface ViewportInfo {
   zoom: number;
   ww: number;
   wc: number;
+}
+
+// Viewport instances do not expose the engine directly (v5.7.2) — resolve it
+// by id. The rotation/flip setters mutate camera state but never re-render
+// (setRotation* fires no event, unlike setCamera), so paint explicitly to
+// make the change visible.
+function repaint(vp: StackViewport) {
+  const re = getRenderingEngine(vp.renderingEngineId);
+  if (re) void re.render();
 }
 
 export function readViewportInfo(vp: StackViewport): ViewportInfo {
@@ -20,14 +29,28 @@ export function readViewportInfo(vp: StackViewport): ViewportInfo {
 export function rotateViewport(vp: StackViewport): void {
   const camera = vp.getCamera();
   const rotation = ((camera.rotation || 0) + 90) % 360;
-  (vp as any).setRotationCPU(rotation);
+  const anyVp = vp as unknown as {
+    useCPURendering: boolean;
+    setRotationCPU: (rotation: number) => void;
+    setRotationGPU: (rotation: number) => void;
+  };
+  // setRotationCPU destructures _cpuFallbackEnabledElement unconditionally
+  // and throws when the viewport renders on GPU — including software WebGL
+  // (headless/CI), which still reports GPU mode. Pick the matching path.
+  if (anyVp.useCPURendering) anyVp.setRotationCPU(rotation);
+  else anyVp.setRotationGPU(rotation);
+  // Neither rotation setter re-renders — mutate then paint explicitly.
+  repaint(vp);
 }
 
 export function flipViewport(vp: StackViewport, vertical: boolean): void {
-  (vp as any).setFlipCPU({
+  // setCamera is mode-aware (routes to the CPU/GPU flip internally), unlike
+  // setFlipCPU which crashes without a CPU fallback element.
+  vp.setCamera({
     flipHorizontal: !vertical,
     flipVertical: vertical,
   });
+  repaint(vp);
 }
 
 export function invertViewport(vp: StackViewport): void {
