@@ -69,8 +69,8 @@ def _make_app(route, user):
     )
 
 
-def _make_user(permissions):
-    return User({'id': 1, 'permissions': list(permissions)})
+def _make_user(permissions, admin=False):
+    return User({'id': 1, 'permissions': list(permissions), 'admin': admin})
 
 
 def _patch_conn(module):
@@ -144,9 +144,20 @@ def test_super_admin_wildcard_grant_passes_any_guard():
     p = _patch_conn('api.worklist')[0]
     q = _patch_db_class('api.worklist', 'Worklist', search=([], 0))[0]
     with p, q:
-        with TestClient(_make_app(route, _make_user(['*']))) as client:
+        with TestClient(_make_app(route, _make_user(['*'], admin=True))) as client:
             resp = client.get('/api/worklist')
     assert resp.status_code == 200
+
+
+def test_non_admin_wildcard_is_denied():
+    # F-3: a non-admin user carrying the '*' wildcard must not bypass RBAC.
+    route = Route('/api/worklist', endpoint=WorklistHandler)
+    p = _patch_conn('api.worklist')[0]
+    q = _patch_db_class('api.worklist', 'Worklist', search=([], 0))[0]
+    with p, q:
+        with TestClient(_make_app(route, _make_user(['*'], admin=False))) as client:
+            resp = client.get('/api/worklist')
+    assert resp.status_code == 403
 
 
 # ------------------------------------------------- §7 groups (representative)

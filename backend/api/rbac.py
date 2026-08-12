@@ -38,8 +38,12 @@ def has_permission(user, permission) -> bool:
     code = permission.value if isinstance(permission, Permission) else str(permission)
     perms = set(getattr(user, 'permissions', None) or [])
     if '*' in perms:
-        # legacy super-admin wildcard grant (token fixtures, seeded admins)
-        return True
+        # Legacy super-admin wildcard grant. Tie it to the platform admin flag
+        # (F-3): a non-admin user must never reach every @requires_permission
+        # gate in every tenant they can touch just by carrying '*'. Real
+        # super-admins are modeled with admin=True (plus '*' or the explicit
+        # SUPER_ADMIN_PERMISSIONS set).
+        return bool(getattr(user, 'admin', False))
     if code in perms:
         return True
     aliases = set(PERMISSION_ALIASES.get(code, ()))
