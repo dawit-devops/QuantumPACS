@@ -9,12 +9,18 @@ import asyncpg
 
 from config import config
 from db.conn import get_conn
-from db.tenants import Tenants
+from db.tenants import Tenants, uses_main_database
 from log import get_logger
 
 log = get_logger(__name__)
 
 _ALEMBIC_CFG_PATH = 'alembic.ini'
+
+# The only tenant permitted to share the main database. Every other tenant must
+# get its own database — see F-2 (the `default` tenant co-locates its data
+# plane with the platform's global tables in the main DB; a second main-DB
+# tenant would silently co-mingle data with no schema-level boundary).
+_DEFAULT_TENANT_SLUG = 'default'
 
 
 def _hash_password(pswd):
@@ -90,6 +96,24 @@ class TenantProvisioner:
                         admin_email: str = None, plan: str = 'free'):
         if db_name is None:
             db_name = slug.replace('-', '_')
+
+        # F-2 guard: refuse to provision a tenant whose data store resolves to
+        # the main database unless it is the designated `default` tenant. The
+        # effective connection params come from the provided values or the
+        # main config defaults, mirroring db/tenants.uses_main_database.
+        effective = {
+            'db_name': db_name,
+            'db_host': db_host or config['db_host'],
+            'db_port': db_port or int(config.get('db_port', '5432')),
+            'db_user': db_user or config['db_user'],
+            'db_password': db_password or config['db_password'],
+        }
+        if slug != _DEFAULT_TENANT_SLUG and uses_main_database(effective):
+            raise TenantProvisionError(
+                f"Tenant '{slug}' would use the main database "
+                f"({db_name}); only the '{_DEFAULT_TENANT_SLUG}' tenant may "
+                f"share it. Provision a dedicated database instead."
+            )
 
         async with get_conn() as conn:
             existing = await Tenants(conn).get_by_slug(slug)

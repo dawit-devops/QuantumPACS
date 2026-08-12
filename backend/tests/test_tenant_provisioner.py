@@ -109,3 +109,54 @@ class TestTenantProvisioner:
             with pytest.raises(TenantProvisionError) as exc:
                 await TenantProvisioner.provision(slug='existing', name='Existing')
             assert 'already exists' in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_provision_rejects_second_main_db_tenant(self):
+        # F-2: a tenant whose data store resolves to the main database must be
+        # refused unless it is the designated `default` tenant.
+        fake_config = {
+            'db_database': 'maindb', 'db_host': 'h',
+            'db_user': 'u', 'db_password': 'p', 'db_port': '5432',
+        }
+        with (
+            patch('db.tenant_provisioner.config', fake_config),
+            patch('db.tenants.config', fake_config),
+        ):
+            with pytest.raises(TenantProvisionError) as exc:
+                await TenantProvisioner.provision(
+                    slug='rogue', name='Rogue',
+                    db_name='maindb',  # same name as the main database
+                )
+            assert 'main database' in str(exc.value)
+
+    @pytest.mark.asyncio
+    async def test_provision_allows_default_tenant_on_main_db(self):
+        # The seeded `default` tenant is the only tenant permitted to share the
+        # main database; the F-2 guard must not fire for it.
+        fake_config = {
+            'db_database': 'maindb', 'db_host': 'h',
+            'db_user': 'u', 'db_password': 'p', 'db_port': '5432',
+        }
+        conn_mock = AsyncMock()
+        with (
+            patch('db.tenant_provisioner.config', fake_config),
+            patch('db.tenants.config', fake_config),
+            patch('asyncpg.connect', new=AsyncMock(return_value=conn_mock)),
+            patch('db.tenant_provisioner.get_conn') as mock_get_conn,
+            patch('alembic.command.upgrade'),
+            patch('db.tenant_provisioner.TenantProvisioner.create_initial_admin',
+                  new=AsyncMock(return_value='pass')),
+        ):
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = conn_mock
+            mock_get_conn.return_value = mock_ctx
+            conn_mock.fetchrow.return_value = None  # no existing slug
+            # Should pass the guard and proceed (DuplicateDatabaseError on the
+            # main db is expected and handled, so it returns a result/raises a
+            # provision error from later steps — but NOT the main-db guard).
+            try:
+                await TenantProvisioner.provision(
+                    slug='default', name='Default', db_name='maindb',
+                )
+            except TenantProvisionError as e:
+                assert 'main database' not in str(e)
