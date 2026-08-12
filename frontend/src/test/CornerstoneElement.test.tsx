@@ -196,7 +196,7 @@ describe("CornerstoneElement", () => {
 
     await waitFor(() =>
       expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("CobbAngle", {
-        mouseButtonMask: 1,
+        bindings: [{ mouseButton: 1 }],
       }),
     );
   });
@@ -211,7 +211,7 @@ describe("CornerstoneElement", () => {
 
     await waitFor(() =>
       expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("Probe", {
-        mouseButtonMask: 1,
+        bindings: [{ mouseButton: 1 }],
       }),
     );
   });
@@ -226,7 +226,7 @@ describe("CornerstoneElement", () => {
 
     await waitFor(() =>
       expect(toolGroupMock.setToolActive).toHaveBeenCalledWith("CircleROI", {
-        mouseButtonMask: 1,
+        bindings: [{ mouseButton: 1 }],
       }),
     );
   });

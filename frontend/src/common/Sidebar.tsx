@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import { Layout, Menu, Grid, Drawer, Button, Space } from "antd";
+import type { MenuProps } from "antd";
 import {
   MenuOutlined,
   FileSearchOutlined,
@@ -472,7 +473,10 @@ export function hasItemPermission(
   return item.permissions.length === 0 || item.permissions.some(hasPermission);
 }
 
-function renderNavItem(item: NavItemDef, selectedKey: string) {
+function navItemToItem(
+  item: NavItemDef,
+  selectedKey: string,
+): NonNullable<MenuProps["items"]>[number] {
   const link = (child: NavItemDef) => (
     <Link to={child.path!}>
       {child.icon}
@@ -480,38 +484,17 @@ function renderNavItem(item: NavItemDef, selectedKey: string) {
     </Link>
   );
   if (item.children) {
-    return (
-      <Menu.SubMenu
-        key={item.key}
-        title={
-          <span>
-            {item.icon}
-            <span>{item.label}</span>
-          </span>
-        }
-      >
-        {item.children.map((child) => (
-          <Menu.Item
-            key={child.key}
-            aria-current={selectedKey === child.key ? "page" : undefined}
-          >
-            {link(child)}
-          </Menu.Item>
-        ))}
-      </Menu.SubMenu>
-    );
+    return {
+      key: item.key,
+      icon: item.icon,
+      label: item.label,
+      children: item.children.map((child) => navItemToItem(child, selectedKey)),
+    };
   }
-  return (
-    <Menu.Item
-      key={item.key}
-      aria-current={selectedKey === item.key ? "page" : undefined}
-    >
-      <Link to={item.path!}>
-        {item.icon}
-        <span className="nav-text">{item.label}</span>
-      </Link>
-    </Menu.Item>
-  );
+  return {
+    key: item.key,
+    label: link(item),
+  };
 }
 
 function Sidebar() {
@@ -614,75 +597,82 @@ function Sidebar() {
         onClick={() => {
           if (isMobile) setDrawerOpen(false);
         }}
-      >
-        {hasItemPermission(
-          {
-            key: "files",
-            path: "/",
-            label: "Files",
-            icon: <FileSearchOutlined />,
-            permissions: [...VIEWER_ROUTE_PERMISSIONS],
-          },
-          hasPermission,
-          isAdminScoped,
-        ) && (
-          <Menu.Item
-            key="files"
-            aria-current={selectedKey === "files" ? "page" : undefined}
-          >
-            <Link to="/">
-              <FileSearchOutlined />
-              <span className="nav-text">Files</span>
-            </Link>
-          </Menu.Item>
-        )}
-        <Menu.Item
-          key="account"
-          aria-current={selectedKey === "account" ? "page" : undefined}
-        >
-          <Link to="/account">
-            <UserOutlined />
-            <span className="nav-text">Account</span>
-          </Link>
-        </Menu.Item>
-        {sections.map(({ section, items }) => (
-          <Menu.SubMenu
-            key={section.key}
-            title={
-              <span>
-                {section.icon}
-                <span>{section.title}</span>
-              </span>
-            }
-          >
-            {items.map((item) => renderNavItem(item, selectedKey))}
-          </Menu.SubMenu>
-        ))}
-        <Menu.Item
-          key="notifications"
-          style={{
-            borderTop: "1px solid rgba(255,255,255,0.08)",
-            marginTop: 8,
-          }}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <NotificationBell />
-            <span className="nav-text">Notifications</span>
-          </span>
-        </Menu.Item>
-        <Menu.Item key="theme-toggle" onClick={toggleTheme}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {isDark ? <SunOutlined /> : <MoonOutlined />}
-            <span className="nav-text">
-              {isDark ? "Light Mode" : "Dark Mode"}
-            </span>
-          </span>
-        </Menu.Item>
-        <Menu.Item key="logout" onClick={handleLogout}>
-          <LogoutOutlined />
-          <span className="nav-text">Logout</span>
-        </Menu.Item>
-      </Menu>
+        items={
+          [
+            hasItemPermission(
+              {
+                key: "files",
+                path: "/",
+                label: "Files",
+                icon: <FileSearchOutlined />,
+                permissions: [...VIEWER_ROUTE_PERMISSIONS],
+              },
+              hasPermission,
+              isAdminScoped,
+            )
+              ? {
+                  key: "files",
+                  label: (
+                    <Link to="/">
+                      <FileSearchOutlined />
+                      <span className="nav-text">Files</span>
+                    </Link>
+                  ),
+                }
+              : null,
+            {
+              key: "account",
+              label: (
+                <Link to="/account">
+                  <UserOutlined />
+                  <span className="nav-text">Account</span>
+                </Link>
+              ),
+            },
+            ...sections.map(({ section, items }) => ({
+              key: section.key,
+              icon: section.icon,
+              label: section.title,
+              children: items.map((item) => navItemToItem(item, selectedKey)),
+            })),
+            {
+              key: "notifications",
+              label: (
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <NotificationBell />
+                  <span className="nav-text">Notifications</span>
+                </span>
+              ),
+              style: {
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                marginTop: 8,
+              },
+            },
+            {
+              key: "theme-toggle",
+              onClick: toggleTheme,
+              label: (
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isDark ? <SunOutlined /> : <MoonOutlined />}
+                  <span className="nav-text">
+                    {isDark ? "Light Mode" : "Dark Mode"}
+                  </span>
+                </span>
+              ),
+            },
+            {
+              key: "logout",
+              onClick: handleLogout,
+              label: (
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <LogoutOutlined />
+                  <span className="nav-text">Logout</span>
+                </span>
+              ),
+            },
+          ].filter(Boolean) as MenuProps["items"]
+        }
+      />
     </div>
   );
 

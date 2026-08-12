@@ -57,7 +57,13 @@ function Share(props: any) {
     form
       .validateFields()
       .then((values: any) => {
-        createFileShare(props.file.id, values)
+        // The API contract is seconds (1 min – 30 days); the form collects
+        // hours. Convert so a "24 hour" link is not sent as 24 seconds.
+        const body = {
+          ...values,
+          duration: Math.round(values.duration * 3600),
+        };
+        createFileShare(props.file.id, body)
           .then((data: any) => {
             setLoading(false);
             setKey(data.key);
@@ -213,11 +219,13 @@ function Share(props: any) {
         <Form.Item
           name="duration"
           label="Share duration (hours)"
+          extra="1 to 720 hours (30 days)"
           rules={[{ required: true, message: "Please enter duration!" }]}
         >
           <InputNumber
             min={1}
-            max={8760}
+            // Backend caps share lifetime at 30 days (2,592,000 s) — 720 h.
+            max={720}
             style={{ width: "100%" }}
             placeholder="e.g., 24"
           />
@@ -241,7 +249,7 @@ function Share(props: any) {
           footer={null}
           onCancel={() => setKey(null)}
         >
-          <Space direction="vertical" style={{ width: "100%" }}>
+          <Space orientation="vertical" style={{ width: "100%" }}>
             <Row gutter={8} align="middle">
               <Col flex="auto">
                 <Input

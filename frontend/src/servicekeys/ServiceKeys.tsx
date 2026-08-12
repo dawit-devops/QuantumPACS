@@ -124,7 +124,7 @@ function ServiceKeys() {
       key: "name",
       width: "18%",
       render: (_: any, r: any) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <span>{r.name}</span>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {r.prefix}
@@ -321,11 +321,7 @@ function ServiceKeys() {
         empty={!loading && !error && filteredData.length === 0}
         emptyMessage="No service keys — generate one to issue credentials."
       >
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={filteredData}
-        />
+        <Table rowKey="id" columns={columns} dataSource={filteredData} />
       </PageState>
 
       <Modal
@@ -355,7 +351,7 @@ function ServiceKeys() {
           </Form.Item>
           <Form.Item name="permissions" label="Permissions" initialValue={[]}>
             <Checkbox.Group>
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <Space orientation="vertical" style={{ width: "100%" }}>
                 {grantableGroups.map(([group, perms]) => (
                   <div key={group}>
                     <Typography.Text strong style={{ fontSize: 12 }}>

@@ -79,21 +79,13 @@ export async function ensureGlobalInit() {
   tg.addTool(ProbeTool.toolName);
   tg.addTool(CircleROITool.toolName);
 
-  const setActive = (tg as any).setToolActive;
-  setActive.call(tg, PanTool.toolName, { mouseButtonMask: 1 });
-  setActive.call(tg, ZoomTool.toolName, { mouseButtonMask: 2 });
-  setActive.call(tg, WindowLevelTool.toolName, { mouseButtonMask: 4 });
-  setActive.call(tg, StackScrollTool.toolName);
-
-  tg.setToolConfiguration(ZoomTool.toolName, {
-    mouseButtonMask: 2,
-    touchPinchCallback: true,
+  // Cornerstone3D >= 5.x: `mouseButtonMask` was removed from the tool-mode
+  // API — mouse bindings are expressed via `bindings`. Without an explicit
+  // binding the tool flips to Active but stays inert (E2E-verified).
+  tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 1 }] });
+  tg.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: 2 }] });
+  tg.setToolActive(WindowLevelTool.toolName, {
+    bindings: [{ mouseButton: 4 }],
   });
-  tg.setToolConfiguration(PanTool.toolName, {
-    mouseButtonMask: 1,
-    touchDragCallback: true,
-  });
-  tg.setToolConfiguration(StackScrollTool.toolName, {
-    touchDragCallback: true,
-  });
+  tg.setToolActive(StackScrollTool.toolName);
 }

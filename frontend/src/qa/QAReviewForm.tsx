@@ -293,7 +293,7 @@ function QAReviewForm() {
                 No required sequences configured for this protocol.
               </span>
             ) : (
-              <Space direction="vertical">
+              <Space orientation="vertical">
                 {sequences.map((s: any) => (
                   <Checkbox
                     key={s.name}

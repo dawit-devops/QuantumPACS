@@ -236,7 +236,11 @@ function QAQueue() {
         }}
         locale={{
           emptyText: (
-            <Space direction="vertical" align="center" style={{ padding: 24 }}>
+            <Space
+              orientation="vertical"
+              align="center"
+              style={{ padding: 24 }}
+            >
               <FileSearchOutlined style={{ fontSize: 32, color: "#8b8fa3" }} />
               <span>No exams pending QA review</span>
             </Space>

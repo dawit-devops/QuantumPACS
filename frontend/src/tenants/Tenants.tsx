@@ -432,53 +432,53 @@ function Tenants() {
                     isDecommissioned
                       ? undefined
                       : [
-                        ...(canAdmin
-                          ? [
-                            <Button
-                              type="link"
-                              size="small"
-                              icon={<EditOutlined />}
-                              onClick={() => handleEdit(tenant)}
-                              disabled={isProvisioning || isQuarantined}
-                              key="edit"
-                            >
+                          ...(canAdmin
+                            ? [
+                                <Button
+                                  type="link"
+                                  size="small"
+                                  icon={<EditOutlined />}
+                                  onClick={() => handleEdit(tenant)}
+                                  disabled={isProvisioning || isQuarantined}
+                                  key="edit"
+                                >
                                   Edit
-                            </Button>,
-                          ]
-                          : []),
-                        <Button
-                          type="link"
-                          size="small"
-                          icon={<BarChartOutlined />}
-                          onClick={() => openUsage(tenant)}
-                          disabled={isProvisioning}
-                          key="usage"
-                        >
+                                </Button>,
+                              ]
+                            : []),
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<BarChartOutlined />}
+                            onClick={() => openUsage(tenant)}
+                            disabled={isProvisioning}
+                            key="usage"
+                          >
                             Usage
-                        </Button>,
-                        ...lifecycleActions,
-                        ...(canAdmin
-                          ? [
-                            <Popconfirm
-                              key="decommission"
-                              title="Decommission this tenant?"
-                              description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
-                              onConfirm={() => handleDecommission(tenant)}
-                              disabled={isProvisioning}
-                            >
-                              <Button
-                                type="link"
-                                size="small"
-                                danger
-                                icon={<DeleteOutlined />}
-                                disabled={isProvisioning}
-                              >
+                          </Button>,
+                          ...lifecycleActions,
+                          ...(canAdmin
+                            ? [
+                                <Popconfirm
+                                  key="decommission"
+                                  title="Decommission this tenant?"
+                                  description="Data will be retained for 90 days per retention policy. This action is not reversible without manual DBA intervention."
+                                  onConfirm={() => handleDecommission(tenant)}
+                                  disabled={isProvisioning}
+                                >
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    disabled={isProvisioning}
+                                  >
                                     Decommission
-                              </Button>
-                            </Popconfirm>,
-                          ]
-                          : []),
-                      ]
+                                  </Button>
+                                </Popconfirm>,
+                              ]
+                            : []),
+                        ]
                   }
                 >
                   {isQuarantined && (
@@ -678,7 +678,7 @@ function Tenants() {
         title={`Usage — ${usageTenant?.name || ""}`}
         open={usageTenant !== null}
         onClose={() => setUsageTenant(null)}
-        width={480}
+        size={480}
       >
         <Table
           rowKey="date"

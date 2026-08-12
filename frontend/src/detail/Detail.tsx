@@ -219,55 +219,77 @@ function Detail() {
           style={{ paddingLeft: "40px" }}
           defaultSelectedKeys={[tab]}
           mode="horizontal"
-        >
-          <Menu.Item key="image" onClick={() => setTab("image")}>
-            <EyeOutlined />
-            Image
-          </Menu.Item>
-          <Menu.Item key="data" onClick={() => setTab("data")}>
-            <TableOutlined />
-            Data
-          </Menu.Item>
-          {!tempKey && (
-            <Menu.Item key="share" onClick={() => setTab("share")}>
-              <ShareAltOutlined />
-              Share
-            </Menu.Item>
-          )}
-          {!tempKey && (
-            <Menu.Item key="changes" onClick={() => setTab("changes")}>
-              <HistoryOutlined />
-              Changes
-            </Menu.Item>
-          )}
-          {!tempKey && hasPermission("USER_ADMIN") && (
-            <Menu.Item key="admin" onClick={() => setTab("admin")}>
-              <LockOutlined />
-              Admin
-            </Menu.Item>
-          )}
-          {!tempKey && !isAdminScoped && (
-            <Menu.Item
-              key="measurements-toggle"
-              onClick={() => setPanelOpen(!panelOpen)}
-              style={{
-                marginLeft: "auto",
-                borderLeft: "1px solid var(--border-color)",
-              }}
-            >
-              <Tooltip title="Toggle measurements panel">
-                <Badge
-                  count={measurements.length}
-                  size="small"
-                  offset={[2, -4]}
-                >
-                  <DashboardOutlined />
-                </Badge>
-              </Tooltip>
-              Measures
-            </Menu.Item>
-          )}
-        </Menu>
+          items={[
+            {
+              key: "image",
+              icon: <EyeOutlined />,
+              label: "Image",
+              onClick: () => setTab("image"),
+            },
+            {
+              key: "data",
+              icon: <TableOutlined />,
+              label: "Data",
+              onClick: () => setTab("data"),
+            },
+            ...(!tempKey
+              ? [
+                  {
+                    key: "share",
+                    icon: <ShareAltOutlined />,
+                    label: "Share",
+                    onClick: () => setTab("share"),
+                  },
+                ]
+              : []),
+            ...(!tempKey
+              ? [
+                  {
+                    key: "changes",
+                    icon: <HistoryOutlined />,
+                    label: "Changes",
+                    onClick: () => setTab("changes"),
+                  },
+                ]
+              : []),
+            ...(!tempKey && hasPermission("USER_ADMIN")
+              ? [
+                  {
+                    key: "admin",
+                    icon: <LockOutlined />,
+                    label: "Admin",
+                    onClick: () => setTab("admin"),
+                  },
+                ]
+              : []),
+            ...(!tempKey && !isAdminScoped
+              ? [
+                  {
+                    key: "measurements-toggle",
+                    onClick: () => setPanelOpen(!panelOpen),
+                    style: {
+                      marginLeft: "auto",
+                      borderLeft: "1px solid var(--border-color)",
+                    },
+                    label: (
+                      <>
+                        <Tooltip title="Toggle measurements panel">
+                          <Badge
+                            count={measurements.length}
+                            size="small"
+                            offset={[2, -4]}
+                          >
+                            <DashboardOutlined />
+                          </Badge>
+                        </Tooltip>
+                        Measures
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
         {data && data.patient && ["image"].includes(tab) && (
           <Breadcrumb
             style={{
@@ -275,38 +297,40 @@ function Detail() {
               padding: "5px",
               borderRadius: "var(--radius-sm)",
             }}
-          >
-            <Breadcrumb.Item>
-              {isAdminScoped ? (
-                isMobile ? (
-                  data.patient.name
+            items={[
+              {
+                title: isAdminScoped ? (
+                  isMobile ? (
+                    data.patient.name
+                  ) : (
+                    `${data.patient.name} (${data.patient.patient_id})`
+                  )
                 ) : (
-                  `${data.patient.name} (${data.patient.patient_id})`
-                )
-              ) : (
-                <Link to={`/patients/${data.patient_id}`}>
-                  {isMobile
-                    ? data.patient.name
-                    : `${data.patient.name} (${data.patient.patient_id})`}
-                </Link>
-              )}
-            </Breadcrumb.Item>
-            <Breadcrumb.Item
-              menu={{ items: studiesDrop(data.patient.studies) }}
-            >
-              {isMobile
-                ? `S:${study?.study_id ?? ""}`
-                : `Study ${study?.study_id ?? ""} ${wrap(study?.description ?? "")}`}
-            </Breadcrumb.Item>
-            <Breadcrumb.Item menu={{ items: seriesDrop(study?.series) }}>
-              {isMobile
-                ? `Ser:${series?.number ?? ""}`
-                : `Series ${series?.number ?? ""} ${wrap(series?.description ?? "")}`}
-            </Breadcrumb.Item>
-            <Breadcrumb.Item menu={{ items: filesDrop(series?.files) }}>
-              {isMobile ? data.name : `File ${data.name}`}
-            </Breadcrumb.Item>
-          </Breadcrumb>
+                  <Link to={`/patients/${data.patient_id}`}>
+                    {isMobile
+                      ? data.patient.name
+                      : `${data.patient.name} (${data.patient.patient_id})`}
+                  </Link>
+                ),
+              },
+              {
+                title: isMobile
+                  ? `S:${study?.study_id ?? ""}`
+                  : `Study ${study?.study_id ?? ""} ${wrap(study?.description ?? "")}`,
+                menu: { items: studiesDrop(data.patient.studies) },
+              },
+              {
+                title: isMobile
+                  ? `Ser:${series?.number ?? ""}`
+                  : `Series ${series?.number ?? ""} ${wrap(series?.description ?? "")}`,
+                menu: { items: seriesDrop(study?.series) },
+              },
+              {
+                title: isMobile ? data.name : `File ${data.name}`,
+                menu: { items: filesDrop(series?.files) },
+              },
+            ]}
+          />
         )}
         <div style={{ display: "flex", position: "relative" }}>
           <div style={{ flex: 1, minWidth: 0 }}>

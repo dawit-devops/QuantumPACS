@@ -391,7 +391,7 @@ function ScheduleBoard() {
         title="Exam Details"
         open={!!selectedEntry}
         onClose={() => setSelectedEntry(null)}
-        width={380}
+        size={380}
       >
         {selectedEntry && (
           <Descriptions column={1} size="small" bordered>

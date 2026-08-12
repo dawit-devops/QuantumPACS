@@ -259,7 +259,7 @@ function FhirDocs(props: any) {
               )
             }
           >
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space orientation="vertical" style={{ width: "100%" }}>
               <Space>
                 <Select
                   value={resourceType}

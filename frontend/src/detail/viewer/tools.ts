@@ -18,12 +18,13 @@ export function getToolGroup() {
 }
 
 // Promotes a single tool to primary (left mouse) and demotes Pan, so exactly
-// one annotation tool is active at a time.
+// one annotation tool is active at a time. The `bindings` shape (not the
+// legacy `mouseButtonMask`) is required by Cornerstone3D >= 5.x.
 export function setPrimaryTool(toolName: string): void {
   const tg = getToolGroup();
   if (!tg) return;
   tg.setToolPassive(PanTool.toolName);
-  (tg as any).setToolActive(toolName, { mouseButtonMask: 1 });
+  tg.setToolActive(toolName, { bindings: [{ mouseButton: 1 }] });
 }
 
 export function activateDrag(): void {
@@ -38,7 +39,7 @@ export function activateDrag(): void {
   tg.setToolPassive(CobbAngleTool.toolName);
   tg.setToolPassive(ProbeTool.toolName);
   tg.setToolPassive(CircleROITool.toolName);
-  (tg as any).setToolActive(PanTool.toolName, { mouseButtonMask: 1 });
+  tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 1 }] });
 }
 
 export function activateLine(): void {

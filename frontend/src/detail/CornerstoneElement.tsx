@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Collapse, Descriptions, Slider } from "antd";
+import { Button, Collapse, Descriptions, Slider, App } from "antd";
 import {
   ReloadOutlined,
   ColumnWidthOutlined,
@@ -157,6 +157,7 @@ export default function CornerstoneElement(props: CEProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMobileToolbar, setShowMobileToolbar] = useState(false);
   const [activeTool, setActiveTool] = useState("Pan");
+  const { message } = App.useApp();
 
   // Keep latest props/file reachable from stable callbacks without re-binding
   // listeners or restarting intervals on every render.
@@ -305,8 +306,14 @@ export default function CornerstoneElement(props: CEProps) {
     // and the failure may belong to another viewport).
     const failedId = evt?.detail?.imageId;
     if (!failedId || failedId !== imageRef.current) return;
-    setViewportError("Failed to load DICOM image");
+    const underlying = evt?.detail?.error?.message ?? "";
+    const isNoPixelData = /no pixel data/i.test(underlying);
+    const text = isNoPixelData
+      ? "This DICOM file has no pixel data and cannot be displayed"
+      : "Failed to load DICOM image";
+    setViewportError(text);
     setLoading(false);
+    message.error(text);
   }, []);
 
   const onWindowResize = useCallback(() => {

@@ -1,5 +1,11 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   App,
   Layout,
@@ -422,7 +428,7 @@ function Visits() {
         }
         open={!!selectedVisit}
         onClose={() => setSelectedVisit(null)}
-        width={560}
+        size={560}
       >
         {detailLoading ? (
           <div className="fd-loading">

@@ -186,7 +186,7 @@ function NotificationBell() {
         }
         open={open}
         onClose={() => setOpen(false)}
-        width={400}
+        size={400}
       >
         <Spin spinning={loading}>
           {notifs.length === 0 ? (
