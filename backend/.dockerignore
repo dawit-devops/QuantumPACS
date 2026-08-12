@@ -8,3 +8,8 @@ docs/
 *.yaml
 .cache
 *.egg-info
+# Secrets/keys must never land in images — the app auto-generates
+# certs/jwt-rsa.pem on first use (api/jwt_keys.py), and dev data is large.
+certs/
+*.pem
+.env*

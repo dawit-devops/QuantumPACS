@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 
-# Run pending migrations
-if [ "$SKIP_MIGRATIONS" != "1" ]; then
-    alembic upgrade head 2>/dev/null || echo "No migrations to apply or alembic not configured"
+# Run pending migrations — fail fast: a migration failure must stop the
+# container (an unhealthy container is preferable to silently stale schema).
+# The single-image deploys may run without DB_* env (DB on the host); the
+# ini fallback URL needs psycopg2 which is not installed here, so skip.
+if [ "$SKIP_MIGRATIONS" != "1" ] && [ -n "$DB_HOST" ]; then
+    alembic upgrade head
 fi
 
 # Start Caddy reverse proxy

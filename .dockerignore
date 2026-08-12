@@ -35,7 +35,8 @@ docs/
 .claude/
 .graphify/
 
-# Storage
-storage/
-db/
-es/
+# Keys/secrets/dev data must not be baked into either image
+backend/certs/
+backend/*.pem
+backend/.env*
+frontend/.env*

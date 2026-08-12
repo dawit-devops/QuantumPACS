@@ -1,5 +1,9 @@
 name: CI
 
+# Default token is read-only here; nothing needs to write back.
+permissions:
+  contents: read
+
 # PRs already run the full suite, so direct pushes only need coverage on the
 # integration/production branches — running on phase/** pushed twice per PR.
 on:
@@ -25,28 +29,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '24' }
       - run: cd frontend && npm ci && npx prettier --check src/
   typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '24' }
       - run: cd frontend && npm ci && npx tsc --noEmit
   test-backend:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env: { POSTGRES_DB: quantumpacs_test, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
         ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
-      - run: pip install -r backend/requirements.txt && pip install pytest pytest-asyncio httpx
-      # Integration tests use testcontainers (postgres:16-alpine) which can
+      - run: pip install -r backend/requirements-dev.txt
+      # Integration tests use testcontainers (postgres:18-alpine) which can
       # pull its own image, so the suite runs fully in CI.
       # M4: the backend suite now enforces a coverage floor via
       # --cov-fail-under (matches [tool.coverage.report] fail_under).
@@ -57,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '24' }
       # M4: coverage thresholds live in vite.config.js and now gate PRs here
       # (previously only the build-gate job ran --coverage).
       - run: cd frontend && npm ci && npx vitest run --coverage
@@ -69,11 +73,11 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env: { POSTGRES_DB: quantumpacs_e2e, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: quantumpacs-ci-e2e-db-pass }
         ports: ['5432:5432']
       redis:
-        image: redis:7
+        image: redis:8
         ports: ['6379:6379']
     env:
       DB_HOST: localhost
@@ -89,7 +93,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '24' }
       - run: pip install -r backend/requirements.txt
       - name: Init DB + seed roles
         run: |
@@ -218,7 +222,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '24' }
       - run: cd frontend && npm ci && npm run build
       - run: cd frontend && node scripts/check-bundle-size.mjs
       - run: cd frontend && npx vitest run --coverage
@@ -234,7 +238,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Compose interpolates ${SECRET:?} etc. at parse time — the build step
+      # fails before any layer builds unless the same env is present.
       - run: docker compose build
+        env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
+          SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
       - run: docker compose up -d
         env:
           POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
@@ -256,9 +266,68 @@ jobs:
           docker compose logs --tail 100 backend postgres elasticsearch redis
           exit 1
       - run: docker compose down -v
+  # (M3) docker-compose.prod.yaml is the deployment target, so it gets its own
+  # smoke job — port-mapping regressions and missing healthcheck tools only
+  # surface when the prod file is actually exercised.
+  prod-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.prod.yaml build
+        env:
+          IMAGE_TAG: ci-prod-smoke
+          POSTGRES_PASSWORD: quantumpacs-ci-prod-smoke-db-pass
+          SECRET: quantumpacs-ci-prod-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-prod-smoke-superadmin-not-for-any-prod
+      - run: docker compose -f docker-compose.prod.yaml up -d
+        env:
+          IMAGE_TAG: ci-prod-smoke
+          POSTGRES_PASSWORD: quantumpacs-ci-prod-smoke-db-pass
+          SECRET: quantumpacs-ci-prod-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-prod-smoke-superadmin-not-for-any-prod
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || true)
+            if [ "$code" = "200" ]; then
+              echo "backend healthy (attempt $i)"
+              curl -sf http://localhost:8080/api/health
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend never became healthy" >&2
+          docker compose -f docker-compose.prod.yaml logs --tail 100 backend postgres
+          exit 1
+      - name: Verify frontend + nginx proxy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173/ | grep -q '<div id="root"'; then break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:5173/ | grep -q '<div id="root"' || {
+            echo "frontend index.html not served" >&2
+            docker compose -f docker-compose.prod.yaml logs --tail 100 frontend
+            exit 1
+          }
+          curl -sf http://localhost:5173/api/health >/dev/null
+          echo "frontend serves and nginx → backend proxy works"
+      - run: docker compose -f docker-compose.prod.yaml down -v
   vuln-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: aquasecurity/trivy-action@v0.36.0
-        with: { scan-type: 'fs', scan-ref: 'backend/', format: 'table' }
+        with:
+          scan-type: 'fs'
+          scan-ref: 'backend/'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          format: 'table'
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'frontend/'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          format: 'table'

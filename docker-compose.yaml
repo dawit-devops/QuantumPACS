@@ -1,6 +1,6 @@
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.0
     container_name: quantumpacs-es-1
     restart: unless-stopped
     ports:
@@ -39,7 +39,7 @@ services:
     build:
       context: ./docker/postgres
       dockerfile: Dockerfile
-    image: quantumpacs-postgres:16
+    image: quantumpacs-postgres:18
     container_name: quantumpacs-postgres-1
     restart: unless-stopped
     ports:
@@ -52,7 +52,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pa55w0rd}
       POSTGRES_DB: ${POSTGRES_DB:-quantumpacs}
     volumes:
-      - quantumpacs_pgdata:/var/lib/postgresql/data
+      # PG18+ images moved to a single mount at /var/lib/postgresql (data in a
+      # version-specific subdir); the old /var/lib/postgresql/data mount is
+      # refused by the 18+ entrypoint (docker-library/postgres#1259).
+      - quantumpacs_pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quantumpacs"]
       interval: 5s
@@ -60,11 +63,14 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: quantumpacs-redis-1
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # 6380 on the host: dev machines commonly run a system redis on 6379
+      # (backend in compose reaches redis via the internal network anyway —
+      # this mapping is only for host-side inspection).
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -108,7 +114,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "5173:80"
+      - "5173:8080"
 
 volumes:
   quantumpacs_pgdata:

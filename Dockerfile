@@ -1,5 +1,5 @@
 # ---- Stage 1: Frontend build ----
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 
 WORKDIR /build
 COPY frontend/package*.json ./
@@ -8,20 +8,20 @@ COPY frontend/ .
 RUN npm run build
 
 # ---- Stage 2: Python dependencies ----
-FROM python:3.12-slim AS deps
+FROM python:3.14-slim AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc musl-dev make \
+    gcc make \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/requirements.txt \
-    && apt-get remove -y gcc musl-dev make \
+    && apt-get remove -y gcc make \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Stage 3: Production ----
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     caddy ca-certificates curl tini \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=deps /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
 
 COPY backend/ /quantumpacs/backend
