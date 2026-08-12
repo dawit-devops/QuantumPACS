@@ -227,8 +227,6 @@ test.describe("Front-office roles denied clinical surfaces", () => {
         "permissions",
         JSON.stringify(["REGISTRATION_READ", "QUEUE_READ", "REPORT_READ"]),
       );
-      localStorage.setItem("access_token", "e2e-frontdesk-token");
-      localStorage.setItem("refresh_token", "e2e-frontdesk-token");
     });
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await page.goto(BASE + "/reading", { waitUntil: "domcontentloaded" });

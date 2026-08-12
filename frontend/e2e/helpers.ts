@@ -134,10 +134,11 @@ export async function openWorklist(page: Page) {
  * every front-office / patient seed returns `{data, total}` (object shape)
  * for everything, with the specific list endpoints called out.
  *
- * M2: requests without a seeded session shape (userId + access_token missing
+ * M2: requests without a seeded session shape (userId + permissions missing
  * from localStorage) are fulfilled 401 instead of a blanket 200 — the stub
  * must not mask auth gaps by rendering a fake shell for a spec that forgot
- * to seed a session.
+ * to seed a session. The access token lives only in the HttpOnly `token`
+ * cookie (IAM audit H-2); identity is the localStorage shape we check here.
  */
 export async function stubApiRoutes(page: Page) {
   await page.route(
@@ -147,7 +148,7 @@ export async function stubApiRoutes(page: Page) {
         .evaluate(() =>
           Boolean(
             localStorage.getItem("userId") &&
-            localStorage.getItem("access_token"),
+            localStorage.getItem("permissions"),
           ),
         )
         .catch(() => false);
@@ -202,8 +203,7 @@ export async function seedFrontDesk(
         "WORKLIST_READ",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-frontdesk-token");
-    localStorage.setItem("refresh_token", "e2e-frontdesk-token");
+
   }, role);
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -224,8 +224,7 @@ export async function seedPatient(page: Page) {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "patient");
     localStorage.setItem("permissions", JSON.stringify(["PORTAL_READ"]));
-    localStorage.setItem("access_token", "e2e-patient-token");
-    localStorage.setItem("refresh_token", "e2e-patient-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -310,8 +309,7 @@ export async function seedTechnologist(page: Page) {
         "WORKLIST_WRITE",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-technologist-token");
-    localStorage.setItem("refresh_token", "e2e-technologist-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -348,8 +346,7 @@ export async function seedAcquisitionTechnologist(page: Page) {
         "WORKLIST_READ",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-tech-acq-token");
-    localStorage.setItem("refresh_token", "e2e-tech-acq-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -377,8 +374,7 @@ export async function seedPhysicianLegacy(page: Page) {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "physician");
     localStorage.setItem("permissions", JSON.stringify(["DICOMWEB_READ"]));
-    localStorage.setItem("access_token", "e2e-physician-token");
-    localStorage.setItem("refresh_token", "e2e-physician-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -405,8 +401,7 @@ export async function seedPacsAdminClinical(page: Page) {
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "pacs_admin");
     localStorage.setItem("permissions", JSON.stringify(["REPORT_READ"]));
-    localStorage.setItem("access_token", "e2e-pacsadmin-token");
-    localStorage.setItem("refresh_token", "e2e-pacsadmin-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -455,8 +450,7 @@ export async function seedQAUser(page: Page) {
         "METRICS_READ",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-qa-token");
-    localStorage.setItem("refresh_token", "e2e-qa-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }
@@ -492,8 +486,7 @@ export async function seedAuditOnlyUser(page: Page) {
         "AUDIT_READ",
       ]),
     );
-    localStorage.setItem("access_token", "e2e-audit-token");
-    localStorage.setItem("refresh_token", "e2e-audit-token");
+
   });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
 }

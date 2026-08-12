@@ -77,17 +77,14 @@ test.describe("API Integration", () => {
     expect(resp.status()).toBe(401);
   });
 
-  test("API accepts X-Auth-Pacs header with valid token", async ({ page }) => {
-    const resp = await page.request.post(`${API_BASE}/api/login`, {
-      data: { username: "admin", password: "pa55w0rd" },
-    });
-    expect(resp.status()).toBe(200);
-    const body = await resp.json();
-    expect(body).toHaveProperty("token");
-
-    const filesResp = await page.request.get(`${API_BASE}/api/files`, {
-      headers: { "X-Auth-Pacs": body.token },
-    });
+  test("API authenticates via the HttpOnly session cookie (no X-Auth-Pacs header)", async ({
+    page,
+  }) => {
+    // IAM audit H-2: the frontend no longer sends X-Auth-Pacs. The browser
+    // attaches the HttpOnly `token` cookie that /api/login sets; the shared
+    // APIRequestContext cookie jar carries it, so no token plumbing is needed.
+    await loginAsAdmin(page);
+    const filesResp = await page.request.get(`${API_BASE}/api/files`);
     expect(filesResp.status()).toBe(200);
   });
 });
