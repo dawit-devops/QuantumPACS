@@ -23,7 +23,7 @@ from api.validate import parse_body
 from api.schemas.files import FileUpdateRequest, SearchRequest, ShareRequest
 from api.notify import notify_role
 from config import config as app_config
-from db.conn import get_conn
+from db.conn import get_conn, get_database
 from db.file_changes import FileChange
 from db.files import Files
 from db.replica import Replica
@@ -57,43 +57,36 @@ _REQUIRED_DICOM_TAGS = ['patient_id', 'study_instance_uid', 'series_instance_uid
 async def _tenant_storage_used(request, tenant_info):
     """Current storage usage for the active tenant, in bytes.
 
-    Prefers a live SUM over files.size on the tenant pool; falls back to the
-    storage_used_bytes registry column when the pool is unavailable or the
-    live query fails (e.g. tenant DB not yet migrated).
+    Reads the registry's running `storage_used_bytes` counter — the
+    authoritative source, maintained incrementally on store and delete —
+    instead of scanning the (potentially huge) tenant `files` table on every
+    upload. Falls back to 0.
     """
-    acquire = getattr(request.state, 'tenant_conn', None)
-    if acquire is not None:
-        try:
-            async with acquire() as tconn:
-                used = await tconn.fetchval(
-                    'SELECT COALESCE(SUM(size), 0)::bigint FROM files'
-                )
-            return int(used or 0)
-        except Exception:
-            log.warning('Live tenant storage SUM failed; falling back to registry column', exc_info=True)
-    return int(tenant_info.get('storage_used_bytes') or 0)
+    return max(0, int(tenant_info.get('storage_used_bytes') or 0))
 
 
-async def _persist_storage_used(conn, tenant_slug, used_bytes):
-    """Record the tenant's new total storage usage in the tenants registry.
+async def _persist_storage_used(conn, tenant_slug, delta_bytes):
+    """Adjust the tenant's running storage counter in the tenants registry.
 
-    Prefers Tenants.persist_storage_used; falls back to a direct UPDATE so the
-    quota bookkeeping never blocks an upload.
+    DELTA_BYTES is added to (or subtracted from) the counter (floored at 0).
+    Non-throwing so quota bookkeeping never blocks an upload. Prefers
+    Tenants.adjust_storage_used; falls back to a direct GREATEST UPDATE.
     """
     try:
-        persist = getattr(Tenants(conn), 'persist_storage_used', None)
-        if persist is not None:
-            await persist(tenant_slug, used_bytes)
+        adjust = getattr(Tenants(conn), 'adjust_storage_used', None)
+        if adjust is not None:
+            await adjust(tenant_slug, delta_bytes)
             return
     except Exception:
-        log.warning('persist_storage_used failed for tenant %s; using direct UPDATE', tenant_slug, exc_info=True)
+        log.warning('adjust_storage_used failed for tenant %s; using direct UPDATE', tenant_slug, exc_info=True)
     try:
         await conn.execute(
-            'UPDATE tenants SET storage_used_bytes = $1, updated_at = now() WHERE slug = $2',
-            used_bytes, tenant_slug,
+            'UPDATE tenants SET storage_used_bytes = GREATEST(0, storage_used_bytes + $1), '
+            'updated_at = now() WHERE slug = $2',
+            int(delta_bytes), tenant_slug,
         )
     except Exception:
-        log.warning('Direct storage_used_bytes UPDATE failed for tenant %s', tenant_slug, exc_info=True)
+        log.warning('storage_used_bytes UPDATE failed for tenant %s', tenant_slug, exc_info=True)
 
 
 async def _notify_quota_breach(conn, tenant_slug, quota_bytes, used_bytes):
@@ -218,8 +211,8 @@ class Upload(HTTPEndpoint):
                 )
 
                 if tenant_slug and current_used is not None:
+                    await _persist_storage_used(conn, tenant_slug, new_bytes)
                     new_total = current_used + new_bytes
-                    await _persist_storage_used(conn, tenant_slug, new_total)
                     if quota_bytes > 0 and new_total / quota_bytes >= 0.9:
                         await _notify_quota_breach(conn, tenant_slug, quota_bytes, new_total)
 
@@ -405,6 +398,23 @@ class FileHandler(HTTPEndpoint):
                 await storage.delete(file)
 
                 await Files(conn).delete(file['id'], master['id'])
+
+                # HI-2: keep the running storage counter honest — decrement on
+                # delete so the tenant's quota frees up. Floored at 0 inside
+                # adjust_storage_used. Platform (un-scoped) files have no tenant
+                # row, so skip them.
+                size = int((file or {}).get('size') or 0)
+                if size:
+                    slug = getattr(request.state, 'tenant_slug', None)
+                    if slug:
+                        try:
+                            async with get_database().acquire() as rconn:
+                                await Tenants(rconn).adjust_storage_used(slug, -size)
+                        except Exception:
+                            log.warning(
+                                'storage_used_bytes decrement failed for tenant %s',
+                                slug, exc_info=True,
+                            )
         return no_content()
 
 

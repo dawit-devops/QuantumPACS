@@ -244,7 +244,10 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
                 # Quota applies to every ingestion path, not just HTTP uploads.
                 quota_bytes = int((tenant_info or {}).get('storage_quota_bytes') or 0)
                 if tenant_slug and quota_bytes > 0:
-                    used = await conn.fetchval('SELECT COALESCE(SUM(size), 0)::bigint FROM files') or 0
+                    # HI-2: read the running counter from the tenants registry
+                    # (maintained on store/delete) instead of a full-table
+                    # SUM(files.size) scan on every C-STORE — O(1) vs O(n).
+                    used = max(0, int((tenant_info or {}).get('storage_used_bytes') or 0))
                     if used + size > quota_bytes:
                         log.warning(
                             'Store rejected: tenant %s quota exceeded (%s + %s > %s)',
@@ -282,8 +285,9 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
                         )
 
                 if tenant_slug:
-                    used = await conn.fetchval('SELECT COALESCE(SUM(size), 0)::bigint FROM files') or 0
-                    await _persist_usage(tenant_slug, int(used))
+                    # HI-2: increment the running counter by this instance's
+                    # size rather than recomputing SUM(files.size).
+                    await _persist_usage(tenant_slug, size)
 
                 await match_worklist_in_progress(ds, tenant_slug=tenant_slug)
                 await _bump_study_counts(conn, ds)
@@ -334,15 +338,18 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
     return True
 
 
-async def _persist_usage(tenant_slug, used_bytes):
-    """Persist the tenant's storage usage after a store.
+async def _persist_usage(tenant_slug, delta_bytes):
+    """Adjust the tenant's running storage counter after a store.
 
-    Updates the tenants registry row, which lives in the main database —
-    never in tenant data stores. Deliberately non-throwing: quota
-    bookkeeping must never fail an ingest.
+    DELTA_BYTES is this instance's size (+); the registry `tenants.storage_used_bytes`
+    column is the authoritative counter (incremented here, decremented on
+    delete), replacing the former per-instance `SUM(files.size)` full-table
+    scan. Updates the tenants registry row in the main database, never a tenant
+    data store. Deliberately non-throwing: quota bookkeeping must never fail
+    an ingest.
     """
     try:
         async with get_database().acquire() as conn:
-            await Tenants(conn).persist_storage_used(tenant_slug, int(used_bytes))
+            await Tenants(conn).adjust_storage_used(tenant_slug, int(delta_bytes))
     except Exception:
-        log.warning('Storage usage persist failed for tenant %s', tenant_slug, exc_info=True)
+        log.warning('Storage usage adjust failed for tenant %s', tenant_slug, exc_info=True)

@@ -94,6 +94,11 @@ default_config = {
     'ingestion_max_retries': '3',
     'oauth_secret_encryption_key': '',
     'tenant_usage_retention_days': '365',
+    # Cookie `Secure` flag. Default false so the documented plain-HTTP
+    # localhost dev topology keeps working; set true (COOKIE_SECURE=true /
+    # config.local.yaml) for any TLS deployment so the HttpOnly auth cookies
+    # are never sent over cleartext.
+    'cookie_secure': 'false',
 }
 
 
@@ -146,3 +151,12 @@ def assert_production_secret():
 
 def is_docker():
     return bool(os.getenv('QUANTUMPACS_DOCKER'))
+
+
+def cookie_secure() -> bool:
+    """Whether auth cookies should be marked Secure (HTTPS-only).
+
+    Driven by the `cookie_secure` config key so plain-HTTP dev does not break
+    while TLS deployments can enforce the flag.
+    """
+    return str(config.get('cookie_secure', 'false')).lower() in ('1', 'true', 'yes', 'on')

@@ -1,5 +1,7 @@
 from starlette.endpoints import HTTPEndpoint
 
+from config import cookie_secure
+
 from api.response import ok, paginated, api_error
 
 import jwt as _jwt
@@ -176,7 +178,7 @@ class Login(HTTPEndpoint):
                     value=access,
                     httponly=True,
                     samesite='strict',
-                    secure=True,
+                    secure=cookie_secure(),
                     # Root path (IAM audit H-2): the browser auth channel must
                     # cover /api and /dicomweb (WADO-RS image fetches) alike.
                     path='/',
@@ -190,7 +192,7 @@ class Login(HTTPEndpoint):
                     value=refresh,
                     httponly=True,
                     samesite='strict',
-                    secure=True,
+                    secure=cookie_secure(),
                     path='/api/auth',
                 )
                 return resp
@@ -469,7 +471,7 @@ class RefreshToken(HTTPEndpoint):
             value=refresh,
             httponly=True,
             samesite='strict',
-            secure=True,
+            secure=cookie_secure(),
             path='/api/auth',
         )
         # IAM audit H-2: the browser refresh channel must also rotate the
@@ -480,7 +482,7 @@ class RefreshToken(HTTPEndpoint):
             value=access,
             httponly=True,
             samesite='strict',
-            secure=True,
+            secure=cookie_secure(),
             path='/',
         )
         return resp

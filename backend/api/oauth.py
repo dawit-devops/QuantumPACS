@@ -18,7 +18,7 @@ from api.tokens import (
     verify_refresh_token, block_token, is_blocked,
 )
 from api.validate import read_body, _BodyTooLargeException
-from config import config
+from config import config, cookie_secure
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.oauth_providers import OAuthProviders
@@ -458,14 +458,14 @@ async def oauth_callback(request):
             'email': email,
         },
     })
-    resp.set_cookie(key='token', value=access, httponly=True, samesite='strict', secure=True, path='/')
+    resp.set_cookie(key='token', value=access, httponly=True,                     samesite='strict', secure=cookie_secure(), path='/')
     # Same cookie contract as the password login: the refresh token rides
     # only as an HttpOnly cookie scoped to /api/auth so the shared refresh
     # endpoint can rotate it. 1-hour access tokens + rotation, not a 14-day
     # bearer (R2-H5).
     resp.set_cookie(
         key='refresh_token', value=refresh, httponly=True,
-        samesite='strict', secure=True, path='/api/auth',
+        samesite='strict', secure=cookie_secure(), path='/api/auth',
     )
     return resp
 
@@ -551,7 +551,7 @@ async def oauth_token_exchange(request):
         # endpoint can read the rotating credential.
         resp.set_cookie(
             key='refresh_token', value=new_refresh, httponly=True,
-            samesite='strict', secure=True, path='/api',
+            samesite='strict', secure=cookie_secure(), path='/api',
         )
         return resp
 

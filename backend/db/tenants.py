@@ -207,6 +207,21 @@ class Tenants(Table):
         ).set(self.table.updated_at, 'NOW()')
         await self.exec(q)
 
+    async def adjust_storage_used(self, slug, delta_bytes):
+        """Increment (or decrement) a tenant's running storage counter.
+
+        DELTA_BYTES may be negative (file delete); the counter is floored at 0
+        so a delete can never drive it negative. Replaces the former
+        per-instance `SUM(files.size)` full-table scan on the ingest hot path
+        with an O(1) update — callers maintain the counter on store and
+        delete instead of recomputing it.
+        """
+        await self.conn.execute(
+            'UPDATE tenants SET storage_used_bytes = GREATEST(0, storage_used_bytes + $1), '
+            'updated_at = now() WHERE slug = $2',
+            int(delta_bytes), slug,
+        )
+
     async def patch(self, tenant_id, data):
         q = self.update().where(self.table.id == tenant_id)
         for key, value in data.items():
