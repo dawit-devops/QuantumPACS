@@ -145,12 +145,18 @@ async def search(data, tenant_slug=''):
         for k, v in data.items():
             if not v:
                 continue
+            # Pagination keys are request controls, not DICOM columns — a
+            # `match` on unmapped `page`/`results` fields silently yields
+            # zero hits for an otherwise-empty search (SearchRequest always
+            # dumps these with defaults).
+            if k in ('query', 'page', 'results'):
+                continue
 
             if k in columns:
                 k += ".lang_analyzed"
             es_q.append({"match": {k: v[0] if isinstance(v, list) and len(v) > 0 else v}})
 
-        es_q = {"bool": {"must": es_q}}
+        es_q = {"bool": {"must": es_q}} if es_q else {"match_all": {}}
     else:
         es_q = {"match_all": {}}
 
