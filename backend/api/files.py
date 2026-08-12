@@ -449,14 +449,15 @@ class ShareFilesHandler(HTTPEndpoint):
         file_id = get_id(request)
         body = await parse_body(ShareRequest, request)
 
+        # M-5: re-use get_file_by_id so a missing/deleted file AND a file that
+        # belongs to another tenant are both rejected. Without this a FILE_WRITE
+        # user in tenant A could mint share links for tenant B's study files.
+        file = await get_file_by_id(request)
+        if not file:
+            return not_found('File not found')
+
         async with get_conn() as conn:
-            # Refuse to mint links for missing or deleted files: a share key
-            # for a phantom id would silently authorize nothing but the 404s
-            # it returns, and the row would linger until expiry.
-            file = await Files(conn).get_extra(file_id)
-            if not file or file.get('deleted'):
-                return not_found('File not found')
-            key = await SharedFiles(conn).share(file_id, body.duration)
+            key = await SharedFiles(conn).share(file['id'], body.duration)
         return ok({'key': key})
 
 
@@ -464,6 +465,9 @@ class ShareFilesListHandler(HTTPEndpoint):
     @requires_permission(Permission.FILE_READ)
     async def get(self, request):
         file_id = get_id(request)
+        # M-5: enforce tenant ownership of the target file.
+        if not await get_file_by_id(request):
+            return not_found('File not found')
         async with get_conn() as conn:
             rows = await SharedFiles(conn).list_for_file(file_id)
         now = datetime.now(timezone.utc)
@@ -483,6 +487,9 @@ class ShareFilesListHandler(HTTPEndpoint):
     async def delete(self, request):
         file_id = get_id(request)
         share_id = int(request.path_params['share_id'])
+        # M-5: enforce tenant ownership of the target file.
+        if not await get_file_by_id(request):
+            return not_found('File not found')
         async with get_conn() as conn:
             await SharedFiles(conn).revoke(share_id, file_id)
         return ok({'message': 'Share link revoked'})

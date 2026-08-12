@@ -13,8 +13,9 @@ from api.permissions import Permission
 from api.response import ok, created, api_error
 from api.schemas.webhooks import WebhookCreate, WebhookUpdate
 from api.validate import parse_body
-from db.conn import get_conn
+from db.conn import get_database
 from db.webhook import Webhook
+from api.tenant_middleware import effective_tenant
 from log import get_logger
 
 log = get_logger(__name__)
@@ -128,16 +129,26 @@ async def _resolve_host(host):
 class WebhooksHandler(HTTPEndpoint):
     @requires_permission(Permission.SYSTEM_ADMIN)
     async def get(self, request):
-        async with get_conn() as conn:
-            hooks = await Webhook(conn).get_all()
+        # Webhook subscriptions are global platform config (lives in the main
+        # registry DB), not tenant data — read it from the main pool and
+        # filter by the effective tenant so a tenant admin only sees their own
+        # subscriptions (M-7).
+        tenant = effective_tenant(request)
+        async with get_database().acquire() as conn:
+            hooks = await Webhook(conn).get_all(tenant=tenant or None)
         return ok({'webhooks': hooks, 'available_events': AVAILABLE_EVENTS})
 
     @requires_permission(Permission.SYSTEM_ADMIN)
     async def post(self, request):
         data = await parse_body(WebhookCreate, request)
-        async with get_conn() as conn:
+        # M-7: bind the subscription to the creating tenant so dispatch can
+        # scope deliveries and a tenant admin cannot subscribe on another
+        # tenant's behalf. Platform admins get '' (global).
+        payload = data.model_dump()
+        payload['tenant'] = effective_tenant(request) or ''
+        async with get_database().acquire() as conn:
             wh = Webhook(conn)
-            wh_id = await wh.create(data.model_dump())
+            wh_id = await wh.create(payload)
             hook = await wh.get_by_id(wh_id)
         return created(hook)
 
@@ -146,10 +157,13 @@ class WebhookHandler(HTTPEndpoint):
     @requires_permission(Permission.SYSTEM_ADMIN)
     async def get(self, request):
         wh_id = request.path_params['id']
-        async with get_conn() as conn:
+        async with get_database().acquire() as conn:
             hook = await Webhook(conn).get_by_id(wh_id)
         if not hook:
             return api_error('NOT_FOUND', 'Webhook not found', status=404)
+        # M-7: a tenant admin may only read their own subscription.
+        if hook.get('tenant') and effective_tenant(request) not in (hook.get('tenant'), ''):
+            return api_error('FORBIDDEN', 'Webhook does not belong to this tenant', status=403)
         return ok(hook)
 
     @requires_permission(Permission.SYSTEM_ADMIN)
@@ -159,11 +173,14 @@ class WebhookHandler(HTTPEndpoint):
         updates = data.model_dump(exclude_none=True)
         if not updates:
             return api_error('NO_CHANGES', 'No changes provided', status=400)
-        async with get_conn() as conn:
+        async with get_database().acquire() as conn:
             wh = Webhook(conn)
             existing = await wh.get_by_id(wh_id)
             if not existing:
                 return api_error('NOT_FOUND', 'Webhook not found', status=404)
+            # M-7: a tenant admin may only modify their own subscription.
+            if existing.get('tenant') and effective_tenant(request) not in (existing.get('tenant'), ''):
+                return api_error('FORBIDDEN', 'Webhook does not belong to this tenant', status=403)
             await wh.update_webhook(wh_id, updates)
             hook = await wh.get_by_id(wh_id)
         return ok(hook)
@@ -171,11 +188,14 @@ class WebhookHandler(HTTPEndpoint):
     @requires_permission(Permission.SYSTEM_ADMIN)
     async def delete(self, request):
         wh_id = request.path_params['id']
-        async with get_conn() as conn:
+        async with get_database().acquire() as conn:
             wh = Webhook(conn)
             existing = await wh.get_by_id(wh_id)
             if not existing:
                 return api_error('NOT_FOUND', 'Webhook not found', status=404)
+            # M-7: a tenant admin may only delete their own subscription.
+            if existing.get('tenant') and effective_tenant(request) not in (existing.get('tenant'), ''):
+                return api_error('FORBIDDEN', 'Webhook does not belong to this tenant', status=403)
             await wh.delete(wh_id)
         return ok({'deleted': True})
 

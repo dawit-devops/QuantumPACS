@@ -256,6 +256,22 @@ export async function loginAs(page: Page, username: string, password: string) {
 }
 
 /**
+ * Reads one session cookie (token / refresh_token) for the API host. IAM
+ * audit H-2: the access token is HttpOnly-cookie-only — Playwright's CDP can
+ * read HttpOnly cookies (page JS cannot), so specs assert the cookie channel
+ * instead of localStorage. The refresh cookie is scoped to /api/auth while
+ * the access cookie sits at /, so the probe URL must match the narrower
+ * scope. Returns undefined when absent.
+ */
+export async function sessionCookie(
+  page: Page,
+  name: "token" | "refresh_token",
+) {
+  const cookies = await page.context().cookies(`${API_BASE}/api/auth`);
+  return cookies.find((c) => c.name === name);
+}
+
+/**
  * Seeds an authenticated, non-admin technologist session directly in localStorage
  * (the same keys AuthContext reads on boot) and stubs every /api/** request so the
  * fake token can never 401-bounce to /login — which would mask the PermissionRoute

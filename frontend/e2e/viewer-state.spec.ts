@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, menuName, API_BASE, BASE } from "./helpers";
+import {
+  loginAsAdmin,
+  sessionCookie,
+  menuName,
+  API_BASE,
+  BASE,
+} from "./helpers";
 
 // E2E-6: viewer state survives in-page navigation. The Study Viewer keeps
 // CornerstoneElement mounted when the user switches to the Data/Share tabs
@@ -10,10 +16,9 @@ import { loginAsAdmin, menuName, API_BASE, BASE } from "./helpers";
 // DB row only, `indexed: false`), so assertions must not require the image
 // to render — the /data fetch attempt is the observable contract.
 test.describe("Study Viewer state", () => {
-  async function pickFile(page: { request: any }, token: string) {
-    const list = await page.request.get(`${API_BASE}/api/files`, {
-      headers: { "X-Auth-Pacs": token },
-    });
+  // IAM H-2: page.request shares the login cookie — no token plumbing.
+  async function pickFile(page: { request: any }) {
+    const list = await page.request.get(`${API_BASE}/api/files`);
     expect(list.status()).toBe(200);
     const body = await list.json();
     const files = body?.data ?? [];
@@ -29,11 +34,8 @@ test.describe("Study Viewer state", () => {
     page,
   }) => {
     await loginAsAdmin(page);
-    const token = await page.evaluate(() =>
-      localStorage.getItem("access_token"),
-    );
-    expect(token).toBeTruthy();
-    const file = await pickFile(page, token!);
+    expect(await sessionCookie(page, "token")).toBeTruthy();
+    const file = await pickFile(page);
     expect(file.id).toBeTruthy();
 
     let dataRequests = 0;

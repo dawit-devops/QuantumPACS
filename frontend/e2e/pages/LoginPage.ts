@@ -28,10 +28,7 @@ export class LoginPage {
    * one constant; pa55w0rd is only the local-dev fallback. */
   async loginAsAdmin() {
     await this.open();
-    await this.login(
-      adminCredentials().username,
-      adminCredentials().password,
-    );
+    await this.login(adminCredentials().username, adminCredentials().password);
     await waitForShell(this.page);
   }
 

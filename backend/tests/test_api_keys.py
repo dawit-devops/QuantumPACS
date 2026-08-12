@@ -217,10 +217,12 @@ class TestApiKeyCrud:
         user.is_authenticated = True
         user.permissions = []
         user.admin = False
-        with patch('api.api_keys.get_conn') as mock_get_conn:
+        with patch('api.api_keys.get_database') as mock_get_database:
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
-            mock_get_conn.return_value = mock_conn
+            mock_db = MagicMock()
+            mock_db.acquire.return_value = mock_conn
+            mock_get_database.return_value = mock_db
             client = TestClient(self._make_app(user))
             resp = client.get('/api/api-keys')
         assert resp.status_code == 403
@@ -230,10 +232,12 @@ class TestApiKeyCrud:
         user.is_authenticated = True
         user.permissions = [Permission.SERVICE_KEY_READ.value]
         app = self._make_app(user)
-        with patch('api.api_keys.get_conn') as mock_get_conn:
+        with patch('api.api_keys.get_database') as mock_get_database:
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
-            mock_get_conn.return_value = mock_conn
+            mock_db = MagicMock()
+            mock_db.acquire.return_value = mock_conn
+            mock_get_database.return_value = mock_db
             mock_keys = MagicMock()
             mock_keys.get_all = AsyncMock(return_value=[
                 {'id': 'k1', 'name': 'key1', 'service_name': 'svc',
@@ -252,10 +256,12 @@ class TestApiKeyCrud:
         user.is_authenticated = True
         user.permissions = []
         user.admin = False
-        with patch('api.api_keys.get_conn') as mock_get_conn:
+        with patch('api.api_keys.get_database') as mock_get_database:
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
-            mock_get_conn.return_value = mock_conn
+            mock_db = MagicMock()
+            mock_db.acquire.return_value = mock_conn
+            mock_get_database.return_value = mock_db
             client = TestClient(self._make_app(user))
             resp = client.delete('/api/api-keys/k1')
         assert resp.status_code == 403
@@ -265,10 +271,12 @@ class TestApiKeyCrud:
         user.is_authenticated = True
         user.permissions = [Permission.SERVICE_KEY_DELETE.value]
         app = self._make_app(user)
-        with patch('api.api_keys.get_conn') as mock_get_conn:
+        with patch('api.api_keys.get_database') as mock_get_database:
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
-            mock_get_conn.return_value = mock_conn
+            mock_db = MagicMock()
+            mock_db.acquire.return_value = mock_conn
+            mock_get_database.return_value = mock_db
             mock_keys = MagicMock()
             mock_keys.get = AsyncMock(return_value={
                 'id': 'k1', 'name': 'key1', 'service_name': 'svc',
@@ -285,10 +293,12 @@ class TestApiKeyCrud:
         user.is_authenticated = True
         user.permissions = [Permission.SERVICE_KEY_DELETE.value]
         app = self._make_app(user)
-        with patch('api.api_keys.get_conn') as mock_get_conn:
+        with patch('api.api_keys.get_database') as mock_get_database:
             mock_conn = AsyncMock()
             mock_conn.__aenter__.return_value = mock_conn
-            mock_get_conn.return_value = mock_conn
+            mock_db = MagicMock()
+            mock_db.acquire.return_value = mock_conn
+            mock_get_database.return_value = mock_db
             mock_keys = MagicMock()
             mock_keys.get = AsyncMock(return_value=None)
             with patch('api.api_keys.ApiKeys', return_value=mock_keys):

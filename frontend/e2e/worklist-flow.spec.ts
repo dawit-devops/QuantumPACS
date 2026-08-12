@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAs, API_BASE, openWorklist } from "./helpers";
+import { loginAs, sessionCookie, API_BASE, openWorklist } from "./helpers";
 
 test.describe("Worklist Flow (real backend)", () => {
   test.beforeEach(async ({ page }) => {
@@ -54,14 +54,10 @@ test.describe("Worklist Flow (real backend)", () => {
     ).toBeVisible({ timeout: 15000 });
 
     // Cleanup: find the created entry and cancel it through the API so the
-    // dev database does not accumulate E2E rows.
-    const token = await page.evaluate(() =>
-      localStorage.getItem("access_token"),
-    );
-    expect(token).toBeTruthy();
-    const listResp = await page.request.get(`${API_BASE}/api/worklist`, {
-      headers: { "X-Auth-Pacs": token! },
-    });
+    // dev database does not accumulate E2E rows. IAM H-2: page.request shares
+    // the context cookie jar — no token header needed.
+    expect(await sessionCookie(page, "token")).toBeTruthy();
+    const listResp = await page.request.get(`${API_BASE}/api/worklist`);
     expect(listResp.status()).toBe(200);
     const { data } = await listResp.json();
     const entry = data.find(
@@ -71,9 +67,7 @@ test.describe("Worklist Flow (real backend)", () => {
 
     const delResp = await page.request.delete(
       `${API_BASE}/api/worklist/${entry.id}`,
-      {
-        headers: { "X-Auth-Pacs": token!, "X-CSRF-Token": "1" },
-      },
+      { headers: { "X-CSRF-Token": "1" } },
     );
     expect(delResp.status()).toBe(200);
   });

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAs, API_BASE } from "./helpers";
+import { loginAs, sessionCookie, API_BASE } from "./helpers";
 
 // Real-backend coverage for a non-admin role: the technologist session is
 // established through the REAL UI login (not a forged localStorage stub),
@@ -25,22 +25,22 @@ test.describe("Real role login (real backend)", () => {
   }) => {
     await loginAs(page, "test.technologist", "Test@123456");
 
-    const token = await page.evaluate(() =>
-      localStorage.getItem("access_token"),
-    );
-    expect(token).toBeTruthy();
+    // IAM audit H-2: the session is an HttpOnly cookie, never localStorage —
+    // the APIRequestContext shares the browser context's cookie jar, so no
+    // token plumbing is needed.
+    const tokenCookie = await sessionCookie(page, "token");
+    expect(tokenCookie).toBeTruthy();
+    expect(tokenCookie!.httpOnly).toBe(true);
+    expect(
+      await page.evaluate(() => localStorage.getItem("access_token")),
+    ).toBeNull();
 
-    // The token from the real login must be accepted by role-scoped endpoints
-    // (WORKLIST_READ + the account profile every session loads).
-    const worklist = await page.request.get(`${API_BASE}/api/worklist`, {
-      headers: { "X-Auth-Pacs": token! },
-    });
+    // The cookie-authenticated session must be accepted by role-scoped
+    // endpoints (WORKLIST_READ + the account profile every session loads).
+    const worklist = await page.request.get(`${API_BASE}/api/worklist`);
     expect(worklist.status()).toBe(200);
 
-    const profile = await page.request.get(
-      `${API_BASE}/api/account/profile`,
-      { headers: { "X-Auth-Pacs": token! } },
-    );
+    const profile = await page.request.get(`${API_BASE}/api/account/profile`);
     expect(profile.status()).toBe(200);
   });
 });

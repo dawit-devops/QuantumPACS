@@ -4,6 +4,8 @@ import uuid
 from datetime import date, datetime
 from log import request_id_var
 
+from db.conn import get_tenant_slug
+
 
 def _uuid_safe(obj):
     if isinstance(obj, uuid.UUID):
@@ -19,6 +21,13 @@ class AuditLog:
 
     async def log_event(self, event_type, actor_id, resource_type, resource_id,
                         details=None, tenant=None, request_id=None):
+        # M-6: tag every audit row with the effective tenant scope. The
+        # TenantMiddleware sets the request-scoped slug ContextVar per request;
+        # if a caller doesn't pass an explicit tenant (and most don't), fall
+        # back to it so tenant-scoped actions are attributable across the
+        # shared `logs` table instead of landing with a NULL tenant.
+        if tenant is None:
+            tenant = get_tenant_slug()
         if request_id is None:
             request_id = request_id_var.get()
         trace_id = str(uuid.uuid4())

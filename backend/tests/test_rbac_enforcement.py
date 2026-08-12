@@ -74,17 +74,29 @@ def _make_user(permissions):
 
 
 def _patch_conn(module):
-    """Patch `module.get_conn` with an async context manager returning a
-    MagicMock conn whose fetch/fetchrow/fetchval/execute are AsyncMocks."""
+    """Patch the module's DB connector with an async context manager returning
+    a MagicMock conn whose fetch/fetchrow/fetchval/execute are AsyncMocks.
+
+    Supports both connection styles: modules using ``get_conn`` (returns the
+    async context manager directly) and modules using ``get_database().acquire()``
+    (the connector returns an object whose ``acquire()`` yields the CM)."""
+    import importlib
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=[])
     conn.fetchrow = AsyncMock(return_value=None)
     conn.fetchval = AsyncMock(return_value=0)
     conn.execute = AsyncMock()
-    p = patch(f'{module}.get_conn', return_value=MagicMock(
+    async_cm = MagicMock(
         __aenter__=AsyncMock(return_value=conn),
         __aexit__=AsyncMock(return_value=None),
-    ))
+    )
+    mod = importlib.import_module(module)
+    if hasattr(mod, 'get_database'):
+        db_mock = MagicMock()
+        db_mock.acquire.return_value = async_cm
+        p = patch(f'{module}.get_database', return_value=db_mock)
+    else:
+        p = patch(f'{module}.get_conn', return_value=async_cm)
     return p, conn
 
 

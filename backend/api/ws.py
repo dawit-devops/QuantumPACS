@@ -8,6 +8,8 @@ from api.rbac import has_permission
 from api.permissions import Permission
 from api.response import ok
 from api.tokens import create_token as gen_token
+from db.conn import get_conn
+from db.files import Files
 
 _app = None
 
@@ -187,6 +189,18 @@ class WebsocketHandler(WebSocketEndpoint):
                         or not has_permission(user, Permission.FILE_READ):
                     await _send_error(websocket, 'Forbidden: FILE_READ required')
                     return
+                # M-5: WebSockets skip TenantMiddleware, so verify the target
+                # file actually belongs to the user's tenant (DB-per-tenant
+                # isolation) before subscribing. Without this, a caller who
+                # knows a file id could open a channel for another tenant's
+                # study and receive / collide with its viewer-state broadcast.
+                async with get_conn() as conn:
+                    file = await Files(conn).get_extra(f)
+                if not file or file.get('deleted') \
+                        or (file.get('tenant') and not getattr(user, 'admin', False)
+                            and file.get('tenant') != getattr(user, 'tenant', None)):
+                    await _send_error(websocket, 'Forbidden: file not accessible')
+                    return
                 chan = _channel(_user_tenant(user), f)
                 async with state.sub_lock:
                     state.local_clients[chan][str(id(websocket))] = websocket
@@ -221,7 +235,14 @@ class WebsocketHandler(WebSocketEndpoint):
                 if f is None or data.get('state') is None:
                     await _send_error(websocket, 'Invalid payload: file and state are required')
                     return
-                chan = _channel(_user_tenant(user), f)
+                # M-5: only publish to the channel this socket was authorized
+                # to open. A socket that never passed the 'open' ownership gate
+                # (or passes a different file) must not inject viewer state into
+                # another tenant's channel.
+                if not getattr(websocket, 'channel', None) or f != getattr(websocket, 'file', None):
+                    await _send_error(websocket, 'Forbidden: open the file channel first')
+                    return
+                chan = websocket.channel
                 payload = {
                     'type': 'send_state',
                     'file': f,

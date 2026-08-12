@@ -40,17 +40,14 @@ const COMPRESSED_FIXTURES: ReadonlyArray<[string, string]> = [
 /**
  * Uploads the DICOM under test (path, or the E2E_DICOM_PATH override /
  * committed fixture by default) via the same multipart endpoint the UI uses,
- * and returns the new file id plus the session token. Callers must have
- * logged in first (the token is read from storage). Content-hash dedup makes
+ * and returns the new file id. Callers must have logged in first — the
+ * upload rides the context cookie jar (IAM H-2). Content-hash dedup makes
  * re-runs reuse the same row.
  */
 async function uploadDicom(
   page: Page,
   path = DICOM_PATH,
-): Promise<{ id: number; token: string }> {
-  const token = await page.evaluate(() => localStorage.getItem("access_token"));
-  expect(token).toBeTruthy();
-
+): Promise<{ id: number }> {
   // Fail fast with an actionable message when an explicit E2E_DICOM_PATH is
   // wrong — a silent fallback would mask a typo'd path.
   if (!existsSync(path)) {
@@ -65,7 +62,8 @@ async function uploadDicom(
   const upload = await page.request.post(`${API_BASE}/api/files/upload`, {
     // The app's api/client.ts sends this static header on every mutation;
     // the backend's CSRFMiddleware demands it for browser-driven routes.
-    headers: { "X-Auth-Pacs": token!, "X-CSRF-Token": "1" },
+    // Auth is the HttpOnly cookie from the login in the same context.
+    headers: { "X-CSRF-Token": "1" },
     multipart: {
       file: {
         name: basename(path),
@@ -77,7 +75,7 @@ async function uploadDicom(
   expect(upload.status(), await upload.text()).toBe(200);
   const uploaded = await upload.json();
   expect(uploaded.id, JSON.stringify(uploaded)).toBeTruthy();
-  return { id: uploaded.id as number, token };
+  return { id: uploaded.id as number };
 }
 
 /**
@@ -86,7 +84,7 @@ async function uploadDicom(
  * goes live, the WebGL canvas is painted with multi-shade content, no error
  * alert appears, and the pixel payload was fetched via the wadouri route.
  */
-async function assertViewerRenders(page: Page, fileId: number, token: string) {
+async function assertViewerRenders(page: Page, fileId: number) {
   // The viewer must pull pixels via the self-contained wadouri route
   // (/files/{id}/data) — a regression to the metadata-less wadors path is
   // exactly the samplesPerPixel crash this pipeline used to have.
@@ -98,9 +96,7 @@ async function assertViewerRenders(page: Page, fileId: number, token: string) {
   // Resolve the stored name from the API — hash-dedup can return an earlier
   // row whose name differs from the uploaded basename (the ATIRA row is
   // stored under a UUID), so the header assertion must use the real name.
-  const fileResp = await page.request.get(`${API_BASE}/api/files/${fileId}`, {
-    headers: { "X-Auth-Pacs": token },
-  });
+  const fileResp = await page.request.get(`${API_BASE}/api/files/${fileId}`);
   expect(fileResp.status(), await fileResp.text()).toBe(200);
   const fileRecord = await fileResp.json();
   expect(fileRecord.name, JSON.stringify(fileRecord)).toBeTruthy();
@@ -201,8 +197,8 @@ test.describe("DICOM viewer render", () => {
     page,
   }) => {
     await loginAsAdmin(page);
-    const { id: fileId, token } = await uploadDicom(page);
-    await assertViewerRenders(page, fileId, token);
+    const { id: fileId } = await uploadDicom(page);
+    await assertViewerRenders(page, fileId);
   });
 
   test("failed pixel fetch surfaces the error overlay instead of hanging", async ({
@@ -260,11 +256,11 @@ test.describe("DICOM viewer render", () => {
   for (const [file, label] of COMPRESSED_FIXTURES) {
     test(`compressed ${label} decodes and paints`, async ({ page }) => {
       await loginAsAdmin(page);
-      const { id: fileId, token } = await uploadDicom(
+      const { id: fileId } = await uploadDicom(
         page,
         join(__dirname, "fixtures", file),
       );
-      await assertViewerRenders(page, fileId, token);
+      await assertViewerRenders(page, fileId);
     });
   }
 });

@@ -14,7 +14,12 @@ from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
 from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRoleRequest
 from db.audit_log import AuditLog
-from db.conn import get_conn
+import asyncpg
+
+from db.conn import (
+    get_conn, set_request_tenant, reset_request_tenant,
+    set_tenant_slug, reset_tenant_slug,
+)
 from db.roles import Roles
 from db.users import Users
 from exceptions import ApiException
@@ -65,99 +70,137 @@ class Login(HTTPEndpoint):
 
         body = await parse_body(LoginRequest, request)
 
-        services = getattr(request.state, 'services', None)
-        if services is not None:
-            try:
-                auth_service = services.get(AuthService)
-                data = await auth_service.authenticate(body.username, body.password)
-            except Exception:
-                data = None
-        else:
-            data = None
-
-        if data is None:
-            async with get_conn() as conn:
-                try:
-                    data = await Users(conn).login(body.username, body.password)
-                except ApiException as e:
-                    await login_bucket.record_db(ip, conn, success=False)
-                    await AuditLog(conn).log_event(
-                        event_type='auth.login_failed',
-                        actor_id=None,
-                        resource_type='user',
-                        resource_id=body.username,
-                        details={'reason': type(e).__name__},
-                        request_id=request_id_var.get(),
+        # M-1: scope the login to the user's tenant database (DB-per-tenant).
+        # The tenant slug comes from the login body or the X-Tenant-ID header;
+        # the registry row is resolved on the MAIN pool (login is otherwise
+        # un-scoped). Unknown tenant -> 404; missing tenant DB -> 503.
+        tenant_slug = body.tenant or request.headers.get('X-Tenant-ID')
+        _pool = None
+        try:
+            if tenant_slug:
+                from db.conn import get_database
+                from db.tenants import Tenants, TenantConnectionPool, uses_main_database
+                async with get_database().acquire() as _main_conn:
+                    _info = await Tenants(_main_conn).get_by_slug(tenant_slug)
+                if not _info:
+                    return api_error(
+                        'TENANT_NOT_FOUND',
+                        f'Tenant not available: {tenant_slug}',
+                        status=404,
                     )
-                    # Generic message — the server-side distinction stays in
-                    # the audit log, never in the 401 body (enumeration).
-                    return api_error('AUTH_FAILED', 'Invalid credentials', status=401)
+                if uses_main_database(_info):
+                    set_request_tenant(get_database().acquire)
+                else:
+                    try:
+                        _pool = await TenantConnectionPool.get(tenant_slug, _info)
+                    except asyncpg.InvalidCatalogNameError:
+                        return api_error(
+                            'TENANT_UNAVAILABLE',
+                            'Tenant database is unavailable',
+                            status=503,
+                        )
+                    set_request_tenant(_pool.acquire)
+                set_tenant_slug(tenant_slug)
 
-        async with get_conn() as conn:
-            await login_bucket.record_db(ip, conn, success=True)
-            await Users(conn).update_last_login(data['id'])
-            role_slug, permissions = await Users(conn).get_user_role(data['id'])
-            token_version = await Users(conn).get_token_version(data['id'])
-            tenant_id = None
-            tenant_name = None
-            if data.get('tenant'):
-                # Registry lookup on the MAIN pool (login is un-scoped) so the
-                # frontend can populate the tenant switcher without a round
-                # trip. tenant_id is the tenant SLUG — the frontend sends it
-                # back as the X-Tenant-ID header, which TenantMiddleware
-                # resolves via Tenants.get_by_slug(). The DB UUID stays in the
-                # tenants registry; it is never exposed here.
-                from db.tenants import Tenants
-                tenant_id = data.get('tenant')
-                tenant_row = await Tenants(conn).get_by_slug(tenant_id)
-                if tenant_row:
-                    tenant_name = tenant_row.get('name')
-            access, refresh = create_token_pair(
-                data, role=role_slug, permissions=permissions,
-                token_version=token_version,
-            )
-            await AuditLog(conn).log_event(
-                event_type='auth.login_success',
-                actor_id=data['id'],
-                resource_type='user',
-                resource_id=str(data['id']),
-                details={'username': body.username},
-                request_id=request_id_var.get(),
-            )
-            resp = ok({
-                'id': data['id'],
-                'admin': data['admin'],
-                'role': role_slug or '',
-                'permissions': permissions or [],
-                'tenant': data.get('tenant'),
-                'tenant_id': tenant_id,
-                'tenant_name': tenant_name,
-                'token': access,
-                'access_token': access,
-            })
-            resp.set_cookie(
-                key='token',
-                value=access,
-                httponly=True,
-                samesite='strict',
-                secure=True,
-                # Root path (IAM audit H-2): the browser auth channel must
-                # cover /api and /dicomweb (WADO-RS image fetches) alike.
-                path='/',
-            )
-            # Refresh token travels only as an HttpOnly cookie scoped to the
-            # auth endpoints (/api/auth) — both the refresh endpoint and
-            # logout need to read it for rotation/revocation (AT-4). Never
-            # in localStorage or URLs.
-            resp.set_cookie(
-                key='refresh_token',
-                value=refresh,
-                httponly=True,
-                samesite='strict',
-                secure=True,
-                path='/api/auth',
-            )
-            return resp
+            services = getattr(request.state, 'services', None)
+            if services is not None:
+                try:
+                    auth_service = services.get(AuthService)
+                    data = await auth_service.authenticate(body.username, body.password)
+                except Exception:
+                    data = None
+            else:
+                data = None
+
+            if data is None:
+                async with get_conn() as conn:
+                    try:
+                        data = await Users(conn).login(body.username, body.password)
+                    except ApiException as e:
+                        await login_bucket.record_db(ip, conn, success=False)
+                        await AuditLog(conn).log_event(
+                            event_type='auth.login_failed',
+                            actor_id=None,
+                            resource_type='user',
+                            resource_id=body.username,
+                            details={'reason': type(e).__name__},
+                            request_id=request_id_var.get(),
+                        )
+                        # Generic message — the server-side distinction stays in
+                        # the audit log, never in the 401 body (enumeration).
+                        return api_error('AUTH_FAILED', 'Invalid credentials', status=401)
+
+            async with get_conn() as conn:
+                await login_bucket.record_db(ip, conn, success=True)
+                await Users(conn).update_last_login(data['id'])
+                role_slug, permissions = await Users(conn).get_user_role(data['id'])
+                token_version = await Users(conn).get_token_version(data['id'])
+                tenant_id = None
+                tenant_name = None
+                if data.get('tenant'):
+                    # Registry lookup on the MAIN pool: even though login is now
+                    # tenant-scoped, the tenants table lives only on the main
+                    # registry DB, not in the tenant's own database.
+                    from db.conn import get_database
+                    from db.tenants import Tenants
+                    tenant_id = data.get('tenant')
+                    async with get_database().acquire() as _main_conn:
+                        tenant_row = await Tenants(_main_conn).get_by_slug(tenant_id)
+                    if tenant_row:
+                        tenant_name = tenant_row.get('name')
+                access, refresh = create_token_pair(
+                    data, role=role_slug, permissions=permissions,
+                    token_version=token_version,
+                )
+                await AuditLog(conn).log_event(
+                    event_type='auth.login_success',
+                    actor_id=data['id'],
+                    resource_type='user',
+                    resource_id=str(data['id']),
+                    details={'username': body.username},
+                    request_id=request_id_var.get(),
+                )
+                resp = ok({
+                    'id': data['id'],
+                    'admin': data['admin'],
+                    'role': role_slug or '',
+                    'permissions': permissions or [],
+                    'tenant': data.get('tenant'),
+                    'tenant_id': tenant_id,
+                    'tenant_name': tenant_name,
+                    'token': access,
+                    'access_token': access,
+                })
+                resp.set_cookie(
+                    key='token',
+                    value=access,
+                    httponly=True,
+                    samesite='strict',
+                    secure=True,
+                    # Root path (IAM audit H-2): the browser auth channel must
+                    # cover /api and /dicomweb (WADO-RS image fetches) alike.
+                    path='/',
+                )
+                # Refresh token travels only as an HttpOnly cookie scoped to the
+                # auth endpoints (/api/auth) — both the refresh endpoint and
+                # logout need to read it for rotation/revocation (AT-4). Never
+                # in localStorage or URLs.
+                resp.set_cookie(
+                    key='refresh_token',
+                    value=refresh,
+                    httponly=True,
+                    samesite='strict',
+                    secure=True,
+                    path='/api/auth',
+                )
+                return resp
+        finally:
+            if tenant_slug:
+                reset_request_tenant()
+                reset_tenant_slug()
+                if _pool is not None:
+                    from db.tenants import TenantConnectionPool
+                    TenantConnectionPool.release(tenant_slug)
 
 
 class ChangePassword(HTTPEndpoint):

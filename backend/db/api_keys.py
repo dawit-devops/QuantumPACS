@@ -16,7 +16,14 @@ class ApiKeys(Table):
     name = 'api_keys'
 
     async def sync_db(self):
-        pass
+        # Tenant binding (H-1): every API key must be associated with the
+        # tenant it serves so its requests are scoped to that tenant's data
+        # plane. Added here (not only via migration) to guarantee the column
+        # exists on both the main registry DB and any future re-sync, matching
+        # the `users` table's tenant-column precedent.
+        await self.exec(
+            "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS tenant TEXT"
+        )
 
     @staticmethod
     def to_json(data):
@@ -55,7 +62,7 @@ class ApiKeys(Table):
 
     async def store(self, name: str, key_hash: str, prefix: str,
                     service_name: str, permissions=None,
-                    created_by=None, expires_at=None):
+                    created_by=None, expires_at=None, tenant=None):
         if permissions is None:
             permissions = []
         import json
@@ -63,10 +70,10 @@ class ApiKeys(Table):
         q = self.insert().columns(
             self.table.name, self.table.key_hash, self.table.prefix,
             self.table.service_name, self.table.permissions,
-            self.table.created_by, self.table.expires_at,
+            self.table.created_by, self.table.expires_at, self.table.tenant,
         ).insert(
             name, key_hash, prefix, service_name, perms_json,
-            created_by, expires_at,
+            created_by, expires_at, tenant,
         ).returning(self.table.id)
         return await self.fetchval(q)
 
@@ -90,8 +97,12 @@ class ApiKeys(Table):
         )
         return self.to_json(row)
 
-    async def get_all(self):
+    async def get_all(self, tenant=None):
         q = self.select('*').orderby(self.table.created_at)
+        # Tenant scoping: a non-empty tenant slug limits results to that
+        # tenant's keys; an empty slug (platform admin) returns everything.
+        if tenant:
+            q = q.where(self.table.tenant == tenant)
         rows = await self.fetch(q)
         return [self.to_json(r) for r in rows]
 

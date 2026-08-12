@@ -29,3 +29,6 @@ SCRATCH
 /backend/certs/
 /certs/
 cov-json-report.json
+
+# Playwright MCP browser cache (local)
+.playwright-mcp/

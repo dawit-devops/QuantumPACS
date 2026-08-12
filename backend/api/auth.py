@@ -255,6 +255,10 @@ class TokenAuth(AuthenticationBackend):
                 'admin': False,
                 'role': '',
                 'permissions': record.get('permissions', []),
+                # H-1: scope the service account to the tenant its key is bound
+                # to. TenantMiddleware then routes the request to that tenant's
+                # data plane exactly as it would for a JWT claim.
+                'tenant': record.get('tenant'),
             })
             return AuthCredentials(["authenticated"]), user
 

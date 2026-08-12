@@ -21,7 +21,10 @@ from db.audit_log import AuditLog
 from db.replica import Replica
 from dcm.dicom_json import row_to_study_json
 from dcm.store import store_instance
+from log import get_logger
 from storage.storage import Storage
+
+log = get_logger(__name__)
 
 _STOW_ATTEMPTS = defaultdict(list)
 _STOW_MAX_PER_IP = 30
@@ -1106,6 +1109,25 @@ class DicomWebArchive(HTTPEndpoint):
             if not rows:
                 err_body = {'error': {'code': 'NOT_FOUND', 'message': 'No instances found for archive'}}
                 return DicomJsonResponse(json.dumps(err_body), status_code=404)
+
+            # M-2: every bulk PHI egress (study/series ZIP) is audited and
+            # tenant-scoped. The connection is already tenant-routed, and the
+            # audit row inherits the effective tenant from the request context.
+            # Audit writes must never gate the export itself.
+            try:
+                await AuditLog(conn).log_event(
+                    'dicomweb.archive_export',
+                    str(getattr(request.user, 'id', 'anonymous')),
+                    'study' if not series_uid else 'series',
+                    study_uid,
+                    details={
+                        'series_uid': series_uid,
+                        'instance_count': len(rows),
+                    },
+                    tenant=getattr(getattr(request, 'state', None), 'tenant_slug', None) or None,
+                )
+            except Exception:
+                log.warning('Audit log for archive export failed', exc_info=True)
 
             storage = await Storage.get(master)
             prepared = []

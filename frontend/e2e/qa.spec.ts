@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { seedQAUser, loginAsAdmin, API_BASE, menuName } from "./helpers";
+import {
+  seedQAUser,
+  loginAsAdmin,
+  sessionCookie,
+  API_BASE,
+  menuName,
+} from "./helpers";
 
 test.describe("QA Role", () => {
   test.beforeEach(async ({ page }) => {
@@ -71,28 +77,26 @@ test.describe("QA Role", () => {
 
 test.describe("Session Auth (real backend)", () => {
   test("API calls are authenticated for a real session", async ({ page }) => {
-    // The seeded QA session is a localStorage stub — page.request bypasses it
-    // and the backend authenticates via the X-Auth-Pacs token header (the
-    // access token is kept in localStorage, not a cookie). Prove BOTH sides
-    // of the contract: anonymous calls must be rejected (401), and a live
-    // admin login must attach a token that is accepted (200). Lives outside
-    // the QA describe because seedQAUser's /api/** route stub would intercept
-    // the login POST.
+    // IAM audit H-2: the access token is HttpOnly-cookie-only — the browser
+    // never holds a JS-readable token, and page.request shares the context
+    // cookie jar. Prove BOTH sides of the contract: anonymous calls must be
+    // rejected (401), and a live admin login must yield a cookie-backed
+    // session that is accepted (200). Lives outside the QA describe because
+    // seedQAUser's /api/** route stub would intercept the login POST.
     //
-    // Negative: no token → 401. A bare request succeeding would mean /api/files
+    // Negative: no cookie → 401. A bare request succeeding would mean /api/files
     // tolerates anonymous callers, which would defeat the point of auth.
     const anon = await page.request.get(`${API_BASE}/api/files`);
     expect(anon.status()).toBe(401);
 
-    // Positive: real login stores a live token, then an authenticated
-    // page.request call passes it explicitly.
+    // Positive: real login sets the HttpOnly cookie, then an authenticated
+    // page.request call rides the shared cookie jar.
     await loginAsAdmin(page);
-    const token = await page.evaluate(() =>
-      localStorage.getItem("access_token"),
-    );
-    expect(token).toBeTruthy();
+    const tokenCookie = await sessionCookie(page, "token");
+    expect(tokenCookie).toBeTruthy();
+    expect(tokenCookie!.httpOnly).toBe(true);
     const resp = await page.request.get(`${API_BASE}/api/files`, {
-      headers: { "X-Auth-Pacs": token!, "X-CSRF-Token": "1" },
+      headers: { "X-CSRF-Token": "1" },
     });
     expect(resp.status()).toBe(200);
   });

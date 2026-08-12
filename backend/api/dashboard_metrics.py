@@ -6,6 +6,7 @@ from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok
 from db.conn import get_conn
+from api.tenant_middleware import effective_tenant
 
 from api import telemetry
 
@@ -13,6 +14,13 @@ from api import telemetry
 class DashboardMetricsHandler(HTTPEndpoint):
     @requires_permission(Permission.METRICS_READ)
     async def get(self, request):
+        # M-4: every aggregate below runs through get_conn(), which the
+        # TenantMiddleware has already scoped to the request's tenant pool
+        # (DB-per-tenant isolation). The totals therefore already reflect a
+        # single tenant — but we surface the effective scope in the response so
+        # a caller can never mistake one tenant's numbers for a platform-wide
+        # aggregate, and so the boundary is auditable end-to-end.
+        tenant = effective_tenant(request) or 'platform'
         async with get_conn() as conn:
             total_patients = await conn.fetchval('SELECT COUNT(*) FROM patients') or 0
             total_studies = await conn.fetchval('SELECT COUNT(*) FROM studies') or 0
@@ -43,6 +51,7 @@ class DashboardMetricsHandler(HTTPEndpoint):
             )
 
         return ok({
+            'tenant': tenant,
             'totals': {
                 'patients': total_patients,
                 'studies': total_studies,

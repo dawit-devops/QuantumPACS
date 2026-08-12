@@ -17,6 +17,7 @@ class Webhook(Table):
             active BOOLEAN NOT NULL DEFAULT TRUE,
             retry_count INTEGER NOT NULL DEFAULT 3,
             timeout_ms INTEGER NOT NULL DEFAULT 5000,
+            tenant TEXT NOT NULL DEFAULT '',
             last_triggered_at TIMESTAMPTZ,
             last_status_code INTEGER,
             last_error TEXT,
@@ -25,14 +26,15 @@ class Webhook(Table):
         )
         """)
 
-    async def get_all(self):
-        rows = await self.fetch(
-            self.select('id', 'name', 'url', 'events', 'active',
-                        'retry_count', 'timeout_ms',
+    async def get_all(self, tenant=None):
+        q = self.select('id', 'name', 'url', 'events', 'active',
+                        'retry_count', 'timeout_ms', 'tenant',
                         'last_triggered_at', 'last_status_code',
                         'last_error', 'created_at')
-            .orderby('created_at', order=Order.desc)
-        )
+        if tenant:
+            q = q.where(self.table.tenant == tenant)
+        q = q.orderby('created_at', order=Order.desc)
+        rows = await self.fetch(q)
         return [dict(r) for r in rows]
 
     async def get_by_id(self, wh_id):
@@ -42,7 +44,7 @@ class Webhook(Table):
     async def create(self, data):
         q = self.insert().columns(
             'name', 'url', 'events', 'secret', 'active',
-            'retry_count', 'timeout_ms',
+            'retry_count', 'timeout_ms', 'tenant',
         ).insert((
             data['name'], data['url'],
             data.get('events', []),
@@ -50,6 +52,7 @@ class Webhook(Table):
             data.get('active', True),
             int(data.get('retry_count', 3)),
             int(data.get('timeout_ms', 5000)),
+            data.get('tenant', ''),
         )).returning('id')
         return await self.fetchval(q)
 
