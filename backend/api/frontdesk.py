@@ -302,11 +302,17 @@ class AppointmentsHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_READ)
     async def get(self, request):
         date_str = request.query_params.get('date')
+        date_val = None
+        if date_str:
+            try:
+                date_val = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                date_val = None
         modality = request.query_params.get('modality')
         patient_id = request.query_params.get('patient_id')
         async with get_conn() as conn:
             rows = await FrontDesk(conn).list_appointments(
-                date=date_str, modality=modality, patient_id=patient_id,
+                date=date_val, modality=modality, patient_id=patient_id,
             )
         return ok({'data': [_row_dict(r) for r in rows]})
 

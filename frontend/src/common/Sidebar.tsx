@@ -78,7 +78,7 @@ function getKey(loc: string) {
     };
     return fdMap[parts[1]] || "fd-registration";
   }
-  if (parts[0] === "portal") return "portal";
+  if (parts[0] === "portal") return "portal-records";
   return parts[0];
 }
 
@@ -390,7 +390,7 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     icon: <SolutionOutlined />,
     items: [
       {
-        key: "portal",
+        key: "portal-records",
         path: "/portal",
         label: "My Records",
         icon: <SolutionOutlined />,
@@ -456,7 +456,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fd-registration": "frontdesk",
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",
-  portal: "portal",
+  "portal-records": "portal",
   metrics: "analytics",
 };
 

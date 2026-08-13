@@ -353,10 +353,12 @@ function Files() {
         style={{ color: filtered ? "var(--color-blue-500)" : undefined }}
       />
     ),
-    onFilterDropdownOpenChange: (visible: any) => {
-      if (visible) {
-        setTimeout(() => (searchInput.current as any)?.select());
-      }
+    filterDropdownProps: {
+      onOpenChange: (visible: any) => {
+        if (visible) {
+          setTimeout(() => (searchInput.current as any)?.select());
+        }
+      },
     },
     render: (text: any, record: T) => {
       if (options.render) {
