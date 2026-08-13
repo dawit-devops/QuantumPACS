@@ -153,4 +153,89 @@ describe("TechnologistWorklist", () => {
       expect(screen.getByText("Failed to load worklist")).toBeInTheDocument();
     });
   });
+
+  it("announces and highlights newly assigned exams on refresh", async () => {
+    // First poll returns a single exam (the baseline — no announcement).
+    let rows: any[] = [{ ...mockExams[0] }];
+    mockRequest.mockImplementation(() => Promise.resolve({ data: rows }));
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/^(Exam|Exams) /)).not.toBeInTheDocument();
+
+    // A second exam arrives on the next refresh.
+    rows = [mockExams[0], mockExams[1]];
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jane Smith")).toBeInTheDocument();
+    });
+    // aria-live announces the accession (spec §3-7) and the new row carries
+    // the highlight class.
+    expect(screen.getByText(/Exam ACC-002 assigned/i)).toBeInTheDocument();
+    const row = screen.getByText("Jane Smith").closest("tr");
+    expect(row!.className).toContain("tech-wl-row-new");
+  });
+
+  it("does not announce existing exams when a filter changes", async () => {
+    // Same rows under a new status tab are the new baseline, not arrivals.
+    mockRequest.mockResolvedValue({ data: [{ ...mockExams[0] }] });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Ready/i }));
+
+    // The re-fetch under the new filter settles without an announcement.
+    await waitFor(() => {
+      expect(
+        mockRequest.mock.calls.some(
+          (c: any[]) => c[1]?.query?.status === "ready",
+        ),
+      ).toBe(true);
+    });
+    expect(screen.queryByText(/^(Exam|Exams) /)).not.toBeInTheDocument();
+  });
+
+  it("announces the first arrival after an empty worklist", async () => {
+    // The first poll returns nothing; the baseline seeds empty. The next
+    // poll finds an assignment — that IS an arrival and must be announced.
+    let rows: any[] = [];
+    mockRequest.mockImplementation(() => Promise.resolve({ data: rows }));
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No exams assigned/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/^(Exam|Exams) /)).not.toBeInTheDocument();
+
+    rows = [{ ...mockExams[0] }];
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Exam ACC-001 assigned/i)).toBeInTheDocument();
+    const row = screen.getByText("John Doe").closest("tr");
+    expect(row!.className).toContain("tech-wl-row-new");
+  });
+
+  it("shows elapsed time since handoff for active exams", async () => {
+    const withTimes = [
+      {
+        ...mockExams[0],
+        created_at: new Date(Date.now() - 45 * 60000).toISOString(),
+      },
+    ];
+    mockRequest.mockResolvedValue({ data: withTimes });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("45m")).toBeInTheDocument();
+    });
+  });
 });

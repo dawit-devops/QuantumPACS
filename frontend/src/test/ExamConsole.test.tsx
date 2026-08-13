@@ -1,5 +1,11 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -29,6 +35,8 @@ function renderConsole() {
         <MemoryRouter initialEntries={["/exams/e1"]}>
           <Routes>
             <Route path="/exams/:id" element={<ExamConsole />} />
+            {/* Stub target for the Ctrl+Shift+W worklist shortcut test. */}
+            <Route path="/exams" element={<div>Worklist Stub</div>} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>
@@ -97,7 +105,10 @@ describe("ExamConsole", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "technologist");
-    localStorage.setItem("permissions", JSON.stringify(["EXAM_READ", "EXAM_WRITE"]));
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["EXAM_READ", "EXAM_WRITE"]),
+    );
     mockRequest.mockReset();
   });
 
@@ -347,13 +358,398 @@ describe("ExamConsole", () => {
     });
   });
 
+  it("keeps a rejected acquisition visible with Retake and Log Incident", async () => {
+    let examState: any = { ...inProgressExam, acquisitions: [] };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      if (url === "exams/e1/acquisitions") {
+        const acq = {
+          id: "acq-1",
+          series_number: 1,
+          description: "Localizer",
+          kvp: 120,
+          mas: 210,
+          dlp: 520,
+          ctdivol: 12.5,
+        };
+        examState = {
+          ...examState,
+          acquisitions: [...examState.acquisitions, acq],
+        };
+        return Promise.resolve({ data: acq });
+      }
+      if (url.endsWith("/reject")) {
+        // The server marks the acquisition rejected with the reason; the
+        // console refetches and must surface it in the Rejected section.
+        examState = {
+          ...examState,
+          acquisitions: examState.acquisitions.map((a: any) =>
+            a.id === "acq-1"
+              ? { ...a, status: "rejected", reject_reason: "Patient motion" }
+              : a,
+          ),
+        };
+        return Promise.resolve({
+          data: { status: "rejected", rejected_count: 1 },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Acquire Image/i }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Reject/i }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Reject/i }));
+
+    // Pick a reject reason in the modal, then confirm.
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    fireEvent.mouseDown(
+      within(screen.getByRole("dialog")).getByLabelText("Reject reason"),
+    );
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll(".ant-select-item-option").length,
+      ).toBeGreaterThan(0);
+    });
+    const option = Array.from(
+      document.querySelectorAll(".ant-select-item-option"),
+    ).find((o) => o.textContent === "Patient motion");
+    expect(option).toBeTruthy();
+    fireEvent.click(option!);
+    // Modal title and OK button both read "Reject Image" — target the
+    // button inside the dialog.
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Reject Image",
+      }),
+    );
+
+    // The rejected acquisition stays visible with reason + actions.
+    await waitFor(() => {
+      expect(screen.getByText(/Rejected \(1\)/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Patient motion/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Retake/i })).toBeInTheDocument();
+    // The rejected item's Log Incident button exists alongside the header's.
+    const logIncidentBtns = screen.getAllByRole("button", {
+      name: /Log Incident/i,
+    });
+    expect(logIncidentBtns.length).toBeGreaterThan(1);
+  });
+
+  it("retakes a rejected acquisition with an incremented series", async () => {
+    // The ledger already holds an accepted series 3 (as after a reload),
+    // so the retake of rejected series 1 must jump to 4 — never reuse a
+    // series number that's already in the dose ledger.
+    let examState: any = {
+      ...inProgressExam,
+      acquisitions: [
+        {
+          id: "acq-1",
+          series_number: 1,
+          description: "Localizer",
+          status: "rejected",
+          reject_reason: "Patient motion",
+        },
+        {
+          id: "acq-3",
+          series_number: 3,
+          description: "Diagnostic series",
+          status: "accepted",
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      if (url === "exams/e1/acquisitions") {
+        const acq = {
+          id: "acq-4",
+          series_number: 4,
+          description: "Retake — Localizer",
+          kvp: 120,
+          mas: 210,
+          dlp: 520,
+          ctdivol: 12.5,
+        };
+        examState = {
+          ...examState,
+          acquisitions: [...examState.acquisitions, acq],
+        };
+        return Promise.resolve({ data: acq });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Retake/i }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Retake/i }));
+
+    await waitFor(() => {
+      const acqCall = mockRequest.mock.calls.find(
+        (c: any[]) => c[0] === "exams/e1/acquisitions",
+      );
+      expect(acqCall).toBeTruthy();
+      expect(acqCall![1].data.series_number).toBe(4);
+      expect(acqCall![1].data.description).toBe("Retake — Localizer");
+    });
+    // The retake lands in the pending QA queue for accept/reject.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows server-pending acquisitions in the QA queue after a reload", async () => {
+    // After a reload the pending acquisition comes back in exam.acquisitions
+    // with status 'pending' (no optimistic local state) and must still offer
+    // Accept/Reject (FR-R06-04).
+    const examState: any = {
+      ...inProgressExam,
+      acquisitions: [
+        {
+          id: "acq-7",
+          series_number: 2,
+          description: "Diagnostic series",
+          kvp: 120,
+          dlp: 830,
+          ctdivol: 17.5,
+          status: "pending",
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Accept/i }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Reject/i })).toBeInTheDocument();
+    expect(screen.getByText("QA Queue (1 pending)")).toBeInTheDocument();
+    // Each pending item is represented by a thumbnail, not text only (§3-10).
+    expect(
+      document.querySelectorAll(".sim-preview-canvas-mini").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("pre-fills the incident modal from a rejected acquisition", async () => {
+    const examState: any = {
+      ...inProgressExam,
+      acquisitions: [
+        {
+          id: "acq-1",
+          series_number: 1,
+          description: "Localizer",
+          status: "rejected",
+          reject_reason: "Patient motion",
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    // Two "Log Incident" buttons exist (console header + rejected item); the
+    // rejected item's action pre-fills the incident modal.
+    const logIncidentBtn = await screen.findAllByRole("button", {
+      name: /Log Incident/i,
+    });
+    expect(logIncidentBtn.length).toBeGreaterThan(1);
+    fireEvent.click(logIncidentBtn[logIncidentBtn.length - 1]);
+
+    // The incident type is pre-filled from the reject reason and the
+    // description names the rejected series.
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    // The Select renders the readable label (underscores stripped).
+    expect(screen.getByText("patient motion")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(/Rejected series 1 \(Patient motion\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows prior studies with a comparison link in the identity card", async () => {
+    const examWithPriors = {
+      ...readyExam,
+      prior_studies: [
+        {
+          id: 101,
+          description: "CT Head Prior",
+          accession_number: "ACC-P1",
+          modality: "CT",
+          series_count: 2,
+          file_count: 1,
+          first_file_id: 501,
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examWithPriors });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Patient Identity Verification"),
+      ).toBeInTheDocument();
+    });
+    // Prior study description + modality render with a viewer link.
+    expect(screen.getByText(/CT Head Prior/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /Open in viewer/i });
+    expect(link.getAttribute("href")).toBe("/files/501");
+  });
+
+  it("records only individually confirmed safety checks with a pregnancy warning", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Safety Checks (pre-contrast)"),
+      ).toBeInTheDocument();
+    });
+
+    // The pregnancy item surfaces a radiation warning (FR-R06-06).
+    expect(screen.getByText(/Ionizing radiation risk/i)).toBeInTheDocument();
+
+    // Record stays disabled until at least one item is explicitly confirmed.
+    const recordBtn = screen.getByRole("button", {
+      name: /Record Safety Checks/i,
+    });
+    expect(recordBtn.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("No known contrast allergies"));
+    expect(recordBtn.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(recordBtn);
+
+    // Only the confirmed item is sent — not a hardcoded all-confirmed list.
+    await waitFor(() => {
+      const call = mockRequest.mock.calls.find(
+        (c: any[]) => c[0] === "exams/e1/safety-checks",
+      );
+      expect(call).toBeTruthy();
+    });
+    const call = mockRequest.mock.calls.find(
+      (c: any[]) => c[0] === "exams/e1/safety-checks",
+    );
+    expect(call![1].data.checks).toEqual([
+      {
+        check_item: "No known contrast allergies",
+        answer: "confirmed",
+        notes: "",
+      },
+    ]);
+  });
+
+  it("lists per-series dose and flags the panel when the benchmark is exceeded", async () => {
+    const examWithDose = {
+      ...inProgressExam,
+      dose: {
+        total_dlp: 1350,
+        total_ctdivol: 30,
+        total_mas: 400,
+        total_exposure: 0,
+      },
+      dose_level: "danger",
+      acquisitions: [
+        {
+          id: "acq-1",
+          series_number: 1,
+          description: "Localizer",
+          kvp: 120,
+          dlp: 520,
+          ctdivol: 12.5,
+          status: "accepted",
+        },
+        {
+          id: "acq-2",
+          series_number: 2,
+          description: "Diagnostic series",
+          kvp: 120,
+          dlp: 830,
+          ctdivol: 17.5,
+          status: "accepted",
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examWithDose });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("Per-series dose")).toBeInTheDocument();
+    });
+    expect(screen.getByText("S1 · Localizer")).toBeInTheDocument();
+    expect(screen.getByText("S2 · Diagnostic series")).toBeInTheDocument();
+    // dose_level danger flags the panel itself, not just the progress bar.
+    expect(
+      screen.getByText(/ACR dose benchmark exceeded/i),
+    ).toBeInTheDocument();
+  });
+
+  it("navigates to the worklist on Ctrl+Shift+W", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Patient Identity Verification"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "w", ctrlKey: true, shiftKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Worklist Stub")).toBeInTheDocument();
+    });
+  });
+
   it("renders a read-only console for an EXAM_READ-only user", async () => {
     // nurse / resident hold EXAM_READ only: every acquisition write
     // (identity, protocol, acquire, safety, complete) is EXAM_WRITE-gated.
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["EXAM_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["EXAM_READ"]));
     mockRequest.mockImplementation((url: string) => {
       if (url === "exams/e1") return Promise.resolve({ data: readyExam });
       if (url === "protocols") return Promise.resolve(mockProtocols);

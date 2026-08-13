@@ -369,4 +369,18 @@ describe("Sidebar", () => {
     expect(screen.getByText("Files")).toBeInTheDocument();
     expect(screen.getByText("Acquisition")).toBeInTheDocument();
   });
+
+  it("labels the Acquisition items My Exams and Modality Worklist", async () => {
+    const user = userEvent.setup();
+    setSession({
+      role: "technologist",
+      permissions: ["EXAM_READ", "WORKLIST_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Acquisition")).toBeInTheDocument();
+    await user.click(screen.getByText("Acquisition"));
+    // C10: the R06 assignment list and the DICOM worklist read distinctly.
+    expect(screen.getByText("My Exams")).toBeInTheDocument();
+    expect(screen.getByText("Modality Worklist")).toBeInTheDocument();
+  });
 });

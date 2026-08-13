@@ -26,6 +26,18 @@ console.warn = (msg: unknown, ...args: unknown[]) => {
     return;
   originalWarn(msg, ...args);
 };
+// jsdom does not implement getComputedStyle for pseudo-elements: antd's
+// Wave/ripple effect and other components probe ::before/::after during
+// tests, and jsdom routes the "Not implemented" notice straight to stderr
+// (bypassing console.warn/error, so filters above cannot see it). Return an
+// empty declaration for pseudo queries instead of hitting that path.
+const jsdomGetComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = ((elt: Element, pseudo?: string | null) => {
+  if (pseudo) {
+    return document.createElement("span").style as CSSStyleDeclaration;
+  }
+  return jsdomGetComputedStyle(elt);
+}) as typeof window.getComputedStyle;
 
 // (T-L1) Tests must not leak state between tests: auth tokens, tenant
 // selection and the session tempKey all live in storage.

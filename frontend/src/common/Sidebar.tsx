@@ -145,14 +145,18 @@ export const NAV_SECTIONS: NavSectionDef[] = [
       {
         key: "exams",
         path: "/exams",
-        label: "Exams",
+        // C10: "Exams" → "My Exams" so it reads as the technologist's own
+        // R06 assignment list, distinct from the DICOM modality worklist.
+        label: "My Exams",
         icon: <MedicineBoxOutlined />,
         permissions: ["EXAM_READ"],
       },
       {
         key: "worklist",
         path: "/worklist",
-        label: "Worklist",
+        // C10: "Worklist" → "Modality Worklist" (the DICOM worklist), so the
+        // two Acquisition entries are distinguishable at a glance.
+        label: "Modality Worklist",
         icon: <FileSearchOutlined />,
         permissions: ["WORKLIST_READ"],
       },

@@ -1,5 +1,9 @@
-import { useDocumentTitle, useTenantRefetch, useVisibilityGatedInterval } from "../hooks";
-import React, { useState, useEffect, useCallback } from "react";
+import {
+  useDocumentTitle,
+  useTenantRefetch,
+  useVisibilityGatedInterval,
+} from "../hooks";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Layout, Table, Tag, Button, Select, Input, Alert, Spin } from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
@@ -63,6 +67,26 @@ function TechnologistWorklist() {
     () => sessionStorage.getItem("tech-wl-search") || "",
   );
 
+  // C7 (NFR-R06-06): the 30s poll can bring new assignments in silently, so
+  // the previous id set is diffed on every poll and fresh ids are announced
+  // (aria-live, by accession) and highlighted. Two scoping rules keep that
+  // honest: a filter change (status/modality/search) swaps the result space,
+  // so the baseline is reseeded on the fetch that follows it — otherwise the
+  // same rows under a new filter would read as arrivals; and `seeded`
+  // distinguishes "first load ever" from "a later poll returned empty", so
+  // the first assignment to arrive after an empty worklist is announced too.
+  const prevIds = useRef<Set<string>>(new Set());
+  const prevFilterKey = useRef<string | null>(null);
+  const seeded = useRef(false);
+  const [newArrivals, setNewArrivals] = useState<any[]>([]);
+  // C9: elapsed "time in queue" needs a ticking clock; 30s cadence matches
+  // the refresh interval so the column never shows stale minutes.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(t);
+  }, []);
+
   // Persist filter state across the worklist -> exam console -> back loop
   // (R06 UI/UX: back navigation preserves scroll position and filter state).
   useEffect(() => {
@@ -87,7 +111,27 @@ function TechnologistWorklist() {
     if (search) query.search = search;
     request("exams", { query })
       .then((res: any) => {
-        setData(Array.isArray(res.data) ? res.data : []);
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setData(rows);
+        // C7: diff against the previous poll. A filter change since the last
+        // fetch makes this response a new baseline, not a poll result — the
+        // reseeded set would otherwise read every row as an arrival.
+        const filterKey = JSON.stringify([statusFilter, modalityFilter, search]);
+        const filterChanged = filterKey !== prevFilterKey.current;
+        if (filterChanged) {
+          prevIds.current = new Set();
+          prevFilterKey.current = filterKey;
+        }
+        const fresh = rows.filter((r: any) => !prevIds.current.has(r.id));
+        if (seeded.current && !filterChanged && fresh.length) {
+          setNewArrivals((a) => [...a, ...fresh]);
+          window.setTimeout(() => {
+            setNewArrivals((a) => a.filter((x: any) => !fresh.includes(x)));
+          }, 8000);
+        }
+        seeded.current = true;
+        prevIds.current = new Set(rows.map((r: any) => r.id));
+        loadStatusCounts();
       })
       .catch((e: any) => {
         setError(e.message);
@@ -107,8 +151,10 @@ function TechnologistWorklist() {
 
   // Per-status counts across the whole assignment (not just the filtered
   // page): one lightweight request with a big per_page, summed client-side.
+  // Refetched on every poll (via fetchExams) so the tabs stay in step with
+  // the list — computing once on mount left them stale as exams arrived.
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  useEffect(() => {
+  const loadStatusCounts = useCallback(() => {
     request("exams", { query: { per_page: "500" } })
       .then((res: any) => {
         const rows = Array.isArray(res.data) ? res.data : [];
@@ -170,6 +216,31 @@ function TechnologistWorklist() {
       render: (s: string) => (
         <Tag color={STATUS_COLORS[s] || "default"}>{s || "ready"}</Tag>
       ),
+    },
+    {
+      // C9: elapsed time in queue (created_at = handoff to the worklist) or
+      // since completion; color-coded once an active exam has waited long
+      // enough that it needs attention.
+      title: "Elapsed",
+      key: "elapsed",
+      width: 110,
+      render: (_: unknown, r: any) => {
+        const ts = r.completed_at || r.created_at;
+        if (!ts) return "—";
+        const mins = Math.floor((now - new Date(ts).getTime()) / 60000);
+        if (mins < 0) return "—";
+        const label =
+          mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        const color =
+          r.status === "completed"
+            ? "default"
+            : mins >= 30
+              ? "orange"
+              : mins >= 15
+                ? "gold"
+                : "default";
+        return <Tag color={color}>{label}</Tag>;
+      },
     },
     {
       title: "",
@@ -268,6 +339,22 @@ function TechnologistWorklist() {
         />
       )}
 
+      {/* C7 (NFR-R06-06): visually hidden aria-live region so newly arrived
+          assignments are announced to screen-reader users by accession
+          (spec §3-7: "Exam {accession} assigned") instead of rows silently
+          changing under the cursor. */}
+      <div aria-live="polite" role="status" className="tech-wl-live">
+        {newArrivals.length === 0
+          ? ""
+          : newArrivals.length === 1
+            ? `Exam ${
+                newArrivals[0].accession_number || newArrivals[0].id
+              } assigned`
+            : `Exams ${newArrivals
+                .map((r: any) => r.accession_number || r.id)
+                .join(", ")} assigned`}
+      </div>
+
       {loading && !data.length ? (
         <div className="tech-wl-loading">
           <Spin />
@@ -277,11 +364,14 @@ function TechnologistWorklist() {
           rowKey="id"
           columns={columns}
           dataSource={data}
+          rowClassName={(r: any) =>
+            newArrivals.some((x: any) => x.id === r.id) ? "tech-wl-row-new" : ""
+          }
           pagination={{ pageSize: 20, showSizeChanger: false }}
           onRow={(r) => ({
             onDoubleClick: () => navigate(`/exams/${r.id}`),
           })}
-          scroll={{ x: 800 }}
+          scroll={{ x: 900 }}
           locale={{
             emptyText:
               "No exams assigned. New assignments appear here automatically.",

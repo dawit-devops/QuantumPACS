@@ -263,7 +263,7 @@ class ExamReportSignHandler(HTTPEndpoint):
         return ok({'data': report})
 
 
-async def _exam_imaging(conn, exam):
+async def _exam_imaging(conn, exam, patient=None):
     """Build the patient studies tree for an exam's imaging (or None).
 
     Bridges the exam lifecycle (front-desk / technologist) to the DICOM
@@ -274,27 +274,39 @@ async def _exam_imaging(conn, exam):
     desk exams legitimately reach the worklist before the modality stores
     anything — so the console renders the report full-width instead of an
     empty viewport.
+
+    `patient` may carry the already-fetched get_extra tree (the exam detail
+    endpoint shares one lookup with prior-studies); when given, the
+    accession check happens against the tree instead of the JOIN query.
     """
     accession = (exam.get('accession_number') or '').strip()
     mrn = exam.get('patient_id')
     if not accession or not mrn:
         return None
-    row = await conn.fetchrow(
-        """SELECT p.id FROM patients p
-           JOIN studies s ON s.patient_id = p.id
-           WHERE s.accession_number = $1 AND p.patient_id = $2
-           ORDER BY s.id LIMIT 1""",
-        accession, mrn,
-    )
-    if not row:
+    if patient is None:
+        row = await conn.fetchrow(
+            """SELECT p.id FROM patients p
+               JOIN studies s ON s.patient_id = p.id
+               WHERE s.accession_number = $1 AND p.patient_id = $2
+               ORDER BY s.id LIMIT 1""",
+            accession, mrn,
+        )
+        if not row:
+            return None
+        patient = await Patient(conn).get_extra(row['id'])
+    if not patient:
         return None
-    patient = await Patient(conn).get_extra(row['id'])
     # A patient can carry several studies (priors, other accessions); the
     # console reads the study that belongs to this exam, not the whole file.
-    patient['studies'] = [
+    # With a pre-fetched tree this filter doubles as the existence check the
+    # JOIN query would have done.
+    matched = [
         s for s in patient.get('studies', [])
         if (s.get('accession_number') or '') == accession
     ]
+    if not matched:
+        return None
+    patient['studies'] = matched
     return patient
 
 

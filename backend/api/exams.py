@@ -26,7 +26,12 @@ from db.conn import get_conn
 from db.exams import (
     Exams, Acquisitions, SafetyChecks, Incidents, ProtocolOverrides, Protocols,
 )
+from db.patient import Patient
 from db.notifications import Notifications
+# C11: the console mounts the real viewer when the exam's study has been
+# stored, reusing the same accession+MRN imaging bridge the reading console
+# uses. Imported lazily-safe: api.reports never imports api.exams, so no cycle.
+from api.reports import _exam_imaging
 from log import request_id_var
 from api.tenant_middleware import effective_tenant
 
@@ -110,6 +115,37 @@ async def _seed_protocols(conn):
             p['is_default'],
             get_tenant_slug() or 'default',
         )
+
+
+def _prior_studies(patient, accession):
+    """Compact list of the patient's prior DICOM studies (FR-R06-02).
+
+    Takes the already-fetched `Patient.get_extra` tree (the exam GET shares
+    one lookup between this and `_exam_imaging`), so it is a pure
+    projection. The identity card needs a comparison link, so each prior
+    carries the first file id to open in the viewer (`/files/{id}`). The
+    current exam's own accession is excluded so "prior" means what a
+    technologist would compare against, not the study being acquired.
+    """
+    priors = []
+    for study in patient.get('studies', []):
+        if accession and (study.get('accession_number') or '') == accession:
+            continue
+        series = study.get('series', []) or []
+        files = [f for s in series for f in (s.get('files', []) or [])]
+        priors.append({
+            'id': study['id'],
+            'description': study.get('description') or '',
+            'accession_number': study.get('accession_number') or '',
+            'study_instance_uid': study.get('study_instance_uid') or '',
+            'modality': ','.join(
+                dict.fromkeys(s.get('modality') for s in series if s.get('modality')),
+            ),
+            'series_count': len(series),
+            'file_count': len(files),
+            'first_file_id': files[0]['id'] if files else None,
+        })
+    return priors
 
 
 async def _notify_role(conn, role_slug, event_type, title, body, link):
@@ -253,6 +289,26 @@ class ExamHandler(HTTPEndpoint):
                             level = 'danger'
                         elif ratio >= 0.8:
                             level = 'warning'
+            # FR-R06-02 + C11: prior-study comparison links and the real
+            # DICOM tree both project from the patient's studies, so the
+            # (expensive, study→series→file incl. f.meta) get_extra tree is
+            # fetched once and shared instead of per-helper.
+            mrn = (exam.get('patient_id') or '').strip()
+            patient_extra = None
+            if mrn:
+                prow = await conn.fetchrow(
+                    'SELECT id FROM patients WHERE patient_id = $1', mrn,
+                )
+                if prow:
+                    patient_extra = await Patient(conn).get_extra(prow['id'])
+            accession = (exam.get('accession_number') or '').strip()
+            prior_studies = (
+                _prior_studies(patient_extra, accession)
+                if patient_extra else []
+            )
+            imaging_patient = await _exam_imaging(
+                conn, exam, patient=patient_extra,
+            )
         return ok({
             'data': {
                 **exam,
@@ -263,6 +319,9 @@ class ExamHandler(HTTPEndpoint):
                 'dose': dose,
                 'benchmark_dlp': benchmark,
                 'dose_level': level,
+                'prior_studies': prior_studies,
+                'imaging': imaging_patient is not None,
+                'imaging_patient': imaging_patient,
             },
         })
 

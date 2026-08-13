@@ -238,6 +238,68 @@ class TestExamDetail:
             resp = client.get('/exams/nope')
         assert resp.status_code == 404
 
+    def test_get_includes_prior_studies(self):
+        """FR-R06-02: detail lists prior studies (excluding the current
+        accession) with first-file ids for the identity-card comparison link."""
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            if 'patients' in q:
+                return {'id': 7}
+            return {'id': 'e1', 'patient_id': 'P1', 'accession_number': 'A1'}
+        async def fake_fetch(q, *a):
+            return [
+                {'study_id': 1, 'study_uid': 'uid-1', 'study_desc': 'Current CT',
+                 'study_instance_uid': 'siuid-1', 'accession_number': 'A1',
+                 'series_id': 10, 'series_number': 1, 'series_modality': 'CT',
+                 'series_desc': '', 'series_instance_uid': 'seuid-1',
+                 'file_id': 100, 'file_name': 'f.dcm', 'file_hash': 'h',
+                 'indexed': True, 'sop_instance_uid': 'sop-1', 'deleted': False,
+                 'meta': None, 'tools_state': None},
+                {'study_id': 2, 'study_uid': 'uid-2', 'study_desc': 'Prior MR',
+                 'study_instance_uid': 'siuid-2', 'accession_number': 'A0',
+                 'series_id': 20, 'series_number': 1, 'series_modality': 'MR',
+                 'series_desc': '', 'series_instance_uid': 'seuid-2',
+                 'file_id': 200, 'file_name': 'p.dcm', 'file_hash': 'h2',
+                 'indexed': True, 'sop_instance_uid': 'sop-2', 'deleted': False,
+                 'meta': None, 'tools_state': None},
+            ]
+        with _conn(fetchrow=fake_fetchrow, fetch=fake_fetch):
+            resp = client.get('/exams/e1')
+        assert resp.status_code == 200
+        priors = resp.json()['data']['prior_studies']
+        assert len(priors) == 1
+        assert priors[0]['description'] == 'Prior MR'
+        assert priors[0]['modality'] == 'MR'
+        assert priors[0]['first_file_id'] == 200
+
+    def test_get_includes_imaging_tree_when_stored(self):
+        """C11: detail carries imaging flag + patient tree (viewer mount vs
+        simulated-preview fallback) once the exam's study is stored."""
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            if 'patients' in q:
+                return {'id': 7}
+            return {'id': 'e1', 'patient_id': 'P1', 'accession_number': 'A1'}
+        async def fake_fetch(q, *a):
+            return [
+                {'study_id': 1, 'study_uid': 'uid-1', 'study_desc': 'Current CT',
+                 'study_instance_uid': 'siuid-1', 'accession_number': 'A1',
+                 'series_id': 10, 'series_number': 1, 'series_modality': 'CT',
+                 'series_desc': 'Axial', 'series_instance_uid': 'seuid-1',
+                 'file_id': 100, 'file_name': 'f.dcm', 'file_hash': 'h',
+                 'indexed': True, 'sop_instance_uid': 'sop-1', 'deleted': False,
+                 'meta': None, 'tools_state': None},
+            ]
+        with _conn(fetchrow=fake_fetchrow, fetch=fake_fetch):
+            resp = client.get('/exams/e1')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert body['imaging'] is True
+        assert body['imaging_patient'] is not None
+        studies = body['imaging_patient']['studies']
+        assert len(studies) == 1
+        assert studies[0]['accession_number'] == 'A1'
+
 
 class TestExamIdentity:
     def test_confirm_updates_status(self):
