@@ -10,7 +10,7 @@ import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
-import ReportEditor from "../radiologist/ReportEditor";
+import ReadingConsole from "../radiologist/ReadingConsole";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
@@ -54,13 +54,13 @@ const mockReport = {
   updated_at: "2026-08-03T10:00:00Z",
 };
 
-function renderEditor() {
+function renderConsole() {
   return render(
     <ThemeProvider>
       <AuthProvider>
         <MemoryRouter initialEntries={["/reading/e1"]}>
           <Routes>
-            <Route path="/reading/:examId" element={<ReportEditor />} />
+            <Route path="/reading/:examId" element={<ReadingConsole />} />
           </Routes>
         </MemoryRouter>
       </AuthProvider>
@@ -68,7 +68,21 @@ function renderEditor() {
   );
 }
 
-describe("ReportEditor", () => {
+// The images endpoint is mocked to the no-imaging marker so the suite keeps
+// exercising the report lifecycle without mounting the Cornerstone viewer.
+function mockNoImaging() {
+  mockRequest.mockImplementation((url: string) => {
+    if (url === "reports/e1") {
+      return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+    }
+    if (url === "reports/e1/images") {
+      return Promise.resolve({ data: { imaging: false } });
+    }
+    return Promise.resolve({ data: [] });
+  });
+}
+
+describe("ReadingConsole", () => {
   beforeEach(() => {
     localStorage.clear();
     // A full radiologist: editing (REPORT_WRITE) and finalizing (REPORT_SIGN)
@@ -85,15 +99,8 @@ describe("ReportEditor", () => {
   });
 
   it("loads the exam and existing report", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "reports/e1") {
-        return Promise.resolve({
-          data: { exam: mockExam, report: mockReport },
-        });
-      }
-      return Promise.resolve({ data: [] });
-    });
-    renderEditor();
+    mockNoImaging();
+    renderConsole();
 
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
@@ -102,16 +109,19 @@ describe("ReportEditor", () => {
     expect(screen.getByText("DRAFT")).toBeInTheDocument();
   });
 
-  it("disables sign until an impression is entered", async () => {
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "reports/e1") {
-        return Promise.resolve({
-          data: { exam: mockExam, report: mockReport },
-        });
-      }
-      return Promise.resolve({ data: [] });
+  it("shows a no-imaging notice when the exam has no DICOM", async () => {
+    mockNoImaging();
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText(/No imaging available/)).toBeInTheDocument();
     });
-    renderEditor();
+    expect(screen.getByDisplayValue("Initial findings")).toBeInTheDocument();
+  });
+
+  it("disables sign until an impression is entered", async () => {
+    mockNoImaging();
+    renderConsole();
 
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
@@ -139,15 +149,8 @@ describe("ReportEditor", () => {
   it("autosaves the draft after edits", async () => {
     vi.useFakeTimers();
     try {
-      mockRequest.mockImplementation((url: string) => {
-        if (url === "reports/e1") {
-          return Promise.resolve({
-            data: { exam: mockExam, report: mockReport },
-          });
-        }
-        return Promise.resolve({ data: [] });
-      });
-      renderEditor();
+      mockNoImaging();
+      renderConsole();
 
       // Flush the initial load promises + antd mount timers.
       await act(async () => {
@@ -177,9 +180,10 @@ describe("ReportEditor", () => {
   it("signs the report and shows final status", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({
-          data: { exam: mockExam, report: mockReport },
-        });
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
       }
       if (url === "reports/templates") {
         return Promise.resolve({ data: [] });
@@ -196,7 +200,7 @@ describe("ReportEditor", () => {
       }
       return Promise.resolve({ data: [] });
     });
-    renderEditor();
+    renderConsole();
 
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
@@ -213,7 +217,7 @@ describe("ReportEditor", () => {
     fireEvent.click(signBtn!);
 
     await waitFor(() => {
-      expect(screen.getByText(/Sign & Finalize/)).toBeInTheDocument();
+      expect(screen.getByText("Sign & Finalize")).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText("Sign & Finalize"));
 
@@ -223,23 +227,136 @@ describe("ReportEditor", () => {
     expect(screen.getByText(/This report is FINAL/)).toBeInTheDocument();
   });
 
-  it("renders a read-only view for a REPORT_READ-only user", async () => {
-    // referring_physician / care_coordinator hold REPORT_READ only: the
-    // editing affordances (template, save, mark preliminary, sign) must not
-    // advertise writes the backend rejects.
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["REPORT_READ"]),
-    );
+  it("Sign & Next jumps to the next exam in the filtered queue", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/templates") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "reports/reading-list") {
+        // Queue in worklist sort order (STAT → urgent → routine, FIFO).
         return Promise.resolve({
-          data: { exam: mockExam, report: mockReport },
+          data: [
+            { ...mockExam, exam_id: "e1", priority: "stat" },
+            {
+              exam_id: "e2",
+              patient_name: "Jane Roe",
+              patient_id: "P002",
+              accession_number: "ACC-002",
+              modality: "CT",
+              priority: "stat",
+              report_status: null,
+            },
+            {
+              exam_id: "e3",
+              patient_name: "Sam Poe",
+              patient_id: "P003",
+              accession_number: "ACC-003",
+              modality: "MR",
+              priority: "urgent",
+              report_status: null,
+            },
+          ],
+        });
+      }
+      if (url === "reports/e1/sign") {
+        return Promise.resolve({
+          data: { ...mockReport, status: "final", signed_by: "50" },
         });
       }
       return Promise.resolve({ data: [] });
     });
-    renderEditor();
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
+      target: { value: "Normal." },
+    });
+    const signBtn = screen
+      .getAllByRole("button", { name: /sign report/i })
+      .find((b) => (b as HTMLButtonElement).disabled === false);
+    fireEvent.click(signBtn!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign & Next")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Sign & Next"));
+
+    // The console navigates to the next queue item — the router re-mounts it
+    // with examId=e2 and the next load request goes out.
+    await waitFor(() => {
+      const nextLoad = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "reports/e2",
+      );
+      expect(nextLoad).toBeDefined();
+    });
+  });
+
+  it("Sign & Next returns to the worklist when the queue is exhausted", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/templates") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "reports/reading-list") {
+        // e1 is the only (last) item in the queue.
+        return Promise.resolve({ data: [{ ...mockExam, exam_id: "e1" }] });
+      }
+      if (url === "reports/e1/sign") {
+        return Promise.resolve({
+          data: { ...mockReport, status: "final", signed_by: "50" },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
+      target: { value: "Normal." },
+    });
+    const signBtn = screen
+      .getAllByRole("button", { name: /sign report/i })
+      .find((b) => (b as HTMLButtonElement).disabled === false);
+    fireEvent.click(signBtn!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign & Next")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Sign & Next"));
+
+    // No next exam exists → navigate to /reading; no e2 load is ever issued.
+    await waitFor(() => {
+      const nextLoad = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "reports/e2",
+      );
+      expect(nextLoad).toBeUndefined();
+    });
+  });
+
+  it("renders a read-only view for a REPORT_READ-only user", async () => {
+    // referring_physician / care_coordinator hold REPORT_READ only: the
+    // editing affordances (template, save, mark preliminary, sign) must not
+    // advertise writes the backend rejects.
+    localStorage.setItem("permissions", JSON.stringify(["REPORT_READ"]));
+    mockNoImaging();
+    renderConsole();
 
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
@@ -264,15 +381,8 @@ describe("ReportEditor", () => {
       "permissions",
       JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
     );
-    mockRequest.mockImplementation((url: string) => {
-      if (url === "reports/e1") {
-        return Promise.resolve({
-          data: { exam: mockExam, report: mockReport },
-        });
-      }
-      return Promise.resolve({ data: [] });
-    });
-    renderEditor();
+    mockNoImaging();
+    renderConsole();
 
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();

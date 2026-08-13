@@ -1,0 +1,145 @@
+.reading-console {
+  gap: 0;
+}
+
+.reading-console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.report-back {
+  align-self: center;
+}
+
+.reading-console-header-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.reading-console-subtitle {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.reading-console-saved {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 12px;
+}
+
+.report-stat-tag {
+  font-weight: 700;
+}
+
+.report-loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+/* ---- Viewport pane (left of the split) ---- */
+
+.reading-viewport-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.reading-viewport-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+.reading-viewport-tools .series-navigator {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
+.reading-measures-toggle {
+  margin-right: 8px;
+}
+
+.reading-viewport-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.reading-viewport-main {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* ---- Report pane (right of the split) ---- */
+
+.reading-report-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-surface, #fff);
+  border-left: 1px solid var(--border-color, #f0f0f0);
+}
+
+.reading-report-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 44px;
+  height: 100%;
+  border: none;
+  border-left: 1px solid var(--border-color, #f0f0f0);
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary, #8c8c8c);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  font-size: 13px;
+}
+
+.reading-report-tab:hover {
+  color: var(--color-primary, #1677ff);
+}
+
+/* ---- No-imaging fallback ---- */
+
+.reading-console-full {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---- Mobile: stack viewport over report ---- */
+
+.reading-console-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.reading-console-mobile-viewport {
+  display: flex;
+  flex-direction: column;
+}
+
+.reading-console-mobile-report {
+  display: flex;
+  flex-direction: column;
+}

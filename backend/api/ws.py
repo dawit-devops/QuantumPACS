@@ -180,7 +180,22 @@ class WebsocketHandler(WebSocketEndpoint):
 
         match type_:
             case 'open':
-                f = data.get('file')
+                raw_f = data.get('file')
+                f = raw_f
+                # CornerstoneElement opens the channel with the wadouri image
+                # URL (`wadouri:{API_URL}/files/{id}/data`); normalize both
+                # forms to the file id so the bigint lookup never sees the URL
+                # string (asyncpg would reject it with a type error). The raw
+                # value is still echoed back so legacy string-id callers keep
+                # the exact contract.
+                if isinstance(f, str):
+                    try:
+                        if '/files/' in f:
+                            f = int(f.rsplit('/files/', 1)[1].split('/')[0])
+                        else:
+                            f = int(f)
+                    except (ValueError, IndexError):
+                        f = None
                 # Channel authz: subscribing registers this socket in the
                 # file's broadcast list, so the user must hold FILE_READ.
                 # Permissions ride on the JWT (share-key sockets never pass
@@ -214,11 +229,11 @@ class WebsocketHandler(WebSocketEndpoint):
                 await websocket.send_json(
                     {
                         'type': 'send_state',
-                        'file': f,
+                        'file': raw_f,
                         'state': data.get('state', {}),
                     },
                 )
-                websocket.file = f
+                websocket.file = raw_f
                 websocket.channel = chan
 
             case 'send_state':

@@ -124,7 +124,10 @@ class Reports(Table):
             idx += 1
         if search:
             like = f'%{search}%'
-            where.append(f"(e.patient_name ILIKE ${idx} OR e.patient_id ILIKE ${idx} OR e.accession_number ILIKE ${idx})")
+            where.append(
+                f"(e.patient_name ILIKE ${idx} OR e.patient_id ILIKE ${idx + 1} "
+                f"OR e.accession_number ILIKE ${idx + 2})"
+            )
             params.extend([like, like, like])
             idx += 3
         if radiologist:

@@ -34,7 +34,7 @@ class _FakeAuth(BaseHTTPMiddleware):
 def _make_app(user=None):
     from api.reports import (
         ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
-        ExamAssignHandler,
+        ExamAssignHandler, ExamImagesHandler,
         ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
         PeerReviewHandler, PeerReviewSubmitHandler,
     )
@@ -45,6 +45,7 @@ def _make_app(user=None):
             Route('/reports/templates', endpoint=ReportTemplatesHandler),
             Route('/reports/{exam_id}', endpoint=ExamReportHandler),
             Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler),
+            Route('/reports/{exam_id}/images', endpoint=ExamImagesHandler),
             Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler),
             Route('/peer-reviews', endpoint=PeerReviewsHandler),
             Route('/peer-reviews/{id}', endpoint=PeerReviewHandler),
@@ -157,6 +158,16 @@ class TestReadingList:
         assert kwargs['physician'] == 'Lee'
         assert kwargs['date_from'] == '2026-08-01'
         assert kwargs['date_to'] == '2026-08-31'
+
+    def test_search_binds_all_three_like_placeholders(self):
+        """A search term must produce three distinct placeholders — the old
+        single-$idx f-string passed 3 params for 1 placeholder and 500'd."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetch(q, *a):
+            return []
+        with _conn(fetch=fake_fetch):
+            resp = client.get('/reports/reading-list?search=Lee')
+        assert resp.status_code == 200
 
     def test_assigned_radiologist_rows_include_physicians(self):
         client = TestClient(_make_app(RAD))
@@ -330,6 +341,103 @@ class TestExamReportSign:
         client = TestClient(_make_app(READ_ONLY))
         resp = client.post('/reports/exam-1/sign', json={'confirm': True})
         assert resp.status_code == 403
+
+
+class TestExamImages:
+    def test_requires_report_read(self):
+        client = TestClient(_make_app(NO_PERMS))
+        assert client.get('/reports/exam-1/images').status_code == 403
+
+    def test_404_when_exam_missing(self):
+        client = TestClient(_make_app(RAD))
+        with _conn(fetchrow=AsyncMock(return_value=None)):
+            resp = client.get('/reports/exam-1/images')
+        assert resp.status_code == 404
+
+    def test_imaging_false_when_exam_has_no_accession(self):
+        """Front-desk exams with no accession (no DICOM yet) get a marker."""
+        client = TestClient(_make_app(RAD))
+        exam = _exam_row()
+        exam['accession_number'] = ''
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return exam
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = client.get('/reports/exam-1/images')
+        assert resp.status_code == 200
+        assert resp.json()['data']['imaging'] is False
+
+    def test_imaging_false_when_no_study_matches(self):
+        """No study stored under the exam accession -> imaging marker."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None  # patient lookup finds nothing
+        with _conn(fetchrow=fake_fetchrow):
+            resp = client.get('/reports/exam-1/images')
+        assert resp.status_code == 200
+        assert resp.json()['data']['imaging'] is False
+
+    def test_returns_patient_studies_tree(self):
+        """The payload mirrors /files/{id}: patient.studies[].series[].files[]."""
+        client = TestClient(_make_app(RAD))
+        patient = {
+            'id': 7, 'patient_id': 'P1', 'name': 'A^B',
+            'studies': [{
+                'id': 1, 'study_id': 'ST-1', 'description': 'Chest',
+                'study_instance_uid': '1.2.3.4', 'accession_number': 'ACC1',
+                'series': [{
+                    'id': 2, 'study_id': 1, 'number': 1, 'modality': 'CT',
+                    'description': 'Axial', 'series_instance_uid': '1.2.3.4.5',
+                    'files': [{
+                        'id': 3, 'name': 'IM1', 'hash': 'h1',
+                        'indexed': True, 'sop_instance_uid': '1.2.3.4.5.6',
+                        'deleted': False, 'meta': None, 'tools_state': None,
+                    }],
+                }],
+            }],
+        }
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return {'id': 7}
+        with _conn(fetchrow=fake_fetchrow), \
+             patch('api.reports.Patient') as patient_cls:
+            patient_cls.return_value.get_extra = AsyncMock(return_value=patient)
+            resp = client.get('/reports/exam-1/images')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert body['imaging'] is True
+        assert body['patient']['studies'][0]['accession_number'] == 'ACC1'
+        assert body['patient']['studies'][0]['series'][0]['files'][0]['id'] == 3
+        # The patient lookup only runs once the exam accession matched.
+        patient_cls.return_value.get_extra.assert_awaited_once_with(7)
+
+    def test_narrows_studies_to_matching_accession(self):
+        """Priors with other accessions stay out of the console tree."""
+        client = TestClient(_make_app(RAD))
+        patient = {
+            'id': 7, 'patient_id': 'P1', 'name': 'A^B',
+            'studies': [
+                {'id': 1, 'study_id': 'ST-1', 'description': 'Chest',
+                 'study_instance_uid': 'u1', 'accession_number': 'ACC1', 'series': []},
+                {'id': 9, 'study_id': 'ST-9', 'description': 'Prior',
+                 'study_instance_uid': 'u9', 'accession_number': 'ACC-OLD', 'series': []},
+            ],
+        }
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return {'id': 7}
+        with _conn(fetchrow=fake_fetchrow), \
+             patch('api.reports.Patient') as patient_cls:
+            patient_cls.return_value.get_extra = AsyncMock(return_value=patient)
+            resp = client.get('/reports/exam-1/images')
+        assert resp.status_code == 200
+        studies = resp.json()['data']['patient']['studies']
+        assert [s['id'] for s in studies] == [1]
 
 
 class TestReportTemplates:

@@ -24,3 +24,8 @@
 | 020 | [Observability Stack — Structured Logs + OpenTelemetry + Prometheus](ADR-020-observability-stack.md) | Accepted |
 | 021 | [Testing Strategy — Integration-First + IHE Conformance + Load Gates](ADR-021-testing-strategy.md) | Accepted |
 | 022 | [Git Branching Strategy — Phased Git Flow for v3](ADR-022-git-branching-strategy.md) | Accepted |
+| 023 | [WebSocket Real-Time Events](ADR-023-websocket-real-time-events.md) | Accepted |
+| 024 | [Share Links — Temporary-Key Auth](ADR-024-share-links-tempkey-auth.md) | Accepted |
+| 025 | [Token Storage — HttpOnly Cookies + Headers](ADR-025-token-storage-http-cookie.md) | Accepted |
+| 026 | [Tenant Data-Plane Wiring — Completing the DB-Per-Tenant Architecture](ADR-026-tenant-data-plane-wiring.md) | Accepted |
+| 027 | [Exam→Imaging Bridge and the Split Reading Console](ADR-027-exam-imaging-bridge-reading-console.md) | Accepted |

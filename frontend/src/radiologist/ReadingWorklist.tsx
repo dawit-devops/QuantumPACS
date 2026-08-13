@@ -13,7 +13,7 @@ import {
   Checkbox,
 } from "antd";
 import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
@@ -46,20 +46,33 @@ function ReadingWorklist() {
   useDocumentTitle("QuantumPACS - Reading Worklist");
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // The console opens exams with the current filters in the query string
+  // (Sign & Next returns with them restored), so the worklist must seed its
+  // filter state from the URL on mount.
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(
+    () => searchParams.get("status") || undefined,
+  );
+  const [modalityFilter, setModalityFilter] = useState<string | undefined>(
+    () => searchParams.get("modality") || undefined,
+  );
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [assignedToMe, setAssignedToMe] = useState(
+    () => searchParams.get("radiologist") === "me",
+  );
+  const [physicianFilter, setPhysicianFilter] = useState(
+    () => searchParams.get("physician") || "",
+  );
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
   // Claiming an exam (Take) posts to /assign, gated REPORT_WRITE on the
   // backend — readers with REPORT_READ only (referring physician, nurse,
   // care coordinator) view the queue but cannot take exams.
   const { hasPermission } = useAuth();
   const canClaim = hasPermission("REPORT_WRITE");
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>();
-  const [modalityFilter, setModalityFilter] = useState<string | undefined>();
-  const [search, setSearch] = useState("");
-  const [assignedToMe, setAssignedToMe] = useState(false);
-  const [physicianFilter, setPhysicianFilter] = useState("");
-  const [assigning, setAssigning] = useState<string | null>(null);
 
   const fetchList = useCallback(() => {
     setLoading(true);
@@ -162,7 +175,7 @@ function ReadingWorklist() {
             size="small"
             type="primary"
             ghost
-            onClick={() => navigate(`/reading/${r.exam_id}`)}
+            onClick={() => openExam(r.exam_id)}
           >
             {r.report_status && r.report_status !== "none"
               ? "Continue"
@@ -188,6 +201,19 @@ function ReadingWorklist() {
       .then(() => fetchList())
       .catch((e: any) => setError(e.message))
       .finally(() => setAssigning(null));
+  };
+
+  // Serialize the active filters into the URL when opening an exam, so the
+  // reading console can return the radiologist to the same queue view.
+  const openExam = (examId: string) => {
+    const q: Record<string, string> = {};
+    if (statusFilter) q.status = statusFilter;
+    if (modalityFilter) q.modality = modalityFilter;
+    if (search) q.search = search;
+    if (assignedToMe) q.radiologist = "me";
+    if (physicianFilter) q.physician = physicianFilter;
+    const s = new URLSearchParams(q).toString();
+    navigate(`/reading/${examId}${s ? `?${s}` : ""}`);
   };
 
   return (
@@ -284,7 +310,7 @@ function ReadingWorklist() {
           dataSource={data}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           onRow={(r) => ({
-            onDoubleClick: () => navigate(`/reading/${r.exam_id}`),
+            onDoubleClick: () => openExam(r.exam_id),
           })}
           scroll={{ x: 900 }}
           locale={{

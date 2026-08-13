@@ -1,6 +1,6 @@
 import sys
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.applications import Starlette
 from starlette.authentication import AuthCredentials, AuthenticationBackend
@@ -195,6 +195,36 @@ class TestWebsocketHandler:
             ws.send_json({'type': 'open'})
             resp = ws.receive_json()
             assert resp['type'] == 'error'
+
+    def test_open_accepts_wadouri_image_url(self):
+        """CornerstoneElement opens the channel with the wadouri image URL
+        (`wadouri:{API_URL}/files/{id}/data`); the handler must normalize it
+        to the file id for the bigint lookup instead of crashing with an
+        asyncpg type error."""
+        app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
+                        user=User({'id': 5, 'permissions': ['FILE_READ']}))
+        app.state.ws_state = api.ws.WSState()
+        client = TestClient(app)
+
+        file_row = {'id': 65, 'deleted': False, 'tenant': None}
+        fake_conn = MagicMock()
+        fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+        fake_conn.__aexit__ = AsyncMock(return_value=False)
+        with patch('api.ws.get_conn', return_value=fake_conn), \
+             patch('api.ws.Files') as files_cls:
+            files_cls.return_value.get_extra = AsyncMock(return_value=file_row)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({
+                    'type': 'open',
+                    'file': 'wadouri:http://localhost:8080/api/files/65/data',
+                })
+                resp = ws.receive_json()
+                assert resp['type'] == 'send_state'
+                # The lookup ran on the parsed numeric id, never the URL
+                # string. (Assert while connected — on_disconnect purges the
+                # registry, same as the sibling channel tests.)
+                files_cls.return_value.get_extra.assert_awaited_once_with(65)
+                assert 'channel:file::65' in app.state.ws_state.local_clients
 
     def test_cross_tenant_file_ids_get_distinct_channels(self):
         """N3: same file id under two tenants must land in separate channel

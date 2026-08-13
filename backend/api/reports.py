@@ -18,6 +18,7 @@ from api.schemas.reports import (
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.exams import Exams
+from db.patient import Patient
 from db.reports import Reports, ReportTemplates, PeerReviews
 from api.notify import notify_role, notify_user
 from log import request_id_var
@@ -260,6 +261,63 @@ class ExamReportSignHandler(HTTPEndpoint):
                 f'/reading/{exam_id}',
             )
         return ok({'data': report})
+
+
+async def _exam_imaging(conn, exam):
+    """Build the patient studies tree for an exam's imaging (or None).
+
+    Bridges the exam lifecycle (front-desk / technologist) to the DICOM
+    store: studies were stored under the accession the technologist
+    performed, so the match is studies.accession_number = exams.accession
+    (with the patient MRN as a second key, since accessions can collide
+    across patients). Returns None when the exam has no DICOM yet — front-
+    desk exams legitimately reach the worklist before the modality stores
+    anything — so the console renders the report full-width instead of an
+    empty viewport.
+    """
+    accession = (exam.get('accession_number') or '').strip()
+    mrn = exam.get('patient_id')
+    if not accession or not mrn:
+        return None
+    row = await conn.fetchrow(
+        """SELECT p.id FROM patients p
+           JOIN studies s ON s.patient_id = p.id
+           WHERE s.accession_number = $1 AND p.patient_id = $2
+           ORDER BY s.id LIMIT 1""",
+        accession, mrn,
+    )
+    if not row:
+        return None
+    patient = await Patient(conn).get_extra(row['id'])
+    # A patient can carry several studies (priors, other accessions); the
+    # console reads the study that belongs to this exam, not the whole file.
+    patient['studies'] = [
+        s for s in patient.get('studies', [])
+        if (s.get('accession_number') or '') == accession
+    ]
+    return patient
+
+
+class ExamImagesHandler(HTTPEndpoint):
+    """Resolve the DICOM study/series/file tree for a reading-list exam.
+
+    The reading console renders viewer + report on one screen, so the
+    frontend needs the same FileRecord.patient.studies[].series[].files[]
+    tree that /files/{id} returns — selected by exam accession instead of a
+    file id. `imaging: False` signals an exam with no DICOM yet.
+    """
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        exam_id = request.path_params['exam_id']
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            patient = await _exam_imaging(conn, exam)
+        if patient is None:
+            return ok({'data': {'imaging': False}})
+        return ok({'data': {'imaging': True, 'patient': patient}})
 
 
 class ReportTemplatesHandler(HTTPEndpoint):

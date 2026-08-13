@@ -1,0 +1,22 @@
+.report-panel {
+  padding: 16px 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.report-steps {
+  margin: 16px 0 0;
+}
+
+.report-template-hint {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.report-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
