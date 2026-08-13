@@ -1,0 +1,21 @@
+/* C11 (Sprint D): real DICOM viewport inside the acquisition card. The
+   viewer chrome (CornerstoneElement) sizes itself at 90% of its parent, so
+   the body gets a definite height; the QA queue sits beside it. */
+.exam-viewport {
+  width: 520px;
+  max-width: 100%;
+}
+
+.exam-viewport-body {
+  height: 480px;
+}
+
+@media (max-width: 767px) {
+  .exam-viewport {
+    width: 100%;
+  }
+
+  .exam-viewport-body {
+    height: 360px;
+  }
+}
