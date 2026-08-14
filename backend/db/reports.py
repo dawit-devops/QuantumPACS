@@ -20,7 +20,7 @@ class Reports(Table):
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             exam_id UUID NOT NULL,
             status TEXT NOT NULL DEFAULT 'draft'
-                CHECK (status IN ('draft', 'preliminary', 'final')),
+                CHECK (status IN ('draft', 'preliminary', 'submitted', 'final')),
             findings TEXT DEFAULT '',
             impression TEXT DEFAULT '',
             recommendations TEXT DEFAULT '',
@@ -28,6 +28,10 @@ class Reports(Table):
             created_by TEXT DEFAULT '',
             signed_by TEXT DEFAULT '',
             signed_at TIMESTAMPTZ,
+            submitted_at TIMESTAMPTZ,
+            review_feedback TEXT DEFAULT '',
+            reviewed_by TEXT DEFAULT '',
+            reviewed_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT now(),
             updated_at TIMESTAMPTZ DEFAULT now()
         )
@@ -96,9 +100,38 @@ class Reports(Table):
         )
         return await self.get(report_id)
 
+    async def submit(self, report_id):
+        """R13 resident hands a draft to the supervising attending (co-sign).
+
+        Clears any prior return feedback and stamps submitted_at; the report
+        is now locked against further edits until the attending signs it or
+        returns it for revision.
+        """
+        await self.conn.execute(
+            "UPDATE reports SET status = 'submitted', submitted_at = now(), "
+            "review_feedback = '', reviewed_by = '', reviewed_at = NULL, "
+            "updated_at = now() WHERE id = $1",
+            report_id,
+        )
+        return await self.get(report_id)
+
+    async def return_report(self, report_id, reviewed_by, feedback):
+        """Attending sends a submitted draft back to the resident.
+
+        Status returns to 'draft' (editable again) with the reviewer's
+        feedback preserved for the resident's console alert.
+        """
+        await self.conn.execute(
+            "UPDATE reports SET status = 'draft', review_feedback = $3, "
+            "reviewed_by = $2, reviewed_at = now(), updated_at = now() "
+            "WHERE id = $1",
+            report_id, reviewed_by, feedback,
+        )
+        return await self.get(report_id)
+
     async def reading_list(self, status=None, modality=None, search=None,
                             radiologist=None, physician=None,
-                            date_from=None, date_to=None):
+                            date_from=None, date_to=None, review=None):
         """Exams handed off to the reading worklist that lack a final report.
 
         A study is "ready to read" when the technologist completed it (handoff,
@@ -107,6 +140,9 @@ class Reports(Table):
 
         ME-04: the list is filterable per radiologist (assigned_radiologist),
         by referring physician, and by handoff date range.
+
+        R13 supervision: review=1 narrows the list to reports the residents
+        have submitted — the attending's co-sign queue.
         """
         where = [
             "e.status = 'completed'",
@@ -118,6 +154,8 @@ class Reports(Table):
             where.append(f"r.status IS DISTINCT FROM NULL AND r.status = ${idx}")
             params.append(status)
             idx += 1
+        if review:
+            where.append(f"r.status = 'submitted'")
         if modality:
             where.append(f"e.modality = ${idx}")
             params.append(modality)
@@ -154,7 +192,8 @@ class Reports(Table):
                    e.assigned_technologist, e.assigned_radiologist,
                    e.referring_physician,
                    r.id AS report_id, r.status AS report_status,
-                   r.signed_by, r.signed_at
+                   r.signed_by, r.signed_at, r.submitted_at, r.review_feedback,
+                   r.reviewed_by, r.created_by AS report_author
             FROM exams e
             LEFT JOIN reports r ON r.exam_id = e.id
             WHERE {' AND '.join(where)}

@@ -256,6 +256,14 @@ export function landingRouteFor(user: WorkspaceUser): string {
   ) {
     return DASHBOARD_STEP.route;
   }
+  // R13 radiology resident: land on the Resident Home instead of the shared
+  // staff reading worklist. The resident workspace stays "reading" so the
+  // sidebar highlights the Reading section, but the home is the educational
+  // surface (queue counts, feedback, teaching library). Only routes to it
+  // when REPORT_READ passes, else falls through to the generic chain.
+  if (user.role === "resident" && hasAnyPermission(user, ["REPORT_READ"])) {
+    return "/reading/home";
+  }
   const roleWorkspace = ROLE_WORKSPACE[user.role ?? ""];
   if (roleWorkspace) {
     const primary = LANDING_STEPS.find((s) => s.workspace === roleWorkspace);

@@ -15,12 +15,14 @@ import {
   AuditOutlined,
   CheckCircleOutlined,
   SaveOutlined,
+  RollbackOutlined,
 } from "@ant-design/icons";
 import "./ReportPanel.css";
 
 interface ReportPanelProps {
   exam: any;
   report: any;
+  role: string;
   canWrite: boolean;
   canSign: boolean;
   status: string;
@@ -29,22 +31,31 @@ interface ReportPanelProps {
   recommendations: string;
   templates: any[];
   dirty: boolean;
+  reviewFeedback?: string;
   onFindingsChange: (v: string) => void;
   onImpressionChange: (v: string) => void;
   onRecommendationsChange: (v: string) => void;
   onApplyTemplate: (name: string) => void;
   onSaveDraft: () => void;
   onMarkPreliminary: () => void;
+  onSubmitDraft: () => void;
   onRequestSign: () => void;
+  onReturnClick: () => void;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
 // reading console owns the report state (autosave, sign) and feeds this
 // controlled panel. REPORT_WRITE gates editing; REPORT_SIGN gates
 // finalizing; a REPORT_READ-only user gets a read-only view.
+//
+// R13 supervision: residents see a Draft → Submitted → Co-signed lifecycle
+// (submit instead of sign); a submitted report locks editing everywhere and
+// hands the attending Approve & Co-sign / Return for revision actions.
+// Returned reports reopen as drafts carrying review_feedback.
 export default function ReportPanel({
   exam,
   report,
+  role,
   canWrite,
   canSign,
   status,
@@ -53,16 +64,42 @@ export default function ReportPanel({
   recommendations,
   templates,
   dirty,
+  reviewFeedback,
   onFindingsChange,
   onImpressionChange,
   onRecommendationsChange,
   onApplyTemplate,
   onSaveDraft,
   onMarkPreliminary,
+  onSubmitDraft,
   onRequestSign,
+  onReturnClick,
 }: ReportPanelProps) {
   const isFinal = status === "final";
-  const step = isFinal ? 2 : status === "preliminary" ? 1 : 0;
+  const isResident = role === "resident";
+  const submitted = status === "submitted";
+  // Resident lifecycle has no Preliminary step; the attending supervising a
+  // submitted report sees it between Draft and Final.
+  const steps = isResident
+    ? [
+      { title: "Draft", icon: <EditOutlined /> },
+      { title: "Submitted", icon: <AuditOutlined /> },
+      { title: "Co-signed", icon: <CheckCircleOutlined /> },
+    ]
+    : [
+      { title: "Draft", icon: <EditOutlined /> },
+      { title: "Preliminary", icon: <AuditOutlined /> },
+      { title: "Final", icon: <CheckCircleOutlined /> },
+    ];
+  const step = isFinal
+    ? 2
+    : submitted
+      ? 1
+      : isResident
+        ? 0
+        : status === "preliminary"
+          ? 1
+          : 0;
 
   return (
     <div className="report-panel" role="complementary" aria-label="Report">
@@ -70,11 +107,7 @@ export default function ReportPanel({
         size="small"
         current={step}
         className="report-steps"
-        items={[
-          { title: "Draft", icon: <EditOutlined /> },
-          { title: "Preliminary", icon: <AuditOutlined /> },
-          { title: "Final", icon: <CheckCircleOutlined /> },
-        ]}
+        items={steps}
       />
 
       <Divider />
@@ -116,7 +149,35 @@ export default function ReportPanel({
         />
       )}
 
-      {!isFinal && !canWrite && (
+      {submitted && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 16 }}
+          message={
+            isResident
+              ? "Submitted for attending review"
+              : "Awaiting attending review"
+          }
+          description={
+            isResident
+              ? "Your draft is with the supervising attending — it is locked until they co-sign it FINAL or return it for revision."
+              : "This report was submitted for your review. Co-sign it to finalize, or return it to the resident for revision."
+          }
+        />
+      )}
+
+      {!submitted && !isFinal && reviewFeedback && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 16 }}
+          message="Attending returned this report"
+          description={reviewFeedback}
+        />
+      )}
+
+      {!isFinal && !submitted && !canWrite && (
         <Alert
           type="info"
           showIcon
@@ -128,7 +189,7 @@ export default function ReportPanel({
 
       {!isFinal && (
         <>
-          {canWrite && (
+          {canWrite && !submitted && (
             <Card
               title="Report Template"
               size="small"
@@ -159,7 +220,7 @@ export default function ReportPanel({
               rows={8}
               value={findings}
               onChange={(e) => onFindingsChange(e.target.value)}
-              readOnly={!canWrite}
+              readOnly={!canWrite || submitted}
               placeholder="Structured findings — per template or free text…"
             />
           </Card>
@@ -169,7 +230,7 @@ export default function ReportPanel({
               rows={4}
               value={impression}
               onChange={(e) => onImpressionChange(e.target.value)}
-              readOnly={!canWrite}
+              readOnly={!canWrite || submitted}
               placeholder="Impression / conclusion (required before signing)…"
               status={!impression.trim() ? "warning" : ""}
             />
@@ -180,12 +241,12 @@ export default function ReportPanel({
               rows={2}
               value={recommendations}
               onChange={(e) => onRecommendationsChange(e.target.value)}
-              readOnly={!canWrite}
+              readOnly={!canWrite || submitted}
               placeholder="Optional recommendations for follow-up…"
             />
           </Card>
 
-          {canWrite && (
+          {canWrite && !submitted && (
             <div className="report-actions">
               <Button
                 icon={<SaveOutlined />}
@@ -194,10 +255,22 @@ export default function ReportPanel({
               >
                 Save Draft
               </Button>
-              <Button onClick={onMarkPreliminary} disabled={isFinal}>
-                Mark Preliminary
-              </Button>
-              {canSign && (
+              {!isResident && (
+                <Button onClick={onMarkPreliminary} disabled={isFinal}>
+                  Mark Preliminary
+                </Button>
+              )}
+              {isResident && (
+                <Button
+                  type="primary"
+                  icon={<AuditOutlined />}
+                  onClick={onSubmitDraft}
+                  disabled={!impression.trim()}
+                >
+                  Submit for Review
+                </Button>
+              )}
+              {canSign && !isResident && (
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
@@ -207,6 +280,21 @@ export default function ReportPanel({
                   Sign Report
                 </Button>
               )}
+            </div>
+          )}
+
+          {submitted && canSign && (
+            <div className="report-actions">
+              <Button
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                onClick={onRequestSign}
+              >
+                Approve & Co-sign
+              </Button>
+              <Button icon={<RollbackOutlined />} onClick={onReturnClick}>
+                Return for revision
+              </Button>
             </div>
           )}
         </>

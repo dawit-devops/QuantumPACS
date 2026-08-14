@@ -21,6 +21,13 @@ class SignReportRequest(BaseModel):
     confirm: bool = Field(True, description="Explicit sign confirmation")
 
 
+class ReturnReportRequest(BaseModel):
+    # The attending's revision feedback — required, shown to the resident
+    # author in their console alert.
+    feedback: str = Field('', description="Attending feedback for the resident")
+    confirm: bool = Field(True, description="Explicit return confirmation")
+
+
 class AssignRadiologistRequest(BaseModel):
     radiologist_id: str = Field('', description="User id to assign; empty = assign the requesting user")
 

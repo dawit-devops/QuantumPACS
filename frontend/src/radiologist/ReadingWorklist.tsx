@@ -11,12 +11,14 @@ import {
   Spin,
   Badge,
   Checkbox,
+  Tooltip,
 } from "antd";
 import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
+import { patientInitials, mrnLast4 } from "./patientLabel";
 import "./ReadingWorklist.css";
 
 const Content = Layout.Content;
@@ -37,6 +39,8 @@ const REPORT_STATUS_COLORS: Record<string, string> = {
   none: "blue",
   draft: "gold",
   preliminary: "purple",
+  submitted: "cyan",
+  final: "green",
 };
 
 // NFR-R12-04: worklist staleness (new/urgent arrivals) ≤ 30s.
@@ -59,6 +63,9 @@ function ReadingWorklist() {
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [assignedToMe, setAssignedToMe] = useState(
     () => searchParams.get("radiologist") === "me",
+  );
+  const [reviewFilter, setReviewFilter] = useState(
+    () => searchParams.get("review") === "1",
   );
   const [physicianFilter, setPhysicianFilter] = useState(
     () => searchParams.get("physician") || "",
@@ -83,6 +90,7 @@ function ReadingWorklist() {
     if (search) query.search = search;
     if (assignedToMe) query.radiologist = "me";
     if (physicianFilter) query.physician = physicianFilter;
+    if (reviewFilter) query.review = "1";
     request("reports/reading-list", { query })
       .then((res: any) => {
         setLoading(false);
@@ -92,7 +100,7 @@ function ReadingWorklist() {
         setLoading(false);
         setError(e.message);
       });
-  }, [statusFilter, modalityFilter, search, assignedToMe, physicianFilter]);
+  }, [statusFilter, modalityFilter, search, assignedToMe, physicianFilter, reviewFilter]);
 
   useEffect(() => {
     fetchList();
@@ -117,6 +125,7 @@ function ReadingWorklist() {
           color={PRIORITY_COLORS[p]}
           className={p === "stat" ? "reading-stat-tag" : ""}
         >
+          {p === "stat" && <span className="reading-stat-dot" aria-hidden="true" />}
           {PRIORITY_LABEL[p] || "Routine"}
         </Tag>
       ),
@@ -131,7 +140,20 @@ function ReadingWorklist() {
     {
       title: "Patient",
       key: "patient",
-      render: (_: unknown, r: any) => r.patient_name || r.patient_id || "—",
+      render: (_: unknown, r: any) => (
+        // PHI-minimizing label: initials + MRN last-4 in the queue, full name
+        // only on hover (shared with Resident Home).
+        <Tooltip title={`${r.patient_name || ""}${r.patient_id ? ` (MRN ${r.patient_id})` : ""}`}>
+          <span className="reading-patient-label">
+            <span className="reading-patient-initials">
+              {patientInitials(r.patient_name || "")}
+            </span>
+            {r.patient_id && (
+              <span className="reading-patient-mrn">·{mrnLast4(r.patient_id)}</span>
+            )}
+          </span>
+        </Tooltip>
+      ),
     },
     { title: "Modality", dataIndex: "modality", key: "modality", width: 90 },
     { title: "Protocol", dataIndex: "protocol_name", key: "protocol_name" },
@@ -212,6 +234,7 @@ function ReadingWorklist() {
     if (search) q.search = search;
     if (assignedToMe) q.radiologist = "me";
     if (physicianFilter) q.physician = physicianFilter;
+    if (reviewFilter) q.review = "1";
     const s = new URLSearchParams(q).toString();
     navigate(`/reading/${examId}${s ? `?${s}` : ""}`);
   };
@@ -239,7 +262,7 @@ function ReadingWorklist() {
           style={{ width: 150 }}
           value={statusFilter}
           onChange={setStatusFilter}
-          options={["draft", "preliminary"].map((s) => ({
+          options={["draft", "preliminary", "submitted"].map((s) => ({
             value: s,
             label: s,
           }))}
@@ -287,6 +310,12 @@ function ReadingWorklist() {
         >
           Assigned to me
         </Checkbox>
+        <Checkbox
+          checked={reviewFilter}
+          onChange={(e) => setReviewFilter(e.target.checked)}
+        >
+          Awaiting review
+        </Checkbox>
       </div>
 
       {error && (
@@ -310,6 +339,9 @@ function ReadingWorklist() {
           dataSource={data}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           onRow={(r) => ({
+            // STAT studies get a persistent red edge + (in the priority tag) a
+            // pulsing dot — visible even when the STAT row sorts below the fold.
+            className: r.priority === "stat" ? "reading-stat-row" : "",
             onDoubleClick: () => openExam(r.exam_id),
           })}
           scroll={{ x: 900 }}

@@ -34,6 +34,7 @@ class _FakeAuth(BaseHTTPMiddleware):
 def _make_app(user=None):
     from api.reports import (
         ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
+        ExamReportSubmitHandler, ExamReportReturnHandler,
         ExamAssignHandler, ExamImagesHandler,
         ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
         PeerReviewHandler, PeerReviewSubmitHandler,
@@ -45,6 +46,8 @@ def _make_app(user=None):
             Route('/reports/templates', endpoint=ReportTemplatesHandler),
             Route('/reports/{exam_id}', endpoint=ExamReportHandler),
             Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler),
+            Route('/reports/{exam_id}/submit', endpoint=ExamReportSubmitHandler),
+            Route('/reports/{exam_id}/return', endpoint=ExamReportReturnHandler),
             Route('/reports/{exam_id}/images', endpoint=ExamImagesHandler),
             Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler),
             Route('/peer-reviews', endpoint=PeerReviewsHandler),
@@ -101,12 +104,13 @@ def _exam_row(exam_id='exam-1', status='completed', priority='stat'):
     }
 
 
-def _report_row(report_id='rep-1', exam_id='exam-1', status='draft', impression='', created_by='50', signed_by=''):
+def _report_row(report_id='rep-1', exam_id='exam-1', status='draft', impression='', created_by='50', signed_by='', review_feedback=''):
     return {
         'id': report_id, 'exam_id': exam_id, 'status': status,
         'findings': 'Findings text', 'impression': impression,
         'recommendations': '', 'template_name': '', 'created_by': created_by,
         'signed_by': signed_by, 'signed_at': None, 'created_at': None, 'updated_at': None,
+        'review_feedback': review_feedback,
     }
 
 
@@ -158,6 +162,30 @@ class TestReadingList:
         assert kwargs['physician'] == 'Lee'
         assert kwargs['date_from'] == '2026-08-01'
         assert kwargs['date_to'] == '2026-08-31'
+
+    def test_review_filter_passes_to_reading_list(self):
+        """review=1 selects the attending supervision queue (submitted
+        reports); degenerate values normalize to None."""
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = client.get('/reports/reading-list?review=1')
+        assert resp.status_code == 200
+        assert reports.reading_list.await_args.kwargs['review'] == '1'
+
+    def test_review_filter_false_values_normalize_to_none(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = client.get('/reports/reading-list?review=0')
+        assert resp.status_code == 200
+        assert reports.reading_list.await_args.kwargs['review'] is None
 
     def test_search_binds_all_three_like_placeholders(self):
         """A search term must produce three distinct placeholders — the old
@@ -305,6 +333,24 @@ class TestExamReport:
         resp = client.put('/reports/exam-1', json={'findings': 'x'})
         assert resp.status_code == 403
 
+    def test_put_rejects_submitted_report(self):
+        """R13 supervision lock: once submitted, a report is in the
+        attending's hands — edits are refused until it is returned."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), \
+             patch('api.reports.Reports') as mock_reports_cls:
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = _report_row(status='submitted')
+            mock_reports_cls.return_value = mock_reports
+            resp = client.put('/reports/exam-1', json={'impression': 'Normal'})
+        assert resp.status_code == 400
+        assert 'submitted for attending review' in \
+            resp.json()['error']['message']
+
 
 class TestExamReportSign:
     def test_sign_requires_impression(self):
@@ -341,6 +387,157 @@ class TestExamReportSign:
         client = TestClient(_make_app(READ_ONLY))
         resp = client.post('/reports/exam-1/sign', json={'confirm': True})
         assert resp.status_code == 403
+
+
+class TestExamReportSubmit:
+    def test_submit_requires_report_write(self):
+        client = TestClient(_make_app(READ_ONLY))
+        resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 403
+
+    def test_submit_requires_impression(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(impression='')
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 400
+        assert 'Impression is required' in resp.json()['error']['message']
+
+    def test_submit_rejects_when_no_report_exists(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = None
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 400
+        assert 'No report exists' in resp.json()['error']['message']
+
+    def test_submit_rejects_non_draft_status(self):
+        """A submitted report cannot be submitted again; final is terminal."""
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(status='submitted')
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 400
+        assert 'only a draft can be submitted' in resp.json()['error']['message']
+
+    def test_submit_404_when_exam_missing(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=None)
+            resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 404
+
+    def test_submit_success_notifies_attendings(self):
+        client = TestClient(_make_app(RAD))
+        submitted = _report_row(impression='Normal', status='submitted')
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.Reports') as reports_cls, \
+             patch('api.reports.notify_role', new_callable=AsyncMock) as notify:
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(impression='Normal')
+            reports.submit.return_value = submitted
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/submit')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'submitted'
+        assert reports.submit.await_args.args[0] == 'rep-1'
+        notify.assert_awaited_once()
+        assert notify.await_args.args[1] == 'radiologist'
+
+
+class TestExamReportReturn:
+    def test_return_requires_report_sign(self):
+        """Only signers (attendings) may redirect a draft back for revision."""
+        client = TestClient(_make_app(READ_ONLY))
+        resp = client.post('/reports/exam-1/return', json={'feedback': 'x'})
+        assert resp.status_code == 403
+
+    def test_return_requires_submitted_status(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(status='draft')
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/return', json={'feedback': 'x'})
+        assert resp.status_code == 400
+        assert 'submitted report can be returned' in \
+            resp.json()['error']['message']
+
+    def test_return_requires_feedback(self):
+        """Returning without feedback would leave the resident without a
+        reason to revise — the attending must say what to change."""
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(status='submitted')
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/return', json={'feedback': '  '})
+        assert resp.status_code == 400
+        assert 'feedback is required' in resp.json()['error']['message']
+
+    def test_return_success_notifies_author(self):
+        client = TestClient(_make_app(RAD))
+        returned = _report_row(status='draft', review_feedback='Add comparison.')
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.Reports') as reports_cls, \
+             patch('api.reports.notify_user', new_callable=AsyncMock) as notify:
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = _report_row(status='submitted')
+            reports.return_report.return_value = returned
+            reports_cls.return_value = reports
+            resp = client.post(
+                '/reports/exam-1/return',
+                json={'feedback': 'Add comparison with prior CT.', 'confirm': True},
+            )
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'draft'
+        args = reports.return_report.await_args.args
+        assert args == ('rep-1', '50', 'Add comparison with prior CT.')
+        notify.assert_awaited_once()
+        assert notify.await_args.args[1] == '50'  # author
+
+    def test_return_rejects_when_no_report_exists(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, \
+             patch('api.reports.Reports') as reports_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=_exam_row())
+            reports = AsyncMock()
+            reports.get_by_exam.return_value = None
+            reports_cls.return_value = reports
+            resp = client.post('/reports/exam-1/return', json={'feedback': 'x'})
+        assert resp.status_code == 400
+        assert 'No report exists' in resp.json()['error']['message']
+
+    def test_return_404_when_exam_missing(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Exams') as exams_cls, _conn():
+            exams_cls.return_value.get = AsyncMock(return_value=None)
+            resp = client.post('/reports/exam-1/return', json={'feedback': 'x'})
+        assert resp.status_code == 404
 
 
 class TestExamImages:

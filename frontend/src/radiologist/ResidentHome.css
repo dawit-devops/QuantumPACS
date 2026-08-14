@@ -1,0 +1,104 @@
+.rh-content {
+  padding: 24px;
+}
+
+.rh-loading {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+}
+
+.rh-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.rh-subtitle {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+  margin-bottom: 0;
+}
+
+.rh-error {
+  margin-bottom: 16px;
+}
+
+.rh-cards {
+  margin-bottom: 16px;
+}
+
+.rh-card .ant-card-body {
+  padding-top: 16px;
+}
+
+.rh-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.rh-total {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.rh-note {
+  margin-top: 16px;
+}
+
+.rh-exam-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rh-exam {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.rh-exam:hover {
+  border-color: var(--color-primary, #0e7490);
+  background-color: var(--color-primary-bg, rgba(14, 116, 144, 0.06));
+}
+
+.rh-exam-priority {
+  flex: 0 0 auto;
+}
+
+.rh-exam-patient {
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.rh-exam-mrn {
+  color: var(--text-secondary, #8c8c8c);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.rh-exam-desc {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.rh-exam-status {
+  flex: 0 0 auto;
+}

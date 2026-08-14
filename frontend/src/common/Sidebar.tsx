@@ -29,6 +29,7 @@ import {
   CalendarOutlined,
   FileDoneOutlined,
   AuditOutlined,
+  HomeOutlined,
   WarningOutlined,
   CheckCircleOutlined,
   IdcardOutlined,
@@ -59,7 +60,7 @@ function getKey(loc: string) {
   const parts = loc.slice(1).split("/");
   if (parts[0] === "admin") return "dashboard";
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
-  if (parts[0] === "reading") return "reading-worklist";
+  if (parts[0] === "reading") return parts[1] === "home" ? "resident-home" : "reading-worklist";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",
@@ -95,6 +96,11 @@ export interface NavItemDef {
   // Role-scope gate: the item only shows for admin-scoped roles (the
   // dashboard's operational home), mirroring the route's adminOnly guard.
   adminOnly?: boolean;
+  // Role allowlist: when present, the item only shows for these exact role
+  // slugs (e.g. the R13 resident's educational home), regardless of grants.
+  // Pure permission gating can't express role identity — every clinical role
+  // holds REPORT_READ, so a resident-only surface needs the role check.
+  roles?: string[];
   children?: NavItemDef[];
 }
 
@@ -118,6 +124,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     title: "Reading",
     icon: <FileDoneOutlined />,
     items: [
+      {
+        // R13 resident educational home — resident-only role surface. The
+        // resident lands here (navigator.ts landingRouteFor), not the shared
+        // staff worklist.
+        key: "resident-home",
+        path: "/reading/home",
+        label: "Resident Home",
+        icon: <HomeOutlined />,
+        permissions: ["REPORT_READ"],
+        roles: ["resident"],
+      },
       {
         // Distinct from the section key: antd Menu rejects duplicate keys
         // (warns "Duplicated key 'reading' used in Menu by path [reading]"
@@ -452,6 +469,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   exams: "acquisition",
   "schedule-board": "acquisition",
   "reading-worklist": "reading",
+  "resident-home": "reading",
   "peer-review": "reading",
   "qa-queue": "qa",
   "qa-protocols": "qa",
@@ -472,8 +490,10 @@ export function hasItemPermission(
   item: NavItemDef,
   hasPermission: (p: string) => boolean,
   isAdminScoped = false,
+  role?: string,
 ): boolean {
   if (item.adminOnly && !isAdminScoped) return false;
+  if (item.roles && !item.roles.includes(role ?? "")) return false;
   return item.permissions.length === 0 || item.permissions.some(hasPermission);
 }
 
@@ -553,7 +573,7 @@ function Sidebar() {
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission, isAdminScoped),
+      hasItemPermission(item, hasPermission, isAdminScoped, user?.role),
     ),
   }))
     .filter(

@@ -12,8 +12,8 @@ from api.permissions import Permission
 from api.response import ok, created, not_found, validation_error, forbidden
 from api.validate import parse_body
 from api.schemas.reports import (
-    SaveReportRequest, SignReportRequest, AssignRadiologistRequest,
-    CreatePeerReviewRequest, SubmitPeerReviewRequest,
+    SaveReportRequest, SignReportRequest, ReturnReportRequest,
+    AssignRadiologistRequest, CreatePeerReviewRequest, SubmitPeerReviewRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -125,11 +125,14 @@ class ReadingListHandler(HTTPEndpoint):
         physician = request.query_params.get('physician')
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
+        review = request.query_params.get('review')
+        if review in ('0', 'false', ''):
+            review = None
         async with get_conn() as conn:
             items = await Reports(conn).reading_list(
                 status=status, modality=modality, search=search,
                 radiologist=radiologist, physician=physician,
-                date_from=date_from, date_to=date_to,
+                date_from=date_from, date_to=date_to, review=review,
             )
         return ok({'data': items})
 
@@ -193,6 +196,14 @@ class ExamReportHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             existing = await Reports(conn).get_by_exam(exam_id)
+            if existing and existing.get('status') == 'submitted':
+                # R13 supervision lock: a submitted report is in the
+                # attending's hands — the resident must get it returned
+                # (POST /reports/{id}/return) before editing again.
+                return validation_error(
+                    'Report is submitted for attending review — it must be '
+                    'returned before it can be edited',
+                )
             if existing:
                 report = await Reports(conn).update(
                     existing['id'], body.model_dump(),
@@ -260,6 +271,125 @@ class ExamReportSignHandler(HTTPEndpoint):
                 f'report signed by radiologist.',
                 f'/reading/{exam_id}',
             )
+            # R13 co-sign: when an attending signs a resident's submitted
+            # draft, tell the resident author their report was co-signed.
+            if report.get('created_by') and \
+                    report['created_by'] != str(request.user.id):
+                await notify_user(
+                    conn, report['created_by'], 'report.co-signed',
+                    'Report co-signed',
+                    f'Your draft was co-signed as FINAL by the attending.',
+                    f'/reading/{exam_id}',
+                )
+        return ok({'data': report})
+
+
+class ExamReportSubmitHandler(HTTPEndpoint):
+    """R13 resident submits a draft for the supervising attending to co-sign.
+
+    Only a draft/preliminary report can be submitted; once submitted the
+    report is locked (PUT is rejected) until the attending either signs it
+    (co-sign → final) or returns it for revision (→ draft). Attendings pick
+    submitted reports up via the worklist review filter (review=1).
+    """
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['exam_id']
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return validation_error('No report exists yet for this exam')
+            if report['status'] not in ('draft', 'preliminary'):
+                return validation_error(
+                    f'Report is {report["status"]} — only a draft can be '
+                    f'submitted for review',
+                )
+            if not (report.get('impression') or '').strip():
+                return validation_error(
+                    'Impression is required before submitting for review',
+                )
+            report = await Reports(conn).submit(report['id'])
+            await AuditLog(conn).log_event(
+                event_type='report.submitted',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'accession_number': exam.get('accession_number'),
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+            # Supervising attendings see the submission in their review queue
+            # (reading worklist, Awaiting review filter).
+            await notify_role(
+                conn, 'radiologist', 'report.submitted',
+                f'Report submitted for review: '
+                f'{exam.get("accession_number") or exam_id}',
+                f'{exam.get("patient_name") or exam.get("patient_id")} — a '
+                f'resident submitted their draft for co-sign.',
+                f'/reading/{exam_id}',
+            )
+        return ok({'data': report})
+
+
+class ExamReportReturnHandler(HTTPEndpoint):
+    """Attending returns a submitted resident draft for revision.
+
+    The report re-opens as an editable draft for its author, carrying the
+    attending's feedback so the resident's console can show what to fix.
+    Scoped to REPORT_SIGN — the same signers who can co-sign may redirect
+    a draft back instead.
+    """
+
+    @requires_permission(Permission.REPORT_SIGN)
+    async def post(self, request):
+        exam_id = request.path_params['exam_id']
+        body = await parse_body(ReturnReportRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return validation_error('No report exists yet for this exam')
+            if report['status'] != 'submitted':
+                return validation_error(
+                    'Only a submitted report can be returned for revision',
+                )
+            if not body.feedback.strip():
+                return validation_error(
+                    'Return feedback is required so the resident knows '
+                    'what to revise',
+                )
+            report = await Reports(conn).return_report(
+                report['id'], str(request.user.id), body.feedback,
+            )
+            await AuditLog(conn).log_event(
+                event_type='report.returned',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'accession_number': exam.get('accession_number'),
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+            if report.get('created_by'):
+                await notify_user(
+                    conn, report['created_by'], 'report.returned',
+                    'Report returned for revision',
+                    f'Your attending returned your draft: '
+                    f'{body.feedback[:120]}',
+                    f'/reading/{exam_id}',
+                )
         return ok({'data': report})
 
 

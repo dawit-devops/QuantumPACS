@@ -32,3 +32,54 @@
 .reading-stat-tag {
   font-weight: 700;
 }
+
+/* STAT studies: persistent red left edge on the whole row so the priority is
+   visible without reading the tag (R13 queue review finding). */
+.reading-stat-row {
+  box-shadow: inset 4px 0 0 var(--color-error, #dc2626);
+}
+
+/* Pulsing STAT dot inside the priority tag (motion-safe: reduced-motion users
+   get a static dot — the red edge still carries the signal). */
+.reading-stat-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: reading-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes reading-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-stat-dot {
+    animation: none;
+  }
+}
+
+/* PHI-minimizing patient column: initials + MRN last-4 (full name on hover). */
+.reading-patient-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.reading-patient-initials {
+  font-weight: 600;
+}
+
+.reading-patient-mrn {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 12px;
+}
+

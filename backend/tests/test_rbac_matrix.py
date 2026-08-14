@@ -119,6 +119,15 @@ class TestMatrixB:
         assert {'ENCOUNTER_WRITE', 'MED_ORDER_WRITE', 'CARE_PLAN_WRITE',
                 'MAR_READ'} <= res
 
+    def test_resident_reads_reports_but_never_signs(self):
+        """R13 radiology resident: REPORT_WRITE lets the trainee claim exams
+        and draft reports; REPORT_SIGN stays with the supervising attending
+        (co-sign model) so a resident can never finalize a report."""
+        res = perms('resident')
+        assert 'REPORT_READ' in res
+        assert 'REPORT_WRITE' in res
+        assert 'REPORT_SIGN' not in res
+
     def test_care_coordinator_care_plans(self):
         coord = perms('care_coordinator')
         assert {'CARE_PLAN_WRITE', 'ENCOUNTER_WRITE', 'MED_ORDER_READ',

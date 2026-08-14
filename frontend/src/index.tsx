@@ -97,6 +97,7 @@ const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
 const ReadingWorklist = React.lazy(
   () => import("./radiologist/ReadingWorklist"),
 );
+const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
 const PeerReviewInbox = React.lazy(
   () => import("./radiologist/PeerReviewInbox"),
@@ -287,6 +288,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="REPORT_READ">
                           <ReadingWorklist />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/reading/home"
+                      element={
+                        <ClinicalRoute permission="REPORT_READ">
+                          <ResidentHome />
                         </ClinicalRoute>
                       }
                     />

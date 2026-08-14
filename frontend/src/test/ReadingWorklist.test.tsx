@@ -81,9 +81,9 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      expect(screen.getByText("JD")).toBeInTheDocument();
     });
-    expect(screen.getByText("Jane Smith")).toBeInTheDocument();
+    expect(screen.getByText("JS")).toBeInTheDocument();
     expect(screen.getByText("STAT")).toBeInTheDocument();
     expect(screen.getByText("draft")).toBeInTheDocument();
   });
@@ -136,7 +136,7 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      expect(screen.getByText("JD")).toBeInTheDocument();
     });
 
     const modalityCombobox = screen.getAllByRole("combobox")[1];
@@ -156,7 +156,7 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      expect(screen.getByText("JD")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByLabelText("Assigned to me"));
@@ -173,7 +173,7 @@ describe("ReadingWorklist", () => {
     renderWorklist();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      expect(screen.getByText("JD")).toBeInTheDocument();
     });
 
     const physicianSearch = screen.getByPlaceholderText("Referring physician");

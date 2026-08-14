@@ -392,4 +392,132 @@ describe("ReadingConsole", () => {
       screen.queryByRole("button", { name: /sign report/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("lets a resident submit the draft for attending review", async () => {
+    localStorage.setItem("role", "resident");
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
+    );
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/templates") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "reports/e1/submit") {
+        return Promise.resolve({
+          data: { ...mockReport, status: "submitted", impression: "Normal." },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
+      target: { value: "Normal." },
+    });
+
+    const submitBtn = screen
+      .getAllByRole("button", { name: /submit for review/i })
+      .find((b) => (b as HTMLButtonElement).disabled === false);
+    expect(submitBtn).toBeDefined();
+    fireEvent.click(submitBtn!);
+
+    await waitFor(() => {
+      const submitCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "reports/e1/submit",
+      );
+      expect(submitCall).toBeDefined();
+    });
+    // The submitted report locks: header shows SUBMITTED and the panel
+    // advertises the attending's hands are on it.
+    await waitFor(() => {
+      expect(screen.getByText("SUBMITTED")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/Submitted for attending review/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /submit for review/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("attending returns a submitted report for revision", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({
+          data: {
+            exam: mockExam,
+            report: { ...mockReport, status: "submitted", impression: "Normal." },
+          },
+        });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/templates") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "reports/e1/return") {
+        return Promise.resolve({
+          data: {
+            ...mockReport,
+            status: "draft",
+            impression: "Normal.",
+            review_feedback: "Add comparison with prior CT.",
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    // The attending's review actions replace the plain sign button.
+    expect(
+      screen.getAllByRole("button", { name: /approve & co-sign/i }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: /return for revision/i }).length,
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /return for revision/i })[0],
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Return Report for Revision")).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/What should the resident revise/), {
+      target: { value: "Add comparison with prior CT." },
+    });
+    fireEvent.click(screen.getByText("Return & Reopen Draft"));
+
+    await waitFor(() => {
+      const returnCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "reports/e1/return",
+      );
+      expect(returnCall).toBeDefined();
+    });
+    // Back to an editable draft, carrying the attending's feedback.
+    await waitFor(() => {
+      expect(screen.getByText("DRAFT")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/Attending returned this report/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Add comparison with prior CT/i).length,
+    ).toBeGreaterThan(0);
+  });
 });

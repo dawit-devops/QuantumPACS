@@ -10,6 +10,7 @@ import {
   Modal,
   Grid,
   Badge,
+  Input,
   message,
 } from "antd";
 import {
@@ -17,6 +18,7 @@ import {
   CheckCircleOutlined,
   SaveOutlined,
   DashboardOutlined,
+  RollbackOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -64,8 +66,10 @@ function ReadingConsole() {
   const worklistSearch = location.search;
 
   // REPORT_WRITE gates editing; REPORT_SIGN gates finalizing (the same
-  // permission split ReportEditor applied to the text-only page).
-  const { hasPermission } = useAuth();
+  // permission split ReportEditor applied to the text-only page). The role
+  // selects the resident (submit → co-sign) vs radiologist (sign) lifecycle.
+  const { user, hasPermission } = useAuth();
+  const role = user?.role || "";
   const canWrite = hasPermission("REPORT_WRITE");
   const canSign = hasPermission("REPORT_SIGN");
 
@@ -98,6 +102,10 @@ function ReadingConsole() {
   const [dirty, setDirty] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -134,9 +142,15 @@ function ReadingConsole() {
   const saveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   // The autosave interval is registered once; read the live dirty flag AND the
   // latest saveDraft via refs so the interval closure never sees a stale value
-  // (NFR-R12-10 — zero drafts lost).
+  // (NFR-R12-10 — zero drafts lost). The status ref stops the loop from
+  // hammering a submitted report, which the backend rejects as locked.
   const dirtyRef = useRef(false);
+  const statusRef = useRef(status);
   const saveDraftRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   // Seed the editing state from the loaded report (once — later report
   // updates, e.g. the signed record, re-sync status/savedAt).
@@ -203,7 +217,7 @@ function ReadingConsole() {
     // Autosave loop: flush the local draft on an interval (FR-R12-09 /
     // NFR-R12-10).
     saveTimer.current = setInterval(() => {
-      if (dirtyRef.current) {
+      if (dirtyRef.current && statusRef.current !== "submitted") {
         saveDraftRef.current();
       }
     }, AUTOSAVE_MS);
@@ -258,8 +272,10 @@ function ReadingConsole() {
     try {
       // Flush any pending edits first, then sign. Abort the sign if the
       // flush failed so we never finalize a report missing the last
-      // keystrokes.
-      const saved = await saveDraft(true);
+      // keystrokes. A submitted report is already persisted and locked —
+      // flushing would PUT into a guard that rejects it.
+      const wasSubmitted = status === "submitted";
+      const saved = wasSubmitted ? true : await saveDraft(true);
       if (!saved) {
         message.error("Could not save the draft — sign aborted. Try again.");
         return;
@@ -271,7 +287,11 @@ function ReadingConsole() {
       setStatus("final");
       setSavedAt(new Date());
       setSignOpen(false);
-      message.success("Report signed — status is now FINAL");
+      message.success(
+        wasSubmitted
+          ? "Report co-signed — status is now FINAL"
+          : "Report signed — status is now FINAL",
+      );
       if (next) {
         // Sign & next: jump to the next unread exam in the same filtered
         // queue, preserving the worklist filters for the next console. When
@@ -283,6 +303,61 @@ function ReadingConsole() {
       message.error(e.message || "Sign failed");
     } finally {
       setSigning(false);
+    }
+  };
+
+  // R13 resident submit: flush the latest keystrokes, then hand the draft to
+  // the supervising attending. Once submitted the report locks (the backend
+  // rejects further PUTs) until co-signed or returned.
+  const submitReport = async () => {
+    if (!impression.trim()) {
+      message.error("Impression is required before submitting for review");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const saved = await saveDraft(true);
+      if (!saved) {
+        message.error("Could not save the draft — submit aborted. Try again.");
+        return;
+      }
+      const res = await request(`reports/${examId}/submit`, { method: "POST" });
+      setReport(res.data);
+      setStatus("submitted");
+      dirtyRef.current = false;
+      setDirty(false);
+      setSavedAt(new Date());
+      message.success("Report submitted for attending review");
+    } catch (e: any) {
+      message.error(e.message || "Submit failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Attending return: reopen the resident's submitted draft with feedback
+  // attached — their console surfaces it so they know what to revise.
+  const returnReport = async () => {
+    if (!feedback.trim()) {
+      message.error("Feedback is required before returning the report");
+      return;
+    }
+    setReturning(true);
+    try {
+      const res = await request(`reports/${examId}/return`, {
+        method: "POST",
+        data: { feedback, confirm: true },
+      });
+      setReport(res.data);
+      setStatus("draft");
+      setSavedAt(new Date());
+      setReturnOpen(false);
+      setFeedback("");
+      message.success("Report returned to the resident for revision");
+    } catch (e: any) {
+      message.error(e.message || "Return failed");
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -416,6 +491,7 @@ function ReadingConsole() {
     <ReportPanel
       exam={exam}
       report={report}
+      role={role}
       canWrite={canWrite}
       canSign={canSign}
       status={status}
@@ -424,6 +500,7 @@ function ReadingConsole() {
       recommendations={recommendations}
       templates={templates}
       dirty={dirty}
+      reviewFeedback={report?.review_feedback}
       onFindingsChange={(v) => {
         setFindings(v);
         dirtyRef.current = true;
@@ -442,7 +519,9 @@ function ReadingConsole() {
       onApplyTemplate={applyTemplate}
       onSaveDraft={() => saveDraft(false)}
       onMarkPreliminary={markPreliminary}
+      onSubmitDraft={submitReport}
       onRequestSign={() => setSignOpen(true)}
+      onReturnClick={() => setReturnOpen(true)}
     />
   );
 
@@ -492,7 +571,13 @@ function ReadingConsole() {
               </Tag>
               <Tag
                 color={
-                  isFinal ? "green" : status === "preliminary" ? "purple" : "gold"
+                  isFinal
+                    ? "green"
+                    : status === "preliminary"
+                      ? "purple"
+                      : status === "submitted"
+                        ? "cyan"
+                        : "gold"
                 }
               >
                 {status.toUpperCase()}
@@ -510,8 +595,27 @@ function ReadingConsole() {
               </span>
             )}
             {/* Sign stays in the header so it remains reachable while the
-                report pane is collapsed ([). */}
-            {!isFinal && canSign && (
+                report pane is collapsed ([). A submitted report swaps the
+                sign affordance for the attending's review pair: co-sign or
+                return. */}
+            {!isFinal && canSign && status === "submitted" && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => setSignOpen(true)}
+                >
+                  Approve & Co-sign
+                </Button>
+                <Button
+                  icon={<RollbackOutlined />}
+                  onClick={() => setReturnOpen(true)}
+                >
+                  Return for revision
+                </Button>
+              </>
+            )}
+            {!isFinal && canSign && status !== "submitted" && (
               <Button
                 type="primary"
                 icon={<CheckCircleOutlined />}
@@ -573,7 +677,7 @@ function ReadingConsole() {
       )}
 
       <Modal
-        title="Sign Report"
+        title={status === "submitted" ? "Approve & Co-sign" : "Sign Report"}
         open={signOpen}
         onCancel={() => setSignOpen(false)}
         okText="Sign & Finalize"
@@ -606,12 +710,39 @@ function ReadingConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Signing makes this report FINAL and records you as the signing radiologist."
+          message={
+            status === "submitted"
+              ? "Co-signing finalizes the resident's submitted report as FINAL and records you as the signing radiologist."
+              : "Signing makes this report FINAL and records you as the signing radiologist."
+          }
         />
         <p>
           Impression preview:{" "}
           <em>{impression || "(empty — required to sign)"}</em>
         </p>
+      </Modal>
+
+      <Modal
+        title="Return Report for Revision"
+        open={returnOpen}
+        onCancel={() => setReturnOpen(false)}
+        onOk={returnReport}
+        okText="Return & Reopen Draft"
+        okButtonProps={{ loading: returning, disabled: !feedback.trim() }}
+        destroyOnHidden
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="The report reopens as an editable draft for the resident, with your feedback attached."
+        />
+        <Input.TextArea
+          rows={4}
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          placeholder="What should the resident revise? (required)"
+        />
       </Modal>
 
       <KeyboardShortcuts

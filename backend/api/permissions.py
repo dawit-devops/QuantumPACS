@@ -259,6 +259,11 @@ MATRIX_B_RES = {
     'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MAR_READ',
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
+    # R13 radiology resident (supervised reading): REPORT_WRITE lets the
+    # trainee claim exams and draft reports (reading console autosave,
+    # Take button) — REPORT_SIGN is deliberately absent so the supervising
+    # attending keeps the co-sign (drafts stay non-final until approved).
+    'REPORT_WRITE',
 }
 MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',
