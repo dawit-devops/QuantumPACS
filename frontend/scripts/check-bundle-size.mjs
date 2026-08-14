@@ -18,7 +18,17 @@ const MAX_CHUNK_GZIP = 1100 * 1024; // vendor-cornerstone is ~985 kB gzip
 // baseline 2.26 MB incl. cornerstone computeWorker (~760 kB); raised to 2.5
 // MB after R05 QA pages (QA queue/incidents/actions + antd icons) landed
 const MAX_TOTAL_GZIP = 2.5 * 1024 * 1024;
-const REQUIRED_CHUNKS = ["vendor-cornerstone", "vendor-chart"];
+// Cornerstone3D is split into four sub-chunks (codecs/loader/tools/core) so
+// a codec or tools update never invalidates the core chunk's cache — the
+// gate enforces the split stays intact. chart.js intentionally rides the
+// lazy AdminDashboard/Metrics route chunks (no manual chunk), so a chart
+// regression shows up as total-size growth instead.
+const REQUIRED_CHUNKS = [
+  "vendor-cornerstone-codecs",
+  "vendor-cornerstone-loader",
+  "vendor-cornerstone-tools",
+  "vendor-cornerstone-core",
+];
 
 let failed = false;
 let total = 0;

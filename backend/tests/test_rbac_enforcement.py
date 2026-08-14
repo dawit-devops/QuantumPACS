@@ -79,7 +79,9 @@ def _patch_conn(module):
 
     Supports both connection styles: modules using ``get_conn`` (returns the
     async context manager directly) and modules using ``get_database().acquire()``
-    (the connector returns an object whose ``acquire()`` yields the CM)."""
+    (the connector returns an object whose ``acquire()`` yields the CM). When a
+    module imports both (e.g. api.files), both attributes are patched so the
+    handler's actual accessor is always covered."""
     import importlib
     conn = MagicMock()
     conn.fetch = AsyncMock(return_value=[])
@@ -91,13 +93,34 @@ def _patch_conn(module):
         __aexit__=AsyncMock(return_value=None),
     )
     mod = importlib.import_module(module)
+    patches = []
     if hasattr(mod, 'get_database'):
         db_mock = MagicMock()
         db_mock.acquire.return_value = async_cm
-        p = patch(f'{module}.get_database', return_value=db_mock)
-    else:
-        p = patch(f'{module}.get_conn', return_value=async_cm)
-    return p, conn
+        patches.append(patch(f'{module}.get_database', return_value=db_mock))
+    if hasattr(mod, 'get_conn'):
+        patches.append(patch(f'{module}.get_conn', return_value=async_cm))
+    if not patches:
+        raise RuntimeError(f'{module} has neither get_conn nor get_database to patch')
+    if len(patches) == 1:
+        return patches[0], conn
+
+    class _CombinedPatches:
+        """Context manager entering all patches lazily — callers reuse the
+        same object across loop iterations, so patches must be (re)started on
+        every ``__enter__`` (an ExitStack cannot be re-entered)."""
+
+        def __enter__(self):
+            for p in patches:
+                p.start()
+            return self
+
+        def __exit__(self, *exc_info):
+            for p in reversed(patches):
+                p.stop()
+            return False
+
+    return _CombinedPatches(), conn
 
 
 def _patch_db_class(module, cls_name, **methods):

@@ -18,7 +18,8 @@
   cursor: col-resize;
   touch-action: none;
   background: var(--border-color, #d9d9d9);
-  transition: background var(--duration-fast, 0.15s) var(--easing-standard, ease);
+  transition: background var(--duration-fast, 0.15s)
+    var(--easing-standard, ease);
   outline: none;
 }
 

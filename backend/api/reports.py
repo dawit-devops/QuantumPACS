@@ -173,6 +173,40 @@ class ExamAssignHandler(HTTPEndpoint):
         return ok({'data': updated})
 
 
+async def _with_person_names(conn, report):
+    """Resolve the report's user-id columns to usernames for display.
+
+    reports.signed_by / reviewed_by / created_by store users.id; the console
+    renders them on the FINAL alert ("Signed by …") and the returned-report
+    banner. A single IN query maps the ids to usernames, attached as
+    *_by_name so the raw ids stay in the API contract for callers that
+    key off them.
+    """
+    if not report:
+        return report
+    ids = {report.get(k) for k in ('signed_by', 'reviewed_by', 'created_by')}
+    ids.discard(None)
+    ids.discard('')
+    names = {}
+    if ids:
+        numeric = []
+        for value in ids:
+            try:
+                numeric.append(int(value))
+            except (TypeError, ValueError):
+                pass
+        if numeric:
+            rows = await conn.fetch(
+                'SELECT id, username FROM users WHERE id = ANY($1::bigint[])',
+                numeric,
+            )
+            names = {str(row['id']): row['username'] for row in rows}
+    for key in ('signed_by', 'reviewed_by', 'created_by'):
+        raw = report.get(key)
+        report[f'{key}_name'] = names.get(str(raw)) if raw else ''
+    return report
+
+
 class ExamReportHandler(HTTPEndpoint):
     """Get or update the report for a handed-off exam."""
 
@@ -184,7 +218,7 @@ class ExamReportHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             report = await Reports(conn).get_by_exam(exam_id)
-            report = dict(report) if report else None
+            report = await _with_person_names(conn, dict(report) if report else None)
         return ok({'data': {'exam': exam, 'report': report}})
 
     @requires_permission(Permission.REPORT_WRITE)
@@ -278,9 +312,10 @@ class ExamReportSignHandler(HTTPEndpoint):
                 await notify_user(
                     conn, report['created_by'], 'report.co-signed',
                     'Report co-signed',
-                    f'Your draft was co-signed as FINAL by the attending.',
+                    'Your draft was co-signed as FINAL by the attending.',
                     f'/reading/{exam_id}',
                 )
+            report = await _with_person_names(conn, report)
         return ok({'data': report})
 
 
@@ -333,8 +368,9 @@ class ExamReportSubmitHandler(HTTPEndpoint):
                 f'{exam.get("accession_number") or exam_id}',
                 f'{exam.get("patient_name") or exam.get("patient_id")} — a '
                 f'resident submitted their draft for co-sign.',
-                f'/reading/{exam_id}',
-            )
+                    f'/reading/{exam_id}',
+                )
+            report = await _with_person_names(conn, report)
         return ok({'data': report})
 
 
@@ -390,6 +426,7 @@ class ExamReportReturnHandler(HTTPEndpoint):
                     f'{body.feedback[:120]}',
                     f'/reading/{exam_id}',
                 )
+            report = await _with_person_names(conn, report)
         return ok({'data': report})
 
 

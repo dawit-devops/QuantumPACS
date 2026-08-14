@@ -150,13 +150,25 @@ function ResidentHome() {
 
       <Row gutter={[16, 16]} className="rh-cards">
         <Col xs={24} md={12} xl={8}>
-          <Card className="rh-card" title="My Queue" extra={<ClockCircleOutlined />}>
+          <Card
+            className="rh-card"
+            title="My Queue"
+            extra={<ClockCircleOutlined />}
+          >
             <Row gutter={16}>
               <Col span={8}>
-                <Statistic title="STAT" value={myCounts.stat} valueStyle={{ color: "var(--color-error)" }} />
+                <Statistic
+                  title="STAT"
+                  value={myCounts.stat}
+                  valueStyle={{ color: "var(--color-error)" }}
+                />
               </Col>
               <Col span={8}>
-                <Statistic title="Urgent" value={myCounts.urgent} valueStyle={{ color: "var(--color-warning)" }} />
+                <Statistic
+                  title="Urgent"
+                  value={myCounts.urgent}
+                  valueStyle={{ color: "var(--color-warning)" }}
+                />
               </Col>
               <Col span={8}>
                 <Statistic title="Routine" value={myCounts.routine} />
@@ -176,7 +188,11 @@ function ResidentHome() {
         </Col>
 
         <Col xs={24} md={12} xl={8}>
-          <Card className="rh-card" title="Feedback & Progress" extra={<BookOutlined />}>
+          <Card
+            className="rh-card"
+            title="Feedback & Progress"
+            extra={<BookOutlined />}
+          >
             <Row gutter={16}>
               <Col span={8}>
                 <Statistic
@@ -206,7 +222,11 @@ function ResidentHome() {
         </Col>
 
         <Col xs={24} md={12} xl={8}>
-          <Card className="rh-card" title="Teaching Library" extra={<BookOutlined />}>
+          <Card
+            className="rh-card"
+            title="Teaching Library"
+            extra={<BookOutlined />}
+          >
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description="Teaching cases will land here once the teaching-file workflow ships."
@@ -219,7 +239,11 @@ function ResidentHome() {
         className="rh-recent"
         title="My recent exams"
         extra={
-          <Button type="link" size="small" onClick={() => navigate("/reading?radiologist=me")}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => navigate("/reading?radiologist=me")}
+          >
             View all <RightOutlined />
           </Button>
         }
@@ -246,7 +270,9 @@ function ResidentHome() {
                 <Tooltip title={`${r.patient_name} (MRN ${r.patient_id})`}>
                   <span className="rh-exam-patient">
                     {patientInitials(r.patient_name)}
-                    <span className="rh-exam-mrn">·{mrnLast4(r.patient_id)}</span>
+                    <span className="rh-exam-mrn">
+                      ·{mrnLast4(r.patient_id)}
+                    </span>
                   </span>
                 </Tooltip>
                 <span className="rh-exam-desc">
@@ -254,7 +280,9 @@ function ResidentHome() {
                 </span>
                 <span className="rh-exam-status">
                   {r.report_status ? (
-                    <Tag color={REPORT_STATUS_COLORS[r.report_status] || "default"}>
+                    <Tag
+                      color={REPORT_STATUS_COLORS[r.report_status] || "default"}
+                    >
                       {r.report_status}
                     </Tag>
                   ) : (

@@ -151,8 +151,7 @@ function HealthStrip({
   loading: boolean;
 }) {
   const navigate = useNavigate();
-  const components: Record<string, HealthComponent> =
-    health?.components ?? {};
+  const components: Record<string, HealthComponent> = health?.components ?? {};
   if (loading) {
     return (
       <div className="dashboard-health dashboard-skeleton">
@@ -337,8 +336,14 @@ function AdminDashboard() {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: chartTheme.text }, grid: { color: chartTheme.gridColor } },
-        y: { ticks: { color: chartTheme.text }, grid: { color: chartTheme.gridColor } },
+        x: {
+          ticks: { color: chartTheme.text },
+          grid: { color: chartTheme.gridColor },
+        },
+        y: {
+          ticks: { color: chartTheme.text },
+          grid: { color: chartTheme.gridColor },
+        },
       },
     }),
     [chartTheme],
@@ -346,7 +351,8 @@ function AdminDashboard() {
 
   const totals = (metrics?.totals as DashboardTotals | undefined) ?? {};
   const modalities = metrics?.modalities ?? {};
-  const ingestion30d: any[] = (metrics?.ingestion_30d as any[] | undefined) ?? [];
+  const ingestion30d: any[] =
+    (metrics?.ingestion_30d as any[] | undefined) ?? [];
 
   const modalityLabels = Object.keys(modalities);
   const modalityChartData = {
@@ -381,15 +387,55 @@ function AdminDashboard() {
     ],
   };
 
-  const quickLinks: Array<{ label: string; path: string; show: boolean; icon: React.ReactNode }> = [
+  const quickLinks: Array<{
+    label: string;
+    path: string;
+    show: boolean;
+    icon: React.ReactNode;
+  }> = [
     { label: "Users", path: "/users", show: canUsers, icon: <TeamOutlined /> },
-    { label: "Replicas", path: "/replicas", show: canReplicas, icon: <DatabaseOutlined /> },
-    { label: "Metrics", path: "/metrics", show: canMetrics, icon: <FundOutlined /> },
-    { label: "Logs", path: "/logs", show: canLogs, icon: <FileSearchOutlined /> },
-    { label: "DICOMweb", path: "/dicomweb", show: canDicomweb, icon: <CloudServerOutlined /> },
-    { label: "Roles", path: "/roles", show: can("ROLE_READ"), icon: <SafetyCertificateOutlined /> },
-    { label: "Tenants", path: "/tenants", show: can("TENANT_READ"), icon: <BankOutlined /> },
-    { label: "Routing", path: "/routing", show: can("ROUTING_READ"), icon: <ApartmentOutlined /> },
+    {
+      label: "Replicas",
+      path: "/replicas",
+      show: canReplicas,
+      icon: <DatabaseOutlined />,
+    },
+    {
+      label: "Metrics",
+      path: "/metrics",
+      show: canMetrics,
+      icon: <FundOutlined />,
+    },
+    {
+      label: "Logs",
+      path: "/logs",
+      show: canLogs,
+      icon: <FileSearchOutlined />,
+    },
+    {
+      label: "DICOMweb",
+      path: "/dicomweb",
+      show: canDicomweb,
+      icon: <CloudServerOutlined />,
+    },
+    {
+      label: "Roles",
+      path: "/roles",
+      show: can("ROLE_READ"),
+      icon: <SafetyCertificateOutlined />,
+    },
+    {
+      label: "Tenants",
+      path: "/tenants",
+      show: can("TENANT_READ"),
+      icon: <BankOutlined />,
+    },
+    {
+      label: "Routing",
+      path: "/routing",
+      show: can("ROUTING_READ"),
+      icon: <ApartmentOutlined />,
+    },
   ].filter((l) => l.show);
 
   return (
@@ -406,7 +452,11 @@ function AdminDashboard() {
             )}
             <span>
               <Text style={{ fontSize: 12, marginRight: 4 }}>Auto-refresh</Text>
-              <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
+              <Switch
+                size="small"
+                checked={autoRefresh}
+                onChange={setAutoRefresh}
+              />
             </span>
             <Button
               size="small"
@@ -452,7 +502,11 @@ function AdminDashboard() {
               />
               <StatCard
                 label="Storage"
-                value={totals.storage_bytes != null ? formatBytes(totals.storage_bytes) : "—"}
+                value={
+                  totals.storage_bytes != null
+                    ? formatBytes(totals.storage_bytes)
+                    : "—"
+                }
                 icon={<HddOutlined />}
                 hint="Archive usage"
               />
@@ -528,7 +582,11 @@ function AdminDashboard() {
                     <Space key={name}>
                       <Tag
                         color={
-                          comp.status === "ok" ? "green" : comp.status === "degraded" ? "orange" : "red"
+                          comp.status === "ok"
+                            ? "green"
+                            : comp.status === "degraded"
+                              ? "orange"
+                              : "red"
                         }
                         style={{ minWidth: 64, textAlign: "center" }}
                       >
@@ -581,7 +639,11 @@ function AdminDashboard() {
                     dataIndex: "status",
                     key: "status",
                     render: (s: string) => (
-                      <Tag color={s === "ok" || s === "synced" ? "green" : "orange"}>
+                      <Tag
+                        color={
+                          s === "ok" || s === "synced" ? "green" : "orange"
+                        }
+                      >
                         {(s ?? "unknown").toUpperCase()}
                       </Tag>
                     ),
@@ -590,8 +652,7 @@ function AdminDashboard() {
                     title: "Delay",
                     dataIndex: "delay",
                     key: "delay",
-                    render: (d: number) =>
-                      d != null ? `${d}s` : "—",
+                    render: (d: number) => (d != null ? `${d}s` : "—"),
                   },
                 ]}
               />

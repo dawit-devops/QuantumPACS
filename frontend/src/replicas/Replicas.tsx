@@ -258,25 +258,25 @@ function Replicas() {
       render: (_: any, record: any) =>
         (canWrite || canDelete) &&
         (!record.master || (record.master && data.length === 1)) ? (
-            <span>
-              {canWrite && !record.master && (
-                <span>
-                  <a onClick={() => setCurrReplica(record)}>Update delay</a>
-                  <Divider type="vertical" />
-                  <a onClick={() => setMaster(record)}>Set master</a>
-                  <Divider type="vertical" />
-                </span>
-              )}
-              {canDelete && (
-                <Popconfirm
-                  title="Sure to delete?"
-                  onConfirm={() => handleDelete(record.id)}
-                >
-                  <a>Delete</a>
-                </Popconfirm>
-              )}
-            </span>
-          ) : null,
+          <span>
+            {canWrite && !record.master && (
+              <span>
+                <a onClick={() => setCurrReplica(record)}>Update delay</a>
+                <Divider type="vertical" />
+                <a onClick={() => setMaster(record)}>Set master</a>
+                <Divider type="vertical" />
+              </span>
+            )}
+            {canDelete && (
+              <Popconfirm
+                title="Sure to delete?"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <a>Delete</a>
+              </Popconfirm>
+            )}
+          </span>
+        ) : null,
     },
   ];
 

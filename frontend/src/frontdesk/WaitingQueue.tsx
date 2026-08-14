@@ -1,4 +1,8 @@
-import { useDocumentTitle, useTenantRefetch, useVisibilityGatedInterval } from "../hooks";
+import {
+  useDocumentTitle,
+  useTenantRefetch,
+  useVisibilityGatedInterval,
+} from "../hooks";
 import React, { useCallback, useEffect, useState } from "react";
 import { Layout, Tag, Spin, Alert, Button, DatePicker } from "antd";
 import { LockOutlined, ReloadOutlined } from "@ant-design/icons";

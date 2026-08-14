@@ -376,21 +376,24 @@ class TestShareFilesListHandler:
             {'id': 1, 'created': datetime.now(timezone.utc),
              'expires': _future, 'hash': 'abc123def456'},
         ])
-        with _patch_get_conn('api.files', mock_conn):
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock, return_value=FILE_EXTRA):
             client = TestClient(self._make_app())
             resp = client.get('/files/1/shares')
         assert resp.status_code == 200
 
     def test_list_shares_empty(self):
         mock_conn = _mock_conn()
-        with _patch_get_conn('api.files', mock_conn):
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock, return_value=FILE_EXTRA):
             client = TestClient(self._make_app())
             resp = client.get('/files/999/shares')
         assert resp.status_code == 200
 
     def test_revoke_share(self):
         mock_conn = _mock_conn()
-        with _patch_get_conn('api.files', mock_conn):
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock, return_value=FILE_EXTRA):
             client = TestClient(self._make_app())
             resp = client.delete('/files/1/shares/5')
         assert resp.status_code == 200

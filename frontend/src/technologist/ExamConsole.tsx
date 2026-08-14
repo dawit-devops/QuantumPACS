@@ -698,24 +698,24 @@ function ExamConsole() {
                 message="Confirm the patient and start the protocol before acquiring images."
               />
             ) : (
-          <div className="exam-acq">
-            <div className="exam-acq-preview">
-              {/* C11 (Sprint D): mount the real viewer when the exam's study
+              <div className="exam-acq">
+                <div className="exam-acq-preview">
+                  {/* C11 (Sprint D): mount the real viewer when the exam's study
                   has been stored; SimulatedPreview stays the no-DICOM
                   fallback so the console never shows an empty box. */}
-              {exam.imaging && exam.imaging_patient ? (
-                <ExamViewport
-                  patient={exam.imaging_patient}
-                  patientName={exam.patient_name}
-                  patientId={exam.patient_id}
-                  examModality={exam.modality}
-                />
-              ) : (
-                <SimulatedPreview
-                  label={`Series ${Math.max(1, nextSeries)} preview`}
-                />
-              )}
-            </div>
+                  {exam.imaging && exam.imaging_patient ? (
+                    <ExamViewport
+                      patient={exam.imaging_patient}
+                      patientName={exam.patient_name}
+                      patientId={exam.patient_id}
+                      examModality={exam.modality}
+                    />
+                  ) : (
+                    <SimulatedPreview
+                      label={`Series ${Math.max(1, nextSeries)} preview`}
+                    />
+                  )}
+                </div>
                 <div className="exam-acq-queue">
                   <h4>QA Queue ({pendingAcqs.length} pending)</h4>
                   {pendingAcqs.length === 0 && (

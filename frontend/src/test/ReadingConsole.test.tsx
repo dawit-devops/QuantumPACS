@@ -180,7 +180,9 @@ describe("ReadingConsole", () => {
   it("signs the report and shows final status", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       if (url === "reports/e1/images") {
         return Promise.resolve({ data: { imaging: false } });
@@ -230,7 +232,9 @@ describe("ReadingConsole", () => {
   it("Sign & Next jumps to the next exam in the filtered queue", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       if (url === "reports/e1/images") {
         return Promise.resolve({ data: { imaging: false } });
@@ -303,7 +307,9 @@ describe("ReadingConsole", () => {
   it("Sign & Next returns to the worklist when the queue is exhausted", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       if (url === "reports/e1/images") {
         return Promise.resolve({ data: { imaging: false } });
@@ -401,7 +407,9 @@ describe("ReadingConsole", () => {
     );
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
-        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+        return Promise.resolve({
+          data: { exam: mockExam, report: mockReport },
+        });
       }
       if (url === "reports/e1/images") {
         return Promise.resolve({ data: { imaging: false } });
@@ -457,7 +465,11 @@ describe("ReadingConsole", () => {
         return Promise.resolve({
           data: {
             exam: mockExam,
-            report: { ...mockReport, status: "submitted", impression: "Normal." },
+            report: {
+              ...mockReport,
+              status: "submitted",
+              impression: "Normal.",
+            },
           },
         });
       }
@@ -496,11 +508,16 @@ describe("ReadingConsole", () => {
       screen.getAllByRole("button", { name: /return for revision/i })[0],
     );
     await waitFor(() => {
-      expect(screen.getByText("Return Report for Revision")).toBeInTheDocument();
+      expect(
+        screen.getByText("Return Report for Revision"),
+      ).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByPlaceholderText(/What should the resident revise/), {
-      target: { value: "Add comparison with prior CT." },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText(/What should the resident revise/),
+      {
+        target: { value: "Add comparison with prior CT." },
+      },
+    );
     fireEvent.click(screen.getByText("Return & Reopen Draft"));
 
     await waitFor(() => {

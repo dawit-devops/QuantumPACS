@@ -190,10 +190,7 @@ describe("ReadingWorklist", () => {
   it("hides the Take button for a REPORT_READ-only reader", async () => {
     // The claim endpoint is gated REPORT_WRITE (api/reports.py): a referring
     // physician or nurse views the queue without the claim affordance.
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["REPORT_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["REPORT_READ"]));
     mockRequest.mockResolvedValue({ data: mockItems });
     renderWorklist();
 

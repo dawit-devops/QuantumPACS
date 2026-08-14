@@ -67,6 +67,18 @@ def _patch_get_conn(module, mock_conn):
     ))
 
 
+def _patch_get_database(module, mock_conn):
+    """Patch a module's main-pool accessor (``get_database().acquire()``) with
+    an async CM yielding mock_conn — webhooks reads live on the main pool, so
+    the module never imports get_conn."""
+    db_mock = MagicMock()
+    db_mock.acquire.return_value = MagicMock(
+        __aenter__=AsyncMock(return_value=mock_conn),
+        __aexit__=AsyncMock(return_value=None),
+    )
+    return patch(f'{module}.get_database', return_value=db_mock)
+
+
 def _make_app(routes, user=None):
     return Starlette(
         routes=routes,
@@ -565,7 +577,7 @@ class TestWebhooks:
              'last_triggered_at': None, 'last_status_code': None, 'last_error': None,
              'created_at': '2026-07-29T00:00:00Z'},
         ])
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/webhooks')
         assert resp.status_code == 200
@@ -576,7 +588,7 @@ class TestWebhooks:
     def test_create_webhook(self):
         mock_conn = _mock_conn()
         mock_conn.fetchval = AsyncMock(return_value='wh-new-id')
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             mock_conn.fetchrow = AsyncMock(return_value={
                 'id': 'wh-new-id', 'name': 'Test WH', 'url': 'https://example.com/hook',
                 'events': ['study.arrived'], 'active': True, 'retry_count': 3, 'timeout_ms': 5000,
@@ -591,7 +603,7 @@ class TestWebhooks:
         assert resp.status_code == 201
 
     def test_create_webhook_validation_error(self):
-        with _patch_get_conn('api.webhooks', _mock_conn()):
+        with _patch_get_database('api.webhooks', _mock_conn()):
             client = TestClient(self._make_app())
             resp = client.post('/webhooks', json={'url': 'not-a-url'})
         assert resp.status_code == 422
@@ -604,7 +616,7 @@ class TestWebhooks:
             'secret': '', 'last_triggered_at': None, 'last_status_code': None,
             'last_error': None, 'created_at': '2026-07-29T00:00:00Z',
         })
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/webhooks/w1')
         assert resp.status_code == 200
@@ -613,7 +625,7 @@ class TestWebhooks:
     def test_get_webhook_not_found(self):
         mock_conn = _mock_conn()
         mock_conn.fetchrow = AsyncMock(return_value=None)
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.get('/webhooks/nonexistent')
         assert resp.status_code == 404
@@ -624,7 +636,7 @@ class TestWebhooks:
             {'id': 'w1', 'name': 'Old'},
             {'id': 'w1', 'name': 'Updated'},
         ])
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.put('/webhooks/w1', json={'name': 'Updated'})
         assert resp.status_code == 200
@@ -632,7 +644,7 @@ class TestWebhooks:
 
     def test_update_webhook_no_changes(self):
         mock_conn = _mock_conn()
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.put('/webhooks/w1', json={})
         assert resp.status_code == 400
@@ -640,7 +652,7 @@ class TestWebhooks:
     def test_update_webhook_not_found(self):
         mock_conn = _mock_conn()
         mock_conn.fetchrow = AsyncMock(return_value=None)
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.put('/webhooks/nonexistent', json={'name': 'X'})
         assert resp.status_code == 404
@@ -648,7 +660,7 @@ class TestWebhooks:
     def test_delete_webhook(self):
         mock_conn = _mock_conn()
         mock_conn.fetchrow = AsyncMock(return_value={'id': 'w1'})
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.delete('/webhooks/w1')
         assert resp.status_code == 200
@@ -657,7 +669,7 @@ class TestWebhooks:
     def test_delete_webhook_not_found(self):
         mock_conn = _mock_conn()
         mock_conn.fetchrow = AsyncMock(return_value=None)
-        with _patch_get_conn('api.webhooks', mock_conn):
+        with _patch_get_database('api.webhooks', mock_conn):
             client = TestClient(self._make_app())
             resp = client.delete('/webhooks/nonexistent')
         assert resp.status_code == 404

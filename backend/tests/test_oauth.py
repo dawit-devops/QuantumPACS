@@ -118,6 +118,7 @@ class TestOidcJwks:
         )
         assert payload['id'] == 1
 
+    @pytest.mark.filterwarnings('ignore::jwt.warnings.InsecureKeyLengthWarning')
     def test_legacy_hs256_token_still_verifies_during_rotation(self):
         import time
 

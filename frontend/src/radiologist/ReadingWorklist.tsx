@@ -100,7 +100,14 @@ function ReadingWorklist() {
         setLoading(false);
         setError(e.message);
       });
-  }, [statusFilter, modalityFilter, search, assignedToMe, physicianFilter, reviewFilter]);
+  }, [
+    statusFilter,
+    modalityFilter,
+    search,
+    assignedToMe,
+    physicianFilter,
+    reviewFilter,
+  ]);
 
   useEffect(() => {
     fetchList();
@@ -125,7 +132,9 @@ function ReadingWorklist() {
           color={PRIORITY_COLORS[p]}
           className={p === "stat" ? "reading-stat-tag" : ""}
         >
-          {p === "stat" && <span className="reading-stat-dot" aria-hidden="true" />}
+          {p === "stat" && (
+            <span className="reading-stat-dot" aria-hidden="true" />
+          )}
           {PRIORITY_LABEL[p] || "Routine"}
         </Tag>
       ),
@@ -143,13 +152,17 @@ function ReadingWorklist() {
       render: (_: unknown, r: any) => (
         // PHI-minimizing label: initials + MRN last-4 in the queue, full name
         // only on hover (shared with Resident Home).
-        <Tooltip title={`${r.patient_name || ""}${r.patient_id ? ` (MRN ${r.patient_id})` : ""}`}>
+        <Tooltip
+          title={`${r.patient_name || ""}${r.patient_id ? ` (MRN ${r.patient_id})` : ""}`}
+        >
           <span className="reading-patient-label">
             <span className="reading-patient-initials">
               {patientInitials(r.patient_name || "")}
             </span>
             {r.patient_id && (
-              <span className="reading-patient-mrn">·{mrnLast4(r.patient_id)}</span>
+              <span className="reading-patient-mrn">
+                ·{mrnLast4(r.patient_id)}
+              </span>
             )}
           </span>
         </Tooltip>

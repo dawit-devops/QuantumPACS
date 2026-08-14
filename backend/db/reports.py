@@ -155,7 +155,7 @@ class Reports(Table):
             params.append(status)
             idx += 1
         if review:
-            where.append(f"r.status = 'submitted'")
+            where.append("r.status = 'submitted'")
         if modality:
             where.append(f"e.modality = ${idx}")
             params.append(modality)

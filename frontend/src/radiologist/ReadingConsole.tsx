@@ -1,5 +1,12 @@
 import { useDocumentTitle } from "../hooks";
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Layout,
   Tag,
@@ -116,7 +123,13 @@ function ReadingConsole() {
   const queueQuery = useMemo(() => {
     const q: Record<string, string> = {};
     const sp = new URLSearchParams(location.search);
-    for (const k of ["status", "modality", "search", "radiologist", "physician"]) {
+    for (const k of [
+      "status",
+      "modality",
+      "search",
+      "radiologist",
+      "physician",
+    ]) {
       const v = sp.get(k);
       if (v) q[k] = v;
     }
@@ -205,7 +218,15 @@ function ReadingConsole() {
         return false;
       }
     },
-    [canWrite, examId, findings, impression, recommendations, status, templateName],
+    [
+      canWrite,
+      examId,
+      findings,
+      impression,
+      recommendations,
+      status,
+      templateName,
+    ],
   );
 
   // Keep the interval closure pointing at the latest saveDraft after every render.
@@ -297,7 +318,11 @@ function ReadingConsole() {
         // queue, preserving the worklist filters for the next console. When
         // the queue is empty (or unknown) return to the worklist instead.
         const nextId = nextExamId();
-        navigate(nextId ? `/reading/${nextId}${worklistSearch}` : `/reading${worklistSearch}`);
+        navigate(
+          nextId
+            ? `/reading/${nextId}${worklistSearch}`
+            : `/reading${worklistSearch}`,
+        );
       }
     } catch (e: any) {
       message.error(e.message || "Sign failed");

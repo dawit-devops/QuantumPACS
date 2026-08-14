@@ -91,8 +91,8 @@ def _upload_patches(mock_conn):
     storage.copy = AsyncMock(return_value={'location': '/tmp/x'})
     return {
         'parse_dcm': patch('api.files.parse_dcm', return_value={
-            'patientid': 'P001', 'studyinstanceuid': 'S001',
-            'seriesinstanceuid': 'SE001', 'sopinstanceuid': 'SO001',
+            'patient_id': 'P001', 'study_instance_uid': 'S001',
+            'series_instance_uid': 'SE001', 'sop_instance_uid': 'SO001',
             'patient_name': 'Smith^John', 'cleaned': {},
         }),
         'hash_file': patch('api.files.hash_file', return_value='h1'),
@@ -173,30 +173,30 @@ class TestUploadQuota:
         }
         stack, mocks = _enter(_upload_patches(_mock_conn()))
         with stack, patch('api.files.Tenants') as mock_tenants:
-            mock_tenants.return_value.persist_storage_used = AsyncMock()
+            mock_tenants.return_value.adjust_storage_used = AsyncMock()
             client = TestClient(_make_app(tenant_state=state))
             resp, content = _upload(client)
         assert resp.status_code == 200
-        mock_tenants.return_value.persist_storage_used.assert_awaited_once_with(
-            'clinic-alfa', 1000 + len(content),
+        mock_tenants.return_value.adjust_storage_used.assert_awaited_once_with(
+            'clinic-alfa', len(content),
         )
         mocks['notify_role'].assert_not_awaited()
 
     def test_upload_notifies_super_admins_on_breach(self):
         state = {
             'tenant_slug': 'clinic-alfa',
-            'tenant': {'storage_quota_bytes': 1000, 'storage_used_bytes': 0},
+            'tenant': {'storage_quota_bytes': 1000, 'storage_used_bytes': 800},
             'tenant_conn': _TenantAcquire(800),
         }
         mock_conn = _mock_conn()
         stack, mocks = _enter(_upload_patches(mock_conn))
         with stack, patch('api.files.Tenants') as mock_tenants:
-            mock_tenants.return_value.persist_storage_used = AsyncMock()
+            mock_tenants.return_value.adjust_storage_used = AsyncMock()
             client = TestClient(_make_app(tenant_state=state))
             resp, content = _upload(client)
         assert resp.status_code == 200
-        mock_tenants.return_value.persist_storage_used.assert_awaited_once_with(
-            'clinic-alfa', 800 + len(content),
+        mock_tenants.return_value.adjust_storage_used.assert_awaited_once_with(
+            'clinic-alfa', len(content),
         )
         mocks['notify_role'].assert_awaited_once()
         args = mocks['notify_role'].await_args.args
@@ -215,14 +215,14 @@ class TestUploadQuota:
         mock_conn = _mock_conn()
         stack, mocks = _enter(_upload_patches(mock_conn))
         with stack, patch('api.files.Tenants') as mock_tenants:
-            mock_tenants.return_value.persist_storage_used = None
+            mock_tenants.return_value.adjust_storage_used = None
             client = TestClient(_make_app(tenant_state=state))
             resp, content = _upload(client)
         assert resp.status_code == 200
         mock_conn.execute.assert_awaited_once()
         sql, used, slug = mock_conn.execute.await_args.args
         assert 'UPDATE tenants SET storage_used_bytes' in sql
-        assert used == 1000 + len(content)
+        assert used == len(content)
         assert slug == 'clinic-alfa'
 
     def test_upload_registry_fallback_when_tenant_conn_missing(self):
@@ -232,7 +232,7 @@ class TestUploadQuota:
         }
         stack, mocks = _enter(_upload_patches(_mock_conn()))
         with stack, patch('api.files.Tenants') as mock_tenants:
-            mock_tenants.return_value.persist_storage_used = AsyncMock()
+            mock_tenants.return_value.adjust_storage_used = AsyncMock()
             client = TestClient(_make_app(tenant_state=state))
             resp, content = _upload(client)
         assert resp.status_code == 403

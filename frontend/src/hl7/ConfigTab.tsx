@@ -151,7 +151,9 @@ export function ConfigTab({
             />
             {!canWrite && (
               <div style={{ marginTop: 8 }}>
-                <Tag color="default">Read-only — you need HL7_WRITE to change configuration.</Tag>
+                <Tag color="default">
+                  Read-only — you need HL7_WRITE to change configuration.
+                </Tag>
               </div>
             )}
           </Card>

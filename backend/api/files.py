@@ -456,7 +456,6 @@ class ServeFile(HTTPEndpoint):
 class ShareFilesHandler(HTTPEndpoint):
     @requires_permission(Permission.FILE_WRITE)
     async def post(self, request):
-        file_id = get_id(request)
         body = await parse_body(ShareRequest, request)
 
         # M-5: re-use get_file_by_id so a missing/deleted file AND a file that

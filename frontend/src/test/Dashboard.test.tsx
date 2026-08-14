@@ -204,9 +204,7 @@ describe("AdminDashboard", () => {
     renderWithAuth(<AdminDashboard />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Users/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Users/ })).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("button", { name: /Replicas/ }),

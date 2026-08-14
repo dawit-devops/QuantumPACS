@@ -30,7 +30,10 @@ export function useTenantRefetch(fetcher: () => void): void {
 // Poll `fetcher` every `ms` while the document is visible; a hidden tab
 // must not keep firing network requests (R1-04). On returning to the tab the
 // data is stale, so fetch immediately before resuming the cadence.
-export function useVisibilityGatedInterval(fetcher: () => void, ms: number): void {
+export function useVisibilityGatedInterval(
+  fetcher: () => void,
+  ms: number,
+): void {
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
   useEffect(() => {

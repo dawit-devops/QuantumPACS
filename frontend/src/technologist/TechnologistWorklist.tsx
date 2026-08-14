@@ -116,7 +116,11 @@ function TechnologistWorklist() {
         // C7: diff against the previous poll. A filter change since the last
         // fetch makes this response a new baseline, not a poll result — the
         // reseeded set would otherwise read every row as an arrival.
-        const filterKey = JSON.stringify([statusFilter, modalityFilter, search]);
+        const filterKey = JSON.stringify([
+          statusFilter,
+          modalityFilter,
+          search,
+        ]);
         const filterChanged = filterKey !== prevFilterKey.current;
         if (filterChanged) {
           prevIds.current = new Set();

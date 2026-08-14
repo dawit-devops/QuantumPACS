@@ -50,7 +50,9 @@ export function BulkImport({ reload }: BulkImportProps) {
         if (parts[0]) {
           parsed.push({
             username: parts[0],
-            admin: canGrantAdmin && (parts[1]?.toLowerCase() === "true" || parts[1] === "1"),
+            admin:
+              canGrantAdmin &&
+              (parts[1]?.toLowerCase() === "true" || parts[1] === "1"),
           });
         }
       }
@@ -170,7 +172,11 @@ export function BulkImport({ reload }: BulkImportProps) {
           />
           <p style={{ margin: 0 }}>Click to select CSV file</p>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Format: username,admin{canGrantAdmin ? "" : " (admin column ignored for non-platform admins)"} (one per line)
+            Format: username,admin
+            {canGrantAdmin
+              ? ""
+              : " (admin column ignored for non-platform admins)"}{" "}
+            (one per line)
           </Text>
         </div>
         {importing && (

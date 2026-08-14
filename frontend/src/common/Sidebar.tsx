@@ -60,7 +60,8 @@ function getKey(loc: string) {
   const parts = loc.slice(1).split("/");
   if (parts[0] === "admin") return "dashboard";
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
-  if (parts[0] === "reading") return parts[1] === "home" ? "resident-home" : "reading-worklist";
+  if (parts[0] === "reading")
+    return parts[1] === "home" ? "resident-home" : "reading-worklist";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",

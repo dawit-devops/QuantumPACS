@@ -117,13 +117,13 @@ export function AddUser(props: any) {
   const handleCreate = () => {
     form
       .validateFields()
-        .then((values: any) => {
-          const data: any = {
-            username: values.username,
-            admin: canGrantAdmin ? values.admin || false : false,
-          };
-          if (values.role_id) data.role_id = values.role_id;
-          if (values.tenant) data.tenant = values.tenant;
+      .then((values: any) => {
+        const data: any = {
+          username: values.username,
+          admin: canGrantAdmin ? values.admin || false : false,
+        };
+        if (values.role_id) data.role_id = values.role_id;
+        if (values.tenant) data.tenant = values.tenant;
         createUser(data)
           .then((res: any) => {
             form.resetFields();
@@ -191,7 +191,11 @@ export function AddUser(props: any) {
             </Form.Item>
           )}
           {canGrantAdmin && (
-            <Form.Item name="admin" valuePropName="checked" initialValue={false}>
+            <Form.Item
+              name="admin"
+              valuePropName="checked"
+              initialValue={false}
+            >
               <Checkbox>Admin</Checkbox>
             </Form.Item>
           )}

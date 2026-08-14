@@ -51,7 +51,12 @@ export function useAnnotationSync({
 
   const restoreToolState = useCallback(
     (state: any) => {
-      if (!state) return;
+      // Remote state arrives over WS from `send_state` (arrays from
+      // getAllAnnotations) — but the backend's `open` echo replies with
+      // `state: {}` when the opener sent no state. Iterating a non-array
+      // throws "state is not iterable" inside the ws listener loop, so only
+      // restore real annotation arrays.
+      if (!Array.isArray(state)) return;
       const mgr = csAnnotation.state.getAnnotationManager();
       for (const a of mgr.getAllAnnotations()) {
         csAnnotation.state.removeAnnotation(a.annotationUID);

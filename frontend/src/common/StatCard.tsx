@@ -62,7 +62,11 @@ export default function StatCard({
           {label}
         </span>
         {icon && (
-          <span style={{ color: tone === undefined ? "var(--text-muted)" : toneColor }}>
+          <span
+            style={{
+              color: tone === undefined ? "var(--text-muted)" : toneColor,
+            }}
+          >
             {icon}
           </span>
         )}

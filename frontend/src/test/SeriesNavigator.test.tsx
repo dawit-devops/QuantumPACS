@@ -40,12 +40,14 @@ const study2: FileStudy = {
   series: [{ id: 20, study_id: 2, number: 1, files: [] }],
 };
 
-function renderNav(opts: {
-  studies?: FileStudy[];
-  series?: FileSeries;
-  onSeriesChange?: (s: FileSeries) => void;
-  onFileChange?: (i: number) => void;
-} = {}) {
+function renderNav(
+  opts: {
+    studies?: FileStudy[];
+    series?: FileSeries;
+    onSeriesChange?: (s: FileSeries) => void;
+    onFileChange?: (i: number) => void;
+  } = {},
+) {
   const studies = opts.studies ?? [study1];
   const selectedStudy = studies[0];
   const selectedSeries = opts.series ?? study1.series![0];

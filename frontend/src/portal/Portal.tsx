@@ -1,5 +1,11 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   App,
   Layout,

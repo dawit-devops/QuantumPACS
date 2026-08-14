@@ -201,10 +201,7 @@ describe("PeerReviewInbox", () => {
   it("shows a read-only review for a PEER_REVIEW_READ-only user", async () => {
     // A reviewer without PEER_REVIEW_WRITE views the report but cannot close
     // the review — the submit affordance is replaced by an info notice.
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["PEER_REVIEW_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["PEER_REVIEW_READ"]));
     mockRequest.mockImplementation((url: string) => {
       if (url === "peer-reviews") {
         return Promise.resolve({ data: [mockReview] });

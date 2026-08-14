@@ -79,7 +79,10 @@ describe("Users", () => {
     localStorage.setItem("username", "user-admin");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "tenant_admin");
-    localStorage.setItem("permissions", JSON.stringify(["USER_READ", "USER_WRITE"]));
+    localStorage.setItem(
+      "permissions",
+      JSON.stringify(["USER_READ", "USER_WRITE"]),
+    );
     mockListUsers.mockResolvedValue({
       data: mockUsers,
       total: mockUsers.length,

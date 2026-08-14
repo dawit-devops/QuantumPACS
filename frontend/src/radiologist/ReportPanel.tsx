@@ -82,15 +82,15 @@ export default function ReportPanel({
   // submitted report sees it between Draft and Final.
   const steps = isResident
     ? [
-      { title: "Draft", icon: <EditOutlined /> },
-      { title: "Submitted", icon: <AuditOutlined /> },
-      { title: "Co-signed", icon: <CheckCircleOutlined /> },
-    ]
+        { title: "Draft", icon: <EditOutlined /> },
+        { title: "Submitted", icon: <AuditOutlined /> },
+        { title: "Co-signed", icon: <CheckCircleOutlined /> },
+      ]
     : [
-      { title: "Draft", icon: <EditOutlined /> },
-      { title: "Preliminary", icon: <AuditOutlined /> },
-      { title: "Final", icon: <CheckCircleOutlined /> },
-    ];
+        { title: "Draft", icon: <EditOutlined /> },
+        { title: "Preliminary", icon: <AuditOutlined /> },
+        { title: "Final", icon: <CheckCircleOutlined /> },
+      ];
   const step = isFinal
     ? 2
     : submitted
@@ -143,7 +143,9 @@ export default function ReportPanel({
           showIcon
           style={{ marginTop: 16 }}
           message="This report is FINAL."
-          description={`Signed by ${report?.signed_by || "radiologist"} · ${
+          description={`Signed by ${
+            report?.signed_by_name || report?.signed_by || "radiologist"
+          } · ${
             report?.signed_at ? new Date(report.signed_at).toLocaleString() : ""
           }`}
         />

@@ -1,4 +1,5 @@
 import json
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.applications import Starlette
@@ -10,6 +11,22 @@ from api.auth import User
 from api.permissions import Permission
 import api.ws
 from api.ws import WebsocketHandler
+
+
+def _patch_file_lookup(file_row=None):
+    """The 'open' handler resolves the target file on the DB (M-5 tenant
+    gate); unit tests stub the lookup so the pool is never touched."""
+    if file_row is None:
+        file_row = {'id': 1, 'deleted': False, 'tenant': None}
+    fake_conn = MagicMock()
+    fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_conn.__aexit__ = AsyncMock(return_value=False)
+    files_cls = MagicMock()
+    files_cls.return_value.get_extra = AsyncMock(return_value=file_row)
+    return (
+        patch('api.ws.get_conn', return_value=fake_conn),
+        patch('api.ws.Files', files_cls),
+    )
 
 
 class _FakeAuth:
@@ -42,7 +59,7 @@ def _make_app(user=None):
     return app
 
 
-_EXPECTED_CHANNEL = 'channel:file::pubsub-file-1'
+_EXPECTED_CHANNEL = 'channel:file::101'
 
 
 def _setup_redis_mocks():
@@ -67,18 +84,21 @@ class TestWebsocketPubSub:
         self._redis_patcher.stop()
 
     def test_publish_to_channel(self):
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': 'pubsub-file-1'})
-            resp = ws.receive_json()
-            assert resp['type'] == 'send_state'
-            assert resp['file'] == 'pubsub-file-1'
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '101'})
+                resp = ws.receive_json()
+                assert resp['type'] == 'send_state'
+                assert resp['file'] == '101'
 
-            ws.send_json({
-                'type': 'send_state',
-                'file': 'pubsub-file-1',
-                'state': {'window': 120},
-            })
+                ws.send_json({
+                    'type': 'send_state',
+                    'file': '101',
+                    'state': {'window': 120},
+                })
 
         redis_instance = self._mock_client
         assert redis_instance.publish.called
@@ -86,7 +106,7 @@ class TestWebsocketPubSub:
         assert channel == _EXPECTED_CHANNEL
         payload = json.loads(raw)
         assert payload['type'] == 'send_state'
-        assert payload['file'] == 'pubsub-file-1'
+        assert payload['file'] == '101'
         assert payload['state']['window'] == 120
         assert redis_instance.aclose.called
 
@@ -98,36 +118,42 @@ class TestWebsocketPubSub:
         )
         self._redis_patcher.start()
 
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': 'pubsub-file-2'})
-            resp = ws.receive_json()
-            assert resp['type'] == 'send_state'
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '102'})
+                resp = ws.receive_json()
+                assert resp['type'] == 'send_state'
 
-            ws.send_json({
-                'type': 'send_state',
-                'file': 'pubsub-file-2',
-                'state': {'zoom': 2},
-            })
-
-    def test_multiple_publishes_to_same_channel(self):
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': 'pubsub-file-3'})
-            ws.receive_json()
-
-            for i in range(3):
                 ws.send_json({
                     'type': 'send_state',
-                    'file': 'pubsub-file-3',
-                    'state': {'counter': i},
+                    'file': '102',
+                    'state': {'zoom': 2},
                 })
+
+    def test_multiple_publishes_to_same_channel(self):
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '103'})
+                ws.receive_json()
+
+                for i in range(3):
+                    ws.send_json({
+                        'type': 'send_state',
+                        'file': '103',
+                        'state': {'counter': i},
+                    })
 
         redis_instance = self._mock_client
         assert redis_instance.publish.call_count == 3
         for i, call_args in enumerate(redis_instance.publish.call_args_list):
             channel, raw = call_args[0]
-            assert channel == 'channel:file::pubsub-file-3'
+            assert channel == 'channel:file::103'
             payload = json.loads(raw)
             assert payload['state']['counter'] == i
 
@@ -137,11 +163,14 @@ class TestWebsocketPubSub:
         self._app = _make_app(
             user=User({'id': 1, 'permissions': [Permission.FILE_READ], 'tenant': 'ten-a'}),
         )
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '42'})
-            assert ws.receive_json()['type'] == 'send_state'
-            ws.send_json({'type': 'send_state', 'file': '42', 'state': {'zoom': 4}})
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '42'})
+                assert ws.receive_json()['type'] == 'send_state'
+                ws.send_json({'type': 'send_state', 'file': '42', 'state': {'zoom': 4}})
         channel, _ = self._mock_client.publish.call_args[0]
         assert channel == 'channel:file:ten-a:42'
 
@@ -152,11 +181,14 @@ class TestWebsocketPubSub:
         self._app = _make_app(
             user=User({'id': 1, 'permissions': [Permission.FILE_READ], 'tenant': 'ten-a'}),
         )
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '7'})
-            assert ws.receive_json()['type'] == 'send_state'
-            ws.send_json({'type': 'send_state', 'file': '7', 'state': {'x': 1}})
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '7'})
+                assert ws.receive_json()['type'] == 'send_state'
+                ws.send_json({'type': 'send_state', 'file': '7', 'state': {'x': 1}})
         channels = {call_args[0][0] for call_args in self._mock_client.publish.call_args_list}
         assert channels == {'channel:file:ten-a:7'}
 

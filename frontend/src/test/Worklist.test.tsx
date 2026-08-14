@@ -291,10 +291,7 @@ describe("Worklist", () => {
     // nurse holds WORKLIST_READ only: no create entry, no row actions, no
     // batch bar, no row checkboxes — reads stay, writes disappear.
     localStorage.setItem("admin", "false");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["WORKLIST_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["WORKLIST_READ"]));
     renderWithAuth(<Worklist />);
     await waitForTable();
 

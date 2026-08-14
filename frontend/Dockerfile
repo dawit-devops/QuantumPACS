@@ -1,7 +1,11 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+# Plain `npm ci` — NOT --legacy-peer-deps: with the legacy flag npm's
+# optional-dependency bug (npm/cli#4828) drops rolldown's native binding
+# (@rolldown/binding-linux-x64-gnu), and the build then fails at the PWA
+# closeBundle hook with ENOENT on dist/sw.js.
+RUN npm ci
 COPY . .
 RUN npm run build
 

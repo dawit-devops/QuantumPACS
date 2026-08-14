@@ -52,12 +52,15 @@ export function useExamImaging(examId: string | undefined): ExamImagingState {
     if (!examId) return;
     setLoading(true);
     setError(null);
-    Promise.all([request(`reports/${examId}`), request(`reports/${examId}/images`)])
+    Promise.all([
+      request(`reports/${examId}`),
+      request(`reports/${examId}/images`),
+    ])
       .then(([reportRes, imgRes]: any[]) => {
         setExam(reportRes?.data?.exam ?? null);
         setReport(reportRes?.data?.report ?? null);
         const images: ExamImagingResponse | undefined = imgRes?.data;
-        setPatient(images?.imaging ? images.patient ?? null : null);
+        setPatient(images?.imaging ? (images.patient ?? null) : null);
         setLoading(false);
       })
       .catch((e: any) => {

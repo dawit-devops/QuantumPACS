@@ -32,7 +32,11 @@ export default function SeriesNavigator({
 }: SeriesNavigatorProps) {
   const series = selectedStudy?.series ?? [];
   return (
-    <div className="series-navigator" role="toolbar" aria-label="Series navigation">
+    <div
+      className="series-navigator"
+      role="toolbar"
+      aria-label="Series navigation"
+    >
       {studies.length > 1 && (
         <Select
           aria-label="Study"

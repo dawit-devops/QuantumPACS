@@ -50,6 +50,18 @@ def _mock_conn():
     return conn
 
 
+def _patch_main_pool(mock_conn):
+    """Login's tenant branch resolves registry rows on the MAIN pool via
+    ``db.conn.get_database().acquire()`` — imported inside api.users, so the
+    patch must target the db.conn.database global the accessor returns."""
+    db_mock = MagicMock()
+    db_mock.acquire.return_value = MagicMock(
+        __aenter__=AsyncMock(return_value=mock_conn),
+        __aexit__=AsyncMock(return_value=None),
+    )
+    return patch('db.conn.database', db_mock)
+
+
 class TestUsersHandler:
     def _make_app(self, user=None):
         return _make_app([Route('/users', endpoint=UsersHandler)], user)
@@ -173,6 +185,7 @@ class TestLoginResponse:
             patch('api.users.get_conn', return_value=mock_conn),
             patch('api.users.login_bucket') as mock_bucket,
             patch('api.ratelimit._get_rate_redis', new=AsyncMock(return_value=None)),
+            _patch_main_pool(mock_conn),
         ):
             mock_bucket.check = AsyncMock(return_value=(True, ''))
             mock_bucket.record_db = AsyncMock()
@@ -211,6 +224,7 @@ class TestLoginResponse:
             patch('api.users.get_conn', return_value=mock_conn),
             patch('api.users.login_bucket') as mock_bucket,
             patch('api.ratelimit._get_rate_redis', new=AsyncMock(return_value=None)),
+            _patch_main_pool(mock_conn),
         ):
             mock_bucket.check = AsyncMock(return_value=(True, ''))
             mock_bucket.record_db = AsyncMock()

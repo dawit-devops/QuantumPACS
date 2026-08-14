@@ -263,7 +263,10 @@ MATRIX_B_RES = {
     # trainee claim exams and draft reports (reading console autosave,
     # Take button) — REPORT_SIGN is deliberately absent so the supervising
     # attending keeps the co-sign (drafts stay non-final until approved).
-    'REPORT_WRITE',
+    # FILE_READ lets the Cornerstone viewport fetch DICOM pixels
+    # (/api/files/{id}) and the notification bell load — every viewer role
+    # (radiologist/technologist/physician/teleradiologist) holds it.
+    'REPORT_WRITE', 'FILE_READ',
 }
 MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',

@@ -134,7 +134,10 @@ function healthIcon(status: string) {
 // auth, ingestion_service) stays a plain status row. hl7/fhir mirror the
 // current /metrics time scope via a period query param. Each link carries
 // the target route's permission so a user never clicks into a dead end.
-const AREA_LINKS: Record<string, { path: string; period?: boolean; permission: string }> = {
+const AREA_LINKS: Record<
+  string,
+  { path: string; period?: boolean; permission: string }
+> = {
   storage: { path: "/replicas", permission: "REPLICA_READ" },
   dicom_listener: { path: "/dicomweb", permission: "DICOMWEB_READ" },
   hl7: { path: "/hl7", period: true, permission: "HL7_READ" },

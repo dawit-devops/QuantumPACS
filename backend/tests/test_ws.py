@@ -1,5 +1,6 @@
 import sys
 import types
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from starlette.applications import Starlette
@@ -17,6 +18,22 @@ from api.auth import User
 
 import api.ws
 from api.ws import WSToken, WebsocketHandler
+
+
+def _patch_file_lookup(file_row=None):
+    """The 'open' handler resolves the target file on the DB (M-5 tenant
+    gate); unit tests stub the lookup so the pool is never touched."""
+    if file_row is None:
+        file_row = {'id': 1, 'deleted': False, 'tenant': None}
+    fake_conn = MagicMock()
+    fake_conn.__aenter__ = AsyncMock(return_value=fake_conn)
+    fake_conn.__aexit__ = AsyncMock(return_value=False)
+    files_cls = MagicMock()
+    files_cls.return_value.get_extra = AsyncMock(return_value=file_row)
+    return (
+        patch('api.ws.get_conn', return_value=fake_conn),
+        patch('api.ws.Files', files_cls),
+    )
 
 
 class _DummyAuthBackend(AuthenticationBackend):
@@ -70,36 +87,48 @@ class TestWebsocketHandler:
         self._app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)])
 
     def test_connect_and_disconnect(self):
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            resp = ws.receive_json()
-            assert resp['type'] == 'send_state'
-            assert resp['file'] == '1'
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                resp = ws.receive_json()
+                assert resp['type'] == 'send_state'
+                assert resp['file'] == '1'
 
     def test_send_state_without_redis(self):
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            ws.receive_json()
-            ws.send_json({'type': 'send_state', 'file': '1', 'state': {'window': 80}})
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                ws.receive_json()
+                ws.send_json({'type': 'send_state', 'file': '1', 'state': {'window': 80}})
 
     def test_disconnect_cleans_up_clients(self):
-        client = TestClient(self._app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            ws.receive_json()
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(self._app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                ws.receive_json()
         assert '1' not in self._app.state.ws_state.local_clients
 
     def test_connect_registers_user_and_disconnect_unregisters(self):
         app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
                         user=User({'id': 42, 'permissions': ['FILE_READ']}))
         app.state.ws_state = api.ws.WSState()
-        client = TestClient(app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            ws.receive_json()
-            assert 42 in app.state.ws_state.user_clients
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                ws.receive_json()
+                assert 42 in app.state.ws_state.user_clients
         assert 42 not in app.state.ws_state.user_clients
 
     def test_broadcast_to_user(self):
@@ -107,12 +136,15 @@ class TestWebsocketHandler:
         app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
                         user=User({'id': 7, 'permissions': ['FILE_READ']}))
         app.state.ws_state = api.ws.WSState()
-        client = TestClient(app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            ws.receive_json()
-            asyncio.run(api.ws.broadcast_to_user(7, {'type': 'notifications'}))
-            assert ws.receive_json()['type'] == 'notifications'
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                ws.receive_json()
+                asyncio.run(api.ws.broadcast_to_user(7, {'type': 'notifications'}))
+                assert ws.receive_json()['type'] == 'notifications'
 
     def test_open_requires_file_read_permission(self):
         """Subscribing to a file channel grants broadcast membership for that
@@ -150,15 +182,18 @@ class TestWebsocketHandler:
         app = _make_app([WebSocketRoute('/ws', endpoint=WebsocketHandler)],
                         user=User({'id': 5, 'permissions': ['FILE_READ'], 'tenant': 'ten-a'}))
         app.state.ws_state = api.ws.WSState()
-        client = TestClient(app)
-        with client.websocket_connect('/ws') as ws:
-            ws.send_json({'type': 'open', 'file': '1'})
-            resp = ws.receive_json()
-            assert resp['type'] == 'send_state'
-            # Assert while connected: on_disconnect removes the socket from
-            # the registry, so membership checks after the `with` block
-            # would trivially pass/fail on an empty map.
-            assert 'channel:file:ten-a:1' in app.state.ws_state.local_clients
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client = TestClient(app)
+            with client.websocket_connect('/ws') as ws:
+                ws.send_json({'type': 'open', 'file': '1'})
+                resp = ws.receive_json()
+                assert resp['type'] == 'send_state'
+                # Assert while connected: on_disconnect removes the socket from
+                # the registry, so membership checks after the `with` block
+                # would trivially pass/fail on an empty map.
+                assert 'channel:file:ten-a:1' in app.state.ws_state.local_clients
         assert 'channel:file:1' not in app.state.ws_state.local_clients
 
     def test_send_state_requires_file_read_permission(self):
@@ -237,14 +272,20 @@ class TestWebsocketHandler:
         app_a.state.ws_state = shared
         app_b.state.ws_state = shared
         api.ws.set_app(app_a)
-        client_a = TestClient(app_a)
-        with client_a.websocket_connect('/ws') as wa:
-            wa.send_json({'type': 'open', 'file': '99'})
-            assert wa.receive_json()['type'] == 'send_state'
-            assert 'channel:file:ten-a:99' in shared.local_clients
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client_a = TestClient(app_a)
+            with client_a.websocket_connect('/ws') as wa:
+                wa.send_json({'type': 'open', 'file': '99'})
+                assert wa.receive_json()['type'] == 'send_state'
+                assert 'channel:file:ten-a:99' in shared.local_clients
         api.ws.set_app(app_b)
-        client_b = TestClient(app_b)
-        with client_b.websocket_connect('/ws') as wb:
-            wb.send_json({'type': 'open', 'file': '99'})
-            assert wb.receive_json()['type'] == 'send_state'
-            assert 'channel:file:ten-b:99' in shared.local_clients
+        with ExitStack() as stack:
+            for p in _patch_file_lookup():
+                stack.enter_context(p)
+            client_b = TestClient(app_b)
+            with client_b.websocket_connect('/ws') as wb:
+                wb.send_json({'type': 'open', 'file': '99'})
+                assert wb.receive_json()['type'] == 'send_state'
+                assert 'channel:file:ten-b:99' in shared.local_clients
