@@ -280,10 +280,18 @@ class UsersHandler(HTTPEndpoint):
         # reach the DB (offset/limit are interpolated into the SQL).
         offset = max(0, int(request.query_params.get('offset', 0)))
         limit = max(1, min(200, int(request.query_params.get('limit', 20))))
+        # P2-2 (tenant_admin review): tenant-scoped admins see only their own
+        # tenant's users — mirrors the tenants-list scoping. Platform admins
+        # (super_admin / admin flag) keep the full directory.
+        tenant_scope = None
+        if not getattr(request.user, 'admin', False):
+            tenant_scope = getattr(request.user, 'tenant', None)
 
         async with get_conn() as conn:
-            data = await Users(conn).get_users(offset=offset, limit=limit, username=q)
-            total = await Users(conn).count_users(username=q)
+            data = await Users(conn).get_users(
+                offset=offset, limit=limit, username=q, tenant=tenant_scope,
+            )
+            total = await Users(conn).count_users(username=q, tenant=tenant_scope)
 
         return paginated(
             [Users.to_json(u) for u in data],

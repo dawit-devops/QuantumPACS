@@ -151,9 +151,18 @@ class Reports(Table):
         params = []
         idx = 1
         if status:
-            where.append(f"r.status IS DISTINCT FROM NULL AND r.status = ${idx}")
-            params.append(status)
-            idx += 1
+            # R13 resident revision loop: a "returned" report is a draft the
+            # attending sent back with feedback (return_report() resets the
+            # status to 'draft' and fills review_feedback), so the filter
+            # cannot match r.status alone.
+            if status == 'returned':
+                where.append(
+                    "r.status = 'draft' AND r.review_feedback <> ''"
+                )
+            else:
+                where.append(f"r.status IS DISTINCT FROM NULL AND r.status = ${idx}")
+                params.append(status)
+                idx += 1
         if review:
             where.append("r.status = 'submitted'")
         if modality:
@@ -191,6 +200,7 @@ class Reports(Table):
                    e.modality, e.priority, e.protocol_name, e.completed_at,
                    e.assigned_technologist, e.assigned_radiologist,
                    e.referring_physician,
+                   e.critical_flag, e.critical_flag_note, e.critical_flagged_at,
                    r.id AS report_id, r.status AS report_status,
                    r.signed_by, r.signed_at, r.submitted_at, r.review_feedback,
                    r.reviewed_by, r.created_by AS report_author
@@ -203,7 +213,13 @@ class Reports(Table):
         # STAT first, then urgent, then routine; oldest completed first within a tier
         # (FIFO reading queue keeps turnaround predictable per M-R12 turnaround SLAs).
         priority_order = {'stat': 0, 'urgent': 1, 'routine': 2}
+        # Critical flags (technologist review P1-1) read ABOVE their priority
+        # tier — a flagged study jumps the routine/urgent queue so the alarming
+        # finding is seen immediately; within the same flag+priority tier the
+        # FIFO order is preserved.
+        flag_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
         items.sort(key=lambda r: (
+            flag_order.get((r.get('critical_flag') or '').lower(), 9),
             priority_order.get(r.get('priority') or 'routine', 9),
             r.get('completed_at') or datetime.max.replace(tzinfo=timezone.utc),
         ))

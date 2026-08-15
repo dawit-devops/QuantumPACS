@@ -31,6 +31,7 @@ export type Workspace =
   | "admin"
   | "analytics"
   | "clinical"
+  | "coordination"
   | "frontdesk"
   | "portal"
   | "files"
@@ -84,6 +85,7 @@ export const CLINICAL_WORKSPACES: ReadonlySet<string> = new Set([
  */
 export const NON_ADMIN_WORKSPACES: ReadonlySet<string> = new Set([
   ...CLINICAL_WORKSPACES,
+  "coordination",
   "frontdesk",
   "portal",
 ]);
@@ -154,9 +156,17 @@ const LANDING_STEPS: LandingStep[] = [
   // Patient portal (R19): the patient role lands on its own scope-gated
   // records, never on the admin/clinical surfaces.
   { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },
-  // The clinical workspace (physician, referring_physician,
-  // care_coordinator) lands on the reading worklist: reports are the shared
-  // clinical read surface for all of them (REPORT_READ on Matrix A/B).
+  // Care-coordinator review (P1-2): the coordination workspace lands on the
+  // Orders page (ORDER_READ), not the radiologist's worklist. Positioned
+  // before the clinical step so the primary lookup is unambiguous.
+  {
+    route: "/orders",
+    workspace: "coordination",
+    permissions: ["ORDER_READ"],
+  },
+  // The clinical workspace (physician, referring_physician) lands on the
+  // reading worklist: reports are the shared clinical read surface for both
+  // (REPORT_READ on Matrix A/B).
   {
     route: "/reading",
     workspace: "clinical",
@@ -212,7 +222,9 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   emr_admin: "admin",
   physician: "clinical",
   referring_physician: "clinical",
-  care_coordinator: "clinical",
+  // Care-coordinator review (P1-2): the coordinator's own workspace is the
+  // coordination surface (Orders), not the shared clinical reading worklist.
+  care_coordinator: "coordination",
   receptionist: "frontdesk",
   patient: "portal",
   super_admin: "platform",

@@ -88,6 +88,19 @@ class TestMatrixA:
         assert 'REPORT_SIGN' not in perms('pacs_admin')
         assert 'PATIENT_WRITE' not in perms('pacs_admin')
 
+    def test_tenant_admin_reaches_interface_surfaces(self):
+        """P1-2 (tenant_admin review C2): the facility operator must actually
+        reach the HL7, routing and DICOMweb surfaces their interface/storage
+        grants imply — INTERFACE_ADMIN alone was a dead grant."""
+        ta = perms('tenant_admin')
+        assert {'HL7_READ', 'ROUTING_READ', 'DICOMWEB_READ'} <= ta
+        assert {'INTERFACE_ADMIN', 'INTERFACE_MONITOR', 'STORAGE_ADMIN'} <= ta
+        # FHIR stays platform policy (SYSTEM_ADMIN only).
+        assert 'SYSTEM_ADMIN' not in ta
+        # Still no clinical writes (Matrix C contract).
+        assert not ({'PATIENT_WRITE', 'ORDER_WRITE', 'REPORT_WRITE',
+                     'REPORT_SIGN', 'MAR_WRITE'} & ta)
+
     def test_referring_physician_is_read_only(self):
         ref = perms('referring_physician')
         assert 'REPORT_WRITE' not in ref
@@ -128,11 +141,39 @@ class TestMatrixB:
         assert 'REPORT_WRITE' in res
         assert 'REPORT_SIGN' not in res
 
+    def test_resident_reads_worklist_but_never_writes(self):
+        """R13 resident review (P0-1): WORKLIST_READ read-only unlock keeps
+        the Schedule Board reachable (it loads GET /api/worklist); the DICOM
+        modality worklist writes stay with technologist/administrators."""
+        res = perms('resident')
+        assert 'WORKLIST_READ' in res
+        assert 'WORKLIST_WRITE' not in res
+
     def test_care_coordinator_care_plans(self):
         coord = perms('care_coordinator')
         assert {'CARE_PLAN_WRITE', 'ENCOUNTER_WRITE', 'MED_ORDER_READ',
                 'PRIOR_AUTH_READ'} <= coord
         assert 'MED_ORDER_WRITE' not in coord
+
+    def test_care_coordinator_reads_schedule_and_files(self):
+        """Care-coordinator review (P0-1/P1-1): read-only WORKLIST_READ +
+        FILE_READ un-dead-end the Schedule Board (GET /api/worklist) and the
+        always-visible Files page; write tiers stay absent."""
+        coord = perms('care_coordinator')
+        assert 'WORKLIST_READ' in coord
+        assert 'FILE_READ' in coord
+        assert 'WORKLIST_WRITE' not in coord
+        assert not {'FILE_WRITE', 'FILE_DELETE'} & coord
+
+    def test_physician_reads_schedule_and_files(self):
+        """Care-coordinator review (P0-1): physician had the same schedule
+        dead end (SCHEDULE_READ without WORKLIST_READ) and the same Files 403
+        (the R13 comment already asserted physician holds FILE_READ)."""
+        phys = perms('physician')
+        assert 'WORKLIST_READ' in phys
+        assert 'FILE_READ' in phys
+        assert 'WORKLIST_WRITE' not in phys
+        assert not {'FILE_WRITE', 'FILE_DELETE'} & phys
 
     def test_emr_admin_provisions_users_and_manages_roles(self):
         emr = perms('emr_admin')

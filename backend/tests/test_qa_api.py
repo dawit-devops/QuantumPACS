@@ -323,6 +323,27 @@ def test_qa_incident_log_and_resolve():
                 assert r.json()['data']['resolved'] is True
 
 
+def test_qa_incident_resolve_notifies_reporter():
+    """technologist review P2-2: resolving an incident notifies the author
+    (reported_by) — the tech has no QA_READ, so the bell is the feedback loop."""
+    app = _make_app(QA)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            with patch('api.qa.IncidentsQA') as iqa, _audit_ok(), \
+                 patch('api.exams._notify_user') as notify:
+                iqa.return_value.mark_resolved = AsyncMock()
+                conn.fetchrow = AsyncMock(return_value={
+                    'id': 'inc-1', 'reported_by': '37', 'incident_type': 'motion',
+                    'exam_id': 'exam-1',
+                })
+                r = client.post('/qa/incidents/inc-1/resolve', json={'notes': 'fixed'})
+                assert r.status_code == 200
+                notify.assert_called_once()
+                assert notify.call_args.args[1] == '37'
+                assert notify.call_args.args[2] == 'incident.resolved'
+
+
 def test_qa_incident_requires_exam_link():
     app = _make_app(QA)
     with TestClient(app) as client:

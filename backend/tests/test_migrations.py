@@ -125,6 +125,49 @@ class TestLegacyRoleGrantTrimsMigration:
             removed = set(rollback) - set(module.UPGRADE_GRANTS[slug])
             assert removed <= self.REMOVED
 
+    def test_migration_062_exists(self):
+        assert _migration('062').name == '062_reconcile_drifted_role_grants.py'
+
+    def test_migration_062_canonical_matches_permissions_py(self):
+        """technologist review P0-1: migration 062 re-applies the canonical
+        grants for the four drifted slugs — the frozen snapshot must stay
+        equal to BUILT_IN_ROLES so live DBs converge with fresh seeds."""
+        from api.permissions import BUILT_IN_ROLES
+        module = _import_migration('062')
+        for slug in module.CANONICAL_GRANTS:
+            assert set(module.CANONICAL_GRANTS[slug]) == set(BUILT_IN_ROLES[slug]), slug
+
+    def test_migration_062_covers_all_drifted_slugs(self):
+        module = _import_migration('062')
+        assert set(module.CANONICAL_GRANTS) == {
+            'technologist', 'radiologist', 'resident', 'cashier',
+        }
+
+    def test_migration_063_exists(self):
+        assert _migration('063').name == '063_add_coordination_read_grants.py'
+
+    def test_migration_063_grants_match_matrix_b(self):
+        """care_coordinator review P0-1/P1-1: the additive grants must equal
+        the WORKLIST_READ + FILE_READ entries on MATRIX_B_PHYS/COORD so the
+        migration and the source of truth cannot diverge."""
+        from api.permissions import MATRIX_B_COORD, MATRIX_B_PHYS
+        module = _import_migration('063')
+        by_slug: dict[str, set[str]] = {}
+        for slug, grant in module.ADDITIVE_GRANTS:
+            by_slug.setdefault(slug, set()).add(grant)
+        for slug, grants in by_slug.items():
+            canonical = MATRIX_B_PHYS if slug == 'physician' else MATRIX_B_COORD
+            assert grants == {'WORKLIST_READ', 'FILE_READ'}, slug
+            assert grants <= canonical, slug
+
+    def test_migration_063_adds_only_read_grants(self):
+        """The append must never carry write tiers — no WORKLIST_WRITE,
+        FILE_WRITE or FILE_DELETE."""
+        module = _import_migration('063')
+        all_grants = {g for _, g in module.ADDITIVE_GRANTS}
+        assert not ({'WORKLIST_WRITE', 'FILE_WRITE', 'FILE_DELETE'} & all_grants)
+        assert all_grants == {'WORKLIST_READ', 'FILE_READ'}
+
 
 class TestCrossTenantGrantsMigration:
     """Migration 049: R2-03 user_tenant_grants table + CROSS_TENANT_READ on

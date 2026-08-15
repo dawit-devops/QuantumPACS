@@ -28,6 +28,7 @@ import {
   BugOutlined,
   ExclamationCircleOutlined,
   FlagOutlined,
+  AlertOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, Link } from "react-router";
 import withSidebar from "../common/base";
@@ -162,6 +163,8 @@ function ExamConsole() {
   const [incidentOpen, setIncidentOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState<string | null>(null); // acquisition id
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagging, setFlagging] = useState(false);
   const [completing, setCompleting] = useState(false);
   // Per-item safety confirmations (FR-R06-06): each item must be explicitly
   // checked before it is sent — no all-or-nothing hardcoded "confirmed".
@@ -170,6 +173,7 @@ function ExamConsole() {
   const [incidentForm] = Form.useForm();
   const [overrideForm] = Form.useForm();
   const [rejectForm] = Form.useForm();
+  const [flagForm] = Form.useForm();
 
   const fetchExam = useCallback(() => {
     setLoading(true);
@@ -191,6 +195,29 @@ function ExamConsole() {
     // screen; here we only load once per exam id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // technologist review P2-1: "who is next" on the modality, so the tech
+  // keeps the room moving without tabbing back to the worklist mid-scan.
+  // Refetched whenever the exam payload lands (identity/protocol/acquire all
+  // refetch it), so the pointer stays fresh while the room progresses.
+  const [nextExam, setNextExam] = useState<any | null>(null);
+  useEffect(() => {
+    if (!exam) return;
+    request("exams", {
+      query: {
+        status: "ready",
+        modality: exam.modality || "",
+        assigned: "pool",
+        per_page: "1",
+      },
+    })
+      .then((res: any) => {
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const n = rows.find((r: any) => r.id !== exam.id) || null;
+        setNextExam(n);
+      })
+      .catch(() => {});
+  }, [exam?.id, exam?.modality, exam?.status, exam?.accession_number]);
 
   // C8 (NFR-R06-06): Ctrl+Shift+W jumps back to the worklist from anywhere
   // in the exam console; preventDefault stops the browser from closing the
@@ -411,6 +438,34 @@ function ExamConsole() {
     }
   };
 
+  // technologist review P1-1: flag an alarming finding for immediate read.
+  const submitFlag = async () => {
+    let values;
+    try {
+      values = await flagForm.validateFields();
+    } catch {
+      return; // validation errors shown inline
+    }
+    setFlagging(true);
+    try {
+      await request(`exams/${id}/critical-flag`, {
+        data: {
+          severity: values.severity,
+          note: values.note,
+          series_id: values.series_id ?? null,
+        },
+      });
+      message.success("Flagged for immediate read");
+      setFlagOpen(false);
+      flagForm.resetFields();
+      await fetchExam();
+    } catch (e: any) {
+      message.error(e.message || "Flag failed");
+    } finally {
+      setFlagging(false);
+    }
+  };
+
   const submitReject = async () => {
     if (!rejectOpen) return;
     let values;
@@ -508,6 +563,24 @@ function ExamConsole() {
           </span>
         </div>
         <Space>
+          {exam.critical_flag && (
+            <Tag
+              color="red"
+              icon={<AlertOutlined />}
+              data-testid="critical-flag-badge"
+            >
+              CRITICAL FLAG ({String(exam.critical_flag).toUpperCase()})
+            </Tag>
+          )}
+          {hasPermission("CRITICAL_RESULTS_WRITE") && !isComplete && (
+            <Button
+              icon={<AlertOutlined />}
+              danger
+              onClick={() => setFlagOpen(true)}
+            >
+              Flag Critical
+            </Button>
+          )}
           {canWrite && (
             <Button
               icon={<BugOutlined />}
@@ -552,6 +625,33 @@ function ExamConsole() {
       />
 
       <Divider />
+
+      {/* technologist review P2-1: who is next on this modality, so the
+          tech keeps the room moving without tabbing back mid-scan. */}
+      {nextExam && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            <span>
+              <b>Next:</b> {nextExam.accession_number || "—"} ·{" "}
+              {nextExam.patient_name || nextExam.patient_id || "—"} ·{" "}
+              {nextExam.modality || ""}{" "}
+              {nextExam.priority && nextExam.priority !== "routine" && (
+                <Tag color={PRIORITY_COLORS[nextExam.priority]}>
+                  {String(nextExam.priority).toUpperCase()}
+                </Tag>
+              )}
+            </span>
+          }
+          action={
+            <Button size="small" type="link" onClick={() => navigate(`/exams/${nextExam.id}`)}>
+              Open
+            </Button>
+          }
+        />
+      )}
 
       {/* FR-R06-02: Patient identity verification */}
       <Card
@@ -998,6 +1098,24 @@ function ExamConsole() {
                 }
               />
             )}
+            {/* technologist review P2-3: prior contrast/safety screening for
+                the same patient — the tech sees documented reactions before
+                scanning instead of discovering them after the fact. */}
+            {(exam.prior_safety_checks || []).length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Divider style={{ margin: "8px 0" }} />
+                <h4>Prior screenings</h4>
+                {exam.prior_safety_checks.map((s: any, i: number) => (
+                  <div key={i} className="exam-prior-study">
+                    <span>
+                      {s.check_item} · {s.answer} ·{" "}
+                      {s.accession_number ? `Exam ${s.accession_number}` : ""}{" "}
+                      {s.checked_at ? `· ${String(s.checked_at).slice(0, 10)}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* FR-R06-07: Complete + handoff */}
@@ -1120,6 +1238,67 @@ function ExamConsole() {
             <Input.TextArea
               rows={3}
               placeholder="e.g. Trauma — reducing sequence count"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* technologist review P1-1: flag an alarming finding for immediate
+          radiology read. Severity mirrors the incident scale; series_id
+          optionally points at the acquisition that triggered the flag. */}
+      <Modal
+        title="Flag Critical Finding"
+        open={flagOpen}
+        onCancel={() => setFlagOpen(false)}
+        onOk={submitFlag}
+        okText="Flag for Immediate Read"
+        okButtonProps={{ danger: true, loading: flagging }}
+        destroyOnHidden
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="This flag is visible to the reading team immediately."
+        />
+        <Form form={flagForm} layout="vertical">
+          <Form.Item
+            name="severity"
+            label="Severity"
+            rules={[{ required: true }]}
+            initialValue="critical"
+          >
+            <Select
+              options={["low", "medium", "high", "critical"].map((s) => ({
+                value: s,
+                label: s,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="series_id"
+            label="Series (optional)"
+          >
+            <Select
+              allowClear
+              placeholder="Series that triggered the flag"
+              options={acquisitions.map((a: any) => ({
+                value: a.id,
+                label: `S${a.series_number} · ${a.description || "—"}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="note"
+            label="Why is this critical?"
+            rules={[
+              { required: true, message: "Describe the finding" },
+              { min: 10, message: "Provide at least 10 characters" },
+            ]}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder="e.g. massive subdural hematoma visible on localizer"
             />
           </Form.Item>
         </Form>

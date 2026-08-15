@@ -277,6 +277,12 @@ export async function sessionCookie(
  * redirect we are asserting. Lets the deep-link denial suite run without a real
  * technologist user in the backend. WORKLIST grants are included so the MWL
  * Worklist surface (Acquisition workspace) renders for specs that navigate to it.
+ *
+ * NOTE (technologist review P0-1): the API stub stays for these frontend-only
+ * specs because they seed a FAKE localStorage token (tech-1, not a real JWT) —
+ * they cannot hit the real backend by construction. The drift fix (migration
+ * 062) makes the REAL-LOGIN path trustworthy instead: role-scoped E2E specs
+ * authenticate as test.technologist with the canonical 15 grants.
  */
 export async function seedTechnologist(page: Page) {
   await page.route(

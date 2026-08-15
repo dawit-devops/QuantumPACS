@@ -45,6 +45,9 @@ default_config = {
     'oauth_token_url': '',
     'oauth_default_role': 'patient',
     'oauth_scope': 'openid email profile',
+    # Access-token lifetime in days; the Settings page (P2-3) can surface a
+    # stored override. Reads live from tokens.py (runtime-safe).
+    'token_expiry_days': '14',
     # R2-M5: single source of truth for the JWT `iss` claim — the OIDC
     # discovery document advertises this value too. Empty = legacy
     # 'quantumpacs' issuer (minted iss and discovery both fall back).

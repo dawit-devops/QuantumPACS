@@ -17,9 +17,10 @@ import lifecycle
 import api.ws as ws_module
 import api.auth as auth_module
 import api.telemetry as telemetry_module
+import api.admin as admin_module
 from api.auth import TokenAuth
 from api.routes import routes
-from api.response import server_error, apply_cors_headers
+from api.response import server_error, apply_cors_headers, api_error
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
@@ -68,6 +69,24 @@ class CustomMiddleware(BaseHTTPMiddleware):
             record_request(request.method, path, 200, time.monotonic() - start)
             return resp
         http_requests_in_progress.labels(method=request.method, path=path).inc()
+        # Maintenance write-gate (super_admin review P1-2): while the flag is
+        # active every non-read /api write returns a readable 503. Auth grants
+        # and the maintenance control itself stay reachable (exempt list) so
+        # users can still log in/out and the operator can turn it back off.
+        if (
+            request.method not in ('GET', 'HEAD', 'OPTIONS')
+            and path.startswith('/api')
+            and admin_module.maintenance_active()
+            and not admin_module.maintenance_exempt(path)
+        ):
+            resp = api_error(
+                'MAINTENANCE',
+                'System is in maintenance mode — writes are paused. Please retry later.',
+                status=503,
+            )
+            http_requests_in_progress.labels(method=request.method, path=path).dec()
+            record_request(request.method, path, 503, 0.0)
+            return apply_cors_headers(request, resp)
         try:
             response = await call_next(request)
         except Exception:
@@ -187,6 +206,9 @@ async def lifespan(app):
     app.state.telemetry_state = telemetry_module.TelemetryState()
     await lifecycle.setup(services=registry)
     await _register_services(registry)
+    # Durable maintenance flag: load once at startup so the write-gate mirror
+    # survives restarts without a per-request DB hit.
+    await admin_module.load_maintenance_state()
     yield
     await lifecycle.teardown()
 

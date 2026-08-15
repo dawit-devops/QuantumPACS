@@ -111,6 +111,13 @@ function Users() {
       },
     },
     {
+      title: "Tenant",
+      dataIndex: "tenant",
+      width: "14%",
+      render: (t: string | null) =>
+        t ? <Tag color="blue">{t}</Tag> : <Text type="secondary">—</Text>,
+    },
+    {
       title: "Admin",
       dataIndex: "admin",
       render: (is_admin: boolean) => {

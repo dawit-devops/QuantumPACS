@@ -38,3 +38,23 @@ export const deleteNotification = (id: number | string): Promise<void> =>
 
 export const clearNotifications = (): Promise<void> =>
   request("notifications", { method: "DELETE" });
+
+// P1-1 (super_admin review): per-user event-type subscriptions. The backend
+// returns {preferences, explicit, role_defaults} at the top level (ok() does
+// not add a data envelope here).
+export interface NotificationPrefs {
+  preferences: Record<string, boolean>;
+  explicit: Record<string, boolean>;
+  role_defaults: Record<string, boolean>;
+}
+
+export const getNotificationPreferences = (): Promise<NotificationPrefs> =>
+  request<NotificationPrefs>("notifications/preferences");
+
+export const updateNotificationPreferences = (
+  preferences: Record<string, boolean>,
+): Promise<{ updated: string[] }> =>
+  request<{ updated: string[] }>("notifications/preferences", {
+    method: "PUT",
+    data: { preferences },
+  });

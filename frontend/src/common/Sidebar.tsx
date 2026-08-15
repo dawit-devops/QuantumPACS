@@ -34,6 +34,8 @@ import {
   CheckCircleOutlined,
   IdcardOutlined,
   SolutionOutlined,
+  SettingOutlined,
+  ScheduleOutlined,
 } from "@ant-design/icons";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -58,7 +60,14 @@ const { Sider } = Layout;
 function getKey(loc: string) {
   if (loc === "/") return "files";
   const parts = loc.slice(1).split("/");
-  if (parts[0] === "admin") return "dashboard";
+  if (parts[0] === "admin") {
+    // /admin is the dashboard; /admin/{maintenance|backups|settings} are the
+    // platform-ops surfaces (super_admin review).
+    if (parts[1] === "maintenance") return "maintenance";
+    if (parts[1] === "backups") return "backups";
+    if (parts[1] === "settings") return "settings";
+    return "dashboard";
+  }
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
   if (parts[0] === "reading")
     return parts[1] === "home" ? "resident-home" : "reading-worklist";
@@ -183,9 +192,12 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/schedule-board",
         label: "Schedule",
         icon: <CalendarOutlined />,
-        // Schedule surface (R08): SCHEDULE_READ matches the route gate; the
-        // board's write actions (book/cancel) need SCHEDULE_WRITE inside.
-        permissions: ["SCHEDULE_READ"],
+        // Schedule surface: the board loads its day data from GET /api/worklist
+        // (WORKLIST_READ), so showing the item to SCHEDULE_READ-only roles is a
+        // permission dead end (R13 resident review finding P0-1). Gate on the
+        // endpoint the page actually needs; SCHEDULE_READ stays the route gate
+        // and unlocks the write actions (book/cancel) inside.
+        permissions: ["WORKLIST_READ"],
       },
     ],
   },
@@ -221,6 +233,24 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Corrective Actions",
         icon: <CheckCircleOutlined />,
         permissions: ["QA_READ"],
+      },
+    ],
+  },
+  {
+    // Care-coordinator review (P0-2): the coordination workspace. Orders is
+    // the read-only ORDER_READ surface that gives the role a real home; the
+    // section auto-opens for care_coordinator (workspaceFor) and appears for
+    // any other ORDER_READ holder (physician).
+    key: "coordination",
+    title: "Coordination",
+    icon: <ScheduleOutlined />,
+    items: [
+      {
+        key: "orders",
+        path: "/orders",
+        label: "Orders",
+        icon: <ScheduleOutlined />,
+        permissions: ["ORDER_READ"],
       },
     ],
   },
@@ -336,6 +366,29 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "HL7",
         icon: <MessageOutlined />,
         permissions: ["HL7_READ"],
+      },
+      {
+        // Platform-ops surfaces (super_admin review): only the platform
+        // admin holds SYSTEM_ADMIN, so these items are super_admin-only.
+        key: "maintenance",
+        path: "/admin/maintenance",
+        label: "Maintenance",
+        icon: <WarningOutlined />,
+        permissions: ["SYSTEM_ADMIN"],
+      },
+      {
+        key: "backups",
+        path: "/admin/backups",
+        label: "Backups",
+        icon: <DatabaseOutlined />,
+        permissions: ["SYSTEM_ADMIN"],
+      },
+      {
+        key: "settings",
+        path: "/admin/settings",
+        label: "Settings",
+        icon: <SettingOutlined />,
+        permissions: ["SYSTEM_ADMIN"],
       },
       {
         // DICOMweb is a submenu: the parent gate (DICOMWEB_READ) covers
@@ -461,6 +514,9 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fhir-monitoring": "admin",
   "fhir-docs": "admin",
   hl7: "admin",
+  maintenance: "admin",
+  backups: "admin",
+  settings: "admin",
   dicomweb: "admin",
   "dicomweb-server": "admin",
   "dicomweb-store": "admin",
@@ -472,6 +528,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "reading-worklist": "reading",
   "resident-home": "reading",
   "peer-review": "reading",
+  orders: "coordination",
   "qa-queue": "qa",
   "qa-protocols": "qa",
   "qa-incidents": "qa",
@@ -662,9 +719,14 @@ function Sidebar() {
             })),
             {
               key: "notifications",
+              // P2-6: the unread badge's text was joining the menu item's
+              // accessible name ("49Notifications"). aria-hidden keeps the
+              // visual count while the menuitem announces "Notifications".
               label: (
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <NotificationBell />
+                  <span aria-hidden="true">
+                    <NotificationBell />
+                  </span>
                   <span className="nav-text">Notifications</span>
                 </span>
               ),

@@ -61,6 +61,13 @@ def get_client():
     return client.get(os.getpid())
 
 
+def available() -> bool:
+    """True when the search backend is reachable. The Files page (P2-5,
+    tenant_admin review) uses this to show a degraded-search notice instead of
+    a misleading 'no files uploaded' empty state."""
+    return get_client() is not None
+
+
 def _doc_id(data_id, tenant_slug=''):
     """ES document _id for a file.
 

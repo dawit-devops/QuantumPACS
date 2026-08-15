@@ -159,7 +159,9 @@ def create_token(user, expire=None, role=None, permissions=None, token_version=N
     if token_version is not None:
         payload['token_version'] = token_version
     if not expire:
-        expire = {'days': 14}
+        # P2-3: lifetime is a config key so the Settings page can surface a
+        # stored override without editing code.
+        expire = {'days': int(config.get('token_expiry_days', 14))}
 
     exp = now + timedelta(**expire)
     payload['exp'] = exp

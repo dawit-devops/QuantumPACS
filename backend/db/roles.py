@@ -102,10 +102,27 @@ class Roles(Table):
                 # Editable built-ins (facility-edited clinical/operational
                 # slugs, incl. the platform-only teleradiologist) are seeded
                 # only when absent: an upsert here would wipe tenant-admin /
-                # platform-admin edits on every boot.
-                await self.conn.execute(
-                    'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
-                    'VALUES ($1, $2, $3::jsonb, TRUE, now(), now()) '
-                    'ON CONFLICT (slug) DO NOTHING',
-                    slug, name, perms_json,
+                # platform-admin edits on every boot. But a stored set that is
+                # a strict SUPERSET of the canonical grants is drift, not a
+                # facility edit (technologist review P0-1: migration 048's
+                # trim was overwritten by an over-granted set) — reconcile
+                # those to canonical so a drifted DB converges without
+                # clobbering legitimate edits (a subset/other shape).
+                row = await self.conn.fetchrow(
+                    'SELECT permissions FROM roles WHERE slug = $1', slug,
                 )
+                stored = set(row['permissions']) if row and row['permissions'] else set()
+                canonical = set(permissions)
+                if not row:
+                    await self.conn.execute(
+                        'INSERT INTO roles (slug, name, permissions, built_in, created_at, updated_at) '
+                        'VALUES ($1, $2, $3::jsonb, TRUE, now(), now())',
+                        slug, name, perms_json,
+                    )
+                elif stored != canonical and stored > canonical:
+                    # Superset drift: bring the row back to canonical.
+                    await self.conn.execute(
+                        'UPDATE roles SET permissions = $2::jsonb, updated_at = now() '
+                        'WHERE slug = $1',
+                        slug, perms_json,
+                    )

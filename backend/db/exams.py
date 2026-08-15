@@ -62,6 +62,21 @@ class Exams(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_exams_tenant ON exams(tenant_id)
         """)
+        # technologist review P1-1: critical-results flag (CRITICAL_RESULTS_WRITE)
+        # lets a technologist mark an alarming finding during acquisition so the
+        # radiologist reads it out of order. ALTER-style guards keep idempotent.
+        await self.exec("""
+        ALTER TABLE exams ADD COLUMN IF NOT EXISTS critical_flag TEXT DEFAULT ''
+        """)
+        await self.exec("""
+        ALTER TABLE exams ADD COLUMN IF NOT EXISTS critical_flag_note TEXT DEFAULT ''
+        """)
+        await self.exec("""
+        ALTER TABLE exams ADD COLUMN IF NOT EXISTS critical_flagged_at TIMESTAMPTZ
+        """)
+        await self.exec("""
+        ALTER TABLE exams ADD COLUMN IF NOT EXISTS critical_flagged_by TEXT DEFAULT ''
+        """)
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -117,13 +132,25 @@ class Exams(Table):
         return dict(row) if row else None
 
     async def list_for_technologist(self, username, status=None, modality=None,
-                                    priority=None, search=None):
+                                    priority=None, search=None, assigned=None):
+        """Exams for a technologist's worklist (technologist review P1-2).
+
+        By default the list is the assignment union: exams assigned to this
+        technologist PLUS the unassigned pool (assigned_technologist = ''),
+        which every technologist sees so nobody misses a STAT. `assigned`
+        narrows that: 'mine' -> only this technologist's rows, 'pool' -> only
+        the unassigned ones, so the UI can label ownership honestly.
+        """
         from pypika import Query as PypikaQuery
 
-        conditions = [
-            (self.table.assigned_technologist == username) |
-            (self.table.assigned_technologist == ''),
-        ]
+        assigned_me = self.table.assigned_technologist == username
+        unassigned = self.table.assigned_technologist == ''
+        if assigned == 'mine':
+            conditions = [assigned_me]
+        elif assigned == 'pool':
+            conditions = [unassigned]
+        else:
+            conditions = [assigned_me | unassigned]
         if status:
             conditions.append(self.table.status == status)
         if modality:
@@ -142,16 +169,29 @@ class Exams(Table):
         priority_order = {
             'stat': 0, 'urgent': 1, 'routine': 2,
         }
+        # technologist review P1-3: the Completed tab shows the read state of
+        # the tech's handoffs (reports.status: draft -> preliminary ->
+        # submitted -> final), so the worklist carries it without a second
+        # request per row.
         q = PypikaQuery.from_(self.table).select(self.table.star)
         for c in conditions:
             q = q.where(c)
         rows = await self.fetch(q)
-        rows = [dict(r) for r in rows]
-        rows.sort(key=lambda r: (
+        items = [dict(r) for r in rows]
+        if items:
+            ids = [r['id'] for r in items]
+            report_rows = await self.conn.fetch(
+                "SELECT exam_id, status FROM reports WHERE exam_id = ANY($1::uuid[])",
+                ids,
+            )
+            status_by_exam = {r['exam_id']: r['status'] for r in report_rows}
+            for r in items:
+                r['report_status'] = status_by_exam.get(r['id'])
+        items.sort(key=lambda r: (
             priority_order.get(r.get('priority', 'routine'), 9),
             -(r.get('created_at') or datetime.min.replace(tzinfo=timezone.utc)).timestamp(),
         ))
-        return rows
+        return items
 
     async def update_status(self, exam_id, status, **extra):
         now = datetime.now(timezone.utc)

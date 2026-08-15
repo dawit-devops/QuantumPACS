@@ -112,4 +112,25 @@ class Patient(Table):
             s['series'] = [v for v in series_map.values() if v['study_id'] == sid]
 
         patient['studies'] = list(studies.values())
+        # Care-coordinator review (P2-1): patient-scoped report list for the
+        # patient page's Reports & Results card (REPORT_READ-gated in the UI).
+        # exams.patient_id carries the MRN (patients.patient_id), unlike
+        # studies.patient_id which references the numeric patients.id.
+        # Guarded: some callers (exam detail) mock/serialize a patient row
+        # without the MRN column — reports enrichment is a patient-page nicety.
+        if patient.get('patient_id'):
+            patient['reports'] = [
+                dict(r) for r in await self.conn.fetch(
+                    """
+                    SELECT r.id, r.exam_id, r.status, r.created_at, r.signed_at,
+                           e.accession_number, e.modality,
+                           e.requested_procedure_desc AS procedure_desc
+                    FROM reports r
+                    JOIN exams e ON e.id = r.exam_id
+                    WHERE e.patient_id = $1
+                    ORDER BY r.created_at DESC
+                    """,
+                    patient['patient_id'],
+                )
+            ]
         return patient

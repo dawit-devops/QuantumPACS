@@ -218,13 +218,20 @@ class Upload(HTTPEndpoint):
 
                 user_id = request.user.id
                 patient_name = ds.get('patient_name', ds.get('patientname', 'Unknown'))
-                await Notifications(conn).create(
-                    user_id=user_id,
-                    event_type='study.arrived',
-                    title=f'Study arrived for {patient_name}',
-                    body=f'File {filename} uploaded successfully',
-                    link=f'/files/{filedata["id"]}',
-                )
+                # P1-1: the upload receipt is clinical noise for the platform
+                # admin (the 49-item flood from the review). Honor prefs.
+                from db.notification_prefs import NotificationPrefs
+                if await NotificationPrefs(conn).is_enabled(
+                    user_id, 'study.arrived',
+                    role_slug=getattr(request.user, 'role_slug', ''),
+                ):
+                    await Notifications(conn).create(
+                        user_id=user_id,
+                        event_type='study.arrived',
+                        title=f'Study arrived for {patient_name}',
+                        body=f'File {filename} uploaded successfully',
+                        link=f'/files/{filedata["id"]}',
+                    )
                 await broadcast_to_user(
                     user_id,
                     {'type': 'notifications'},
@@ -325,6 +332,12 @@ class FilesHandler(HTTPEndpoint):
         # docs leak into results. Platform (un-scoped) requests keep the
         # historical unfiltered behaviour via ''.
         results = await es.search(body.model_dump(), tenant_slug=effective_tenant(request))
+        # P2-5 (tenant_admin review): when the search backend is down, tell the
+        # Files page the empty result is a degradation — not an empty archive —
+        # so it renders a search-unavailable notice instead of 'No files
+        # uploaded'.
+        if not es.available():
+            results['search_available'] = False
         return ok(results)
 
 

@@ -48,6 +48,20 @@ def _tenant_scoped_403(message='You do not have access to this tenant'):
     return api_error('FORBIDDEN', message, status=403)
 
 
+def _pool_info_for(tenant: dict) -> dict:
+    """Connection info for a tenant registry row — the internal accessor only;
+    db_password must never leave it into a handler response (get_stats returns
+    an explicit dict). Shared by the list enrichment and TenantStatsHandler."""
+    slug = tenant['slug']
+    return {
+        'db_name': tenant.get('db_name') or slug.replace('-', '_'),
+        'db_host': tenant.get('db_host') or config['db_host'],
+        'db_port': tenant.get('db_port') or config.get('db_port', '5432'),
+        'db_user': tenant.get('db_user') or config['db_user'],
+        'db_password': tenant.get('db_password') or config['db_password'],
+    }
+
+
 class TenantsHandler(HTTPEndpoint):
     async def get(self, request):
         user = request.user
@@ -90,7 +104,29 @@ class TenantsHandler(HTTPEndpoint):
                     t for t in tenants
                     if t.get('slug') == own or t.get('slug') in granted
                 ]
-        return ok({'data': tenants})
+        # P2-1 (tenant_admin review): the tenant card must show real counts,
+        # not permanent "?" placeholders. Enrich the visible (scoped) list
+        # with per-tenant stats — the scoped case is the user's own tenant,
+        # so this is one cheap aggregate; platform admins see every tenant
+        # enriched the same way.
+        enriched = []
+        for t in tenants:
+            try:
+                stats = await Tenants(None).get_stats(
+                    t['slug'], _pool_info_for(t),
+                    storage_quota_bytes=t.get('storage_quota_bytes', 0),
+                )
+            except Exception:
+                # A tenant whose DB pool cannot be opened (e.g. decommissioned
+                # or transiently down) must not 500 the whole list — the card
+                # degrades to the values the registry row already carries.
+                stats = {}
+            row = dict(t)
+            row.update({k: stats.get(k) for k in (
+                'user_count', 'study_count', 'file_count', 'last_activity',
+            )})
+            enriched.append(row)
+        return ok({'data': enriched})
 
     @requires_permission(Permission.TENANT_ADMIN)
     async def post(self, request):
@@ -223,12 +259,6 @@ class TenantStatsHandler(HTTPEndpoint):
             # Internal accessor only — db_password must never leave it into a
             # handler response; get_stats() below returns an explicit dict.
             info = await Tenants(conn).get_connection_info(tenant_id)
-        pool_info = {
-            'db_name': info.get('db_name', slug.replace('-', '_')) if info else slug.replace('-', '_'),
-            'db_host': info.get('db_host', config['db_host']) if info else config['db_host'],
-            'db_port': info.get('db_port', config.get('db_port', '5432')) if info else config.get('db_port'),
-            'db_user': info.get('db_user', config['db_user']) if info else config['db_user'],
-            'db_password': info.get('db_password', config['db_password']) if info else config['db_password'],
-        }
+        pool_info = _pool_info_for(info if info else tenant)
         stats = await Tenants(None).get_stats(slug, pool_info, storage_quota_bytes=tenant.get('storage_quota_bytes', 0))
         return ok(stats)

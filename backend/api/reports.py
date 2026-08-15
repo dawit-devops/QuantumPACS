@@ -120,6 +120,11 @@ class ReadingListHandler(HTTPEndpoint):
         modality = request.query_params.get('modality')
         search = request.query_params.get('search')
         radiologist = request.query_params.get('radiologist')
+        # R13 resident home: "Claimed today" counts drafts the resident
+        # started today (claim = first draft autosave, created_by=user).
+        # Only computed for the requester's own queue so other consumers
+        # of the reading list (worklist page) see no extra field.
+        is_me = radiologist == 'me'
         if radiologist == 'me':
             radiologist = str(request.user.id)
         physician = request.query_params.get('physician')
@@ -134,7 +139,24 @@ class ReadingListHandler(HTTPEndpoint):
                 radiologist=radiologist, physician=physician,
                 date_from=date_from, date_to=date_to, review=review,
             )
-        return ok({'data': items})
+            # R13 resident home: "Claimed today" counts drafts the resident
+            # started today (claim = first draft autosave, created_by=user).
+            # Only computed for the requester's own queue so other consumers
+            # of the reading list (worklist page) see no extra field.
+            claimed_today = 0
+            if is_me:
+                claimed_today = await conn.fetchval(
+                    "SELECT count(*) FROM reports "
+                    "WHERE created_by = $1 "
+                    "AND created_at >= date_trunc('day', now())",
+                    str(request.user.id),
+                ) or 0
+            # claimed_today is resident-home-only (R13); other consumers of
+            # the reading list (worklist page) keep the payload shape.
+            payload = {'data': items}
+            if is_me:
+                payload['claimed_today'] = claimed_today
+        return ok(payload)
 
 
 class ExamAssignHandler(HTTPEndpoint):

@@ -77,6 +77,10 @@ UPGRADE_GRANTS = {
         "SERVICE_KEY_WRITE", "STORAGE_ADMIN", "STUDY_READ", "TENANT_ADMIN",
         "TENANT_READ", "USER_READ", "USER_WRITE", "VIEWER_READ",
         "WORKLIST_READ",
+        # Interface surfaces (tenant_admin review P1-2): shipped to live DBs
+        # by migration 061 — kept in this snapshot so the frozen record stays
+        # equal to the canonical set (test_migration_048 asserts equality).
+        "HL7_READ", "ROUTING_READ", "DICOMWEB_READ",
     ],
     'cashier': [
         "BILLING_READ", "BILLING_WRITE", "CHART_READ", "ORDER_READ",

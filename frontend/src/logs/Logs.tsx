@@ -26,7 +26,7 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
-import { listLogs, listLogActors } from "../api/logs";
+import { listLogs, listLogActors, downloadLogsCsv } from "../api/logs";
 import { listSessionTenants } from "../api/tenants";
 import { useAuth } from "../auth/AuthContext";
 import { PageState } from "../common/PageState";
@@ -35,6 +35,9 @@ const { Text } = Typography;
 const { RangePicker } = DatePicker;
 const Content = Layout.Content;
 
+// P2-2 (super_admin review): the catalog now matches the event types the
+// backend actually emits. auth.login_success is what users.py Login writes;
+// auth.login was a stale chip that matched nothing.
 const EVENT_GROUPS: Record<string, string[]> = {
   "Data Access": [
     "study.read",
@@ -50,13 +53,15 @@ const EVENT_GROUPS: Record<string, string[]> = {
     "series.updated",
     "instance.annotations_changed",
     "instance.tags_edited",
+    "file.upload",
   ],
   "Auth & Session": [
-    "auth.login",
+    "auth.login_success",
     "auth.login_failed",
     "auth.logout",
     "auth.token_refreshed",
     "auth.password_changed",
+    "auth.token_revoked",
   ],
   "User Management": [
     "user.created",
@@ -64,6 +69,16 @@ const EVENT_GROUPS: Record<string, string[]> = {
     "user.deactivated",
     "user.reactivated",
     "user.deleted",
+    "user.role_changed",
+    "user.password_reset",
+    "user.provisioned",
+    "user.role_synced",
+    "user.notification_prefs_changed",
+  ],
+  "Roles & Access": [
+    "role.created",
+    "role.updated",
+    "role.deleted",
   ],
   "Tenant Management": [
     "tenant.created",
@@ -71,13 +86,45 @@ const EVENT_GROUPS: Record<string, string[]> = {
     "tenant.quarantined",
     "tenant.decommissioned",
     "tenant.storage_quota_changed",
+    "tenant.provisioned",
+    "tenant.provision_failed",
+    "tenant.deleted",
   ],
-  "Replica Management": [
+  "Replica & Storage": [
     "replica.created",
     "replica.updated",
     "replica.deleted",
     "replica.master_changed",
     "replica.sync_status_changed",
+    "backup.deleted",
+  ],
+  "Workflow": [
+    "exam.radiologist_assigned",
+    "exam.created",
+    "exam.completed",
+    "exam.incident_logged",
+    "report.saved",
+    "report.submitted",
+    "report.signed",
+    "report.returned",
+    "peer_review.assigned",
+    "peer_review.submitted",
+    "routing.rule_created",
+    "routing.rule_updated",
+    "routing.rule_deleted",
+    "worklist.entry_created",
+    "worklist.entry_updated",
+    "worklist.entry_cancelled",
+  ],
+  "QA & Billing": [
+    "qa.score_submitted",
+    "qa.incident_logged",
+    "qa.incident_resolved",
+    "qa.corrective_action_created",
+    "qa.corrective_action_resolved",
+    "billing.invoice_created",
+    "billing.payment_collected",
+    "billing.refund_applied",
   ],
   System: [
     "system.config_changed",
@@ -99,7 +146,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   "series.updated": "orange",
   "instance.annotations_changed": "gold",
   "instance.tags_edited": "gold",
-  "auth.login": "green",
+  "auth.login_success": "green",
   "auth.login_failed": "red",
   "auth.logout": "default",
   "auth.token_refreshed": "green",
@@ -339,36 +386,20 @@ function Logs() {
     pollNew();
   };
 
+  const [exporting, setExporting] = useState(false);
+
   const exportCsv = () => {
-    const header =
-      "Timestamp,Actor,Event Type,Resource Type,Resource ID,Description,Tenant,Payload\n";
-    const rows = data
-      .map((row: any) => {
-        const escape = (s: any) => {
-          if (s == null) return "";
-          const str = typeof s === "object" ? JSON.stringify(s) : String(s);
-          return str.includes(",") || str.includes('"') || str.includes("\n")
-            ? `"${str.replace(/"/g, '""')}"`
-            : str;
-        };
-        return [
-          row.created_at,
-          row.actor,
-          row.event_type,
-          row.resource_type,
-          row.resource_id,
-          row.description,
-          row.tenant,
-          escape(row.payload),
-        ].join(",");
+    // P2-2: export the FULL filtered result set server-side. The old
+    // client-side CSV only ever had the current 50-row page.
+    setExporting(true);
+    downloadLogsCsv(buildQuery())
+      .then(() => {
+        message.success(`Exported ${total} event(s)`);
       })
-      .join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+      .catch((e: any) => {
+        message.error(e.message);
+      })
+      .finally(() => setExporting(false));
   };
 
   const columns: any[] = [
@@ -543,9 +574,10 @@ function Logs() {
               size="small"
               icon={<DownloadOutlined />}
               onClick={exportCsv}
-              disabled={data.length === 0}
+              loading={exporting}
+              disabled={total === 0}
             >
-              CSV
+              Export all {total}
             </Button>
             <Button
               size="small"

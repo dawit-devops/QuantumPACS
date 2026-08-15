@@ -151,7 +151,7 @@ class TestReadingList:
             reports = AsyncMock()
             reports.reading_list = AsyncMock(return_value=[])
             reports_cls.return_value = reports
-            with _conn():
+            with _conn(fetchval=AsyncMock(return_value=1)):
                 resp = client.get(
                     '/reports/reading-list'
                     '?radiologist=me&physician=Lee&date_from=2026-08-01&date_to=2026-08-31',
@@ -186,6 +186,39 @@ class TestReadingList:
                 resp = client.get('/reports/reading-list?review=0')
         assert resp.status_code == 200
         assert reports.reading_list.await_args.kwargs['review'] is None
+
+    def test_returned_status_maps_to_draft_with_feedback(self):
+        """R13 resident revision loop: a returned report is a draft carrying
+        review_feedback (return_report() resets the status), so status=returned
+        must bind that composite condition — not a raw status equality."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetch(q, *a):
+            assert "r.review_feedback <> ''" in q
+            assert "r.status = 'draft'" in q
+            return []
+        with _conn(fetch=fake_fetch):
+            resp = client.get('/reports/reading-list?status=returned')
+        assert resp.status_code == 200
+
+    def test_claimed_today_only_for_own_queue(self):
+        """radiologist=me carries claimed_today (drafts started today); any
+        other radiologist query keeps the payload shape unchanged."""
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            async def fake_fetchval(q, *a):
+                assert "created_by = $1" in q
+                return 3
+            with _conn(fetchval=fake_fetchval):
+                mine = client.get('/reports/reading-list?radiologist=me')
+                # radiologist=77: fetchval is never called (is_me False).
+                other = client.get('/reports/reading-list?radiologist=77')
+        assert mine.status_code == 200
+        assert mine.json()['claimed_today'] == 3
+        assert other.status_code == 200
+        assert 'claimed_today' not in other.json()
 
     def test_search_binds_all_three_like_placeholders(self):
         """A search term must produce three distinct placeholders — the old
