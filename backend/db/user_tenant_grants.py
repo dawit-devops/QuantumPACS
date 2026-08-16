@@ -46,16 +46,6 @@ class UserTenantGrants(Table):
         )
         return await self.fetchval(q)
 
-    async def scope_for(self, user_id, tenant_slug):
-        """The grant scope ('read' or 'write') for a user+tenant pair, or
-        None when no grant row exists. Mutating endpoints must demand
-        'write'; 'read' unlocks cross-tenant visibility only (R5-HI-1)."""
-        q = self.select(self.table.scope).where(
-            (self.table.user_id == _coerce_user_id(user_id))
-            & (self.table.tenant_slug == tenant_slug)
-        )
-        return await self.fetchval(q)
-
     async def list_for_user(self, user_id):
         q = self.select(
             self.table.tenant_slug, self.table.scope, self.table.created_at,
