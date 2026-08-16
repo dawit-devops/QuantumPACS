@@ -120,12 +120,34 @@ QuantumPACS pynetdicom SCP moves from 11112 → **11113** (transition) with AE
   double storage is acceptable at dev scale and idempotent via SOP-UID.
 - **`services/dcm4chee_sync.py`**: QIDO-RS watermark poll → export REST →
   feed SCP, so studies stored while the feed was down self-heal.
+  **Implemented 2026-08-16**: a daemon thread (`start_dcm4chee_sync()`, gated
+  on `dicom_proxy=true`, `dcm4chee_sync_interval` default 30 s) scans the
+  archive QIDO-RS (`GET /aets/{ae}/rs/studies?includefield=0020000D`, paged
+  by `offset`/`limit`) and diffs against the QuantumPACS `studies` table —
+  the QP table *is* the watermark, so no extra state table is needed.
+  Studies the archive holds but QP does not know are re-exported via
+  `POST /aets/{ae}/dimse/{ae}/studies/{uid}/export/dicom:{feedAE}?queue=true`
+  (200/202 accepted); `store_instance()`'s SOP-UID dedup keeps re-exports
+  idempotent. Deviations from the ADR text: the QIDO-RS "watermark" is
+  realised as a full diff against the QP studies table (simpler than a
+  persisted cursor and self-healing for arbitrarily old gaps); export REST
+  returned 200 (not 202) on the live archive for queued exports, so both
+  are accepted.
 - **Export API**: `POST /aets/{aet}/dimse/{movescp}/studies/{study}/export/dicom:{destination}`
   (`?queue=true` → 202) — exact form verified in the Phase 1 spike (fallback:
   `POST .../rs/studies/{study}/export/{exporterID}`).
 - **MWL**: dcm4chee serves modalities. QuantumPACS mirrors `worklist_entries`
   via MWL-RS (`POST /mwlitems` full-payload update, `POST .../status/{status}`
-  with SCHEDULED → "IN PROGRESS" → COMPLETED mapping, cancel → `DELETE /mwlitems/{studyUID}/{spsID}`).
+  with SCHEDULED → STARTED → COMPLETED mapping, cancel → `DELETE /mwlitems/{studyUID}/{spsID}`).
+  **Implemented 2026-08-16** (`backend/api/mwl_sync.py`, `mwl_sync_interval`
+  default 10 s, migration 060 adds `mwl_synced_at`/`mwl_sync_error`): a
+  patient-first flow (`POST /aets/{ae}/rs/patients` upsert before
+  `POST .../mwlitems` — the archive links MWL items to existing patients),
+  a deterministic top-level StudyInstanceUID derived from the row so MWL-RS
+  POST upserts instead of generating a fresh UID per push, and a status
+  mapping of scheduled→SCHEDULED, in_progress→STARTED (dcm4chee has no
+  "IN PROGRESS" value — the ADR's wording is realised as STARTED), and
+  performed→COMPLETED. CANCELLED rows mirror as `DELETE /mwlitems/{uid}/{spsID}`.
 - **DICOMweb proxy**: `backend/api/dicomweb.py` in proxy mode forwards
   QIDO-RS / WADO-RS / frames / WADO-URI to dcm4chee. The ZIP archive endpoint
   has no dcm4chee equivalent — QuantumPACS streams WADO-RS and zips itself.
@@ -191,6 +213,9 @@ false), `weasis_launch_url` (default `http://localhost:8082/weasis-pacs-connecto
 
 - Two stores during Phases 3–4 (dcm4chee + QuantumPACS files) — acceptable at
   dev scale, resolved at cutover
+- Proxy-mode DELETE removes the study from the archive only; QP `files` rows
+  persist, so QP-native surfaces can still list deleted studies until the
+  archive and QP stores are reconciled at cutover
 - Unsecured dcm4chee behind the proxy only; TLS + connector `access_token`
   required for production (tracked as follow-up)
 - dcm4chee runs without its Elasticsearch integration (no cross-archive search)
