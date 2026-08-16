@@ -181,10 +181,13 @@ _V1_ROUTES = [
     v2(Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler)),
     v2(Route('/dicomweb/studies', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}', endpoint=DicomWebWadoFrames)),
     # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
     # a study. POST /dicomweb/studies stores without a pre-specified study.

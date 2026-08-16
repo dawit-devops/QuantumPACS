@@ -1,6 +1,8 @@
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from starlette.applications import Starlette
@@ -12,6 +14,15 @@ from starlette.exceptions import HTTPException
 
 from api.auth import User
 from api.validate import validation_exception_handler, _ValidationException
+
+
+@pytest.fixture(autouse=True)
+def _local_dicomweb_only(monkeypatch):
+    """These integration tests exercise the QuantumPACS-local DICOMweb
+    implementation and must not be routed to the dcm4chee archive — the
+    proxy-mode behaviour is covered separately in test_dicomweb_proxy.py.
+    Pinning proxy_enabled off keeps the suite green under DICOM_PROXY=true."""
+    monkeypatch.setattr('api.dicomweb.proxy_enabled', lambda: False)
 
 
 class _AsyncFileMock:

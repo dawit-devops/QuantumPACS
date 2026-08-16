@@ -14,6 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _local_dicomweb_only(monkeypatch):
+    """RBAC enforcement is asserted against the local DICOMweb endpoints;
+    keep them local under DICOM_PROXY=true (proxy mode is covered by
+    test_dicomweb_proxy.py)."""
+    monkeypatch.setattr('api.dicomweb.proxy_enabled', lambda: False)
+
 from starlette.applications import Starlette
 from starlette.authentication import UnauthenticatedUser
 from starlette.endpoints import HTTPEndpoint

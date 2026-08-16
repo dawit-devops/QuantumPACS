@@ -54,7 +54,9 @@ class TestDicomLifecycleFunctions:
 
             mock_ae_instance.start_server.assert_called_once()
             args, _ = mock_ae_instance.start_server.call_args
-            assert args[0] == ('', 11112)
+            from config import config as app_config
+            expected_port = int(app_config.get('dicom_cstore_port', '11112'))
+            assert args[0] == ('', expected_port)
 
     def test_start_dicom_registers_cstore_handler(self):
         lifecycle = _setup_lifecycle_state()

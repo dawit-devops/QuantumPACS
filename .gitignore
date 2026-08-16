@@ -35,3 +35,8 @@ cov-json-report.json
 
 # Interactive E2E recording artifacts (video, logs, run state)
 /test-results
+
+# dcm4chee archive stack (ADR-028): vendored weasis connector war (fetched &
+# SHA-256 pinned by scripts/fetch_weasis.sh) and per-stack secrets.
+/docker/dcm4chee/weasis-pacs-connector.war
+/docker/dcm4chee/.env.dcm4chee
