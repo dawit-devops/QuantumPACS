@@ -287,80 +287,86 @@ Add HL7 v2.x MLLP listener and FHIR R4 API for external RIS/EHR integration.
 #### F4.1: HL7 v2.x MLLP Listener
 **Effort:** 3 weeks | **Parallel tracks:** 2
 
-- [ ] **F4.1a — MLLP server**
-  - [ ] Create `backend/services/ingestion/hl7_server.py` — TCP server with MLLP framing (start块 `0x0B`, end块 `0x1C0D`)
-  - [ ] Configurable port (default 12579), TLS support
-  - [ ] `hl7` library (or `python-hl7`) for message parsing
-  - [ ] RED: test that a raw HL7 ADT-A01 message sent to MLLP port results in a new patient record
-  - [ ] GREEN: implement MLLP receiver, basic HL7 parser, patient upsert logic
+- [x] **F4.1a — MLLP server**
+  - [x] Create `backend/services/ingestion/hl7_server.py` — TCP server with MLLP framing (start块 `0x0B`, end块 `0x1C0D`)
+  - [x] Configurable port (default 12579), TLS support
+  - [x] `hl7` library (or `python-hl7`) for message parsing
+  - [x] RED: test that a raw HL7 ADT-A01 message sent to MLLP port results in a new patient record
+  - [x] GREEN: implement MLLP receiver, basic HL7 parser, patient upsert logic
 
-- [ ] **F4.1b — ADT message handlers**
-  - [ ] ADT-A01 (admit) → create/update patient; `PatientClass` mapping
-  - [ ] ADT-A08 (update) → update patient demographics
-  - [ ] ADT-A03 (discharge) → mark patient inactive; optional `DischargeDatetime`
-  - [ ] ADT-A04 (registration), ADT-A05 (preadmit) → create patient if new
-  - [ ] RED: test each ADT event type produces correct DB state
-  - [ ] GREEN: implement per-event-type handlers with field mapping
+- [x] **F4.1b — ADT message handlers**
+  - [x] ADT-A01 (admit) → create/update patient; `PatientClass` mapping
+  - [x] ADT-A08 (update) → update patient demographics
+  - [x] ADT-A03 (discharge) → mark patient inactive; optional `DischargeDatetime`
+  - [x] ADT-A04 (registration), ADT-A05 (preadmit) → create patient if new
+  - [x] RED: test each ADT event type produces correct DB state
+  - [x] GREEN: implement per-event-type handlers with field mapping
 
-- [ ] **F4.1c — ORM message handler**
-  - [ ] ORM-O01 → create/update worklist entry (links to patient, stores requested procedure)
-  - [ ] Map HL7 ORC and OBR segments to DICOM MWL attributes
-  - [ ] RED: test that ORM-O01 creates a queryable MWL entry
-  - [ ] GREEN: implement ORM handler delegating to `worklist_entries` table
+- [x] **F4.1c — ORM message handler**
+  - [x] ORM-O01 → create/update worklist entry (links to patient, stores requested procedure)
+  - [x] Map HL7 ORC and OBR segments to DICOM MWL attributes
+  - [x] RED: test that ORM-O01 creates a queryable MWL entry
+  - [x] GREEN: implement ORM handler delegating to `worklist_entries` table
 
-- [ ] **F4.1d — Audit and error handling**
-  - [ ] Every received HL7 message logged with SHA-256 hash for non-repudiation
-  - [ ] Unknown segment types logged but non-fatal
-  - [ ] Malformed messages rejected with MLLP NACK
-  - [ ] RED: test each error path
-  - [ ] GREEN: implement error handling, audit logging
+- [x] **F4.1d — Audit and error handling**
+  - [x] Every received HL7 message logged with SHA-256 hash for non-repudiation
+  - [x] Unknown segment types logged but non-fatal
+  - [x] Malformed messages rejected with MLLP NACK
+  - [x] RED: test each error path
+  - [x] GREEN: implement error handling, audit logging
 
 #### F4.2: FHIR R4 API
 **Effort:** 3 weeks | **Parallel tracks:** 2
 
-- [ ] **F4.2a — FHIR server scaffold**
-  - [ ] Add `fhir.resources` or build minimal FHIR resource serializers
-  - [ ] CapabilityStatement at `GET /api/v2/fhir/metadata`
-  - [ ] RED: test that `GET /fhir/metadata` returns valid CapabilityStatement with `application/fhir+json`
-  - [ ] GREEN: implement CapabilityStatement builder (supported resources, interactions, operations)
+- [x] **F4.2a — FHIR server scaffold**
+  - [x] Add `fhir.resources` or build minimal FHIR resource serializers
+  - [x] CapabilityStatement at `GET /api/v2/fhir/metadata`
+  - [x] RED: test that `GET /fhir/metadata` returns valid CapabilityStatement with `application/fhir+json`
+  - [x] GREEN: implement CapabilityStatement builder (supported resources, interactions, operations)
 
-- [ ] **F4.2b — Patient resource**
-  - [ ] `GET /api/v2/fhir/Patient` — search by `identifier`, `name`, `birthdate`, `_lastUpdated`
-  - [ ] `GET /api/v2/fhir/Patient/{id}` — read by database ID
-  - [ ] RED: test search and read return FHIR Patient resources with correct fields
-  - [ ] GREEN: implement Patient→FHIR mapping (mapping table: `patients.name`→`Patient.name[0].text`, `patients.birth_date`→`Patient.birthDate`, etc.)
+- [x] **F4.2b — Patient resource**
+  - [x] `GET /api/v2/fhir/Patient` — search by `identifier`, `name`, `birthdate`, `_lastUpdated`
+  - [x] `GET /api/v2/fhir/Patient/{id}` — read by database ID
+  - [x] RED: test search and read return FHIR Patient resources with correct fields
+  - [x] GREEN: implement Patient→FHIR mapping (mapping table: `patients.name`→`Patient.name[0].text`, `patients.birth_date`→`Patient.birthDate`, etc.)
 
-- [ ] **F4.2c — ImagingStudy resource**
-  - [ ] `GET /api/v2/fhir/ImagingStudy` — search by `patient`, `accession`, `modality`, `started`, `_lastUpdated`
-  - [ ] `GET /api/v2/fhir/ImagingStudy/{id}` — read with nested `series` and `instance` entries
-  - [ ] `ImagingStudy.endpoint` references the DICOMweb WADO-RS base URL
-  - [ ] RED: test that ImagingStudy search returns studies with correct modality and date range
-  - [ ] GREEN: implement ImagingStudy→FHIR mapping
+- [x] **F4.2c — ImagingStudy resource**
+  - [x] `GET /api/v2/fhir/ImagingStudy` — search by `patient`, `accession`, `modality`, `started`, `_lastUpdated`
+  - [x] `GET /api/v2/fhir/ImagingStudy/{id}` — read with nested `series` and `instance` entries
+  - [x] `ImagingStudy.endpoint` references the DICOMweb WADO-RS base URL
+  - [x] RED: test that ImagingStudy search returns studies with correct modality and date range
+  - [x] GREEN: implement ImagingStudy→FHIR mapping
 
-- [ ] **F4.2d — DocumentReference resource (report placeholder)**
-  - [ ] `GET /api/v2/fhir/DocumentReference` — search by `patient`, `type`, `period`
-  - [ ] `GET /api/v2/fhir/DocumentReference/{id}` — read
-  - [ ] Initially returns references to share links or external report URLs (full SR integration in v3.1)
-  - [ ] RED: test DocumentReference search returns correct references
-  - [ ] GREEN: implement basic DocumentReference resource
+- [x] **F4.2d — DocumentReference resource (report placeholder)**
+  - [x] `GET /api/v2/fhir/DocumentReference` — search by `patient`, `type`, `period`
+  - [x] `GET /api/v2/fhir/DocumentReference/{id}` — read
+  - [x] Initially returns references to share links or external report URLs (full SR integration in v3.1)
+  - [x] RED: test DocumentReference search returns correct references
+  - [x] GREEN: implement basic DocumentReference resource
 
 #### F4.3: Study Routing Rules
 **Effort:** 1 week
 
-- [ ] **F4.3a — Rule engine**
-  - [ ] Add `routing_rules` table: `id UUID PK`, `tenant_id TEXT`, `priority INT`, `condition JSONB` (e.g., `{"modality": "CT", "study_description": {"contains": "CHEST"}}`), `action JSONB` (`{"replica_target": "replica_2"}`), `enabled BOOL`
-  - [ ] RED: test that uploading a CT CHEST study routes to `replica_2`
-  - [ ] GREEN: implement rule evaluation triggered on file ingestion (in Redis Streams consumer)
+- [x] **F4.3a — Rule engine**
+  - [x] Add `routing_rules` table: `id UUID PK`, `tenant_id TEXT`, `priority INT`, `condition JSONB` (e.g., `{"modality": "CT", "study_description": {"contains": "CHEST"}}`), `action JSONB` (`{"replica_target": "replica_2"}`), `enabled BOOL`
+  - [x] RED: test that uploading a CT CHEST study routes to `replica_2`
+  - [x] GREEN: implement rule evaluation triggered on file ingestion (in Redis Streams consumer)
 
-- [ ] **F4.3b — Rule CRUD API**
-  - [ ] `GET/POST /api/v2/routing-rules`, `PUT/DELETE /api/v2/routing-rules/{id}`
-  - [ ] RED: test admin creates, modifies, deletes rule
-  - [ ] GREEN: implement CRUD endpoints
+- [x] **F4.3b — Rule CRUD API**
+  - [x] `GET/POST /api/v2/routing-rules`, `PUT/DELETE /api/v2/routing-rules/{id}`
+  - [x] RED: test admin creates, modifies, deletes rule
+  - [x] GREEN: implement CRUD endpoints
 
 ### Phase 4 Gate
 
 ```bash
 cd backend && python -m pytest tests/integration/test_hl7.py tests/integration/test_fhir.py tests/integration/test_routing.py -v --tb=short --cov --cov-fail-under=80
+```
+
+Live verification (Phase 4 kickoff — skipped when the target is unreachable):
+
+```bash
+cd backend && python -m pytest tests/integration/test_mllp_live.py tests/integration/test_mwl_cfind_parity.py -v --tb=short
 ```
 
 ---
