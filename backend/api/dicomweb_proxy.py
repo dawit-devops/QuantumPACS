@@ -38,6 +38,13 @@ def proxy_enabled() -> bool:
     return str(config.get('dicom_proxy', 'false')).lower() in ('1', 'true', 'yes', 'on')
 
 
+def _archive_wado_rs_base() -> str:
+    """Archive WADO-RS base: {dcm4chee_url}/aets/{ae}/rs (ADR-028 Phase 3)."""
+    base = str(config.get('dcm4chee_url', 'http://localhost:8082/dcm4chee-arc')).rstrip('/')
+    ae = config.get('dcm4chee_ae', 'DCM4CHEE')
+    return f'{base}/aets/{ae}/rs'
+
+
 def _strip_mount(path: str) -> str:
     """Turn the request path back into the DICOMweb-relative form.
 

@@ -315,19 +315,20 @@ async def _upsert_patient(data: dict) -> bool:
             if pid:
                 facility = data.get('sending_facility', '')
                 # Parameterized everywhere: facility comes from the wire
-                # (MSH-4) and must never be interpolated into SQL.
+                # (MSH-4) and must never be interpolated into SQL. jsonb_set
+                # with an empty path ('{}') is a no-op, so merge keys with ||.
                 if facility:
                     await conn.execute(
-                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
-                        "jsonb_build_object('sync_source', 'hl7', 'tenant_id', $2)) "
+                        "UPDATE patients SET meta = COALESCE(meta, '{}'::jsonb) || "
+                        "jsonb_build_object('sync_source', 'hl7', 'tenant_id', $2::text) "
                         "WHERE patient_id = $1",
                         pid,
                         facility,
                     )
                 else:
                     await conn.execute(
-                        "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{}', "
-                        "jsonb_build_object('sync_source', 'hl7')) "
+                        "UPDATE patients SET meta = COALESCE(meta, '{}'::jsonb) || "
+                        "jsonb_build_object('sync_source', 'hl7') "
                         "WHERE patient_id = $1",
                         pid,
                     )
