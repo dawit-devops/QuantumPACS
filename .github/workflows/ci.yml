@@ -55,7 +55,15 @@ jobs:
       # M4: the backend suite now enforces a coverage floor via
       # --cov-fail-under (matches [tool.coverage.report] fail_under).
       - run: cd backend && python -m pytest tests/ -v --cov --cov-report=term-missing:skip-covered
-        env: { DB_HOST: localhost, DB_PORT: 5432 }
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          # Integration tests run against testcontainers (postgres:18-alpine),
+          # whose default credentials are test/test/test — the app reads these
+          # as DB_DATABASE/DB_USER/DB_PASSWORD (config.py uppercases keys).
+          DB_DATABASE: test
+          DB_USER: test
+          DB_PASSWORD: test
   test-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -82,7 +90,7 @@ jobs:
     env:
       DB_HOST: localhost
       DB_PORT: 5432
-      DB_NAME: quantumpacs_e2e
+      DB_DATABASE: quantumpacs_e2e
       DB_USER: quantumpacs
       DB_PASSWORD: quantumpacs-ci-e2e-db-pass
       SECRET: quantumpacs-ci-e2e-secret-not-for-any-prod
@@ -126,7 +134,7 @@ jobs:
 
           DSN = (
               f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
-              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
+              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_DATABASE']}"
           )
 
           async def main():
@@ -265,6 +273,12 @@ jobs:
           echo "backend never became healthy" >&2
           docker compose logs --tail 100 backend postgres elasticsearch redis
           exit 1
+        # docker compose ps re-interpolates ${SECRET:?} etc., so this step
+        # needs the same env as the build/up steps.
+        env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
+          SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
       - run: docker compose down -v
   # (M3) docker-compose.prod.yaml is the deployment target, so it gets its own
   # smoke job — port-mapping regressions and missing healthcheck tools only
@@ -312,7 +326,14 @@ jobs:
           }
           curl -sf http://localhost:5173/api/health >/dev/null
           echo "frontend serves and nginx → backend proxy works"
+      # down re-interpolates ${SECRET:?} etc. — keep the job env so cleanup
+      # does not fail after a successful smoke.
       - run: docker compose -f docker-compose.prod.yaml down -v
+        env:
+          IMAGE_TAG: ci-prod-smoke
+          POSTGRES_PASSWORD: quantumpacs-ci-prod-smoke-db-pass
+          SECRET: quantumpacs-ci-prod-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-prod-smoke-superadmin-not-for-any-prod
   vuln-scan:
     runs-on: ubuntu-latest
     steps:

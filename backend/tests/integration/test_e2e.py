@@ -31,7 +31,7 @@ def app(postgres_container):
         'DB_PORT': str(port),
         'DB_USER': 'test',
         'DB_PASSWORD': 'test',
-        'DB_NAME': 'test',
+        'DB_DATABASE': 'test',
         # lifecycle.setup() exits unless it is Docker mode or a redis password
         # is configured — either satisfies the guard; Docker mode is accurate
         # here since the DB under test runs in a container.
