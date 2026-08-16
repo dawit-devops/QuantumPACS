@@ -200,6 +200,9 @@ _V1_ROUTES = [
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
     v2(Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler)),
+    # ADR-028 Phase 3: Weasis desktop launch (authz'd; 302 to connector).
+    v2(Route('/weasis/launch', endpoint=WeasisLaunch)),
+    v2(Route('/weasis/status', endpoint=WeasisStatus)),
     v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),
     v2(Route('/webhooks', endpoint=WebhooksHandler)),
     v2(Route('/webhooks/{id}', endpoint=WebhookHandler)),
