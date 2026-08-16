@@ -26,6 +26,7 @@ from api.oauth import (
 )
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
+from api.weasis import WeasisLaunch, WeasisStatus
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (

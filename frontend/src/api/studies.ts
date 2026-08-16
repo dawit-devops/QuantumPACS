@@ -81,12 +81,15 @@ export async function searchStudies(
   query?: Record<string, string>,
 ): Promise<Study[]> {
   const qs = query ? "?" + new URLSearchParams(query).toString() : "";
-  const data = await request<Study[]>(`/dicomweb/studies${qs}`);
+  // No leading slash on any of these paths: request() joins
+  // API_URL + "/" + path, so a leading "/" would double the slash
+  // and 404 the DICOMweb surface (the StudyBrowser depends on this).
+  const data = await request<Study[]>(`dicomweb/studies${qs}`);
   return (data || []).map(mapStudy);
 }
 
 export async function getSeries(studyUid: string): Promise<Series[]> {
-  const data = await request<Series[]>(`/dicomweb/studies/${studyUid}/series`);
+  const data = await request<Series[]>(`dicomweb/studies/${studyUid}/series`);
   return (data || []).map(mapSeries);
 }
 
@@ -95,7 +98,7 @@ export async function getInstances(
   seriesUid: string,
 ): Promise<Instance[]> {
   const data = await request<Instance[]>(
-    `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances`,
+    `dicomweb/studies/${studyUid}/series/${seriesUid}/instances`,
   );
   return (data || []).map(mapInstance);
 }

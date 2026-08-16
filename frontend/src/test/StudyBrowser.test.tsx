@@ -82,6 +82,8 @@ describe("StudyBrowser", () => {
   });
 
   it("downloads a study archive via the Export ZIP button", async () => {
+    // Mount-time /weasis/status probe consumes the first fetch call.
+    mockFetch.mockResolvedValueOnce(mockDicomJsonResponse({ enabled: false }));
     mockFetch.mockResolvedValueOnce(
       mockDicomJsonResponse([
         {
@@ -120,5 +122,35 @@ describe("StudyBrowser", () => {
     expect(revoke).toHaveBeenCalled();
     create.mockRestore();
     revoke.mockRestore();
+  });
+
+  it("opens study in Weasis when integration enabled", async () => {
+    // Mount-time /weasis/status probe reports the integration enabled.
+    mockFetch.mockResolvedValueOnce(mockDicomJsonResponse({ enabled: true }));
+    mockFetch.mockResolvedValueOnce(
+      mockDicomJsonResponse([
+        {
+          "0020000D": { vr: "UI", Value: ["1.2.3"] },
+          "00100010": { vr: "PN", Value: [{ Alphabetic: "Test^Patient" }] },
+        },
+      ]),
+    );
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderWithApp(<StudyBrowser />);
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(screen.getByText("1.2.3")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Weasis"));
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        expect.stringContaining("/weasis/launch?studyUID=1.2.3"),
+        "_blank",
+        "noopener",
+      );
+    });
+    open.mockRestore();
   });
 });
