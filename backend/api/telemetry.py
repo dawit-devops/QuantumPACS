@@ -128,12 +128,15 @@ def record_request(method, path, status_code, elapsed):
 def _sample_db_pool():
     from db.conn import get_database
     db = get_database()
-    pool = db.pool
+    # Database stores the (traced) pool as `_pool`; the _TracedPool wrapper
+    # forwards get_idle_size/get_active_size to the underlying asyncpg pool.
+    pool = db._pool
     if pool is None:
         return
     try:
         idle = pool.get_idle_size()
-        in_use = pool.get_active_size()
+        # asyncpg Pool exposes no get_active_size — active = size - idle.
+        in_use = max(0, pool.get_size() - idle)
         db_connections_available.labels(tenant='default').set(idle)
         db_connections_in_use.labels(tenant='default').set(in_use)
     except Exception:

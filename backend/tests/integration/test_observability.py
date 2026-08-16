@@ -84,10 +84,11 @@ class TestMetricsEndpoint:
         client = TestClient(_make_metrics_app())
         fake_pool = AsyncMock()
         fake_pool.get_idle_size = lambda: 5
-        fake_pool.get_size = lambda: 10
-        fake_pool.get_active_size = lambda: 3
+        fake_pool.get_size = lambda: 8
         fake_db = AsyncMock()
-        fake_db.pool = fake_pool
+        # Database stores the (traced) pool as `_pool`; the wrapper forwards
+        # get_idle_size/get_size to the underlying asyncpg pool.
+        fake_db._pool = fake_pool
         with patch('db.conn.get_database', return_value=fake_db):
             resp = client.get('/v2/metrics')
         assert resp.status_code == 200

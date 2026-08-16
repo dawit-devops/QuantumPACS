@@ -232,7 +232,7 @@ false), `weasis_launch_url` (default `http://localhost:8082/weasis-pacs-connecto
 | R2 | Backfill integrity | High | UID-level verification, resumeable script |
 | R3 | Port conflicts (11112/8080/5432) | High | Remap: 11112 dcm4chee, 11113 feed, 8082 arc, 5433 archive PG |
 | R4 | Frontend viewer breakage | High | `/dicomweb/*` proxy; zero frontend diff for Cornerstone |
-| R5 | MWL rewiring | High | MWL-RS sync + C-FIND parity test (`tests/integration/test_mwl_cfind_parity.py`, reachability-gated: skips when the archive MWL SCP is down; positive = mirrored ORM entry returned by `ModalityWorklistInformationFind`, negative = cancelled `CA` entry absent) |
+| R5 | MWL rewiring | High | MWL-RS sync + C-FIND parity test (`tests/integration/test_mwl_cfind_parity.py`, reachability-gated: skips when the archive MWL SCP is down; positive = mirrored ORM entry returned by `ModalityWorklistInformationFind`, negative = cancelled `CA` entry absent) — **live-verified Aug 2026** (PR #122): MWL SCP served on AE `WORKLIST` (not `DCM4CHEE`, storage-only); mirror lands within one `mwl_sync` worker cycle (~10 s); both parity tests pass against the running archive |
 | R6 | Store-path feature loss | Med-High | `store_instance()` untouched; retriggered via 11113 |
 | R7 | Multi-tenancy limits (shared archive) | Med | Tenant isolation in QuantumPACS layer; per-tenant AEs for gating |
 | R8 | Unsecured dcm4chee exposure | Med | 127.0.0.1 bindings, internal-only, proxy-mediated |

@@ -381,23 +381,23 @@ Structured JSON logging, Prometheus metrics in exposition format, OpenTelemetry 
 #### F5.1: Structured Logging
 **Effort:** 0.5 week
 
-- [ ] **F5.1a — JSON formatter**
-  - [ ] Replace plain-text `logging.Formatter` with JSON formatter in `log.py`
-  - [ ] Fields: `timestamp` (ISO8601), `level`, `logger`, `message`, `request_id`, `tenant`, `user_id`, `trace_id`, `span_id`, `error` (if exception)
-  - [ ] RED: test that log output is valid JSON with required fields
-  - [ ] GREEN: implement JSON formatter; add `request_id` propagation (already scaffolded)
+- [x] **F5.1a — JSON formatter**
+  - [x] Replace plain-text `logging.Formatter` with JSON formatter in `log.py`
+  - [x] Fields: `timestamp` (ISO8601), `level`, `logger`, `message`, `request_id`, `tenant`, `user_id`, `trace_id`, `span_id`, `error` (if exception)
+  - [x] RED: test that log output is valid JSON with required fields
+  - [x] GREEN: implement JSON formatter; add `request_id` propagation (already scaffolded)
 
-- [ ] **F5.1b — Structured error logging**
-  - [ ] All unhandled errors logged with stack trace in the `error.stack` field (not in message)
-  - [ ] RED: test that a 500 error produces a structured JSON log entry
-  - [ ] GREEN: implement error middleware that captures exception context
+- [x] **F5.1b — Structured error logging**
+  - [x] All unhandled errors logged with stack trace in the `error.stack` field (not in message)
+  - [x] RED: test that a 500 error produces a structured JSON log entry
+  - [x] GREEN: implement error middleware that captures exception context
 
 #### F5.2: Prometheus Metrics
 **Effort:** 1 week
 
-- [ ] **F5.2a — Standard metrics**
-  - [ ] Replace `backend/api/telemetry.py` in-memory counters with `prometheus_client` metrics
-  - [ ] `starlette_exporter` or manual metrics middleware:
+- [x] **F5.2a — Standard metrics**
+  - [x] Replace `backend/api/telemetry.py` in-memory counters with `prometheus_client` metrics
+  - [x] `starlette_exporter` or manual metrics middleware:
     - `http_requests_total` (labels: method, path, status)
     - `http_request_duration_seconds` (histogram, labels: method, path)
     - `http_request_in_progress` (gauge)
@@ -405,20 +405,20 @@ Structured JSON logging, Prometheus metrics in exposition format, OpenTelemetry 
     - `redis_stream_lag_seconds` (gauge per stream per consumer group)
     - `dicom_cstore_throughput_bytes` (counter)
     - `dicomweb_requests_total` (labels: method, resource)
-  - [ ] RED: test that `/api/v2/metrics` returns valid Prometheus exposition format
-  - [ ] GREEN: instrument all metric sources
+  - [x] RED: test that `/api/v2/metrics` returns valid Prometheus exposition format
+  - [x] GREEN: instrument all metric sources
 
-- [ ] **F5.2b — Metrics endpoint**
-  - [ ] `GET /api/v2/metrics` returns Prometheus text format
-  - [ ] Protected: admin/read-only access
-  - [ ] RED: test that non-admin gets 403 on metrics endpoint
-  - [ ] GREEN: add auth guard
+- [x] **F5.2b — Metrics endpoint**
+  - [x] `GET /api/v2/metrics` returns Prometheus text format
+  - [x] Protected: admin/read-only access
+  - [x] RED: test that non-admin gets 403 on metrics endpoint
+  - [x] GREEN: add auth guard
 
 #### F5.3: Health Checks
 **Effort:** 0.5 week
 
-- [ ] **F5.3a — Component-level health**
-  - [ ] `GET /api/v2/health` returns JSON:
+- [x] **F5.3a — Component-level health**
+  - [x] `GET /api/v2/health` returns JSON:
     ```json
     {
       "status": "ok",
@@ -432,22 +432,22 @@ Structured JSON logging, Prometheus metrics in exposition format, OpenTelemetry 
       }
     }
     ```
-  - [ ] RED: test that component health reflects actual state (e.g., stop Redis → `redis` status `down`)
-  - [ ] GREEN: implement per-component health probes
+  - [x] RED: test that component health reflects actual state (e.g., stop Redis → `redis` status `down`)
+  - [x] GREEN: implement per-component health probes
 
 #### F5.4: OpenTelemetry Tracing (Deepen)
 **Effort:** 0.5 week
 
-- [ ] **F5.4a — AsyncPG tracing**
-  - [ ] Instrument `asyncpg` connection pool with OTel spans for each query
-  - [ ] RED: test that a DB query span appears in the trace with `db.statement` attribute
-  - [ ] GREEN: implement asyncpg tracing middleware (or use `opentelemetry-instrumentation-asyncpg`)
+- [x] **F5.4a — AsyncPG tracing**
+  - [x] Instrument `asyncpg` connection pool with OTel spans for each query
+  - [x] RED: test that a DB query span appears in the trace with `db.statement` attribute
+  - [x] GREEN: implement asyncpg tracing middleware (or use `opentelemetry-instrumentation-asyncpg`)
 
-- [ ] **F5.4b — Redis Streams tracing**
-  - [ ] Instrument each publish and consume operation with OTel spans
-  - [ ] Trace context propagation across stream producer→consumer boundary
-  - [ ] RED: test that consumer span has `messaging.destination` attribute
-  - [ ] GREEN: implement stream tracing
+- [x] **F5.4b — Redis Streams tracing**
+  - [x] Instrument each publish and consume operation with OTel spans
+  - [x] Trace context propagation across stream producer→consumer boundary
+  - [x] RED: test that consumer span has `messaging.destination` attribute
+  - [x] GREEN: implement stream tracing
 
 ### Phase 5 Gate
 
