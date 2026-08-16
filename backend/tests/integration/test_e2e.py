@@ -32,9 +32,6 @@ def app(postgres_container):
         'DB_USER': 'test',
         'DB_PASSWORD': 'test',
         'DB_DATABASE': 'test',
-        # assert_production_secret() rejects any known/committed secret; CI
-        # has no config.local.yaml, so a fresh-looking test secret is required.
-        'SECRET': 'quantumpacs-ci-e2e-test-secret-8f2b1a9c-2026',
         # lifecycle.setup() exits unless it is Docker mode or a redis password
         # is configured — either satisfies the guard; Docker mode is accurate
         # here since the DB under test runs in a container.

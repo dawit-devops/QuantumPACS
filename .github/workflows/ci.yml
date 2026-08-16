@@ -43,27 +43,38 @@ jobs:
     services:
       postgres:
         image: postgres:18
-        env: { POSTGRES_DB: quantumpacs_test, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
+        env: { POSTGRES_DB: quantumpacs_test, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: quantumpacs-ci-test-db-pass }
         ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - run: pip install -r backend/requirements-dev.txt
-      # Integration tests use testcontainers (postgres:18-alpine) which can
-      # pull its own image, so the suite runs fully in CI.
-      # M4: the backend suite now enforces a coverage floor via
-      # --cov-fail-under (matches [tool.coverage.report] fail_under).
-      - run: cd backend && python -m pytest tests/ -v --cov --cov-report=term-missing:skip-covered
+      # test_e2e (TestDicomWebE2E) runs against the service postgres: its
+      # testcontainers fixture env is inert because config.py load_config()
+      # runs at import (collection) time, before any fixture. The job env
+      # below must therefore carry every value assert_production_secret()
+      # and db setup need — secret, superadmin, db password, db name.
+      - run: cd backend && python -m alembic upgrade head
         env:
           DB_HOST: localhost
           DB_PORT: 5432
-          # Integration tests run against testcontainers (postgres:18-alpine),
-          # whose default credentials are test/test/test — the app reads these
-          # as DB_DATABASE/DB_USER/DB_PASSWORD (config.py uppercases keys).
-          DB_DATABASE: test
-          DB_USER: test
-          DB_PASSWORD: test
+          DB_DATABASE: quantumpacs_test
+          DB_USER: quantumpacs
+          DB_PASSWORD: quantumpacs-ci-test-db-pass
+          SECRET: quantumpacs-ci-test-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-test-superadmin-not-for-any-prod
+      - run: cd backend && python -m pytest tests/ -v --cov --cov-report=term-missing:skip-covered
+        # M4: the backend suite enforces a coverage floor via --cov-fail-under
+        # (matches [tool.coverage.report] fail_under).
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: quantumpacs_test
+          DB_USER: quantumpacs
+          DB_PASSWORD: quantumpacs-ci-test-db-pass
+          SECRET: quantumpacs-ci-test-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-test-superadmin-not-for-any-prod
   test-frontend:
     runs-on: ubuntu-latest
     steps:
