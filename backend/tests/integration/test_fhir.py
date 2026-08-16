@@ -179,6 +179,42 @@ class TestFhirImagingStudyEndpoint:
         assert len(resource['endpoint']) > 0
         assert 'dicomweb' in resource['endpoint'][0]['reference']
 
+    async def test_series_includes_endpoint_local_mode(self):
+        # P4.4: every nested series must carry an endpoint (QP base in local
+        # mode, archive WADO-RS base when dicom_proxy=true).
+        from api.fhir import _imagingstudy_resource
+        study = {
+            'study_id': 'STU001', 'study_instance_uid': '1.2.3.4.5',
+            'patient_id': 1, 'description': 'Chest CT',
+            'accession_number': 'ACC001', '_patient_logical_id': 'PID001',
+            '_series': [{
+                'series_instance_uid': '1.2.3.4.5.6', 'number': '1',
+                'modality': 'CT', 'description': 'Series 1',
+            }],
+        }
+        with patch('api.fhir._get_fhir_base_url', AsyncMock(return_value='http://localhost:8080/api/fhir')):
+            with patch('api.dicomweb_proxy.proxy_enabled', return_value=False):
+                resource = await _imagingstudy_resource(study)
+        assert resource['series'][0]['endpoint'] == [
+            {'reference': 'http://localhost:8080/api/dicomweb'}]
+
+    async def test_series_includes_archive_endpoint_proxy_mode(self):
+        from api.fhir import _imagingstudy_resource
+        study = {
+            'study_id': 'STU001', 'study_instance_uid': '1.2.3.4.5',
+            'patient_id': 1, 'description': 'Chest CT',
+            'accession_number': 'ACC001', '_patient_logical_id': 'PID001',
+            '_series': [{
+                'series_instance_uid': '1.2.3.4.5.6', 'number': '1',
+                'modality': 'CT',
+            }],
+        }
+        with patch('api.fhir._get_fhir_base_url', AsyncMock(return_value='http://localhost:8080/api/fhir')):
+            with patch('api.fhir.proxy_enabled', return_value=True):
+                resource = await _imagingstudy_resource(study)
+        assert resource['series'][0]['endpoint'] == [
+            {'reference': 'http://localhost:8082/dcm4chee-arc/aets/DCM4CHEE/rs'}]
+
 
 class TestFhirImagingStudy:
     def test_read_study_found(self):

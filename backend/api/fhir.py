@@ -13,6 +13,7 @@ from starlette.responses import Response
 
 from api.rbac import requires_permission
 from api.permissions import Permission
+from api.dicomweb_proxy import _archive_wado_rs_base, proxy_enabled
 from db.conn import get_conn
 from db.patient import Patient
 from db.study import Study
@@ -168,7 +169,10 @@ async def _build_bundle(entries, total=None, params=None):
 
 
 def _patient_resource(row) -> dict:
-    meta = row.get('meta') or {}
+    raw_meta = row.get('meta') or '{}'
+    # asyncpg returns jsonb columns as text unless a codec is registered —
+    # parse before touching keys (live E2E caught a str.get AttributeError).
+    meta = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
     name_parts = (row['name'] or '').split('^')
     family = name_parts[0] if name_parts else ''
     given = name_parts[1:2] if len(name_parts) > 1 else []
@@ -246,12 +250,17 @@ async def _imagingstudy_resource(study) -> dict:
         })
     series_list = study.get('_series', [])
     if series_list:
+        # Proxy mode: nested series endpoint points at the archive WADO-RS
+        # base (ADR-028 Phase 3) so a DICOMweb client can pull series
+        # instances straight from dcm4chee; local mode keeps the QP base.
+        series_endpoint = _archive_wado_rs_base() if proxy_enabled() else dicomweb_base
         resource['series'] = []
         for s in series_list:
             sr = {
                 'uid': s.get('series_instance_uid', ''),
                 'number': int(s['number']) if s.get('number', '').isdigit() else 0,
                 'modality': {'system': 'http://dicom.nema.org/resources/ontology/DCM', 'code': s.get('modality', '')},
+                'endpoint': [{'reference': series_endpoint}],
             }
             if s.get('description'):
                 sr['description'] = s['description']
