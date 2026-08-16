@@ -71,6 +71,28 @@ default_config = {
     # Off by default so single-tenant / dev setups keep the historical
     # fallback behaviour.
     'dicom_reject_unmapped_ae': 'false',
+    # ADR-028 (dcm4chee archive migration). dcm4chee_url: base URL of the
+    # archive's REST service (dev override localhost:8082; container
+    # deployments must use the container DNS http://dcm4chee-arc:8080/dcm4chee-arc).
+    'dcm4chee_url': 'http://localhost:8082/dcm4chee-arc',
+    'dcm4chee_ae': 'DCM4CHEE',
+    # When true, the /dicomweb/* surface proxies QIDO-RS/WADO-RS/frames/
+    # WADO-URI to dcm4chee (archive owns pixels); when false, QuantumPACS
+    # serves its own DICOMweb implementation from the files table.
+    'dicom_proxy': 'false',
+    # Weasis integration: launch buttons are shown only when weasis_enabled.
+    'weasis_enabled': 'false',
+    'weasis_launch_url': 'http://localhost:8082/weasis-pacs-connector',
+    # MWL-RS mirror sync (ADR-028 Phase 3): when dicom_proxy=true a
+    # background worker mirrors worklist_entries to dcm4chee. Poll interval.
+    'mwl_sync_interval': '10',
+    # Archive→feed self-heal sync (ADR-028 Phase 3): when dicom_proxy=true a
+    # background worker scans dcm4chee QIDO-RS and re-exports studies
+    # QuantumPACS does not know (e.g. stored while the feed SCP was down).
+    'dcm4chee_sync_interval': '30',
+    # Minimum seconds between export re-requests for a study that never lands
+    # in QP (bounds archive export-queue growth when the feed SCP is down).
+    'dcm4chee_sync_cooldown': '300',
     'hl7_mllp_port': '12579',
     'hl7_mllp_tls_cert': '',
     'hl7_mllp_tls_key': '',

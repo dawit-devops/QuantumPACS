@@ -12,6 +12,14 @@ from api.auth import User
 from api.validate import validation_exception_handler, _ValidationException
 
 
+@pytest.fixture(autouse=True)
+def _local_dicomweb_only(monkeypatch):
+    """These tests exercise the QuantumPACS-local QIDO-RS implementation
+    (mocked conn) and must not route to the dcm4chee archive under
+    DICOM_PROXY=true; proxy mode is covered by test_dicomweb_proxy.py."""
+    monkeypatch.setattr('api.dicomweb.proxy_enabled', lambda: False)
+
+
 def _http_exception(request, exc):
     from starlette.responses import JSONResponse
     return JSONResponse(

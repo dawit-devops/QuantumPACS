@@ -16,6 +16,7 @@ from starlette.responses import Response, StreamingResponse
 
 from api.rbac import requires_permission
 from api.permissions import Permission
+from api.dicomweb_proxy import proxy_enabled, proxy_request
 from db.conn import get_conn
 from db.audit_log import AuditLog
 from db.replica import Replica
@@ -145,6 +146,8 @@ def _apply_includefield(rows, params):
 class DicomWebStudies(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         params = _normalize_params(dict(request.query_params))
         pagination = _Pagination(params)
         study_uid = request.path_params.get('study_uid')
@@ -457,6 +460,8 @@ class DicomWebStudies(HTTPEndpoint):
 
     @requires_permission(Permission.DICOMWEB_WRITE)
     async def post(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         # STOW-RS can carry whole studies; the Content-Length pre-check
         # rejects oversized payloads before any body is read (HI-06), and
         # the body itself is parsed part-by-part from the request stream so
@@ -629,6 +634,8 @@ def _instance_metadata(file_data):
 class DicomWebWado(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         study_uid = request.path_params.get('study_uid')
         series_uid = request.path_params.get('series_uid')
         instance_uid = request.path_params.get('instance_uid')
@@ -660,6 +667,8 @@ class DicomWebWado(HTTPEndpoint):
 
     @requires_permission(Permission.DICOMWEB_WRITE)
     async def delete(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         study_uid = request.path_params.get('study_uid')
         series_uid = request.path_params.get('series_uid')
         instance_uid = request.path_params.get('instance_uid')
@@ -703,6 +712,8 @@ class DicomWebWado(HTTPEndpoint):
 class DicomWebWadoUri(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         params = dict(request.query_params)
         if params.get('requestType') != 'WADO':
             err_body = {'error': {'code': 'INVALID_REQUEST', 'message': 'requestType must be WADO'}}
@@ -756,6 +767,8 @@ class DicomWebWadoFrames(HTTPEndpoint):
 
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        if proxy_enabled():
+            return await proxy_request(request)
         study_uid = request.path_params.get('study_uid')
         series_uid = request.path_params.get('series_uid')
         instance_uid = request.path_params.get('instance_uid')

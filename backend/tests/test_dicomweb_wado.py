@@ -5,6 +5,14 @@ import pytest
 from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 
 
+@pytest.fixture(autouse=True)
+def _local_dicomweb_only(monkeypatch):
+    """These tests exercise the QuantumPACS-local WADO-RS implementation and
+    must not route to the dcm4chee archive under DICOM_PROXY=true; proxy mode
+    is covered by test_dicomweb_proxy.py."""
+    monkeypatch.setattr('api.dicomweb.proxy_enabled', lambda: False)
+
+
 class _AsyncFileMock:
     def __init__(self, data):
         self._data = data

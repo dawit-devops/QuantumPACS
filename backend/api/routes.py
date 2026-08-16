@@ -26,6 +26,7 @@ from api.oauth import (
 )
 from api.oauth_providers import OAuthProvidersHandler, OAuthProviderHandler, PublicOAuthProvidersHandler
 from api.dicomweb import DicomWebStudies, DicomWebWado, DicomWebWadoUri, DicomWebWadoFrames, DicomWebArchive
+from api.weasis import WeasisLaunch, WeasisStatus
 from api.dicomweb_admin import DicomWebAdminHandler, DicomWebMetricsHandler, DicomWebRequestsHandler
 from api.webhooks import WebhooksHandler, WebhookHandler, WebhookTestHandler
 from api.fhir import (
@@ -181,10 +182,13 @@ _V1_ROUTES = [
     v2(Route('/oauth/providers/{id}', endpoint=OAuthProviderHandler)),
     v2(Route('/dicomweb/studies', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances', endpoint=DicomWebStudies)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}', endpoint=DicomWebWado)),
+    v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata', endpoint=DicomWebWado)),
     v2(Route('/dicomweb/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}', endpoint=DicomWebWadoFrames)),
     # Study-scoped STOW-RS (PS3.18 §10.5): store one or more instances into
     # a study. POST /dicomweb/studies stores without a pre-specified study.
@@ -196,6 +200,9 @@ _V1_ROUTES = [
     v2(Route('/dicomweb/admin', endpoint=DicomWebAdminHandler)),
     v2(Route('/dicomweb/admin/metrics', endpoint=DicomWebMetricsHandler)),
     v2(Route('/dicomweb/admin/requests', endpoint=DicomWebRequestsHandler)),
+    # ADR-028 Phase 3: Weasis desktop launch (authz'd; 302 to connector).
+    v2(Route('/weasis/launch', endpoint=WeasisLaunch)),
+    v2(Route('/weasis/status', endpoint=WeasisStatus)),
     v2(Route('/webhooks/test', endpoint=WebhookTestHandler, methods=['POST'])),
     v2(Route('/webhooks', endpoint=WebhooksHandler)),
     v2(Route('/webhooks/{id}', endpoint=WebhookHandler)),

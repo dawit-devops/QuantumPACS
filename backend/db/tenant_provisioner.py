@@ -79,7 +79,18 @@ class TenantProvisioner:
         user = db_user or config['db_user']
         password = db_password or config['db_password']
 
-        url = f'postgresql+psycopg2://{user}:{password}@{host}:{port}/{db_name}'
+        # asyncpg dialect: env.py routes it through the async engine, and the
+        # backend image ships no psycopg2 driver. URL.create percent-encodes
+        # each component (generated passwords contain +/= chars).
+        from sqlalchemy.engine import URL
+        url = URL.create(
+            'postgresql+asyncpg',
+            username=user,
+            password=password,
+            host=host,
+            port=int(port),
+            database=db_name,
+        ).render_as_string(hide_password=False)
         try:
             cfg = alembic.config.Config(_ALEMBIC_CFG_PATH)
             cfg.set_main_option('sqlalchemy.url', url)

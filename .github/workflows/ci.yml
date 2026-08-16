@@ -43,19 +43,38 @@ jobs:
     services:
       postgres:
         image: postgres:18
-        env: { POSTGRES_DB: quantumpacs_test, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: pa55w0rd }
+        env: { POSTGRES_DB: quantumpacs_test, POSTGRES_USER: quantumpacs, POSTGRES_PASSWORD: quantumpacs-ci-test-db-pass }
         ports: ['5432:5432']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - run: pip install -r backend/requirements-dev.txt
-      # Integration tests use testcontainers (postgres:18-alpine) which can
-      # pull its own image, so the suite runs fully in CI.
-      # M4: the backend suite now enforces a coverage floor via
-      # --cov-fail-under (matches [tool.coverage.report] fail_under).
+      # test_e2e (TestDicomWebE2E) runs against the service postgres: its
+      # testcontainers fixture env is inert because config.py load_config()
+      # runs at import (collection) time, before any fixture. The job env
+      # below must therefore carry every value assert_production_secret()
+      # and db setup need — secret, superadmin, db password, db name.
+      - run: cd backend && python -m alembic upgrade head
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: quantumpacs_test
+          DB_USER: quantumpacs
+          DB_PASSWORD: quantumpacs-ci-test-db-pass
+          SECRET: quantumpacs-ci-test-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-test-superadmin-not-for-any-prod
       - run: cd backend && python -m pytest tests/ -v --cov --cov-report=term-missing:skip-covered
-        env: { DB_HOST: localhost, DB_PORT: 5432 }
+        # M4: the backend suite enforces a coverage floor via --cov-fail-under
+        # (matches [tool.coverage.report] fail_under).
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: quantumpacs_test
+          DB_USER: quantumpacs
+          DB_PASSWORD: quantumpacs-ci-test-db-pass
+          SECRET: quantumpacs-ci-test-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-test-superadmin-not-for-any-prod
   test-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -82,7 +101,7 @@ jobs:
     env:
       DB_HOST: localhost
       DB_PORT: 5432
-      DB_NAME: quantumpacs_e2e
+      DB_DATABASE: quantumpacs_e2e
       DB_USER: quantumpacs
       DB_PASSWORD: quantumpacs-ci-e2e-db-pass
       SECRET: quantumpacs-ci-e2e-secret-not-for-any-prod
@@ -126,7 +145,7 @@ jobs:
 
           DSN = (
               f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
-              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
+              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_DATABASE']}"
           )
 
           async def main():
@@ -184,6 +203,9 @@ jobs:
       - name: Start backend
         run: |
           cd backend
+          # routes.py mounts StaticFiles('static') when QUANTUMPACS_DOCKER=true
+          # and the dir is gitignored (dev-only docs) — mirror the Dockerfile.
+          mkdir -p static
           nohup uvicorn app:app --host 0.0.0.0 --port 8080 >/tmp/backend.log 2>&1 &
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || true)
@@ -265,7 +287,19 @@ jobs:
           echo "backend never became healthy" >&2
           docker compose logs --tail 100 backend postgres elasticsearch redis
           exit 1
+        # docker compose ps re-interpolates ${SECRET:?} etc., so this step
+        # needs the same env as the build/up steps.
+        env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
+          SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
+      # down re-interpolates ${SECRET:?} etc. — keep the job env so cleanup
+      # does not fail after a successful smoke.
       - run: docker compose down -v
+        env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
+          SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
   # (M3) docker-compose.prod.yaml is the deployment target, so it gets its own
   # smoke job — port-mapping regressions and missing healthcheck tools only
   # surface when the prod file is actually exercised.
@@ -312,7 +346,14 @@ jobs:
           }
           curl -sf http://localhost:5173/api/health >/dev/null
           echo "frontend serves and nginx → backend proxy works"
+      # down re-interpolates ${SECRET:?} etc. — keep the job env so cleanup
+      # does not fail after a successful smoke.
       - run: docker compose -f docker-compose.prod.yaml down -v
+        env:
+          IMAGE_TAG: ci-prod-smoke
+          POSTGRES_PASSWORD: quantumpacs-ci-prod-smoke-db-pass
+          SECRET: quantumpacs-ci-prod-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-prod-smoke-superadmin-not-for-any-prod
   vuln-scan:
     runs-on: ubuntu-latest
     steps:

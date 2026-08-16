@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, Table, Input, Button, Space, message, App, Tag } from "antd";
 import {
   SearchOutlined,
   ReloadOutlined,
   DownloadOutlined,
   InboxOutlined,
+  DesktopOutlined,
 } from "@ant-design/icons";
 import {
   searchStudies,
@@ -16,6 +17,7 @@ import {
   Series,
   Instance,
 } from "../api/studies";
+import { getWeasisStatus, openInWeasis } from "../api/weasis";
 
 interface StudyBrowserProps {
   onSelectInstance?: (wadoRsUrl: string) => void;
@@ -31,6 +33,15 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [weasisEnabled, setWeasisEnabled] = useState(false);
+
+  // ADR-028: render the Weasis launch action only when the connector
+  // integration is enabled; a failed probe just hides the button.
+  useEffect(() => {
+    getWeasisStatus()
+      .then((s) => setWeasisEnabled(s.enabled))
+      .catch(() => setWeasisEnabled(false));
+  }, []);
 
   const handleExport = async (studyUid: string) => {
     setExporting(studyUid);
@@ -158,19 +169,33 @@ export default function StudyBrowser({ onSelectInstance }: StudyBrowserProps) {
           {
             title: "",
             key: "actions",
-            width: 100,
+            width: 200,
             render: (_: unknown, record: Study) => (
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                loading={exporting === record.studyInstanceUid}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExport(record.studyInstanceUid);
-                }}
-              >
-                Export ZIP
-              </Button>
+              <Space size="small">
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  loading={exporting === record.studyInstanceUid}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleExport(record.studyInstanceUid);
+                  }}
+                >
+                  Export ZIP
+                </Button>
+                {weasisEnabled && (
+                  <Button
+                    size="small"
+                    icon={<DesktopOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openInWeasis(record.studyInstanceUid);
+                    }}
+                  >
+                    Weasis
+                  </Button>
+                )}
+              </Space>
             ),
           },
         ]}

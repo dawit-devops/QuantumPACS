@@ -18,6 +18,7 @@ import {
   HistoryOutlined,
   LockOutlined,
   DashboardOutlined,
+  DesktopOutlined,
 } from "@ant-design/icons";
 import { useTheme } from "../common/ThemeProvider";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
@@ -39,6 +40,7 @@ import { useAuth } from "../auth/AuthContext";
 import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import { isAdminScopedRole } from "../navigator";
 import { API_URL } from "../config";
+import { getWeasisStatus, openInWeasis } from "../api/weasis";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
 import KeyValueTable from "./KeyValueTable";
 import Changes from "./Changes";
@@ -85,6 +87,15 @@ function Detail() {
   const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(
     null,
   );
+  const [weasisEnabled, setWeasisEnabled] = useState(false);
+
+  // ADR-028: show the Weasis launch action only when the connector
+  // integration is enabled; a failed probe hides the button.
+  useEffect(() => {
+    getWeasisStatus()
+      .then((s) => setWeasisEnabled(s.enabled))
+      .catch(() => setWeasisEnabled(false));
+  }, []);
 
   // Pixels always come from the self-contained wadouri loader
   // (`wadouri:/files/{id}/data`): the v5 dicom-image-loader naturalized path
@@ -259,6 +270,23 @@ function Detail() {
                     icon: <LockOutlined />,
                     label: "Admin",
                     onClick: () => setTab("admin"),
+                  },
+                ]
+              : []),
+            ...(!tempKey &&
+            weasisEnabled &&
+            study?.study_instance_uid &&
+            hasPermission("DICOMWEB_READ")
+              ? [
+                  {
+                    key: "weasis",
+                    icon: <DesktopOutlined />,
+                    label: "Weasis",
+                    onClick: () => {
+                      if (study?.study_instance_uid) {
+                        openInWeasis(study.study_instance_uid);
+                      }
+                    },
                   },
                 ]
               : []),

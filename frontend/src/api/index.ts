@@ -22,3 +22,4 @@ export * from "./auth";
 export * from "./hl7";
 export * from "./frontdesk";
 export * from "./portal";
+export * from "./weasis";

@@ -134,6 +134,26 @@ async def _drop_database(db_name):
         await conn.close()
 
 
+@pytest_asyncio.fixture(scope='module', autouse=True, loop_scope='module')
+async def _seed_default_tenant():
+    """Mirror backend startup seeding (lifecycle._ensure_default_tenant) once
+    per session: in CI no backend process has ever started against the freshly
+    migrated test database, so the registry would otherwise lack the `default`
+    tenant row that test_default_tenant_seed asserts. Idempotent by design."""
+    from lifecycle import _ensure_default_tenant
+
+    # One-off connection: the pool is only initialized by tenant_env's
+    # setup(), and this autouse fixture runs before it.
+    from db.conn import create_conn
+
+    conn = await create_conn()
+    try:
+        await _ensure_default_tenant(conn)
+    finally:
+        await conn.close()
+    yield
+
+
 @pytest_asyncio.fixture(scope='module', loop_scope='module')
 async def tenant_env():
     await setup(pool_size=4)

@@ -203,8 +203,44 @@ case "$CMD" in
   logs-fe)
     journalctl --user -u quantumpacs-frontend.service -f --no-pager 2>&1
     ;;
+  dcm4chee-start)
+    # ADR-028 Phase 1: enterprise archive + Weasis connector (separate compose).
+    # Bootstraps the gitignored .env.dcm4chee secrets and the vendored
+    # weasis-pacs-connector.war (SHA-256 pinned) before starting the stack.
+    echo "Starting dcm4chee archive stack..."
+    D4C_ENV="$DIR/docker/dcm4chee/.env.dcm4chee"
+    if [ ! -f "$D4C_ENV" ]; then
+        echo "  bootstrapping $D4C_ENV with a random archive password"
+        printf 'DCM4CHEE_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" > "$D4C_ENV"
+    fi
+    bash "$DIR/scripts/fetch_weasis.sh"
+    docker compose --env-file "$D4C_ENV" -f "$DIR/docker/dcm4chee/docker-compose.dcm4chee.yml" up -d --build
+    bash "$DIR/scripts/dev.sh" dcm4chee-status
+    ;;
+  dcm4chee-stop)
+    echo "Stopping dcm4chee archive stack..."
+    docker compose -f "$DIR/docker/dcm4chee/docker-compose.dcm4chee.yml" down 2>/dev/null || true
+    echo "Done (volumes kept — run 'down -v' to wipe archive data)."
+    ;;
+  dcm4chee-status)
+    echo "=== dcm4chee Archive Status ==="
+    for c in dcm4chee-ldap-1 dcm4chee-db-1 dcm4chee-arc-1; do
+        S=$(docker ps --filter "name=^/$c$" --format '{{.Status}}' 2>/dev/null || echo "not running")
+        echo "  $c : $S"
+    done
+    if docker ps --filter "name=^/dcm4chee-arc-1$" --format '{{.Names}}' | grep -q dcm4chee-arc-1; then
+        echo ""
+        echo "  REST      : http://localhost:8082/dcm4chee-arc"
+        echo "  Connector : http://localhost:8082/weasis-pacs-connector/weasis"
+        echo "  DICOM SCP : localhost:11112 (AE DCM4CHEE)"
+        echo "  Archive PG: localhost:5433 (pacsdb/pacs)"
+    fi
+    ;;
+  dcm4chee-logs)
+    docker logs -f --tail 100 dcm4chee-arc-1 2>&1
+    ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|verify|logs|logs-fe}"
+    echo "Usage: $0 {start|stop|restart|status|verify|logs|logs-fe|dcm4chee-start|dcm4chee-stop|dcm4chee-status|dcm4chee-logs}"
     exit 1
     ;;
 esac
