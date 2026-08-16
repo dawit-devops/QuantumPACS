@@ -54,6 +54,8 @@ class LifecycleState:
     ingestion_task: Optional[asyncio.Task] = None
     dicom_scp: Any = None
     mllp_task: Optional[asyncio.Task] = None
+    mwl_sync_thread: Optional[threading.Thread] = None
+    dcm4chee_sync_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -291,6 +293,29 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
 
     _start_dicom()
     await _start_mllp()
+
+    # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
+    # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.
+    try:
+        from api.mwl_sync import start_mwl_sync
+        thread = start_mwl_sync()
+        state_mwl = get_app_state()
+        if state_mwl and thread is not None:
+            state_mwl.mwl_sync_thread = thread
+    except Exception:
+        log.warning('Failed to start MWL-RS sync worker', exc_info=True)
+
+    # ADR-028 Phase 3: self-heal the archive→feed path — scan dcm4chee
+    # QIDO-RS and request export REST for studies QuantumPACS does not know
+    # (stored while the feed SCP was down). No-ops when dicom_proxy=false.
+    try:
+        from services.dcm4chee_sync import start_dcm4chee_sync
+        thread = start_dcm4chee_sync()
+        state_d4c = get_app_state()
+        if state_d4c and thread is not None:
+            state_d4c.dcm4chee_sync_thread = thread
+    except Exception:
+        log.warning('Failed to start dcm4chee self-heal sync worker', exc_info=True)
 
     if sync_db:
         async with db.conn.get_conn() as conn:
