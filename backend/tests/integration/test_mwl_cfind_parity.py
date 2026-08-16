@@ -20,7 +20,10 @@ from config import load_config
 
 ARCHIVE_HOST = os.environ.get('ARCHIVE_HOST', '127.0.0.1')
 ARCHIVE_PORT = int(os.environ.get('ARCHIVE_PORT', '11112'))
-ARCHIVE_AE = os.environ.get('ARCHIVE_AE', 'DCM4CHEE')
+# The archive serves the Modality Worklist SCP on its WORKLIST AE title
+# (dcm4chee LDAP: cn=Modality Worklist Information Model - FIND SCP,
+# dicomAETitle=WORKLIST, device dcm4chee-arc) — DCM4CHEE is storage-only.
+ARCHIVE_AE = os.environ.get('ARCHIVE_AE', 'WORKLIST')
 
 
 def _archive_reachable() -> bool:
@@ -75,17 +78,18 @@ async def mirrored_entry(live_archive):
         await conn.close()
 
 
-def _cfind(host, port, accession, modality='CT'):
+def _cfind(host, port, accession, modality='CT', max_attempts=1):
     from pynetdicom import AE
     from pynetdicom.sop_class import ModalityWorklistInformationFind
     from pydicom.dataset import Dataset
 
-    ae = AE(ae_title='QPPARITY')
-    ae.add_requested_context(ModalityWorklistInformationFind)
-    ae.acse_timeout = 5
-    ae.network_timeout = 8
-    results = []
-    with ae.association(host, port, ae_title=ARCHIVE_AE) as assoc:
+    def _one_pass():
+        ae = AE(ae_title='QPPARITY')
+        ae.add_requested_context(ModalityWorklistInformationFind)
+        ae.acse_timeout = 5
+        ae.network_timeout = 8
+        results = []
+        assoc = ae.associate(host, port, ae_title=ARCHIVE_AE)
         if not assoc.is_established:
             pytest.fail(f'C-FIND association to {ARCHIVE_AE}@{host}:{port} failed')
 
@@ -101,6 +105,17 @@ def _cfind(host, port, accession, modality='CT'):
                 results.append(ds)
             elif status and status.Status != 0xFF00:
                 break
+        assoc.release()
+        return results
+
+    # The mwl_sync worker replays dirty QP rows to the archive MWL-RS on a
+    # fixed interval (default 10s); poll until the mirror lands or give up.
+    import time
+    for attempt in range(max_attempts):
+        results = _one_pass()
+        if results or attempt == max_attempts - 1:
+            return results
+        time.sleep(3)
     return results
 
 
@@ -108,7 +123,8 @@ def test_cfind_returns_mirrored_entry(live_archive, mirrored_entry):
     """The ORM-mirrored entry (accession + requested procedure) is returned
     by the archive MWL SCP with correct values."""
     host, port = live_archive
-    results = _cfind(host, port, mirrored_entry)
+    # mwl_sync worker interval is 10s; poll up to ~40s for the mirror.
+    results = _cfind(host, port, mirrored_entry, max_attempts=13)
     assert results, 'C-FIND returned no entries for the mirrored accession'
     assert results[0].AccessionNumber == mirrored_entry
     steps = results[0].ScheduledProcedureStepSequence
