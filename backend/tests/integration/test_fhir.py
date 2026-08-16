@@ -193,7 +193,7 @@ class TestFhirImagingStudyEndpoint:
             }],
         }
         with patch('api.fhir._get_fhir_base_url', AsyncMock(return_value='http://localhost:8080/api/fhir')):
-            with patch('api.dicomweb_proxy.proxy_enabled', return_value=False):
+            with patch('api.fhir.proxy_enabled', return_value=False):
                 resource = await _imagingstudy_resource(study)
         assert resource['series'][0]['endpoint'] == [
             {'reference': 'http://localhost:8080/api/dicomweb'}]
