@@ -192,6 +192,9 @@ jobs:
       - name: Start backend
         run: |
           cd backend
+          # routes.py mounts StaticFiles('static') when QUANTUMPACS_DOCKER=true
+          # and the dir is gitignored (dev-only docs) — mirror the Dockerfile.
+          mkdir -p static
           nohup uvicorn app:app --host 0.0.0.0 --port 8080 >/tmp/backend.log 2>&1 &
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || true)
@@ -279,7 +282,13 @@ jobs:
           POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
           SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
           SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
+      # down re-interpolates ${SECRET:?} etc. — keep the job env so cleanup
+      # does not fail after a successful smoke.
       - run: docker compose down -v
+        env:
+          POSTGRES_PASSWORD: quantumpacs-ci-smoke-db-pass
+          SECRET: quantumpacs-ci-smoke-secret-not-for-any-prod
+          SUPERADMIN_PASS: quantumpacs-ci-smoke-superadmin-not-for-any-prod
   # (M3) docker-compose.prod.yaml is the deployment target, so it gets its own
   # smoke job — port-mapping regressions and missing healthcheck tools only
   # surface when the prod file is actually exercised.
