@@ -25,6 +25,24 @@ if config.config_file_name is not None:
     # stops seeing their records.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
+def _ini_file_url() -> str:
+    """Read sqlalchemy.url from alembic.ini on disk. In-process callers
+    (tenant provisioning) run set_main_option() before env.py is imported,
+    so the in-memory file_config already carries the override — the
+    override baseline must come from the file, not the parser."""
+    import configparser
+
+    path = config.config_file_name
+    if not path:
+        return ''
+    parser = configparser.ConfigParser()
+    parser.read(path)
+    return parser.get('alembic', 'sqlalchemy.url', fallback='')
+
+
+# Baseline for override detection; see _ini_file_url().
+_INI_SQLALCHEMY_URL = _ini_file_url()
+
 
 def _env_url() -> str | None:
     """Container deployments pass DB_* env vars; prefer them over the dev
@@ -57,9 +75,16 @@ def _env_url() -> str | None:
 
 def _caller_overrode_url() -> bool:
     """In-process callers (tenant provisioning) set the URL via
-    set_main_option(); the env path must never replace their explicit target."""
+    set_main_option(); the env path must never replace their explicit target.
+    Compared against the on-disk ini URL (see _ini_file_url())."""
     return (config.get_main_option('sqlalchemy.url')
-            != config.file_config['alembic'].get('sqlalchemy.url', ''))
+            != _INI_SQLALCHEMY_URL)
+
+
+def _use_async_engine(cfg: dict) -> bool:
+    """asyncpg-dialect URLs need the async engine + run_sync pattern; the
+    sync engine_from_config path below would raise MissingGreenlet."""
+    return cfg.get('sqlalchemy.url', '').startswith('postgresql+asyncpg:')
 
 
 def _run_migrations_blocking(cfg: dict) -> None:
@@ -124,6 +149,11 @@ def run_migrations_online() -> None:
         # asyncpg dialect requires the async engine + run_sync pattern;
         # the sync engine_from_config path below would raise MissingGreenlet.
         cfg['sqlalchemy.url'] = env_url
+        _run_migrations_blocking(cfg)
+        return
+    if _use_async_engine(cfg):
+        # Tenant provisioning (in-process) and TENANT_SLUG flows pass
+        # postgresql+asyncpg URLs — the image has no psycopg2 driver.
         _run_migrations_blocking(cfg)
         return
     connectable = engine_from_config(

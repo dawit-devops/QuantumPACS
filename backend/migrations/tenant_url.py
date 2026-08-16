@@ -40,7 +40,7 @@ async def async_get_tenant_url(slug=None):
     db = info['db_name']
     from sqlalchemy.engine import URL
     return URL.create(
-        'postgresql+psycopg2',
+        'postgresql+asyncpg',
         username=user,
         password=password,
         host=host,
