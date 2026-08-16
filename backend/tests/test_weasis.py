@@ -54,6 +54,7 @@ async def test_launch_authorizes_against_files_table():
     client = _make_client()
     with patch('api.weasis.config', {'weasis_enabled': 'true',
                                      'weasis_launch_url': 'http://arc:8082/wpc'}), \
+         patch('api.dicomweb_proxy.config', {'dicom_proxy': 'false'}), \
          patch('api.weasis.get_conn') as mock_conn:
         conn = AsyncMock()
         conn.__aenter__.return_value = conn
@@ -71,6 +72,7 @@ async def test_launch_authorizes_against_files_table():
 async def test_launch_study_not_found():
     client = _make_client()
     with patch('api.weasis.config', {'weasis_enabled': 'true'}), \
+         patch('api.dicomweb_proxy.config', {'dicom_proxy': 'false'}), \
          patch('api.weasis.get_conn') as mock_conn:
         conn = AsyncMock()
         conn.__aenter__.return_value = conn
