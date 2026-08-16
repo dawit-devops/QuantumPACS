@@ -1,0 +1,31 @@
+# ADR-028 Phase 1 gate 3: register the QuantumPACS feed SCP as a remote AE in
+# the dcm4chee archive LDAP so the archive can C-STORE exported studies back
+# to QuantumPACS (Option B: dcm4chee archive -> QuantumPACS SCP on 11113).
+#
+# Structure mirrors the stock `storescp` device (a remote C-STORE SCP):
+#   device + cn=dicom connection child + dicomAETitle child
+# and a Unique AE Titles Registry entry.
+#
+# Load: docker exec -i dcm4chee-ldap-1 ldapadd -x -H ldap://localhost:389 \
+#   -D cn=admin,dc=dcm4che,dc=org -w <LDAP_ROOTPASS> < this file
+
+dn: dicomDeviceName=QUANTUMPACS,cn=Devices,cn=DICOM Configuration,dc=dcm4che,dc=org
+objectClass: dicomDevice
+objectClass: dcmDevice
+dicomInstalled: TRUE
+
+dn: cn=dicom,dicomDeviceName=QUANTUMPACS,cn=Devices,cn=DICOM Configuration,dc=dcm4che,dc=org
+objectClass: dicomNetworkConnection
+objectClass: dcmNetworkConnection
+dicomHostname: host.docker.internal
+dicomPort: 11113
+
+dn: dicomAETitle=QUANTUMPACS,dicomDeviceName=QUANTUMPACS,cn=Devices,cn=DICOM Configuration,dc=dcm4che,dc=org
+objectClass: dicomNetworkAE
+objectClass: dcmNetworkAE
+dicomAssociationInitiator: TRUE
+dicomAssociationAcceptor: FALSE
+dicomNetworkConnectionReference: cn=dicom,dicomDeviceName=QUANTUMPACS,cn=Devices,cn=DICOM Configuration,dc=dcm4che,dc=org
+
+dn: dicomAETitle=QUANTUMPACS,cn=Unique AE Titles Registry,cn=DICOM Configuration,dc=dcm4che,dc=org
+objectClass: dicomUniqueAETitle

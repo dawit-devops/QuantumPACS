@@ -1,0 +1,97 @@
+# DCM4CHEE archive stack for QuantumPACS dev — separate compose file so the
+# archive never entangles with the QuantumPACS postgres/redis/es services.
+# Usage: docker compose --env-file .env.dcm4chee -f docker/dcm4chee/docker-compose.dcm4chee.yml up -d
+# (or `bash scripts/dev.sh dcm4chee-start`)
+#
+# Port map (ADR-028): 11112 DICOM (archive SCP), 8082 -> arc HTTP (REST +
+# weasis-pacs-connector), 5433 -> archive PostgreSQL, 389 LDAP, 9990/9993
+# WildFly management bound to 127.0.0.1 only. QuantumPACS' own DICOM SCP moves
+# to 11113 (see backend config.local.yaml dicom_cstore_port).
+
+services:
+  ldap:
+    image: dcm4che/slapd-dcm4chee:2.6.13-35.0
+    container_name: dcm4chee-ldap-1
+    restart: unless-stopped
+    ports:
+      - "389:389"
+    environment:
+      # STORAGE_DIR is baked into the LDAP storage device config that the
+      # archive reads at runtime — the path must exist in BOTH containers, so
+      # share the storage volume with the arc service at /storage/fs1.
+      STORAGE_DIR: /storage/fs1
+      STORAGE_UID: "1000"
+      STORAGE_GID: "1000"
+    volumes:
+      - dcm4chee_storage:/storage/fs1
+      - dcm4chee_ldap:/var/lib/openldap/openldap-data
+    hostname: ldap
+
+  db:
+    image: dcm4che/postgres-dcm4chee:17.9-35
+    container_name: dcm4chee-db-1
+    restart: unless-stopped
+    ports:
+      # Host 5433 — QuantumPACS PG 18 keeps 5432 (D-M5: no committed secrets;
+      # password comes from .env.dcm4chee, bootstrapped by scripts/dev.sh).
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: pacsdb
+      POSTGRES_USER: pacs
+      POSTGRES_PASSWORD: ${DCM4CHEE_POSTGRES_PASSWORD:?Set DCM4CHEE_POSTGRES_PASSWORD in .env.dcm4chee (see .env.dcm4chee.example)}
+    volumes:
+      - dcm4chee_db:/var/lib/postgresql
+    hostname: db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pacs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  arc:
+    build:
+      context: .
+      dockerfile: Dockerfile.arc
+    image: quantumpacs-dcm4chee-arc:5.35.0-weasis8
+    container_name: dcm4chee-arc-1
+    restart: unless-stopped
+    ports:
+      - "11112:11112"
+      - "8082:8080"
+      - "127.0.0.1:9990:9990"
+      - "127.0.0.1:9993:9993"
+    environment:
+      POSTGRES_DB: pacsdb
+      POSTGRES_USER: pacs
+      POSTGRES_PASSWORD: ${DCM4CHEE_POSTGRES_PASSWORD:?Set DCM4CHEE_POSTGRES_PASSWORD in .env.dcm4chee}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      LDAP_HOST: ldap
+      LDAP_PORT: "389"
+      WILDFLY_WAIT_FOR: "ldap:389 db:5432"
+      WILDFLY_CHOWN: "/storage/fs1"
+      STORAGE_DIR: /storage/fs1
+      STORAGE_UID: "1000"
+      STORAGE_GID: "1000"
+      HTTP_PORT: "8080"
+      HTTPS_PORT: "8443"
+      MANAGEMENT_HTTP_PORT: "9990"
+      MANAGEMENT_HTTPS_PORT: "9993"
+    volumes:
+      - dcm4chee_storage:/storage/fs1
+    depends_on:
+      ldap:
+        condition: service_started
+      db:
+        condition: service_healthy
+    extra_hosts:
+      # Lets the archive reach the host's QuantumPACS DICOM SCP (AE QUANTUMPACS,
+      # port 11113) for Option-B export (ADR-028). The LDIF for that AE is
+      # loaded into LDAP during Phase 1 gates.
+      - "host.docker.internal:host-gateway"
+    hostname: arc
+
+volumes:
+  dcm4chee_ldap:
+  dcm4chee_db:
+  dcm4chee_storage:
