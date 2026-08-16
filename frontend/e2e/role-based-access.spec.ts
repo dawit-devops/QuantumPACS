@@ -34,8 +34,10 @@ const ADMIN_ROUTES = [
 // Clinical surfaces (Reading / Acquisition / QA) are closed to admin-scoped
 // roles: ClinicalRoute excludes them regardless of grants and the bounce lands
 // on the dashboard. The positive control is therefore inverted for these paths.
+// /worklist is deliberately absent: Matrix A grants the technologist
+// WORKLIST_READ/WRITE (the MWL list is part of acquisition), so the gate lets
+// them in — covered by the technologist positive control below.
 const CLINICAL_ROUTES = [
-  "/worklist",
   "/schedule-board",
   "/exams",
   "/reading",
@@ -116,6 +118,16 @@ test.describe("Non-admin deep-link denial (PermissionRoute)", () => {
     await seedTechnologist(page);
     await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+  });
+
+  test("technologist is allowed deep-link /worklist (WORKLIST_READ)", async ({
+    page,
+  }) => {
+    // Matrix A grants the technologist WORKLIST_READ/WRITE, so the MWL
+    // worklist (Acquisition workspace) renders in place — not bounced.
+    await seedTechnologist(page);
+    await page.goto(BASE + "/worklist", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/worklist$/, { timeout: 10000 });
   });
 });
 
@@ -256,7 +268,13 @@ test.describe("Admin deep-link denial (role-scoped clinical routes)", () => {
   // even when their grants pass; the redirect lands on the dashboard. The
   // front-desk routes are ClinicalRoutes too, and /portal is a PermissionRoute
   // the admin holds no grant for — both bounce to the dashboard as well.
-  for (const path of [...CLINICAL_ROUTES, ...FRONT_OFFICE_ROUTES]) {
+  // /worklist stays in this loop even though non-admin WORKLIST_READ holders
+  // may enter: admin-scoped roles are closed out of every clinical surface.
+  for (const path of [
+    ...CLINICAL_ROUTES,
+    "/worklist",
+    ...FRONT_OFFICE_ROUTES,
+  ]) {
     test(`admin is denied deep-link ${path}`, async ({ page }) => {
       await loginAsAdmin(page);
       await page.goto(BASE + path, { waitUntil: "domcontentloaded" });

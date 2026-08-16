@@ -30,10 +30,20 @@ test.describe("QA Role", () => {
   });
 
   test("QA user sees QA menu items in the sidebar", async ({ page }) => {
-    // The QA workspace section is open by default for QA-officer users. The
-    // section groups children under the QA title, so the child labels are
-    // Protocols / Incidents / Corrective Actions (d4abc25 workspace
-    // restructure) — not prefixed "QA …".
+    // qa_officer is an unmapped slug, so workspaceFor() falls back to the
+    // first permitted landing step — EXAM_READ (acquisition) precedes
+    // QA_READ (qa) in the priority chain, opening the Acquisition section.
+    // The QA section is still present, just closed, so expand it first.
+    const queueItem = page.getByRole("menuitem", { name: menuName("QA Queue") });
+    if (!(await queueItem.isVisible().catch(() => false))) {
+      await page
+        .getByRole("menuitem", { name: menuName("QA") })
+        .first()
+        .click();
+    }
+    // The QA workspace section groups children under the QA title, so the
+    // child labels are Protocols / Incidents / Corrective Actions (d4abc25
+    // workspace restructure) — not prefixed "QA …".
     for (const label of [
       "QA Queue",
       "Protocols",

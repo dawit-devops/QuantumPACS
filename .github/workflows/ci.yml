@@ -200,6 +200,38 @@ jobs:
 
           asyncio.run(main())
           PY
+      # DICOM uploads (viewer-render.spec.ts) reject with NO_MASTER unless a
+      # master replica exists; the e2e DB has none, so seed one (idempotent).
+      # The replicas_master_unique partial index allows exactly one master row.
+      - name: Seed master replica
+        run: |
+          cd backend
+          python - <<'PY'
+          import asyncio
+          import os
+
+          import asyncpg
+
+          DSN = (
+              f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
+              f"@{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_DATABASE']}"
+          )
+
+          async def main():
+              conn = await asyncpg.connect(DSN)
+              try:
+                  await conn.execute(
+                      "INSERT INTO replicas (type, location, master, status) "
+                      "VALUES ('fs', 'e2e-master', TRUE, 'active') "
+                      "ON CONFLICT (location) DO UPDATE SET "
+                      "master = TRUE, status = 'active'"
+                  )
+                  print("seeded master replica location=e2e-master")
+              finally:
+                  await conn.close()
+
+          asyncio.run(main())
+          PY
       - name: Start backend
         run: |
           cd backend
