@@ -33,9 +33,10 @@ test.describe("Role Management", () => {
       timeout: 15000,
     });
     const bodyText = await page.locator("body").innerText({ timeout: 15000 });
-    // Dev-DB roles are Administrator/Biller/etc. — "admin" only appears in
-    // the seeded username, not the roles list, so assert real role names.
-    expect(bodyText).toContain("Administrator");
-    expect(bodyText).toContain("Biller");
+    // The RBAC overhaul (d4abc25) replaced the legacy Administrator/Biller
+    // roles with the matrix built-ins seeded by seed_rbac (backend
+    // permissions.py BUILT_IN_ROLES); assert the current canonical names.
+    expect(bodyText).toContain("Radiologist");
+    expect(bodyText).toContain("Cashier");
   });
 });

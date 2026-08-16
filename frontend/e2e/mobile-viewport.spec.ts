@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { clearAndGo, loginAsAdmin, menuName } from "./helpers";
+import {
+  adminCredentials,
+  clearAndGo,
+  loginAsAdmin,
+  menuName,
+} from "./helpers";
 
 test.describe("Mobile Viewport", () => {
   test.use({ viewport: { width: 375, height: 667 } });
@@ -9,8 +14,11 @@ test.describe("Mobile Viewport", () => {
     await expect(page.getByText("Sign in to your account")).toBeVisible({
       timeout: 15000,
     });
-    await page.getByPlaceholder("Username").fill("admin");
-    await page.getByPlaceholder("Password").fill("pa55w0rd");
+    // CI superadmin password differs from dev (E2E_ADMIN_PASS), so take the
+    // credentials from helpers instead of hardcoding pa55w0rd.
+    const { username, password } = adminCredentials();
+    await page.getByPlaceholder("Username").fill(username);
+    await page.getByPlaceholder("Password").fill(password);
     await page.getByRole("button", { name: /sign in/i }).click();
     // Admin login lands on the role-scoped dashboard (/admin). The sidebar
     // lives in a closed drawer on mobile, so the shell signal is the

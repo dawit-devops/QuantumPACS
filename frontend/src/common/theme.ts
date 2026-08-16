@@ -39,6 +39,11 @@ export const lightTheme: ThemeConfig = {
     colorError: BRAND.error,
     colorBgLayout: BRAND.bg,
     colorText: BRAND.text,
+    // R1-11: antd v6's default colorTextSecondary (rgba(0,0,0,0.45)) is only
+    // ~3.31:1 on the page background #f8fafc — fails AA for the 12px
+    // secondary text (files page "No files uploaded" etc.). Slate-600 is
+    // 7.1:1 on #f8fafc and matches --text-secondary in tokens.css.
+    colorTextSecondary: "#475569",
     fontFamily:
       "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', sans-serif",
     borderRadius: 6,
