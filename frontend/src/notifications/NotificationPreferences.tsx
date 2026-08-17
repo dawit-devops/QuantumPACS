@@ -26,29 +26,35 @@ const { Text } = Typography;
 // Event-type grouping for the preferences page — mirrors the backend role
 // default (db/notification_prefs.py): clinical events are noise for the
 // platform admin, operational alerts stay ON.
-const GROUPS: { key: string; title: string; hint: string; events: string[] }[] = [
-  {
-    key: "operational",
-    title: "Operational alerts",
-    hint: "Platform conditions only the admin can act on.",
-    events: ["storage.quota_breach", "quota.warning", "system.alert", "exam.assigned"],
-  },
-  {
-    key: "clinical",
-    title: "Clinical activity",
-    hint: "Per-study/file lifecycle events — muted by default for the platform admin.",
-    events: [
-      "study.arrived",
-      "study.verified",
-      "worklist.performed",
-      "share.accessed",
-      "annotation.shared",
-      "report.ready",
-      "report.returned",
-      "report.signed",
-    ],
-  },
-];
+const GROUPS: { key: string; title: string; hint: string; events: string[] }[] =
+  [
+    {
+      key: "operational",
+      title: "Operational alerts",
+      hint: "Platform conditions only the admin can act on.",
+      events: [
+        "storage.quota_breach",
+        "quota.warning",
+        "system.alert",
+        "exam.assigned",
+      ],
+    },
+    {
+      key: "clinical",
+      title: "Clinical activity",
+      hint: "Per-study/file lifecycle events — muted by default for the platform admin.",
+      events: [
+        "study.arrived",
+        "study.verified",
+        "worklist.performed",
+        "share.accessed",
+        "annotation.shared",
+        "report.ready",
+        "report.returned",
+        "report.signed",
+      ],
+    },
+  ];
 
 const EVENT_LABELS: Record<string, string> = {
   "storage.quota_breach": "Storage quota breach",
@@ -123,9 +129,7 @@ function NotificationPreferences() {
     }
   };
 
-  const mutedCount = prefs
-    ? Object.values(prefs).filter((v) => !v).length
-    : 0;
+  const mutedCount = prefs ? Object.values(prefs).filter((v) => !v).length : 0;
 
   return (
     <Content style={{ padding: 24 }}>
@@ -162,7 +166,10 @@ function NotificationPreferences() {
             )}
             {GROUPS.map((group) => (
               <Card key={group.key} size="small" title={group.title}>
-                <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginBottom: 12 }}
+                >
                   {group.hint}
                 </Text>
                 <Space direction="vertical" style={{ width: "100%" }} size={8}>
@@ -190,7 +197,8 @@ function NotificationPreferences() {
             ))}
             {user?.role && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Role: {user.role} — defaults applied when no explicit choice is made.
+                Role: {user.role} — defaults applied when no explicit choice is
+                made.
               </Text>
             )}
           </Space>

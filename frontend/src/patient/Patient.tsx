@@ -264,31 +264,33 @@ function Patient(props: any) {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {["Status", "Procedure", "Accession", "Date"].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            style={{
-                              textAlign: "left",
-                              fontSize: 12,
-                              color: "var(--color-secondary)",
-                              padding: "6px 8px",
-                            }}
-                          >
-                            {h}
-                          </th>
-                        ),
-                      )}
+                      {["Status", "Procedure", "Accession", "Date"].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign: "left",
+                            fontSize: 12,
+                            color: "var(--color-secondary)",
+                            padding: "6px 8px",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {(data.reports as any[]).map((r: any) => (
                       <tr
                         key={r.id}
-                        style={{ borderTop: "1px solid var(--color-slate-200)" }}
+                        style={{
+                          borderTop: "1px solid var(--color-slate-200)",
+                        }}
                       >
                         <td style={{ padding: "6px 8px" }}>
-                          <Tag color={REPORT_STATUS_COLORS[r.status] ?? "default"}>
+                          <Tag
+                            color={REPORT_STATUS_COLORS[r.status] ?? "default"}
+                          >
                             {REPORT_STATUS_LABEL[r.status] ?? r.status}
                           </Tag>
                         </td>
@@ -300,7 +302,9 @@ function Patient(props: any) {
                         </td>
                         <td style={{ padding: "6px 8px", fontSize: 12 }}>
                           {r.signed_at || r.created_at
-                            ? new Date(r.signed_at || r.created_at).toLocaleDateString()
+                            ? new Date(
+                                r.signed_at || r.created_at,
+                              ).toLocaleDateString()
                             : "—"}
                         </td>
                       </tr>

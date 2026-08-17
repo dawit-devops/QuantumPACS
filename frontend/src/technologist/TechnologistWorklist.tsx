@@ -4,7 +4,18 @@ import {
   useVisibilityGatedInterval,
 } from "../hooks";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Layout, Table, Tag, Button, Select, Input, Alert, Spin, Space, message } from "antd";
+import {
+  Layout,
+  Table,
+  Tag,
+  Button,
+  Select,
+  Input,
+  Alert,
+  Spin,
+  Space,
+  message,
+} from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
@@ -368,17 +379,12 @@ function TechnologistWorklist() {
           glance whether the queue needs attention (overdue = past the 30m
           attention threshold, same rule the Elapsed column colorizes). */}
       {data.length > 0 && (
-        <div
-          style={{ marginBottom: 12, fontSize: 13 }}
-          aria-live="polite"
-        >
+        <div style={{ marginBottom: 12, fontSize: 13 }} aria-live="polite">
           <Tag color="blue">{statusCounts.ready || 0} ready</Tag>
           {overdueCount > 0 && (
             <Tag color="gold">{overdueCount} overdue (≥30m)</Tag>
           )}
-          {overdueCount === 0 && (
-            <Tag>nothing overdue</Tag>
-          )}
+          {overdueCount === 0 && <Tag>nothing overdue</Tag>}
         </div>
       )}
 

@@ -18,7 +18,11 @@ import { SettingOutlined, SaveOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import PageHeader from "../common/PageHeader";
 import { PageState } from "../common/PageState";
-import { getAdminConfig, updateAdminConfig, type ConfigSetting } from "../api/admin";
+import {
+  getAdminConfig,
+  updateAdminConfig,
+  type ConfigSetting,
+} from "../api/admin";
 
 const { Content } = Layout;
 const { Text } = Typography;
@@ -54,7 +58,10 @@ const GROUPS: { key: string; title: string; keys: string[] }[] = [
 function Settings() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - System Settings");
-  const [settings, setSettings] = useState<Record<string, ConfigSetting> | null>(null);
+  const [settings, setSettings] = useState<Record<
+    string,
+    ConfigSetting
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -161,12 +168,17 @@ function Settings() {
                         label={
                           <Space size={6}>
                             <span>{LABELS[key] ?? key}</span>
-                            {spec.restart && <Tag color="orange">restart required</Tag>}
+                            {spec.restart && (
+                              <Tag color="orange">restart required</Tag>
+                            )}
                           </Space>
                         }
                       >
                         {spec.type === "bool" ? (
-                          <Switch checkedChildren="ON" unCheckedChildren="OFF" />
+                          <Switch
+                            checkedChildren="ON"
+                            unCheckedChildren="OFF"
+                          />
                         ) : spec.type === "int" ? (
                           <InputNumber min={1} style={{ width: 200 }} />
                         ) : (
@@ -180,8 +192,8 @@ function Settings() {
             ))}
             <Text type="secondary" style={{ fontSize: 12 }}>
               Editable values are applied to the running platform for
-              runtime-safe keys; restart-required keys apply on the next
-              backend restart.
+              runtime-safe keys; restart-required keys apply on the next backend
+              restart.
             </Text>
           </Space>
         )}

@@ -646,7 +646,11 @@ function ExamConsole() {
             </span>
           }
           action={
-            <Button size="small" type="link" onClick={() => navigate(`/exams/${nextExam.id}`)}>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => navigate(`/exams/${nextExam.id}`)}
+            >
               Open
             </Button>
           }
@@ -1110,7 +1114,9 @@ function ExamConsole() {
                     <span>
                       {s.check_item} · {s.answer} ·{" "}
                       {s.accession_number ? `Exam ${s.accession_number}` : ""}{" "}
-                      {s.checked_at ? `· ${String(s.checked_at).slice(0, 10)}` : ""}
+                      {s.checked_at
+                        ? `· ${String(s.checked_at).slice(0, 10)}`
+                        : ""}
                     </span>
                   </div>
                 ))}
@@ -1275,10 +1281,7 @@ function ExamConsole() {
               }))}
             />
           </Form.Item>
-          <Form.Item
-            name="series_id"
-            label="Series (optional)"
-          >
+          <Form.Item name="series_id" label="Series (optional)">
             <Select
               allowClear
               placeholder="Series that triggered the flag"

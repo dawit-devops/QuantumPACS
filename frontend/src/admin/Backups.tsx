@@ -111,7 +111,8 @@ function Backups() {
   };
 
   const newest = data.find((b) => b.status === "completed");
-  const stale = newest && new Date(newest.created_at).getTime() < Date.now() - 7 * 86400000;
+  const stale =
+    newest && new Date(newest.created_at).getTime() < Date.now() - 7 * 86400000;
 
   return (
     <Content style={{ padding: 24 }}>
@@ -205,7 +206,11 @@ function Backups() {
                     <Button
                       size="small"
                       icon={<DownloadOutlined />}
-                      onClick={() => downloadBackup(record.id).catch((e) => message.error(e.message))}
+                      onClick={() =>
+                        downloadBackup(record.id).catch((e) =>
+                          message.error(e.message),
+                        )
+                      }
                     >
                       Download
                     </Button>
@@ -247,7 +252,9 @@ function Backups() {
               <Descriptions.Item label="Generated at">
                 {verification.generated_at ?? "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Files">{verification.files}</Descriptions.Item>
+              <Descriptions.Item label="Files">
+                {verification.files}
+              </Descriptions.Item>
               <Descriptions.Item label="Archive bytes">
                 {formatBytes(verification.bytes)}
               </Descriptions.Item>

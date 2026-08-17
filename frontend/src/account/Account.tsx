@@ -41,24 +41,42 @@ const PERMISSION_GROUPS: {
     key: "tenant",
     label: "Tenant & platform ops",
     permissions: [
-      "TENANT_READ", "TENANT_ADMIN", "CROSS_TENANT_READ", "METERING_READ",
+      "TENANT_READ",
+      "TENANT_ADMIN",
+      "CROSS_TENANT_READ",
+      "METERING_READ",
     ],
   },
   {
     key: "users",
     label: "Users, roles & service keys",
     permissions: [
-      "USER_READ", "USER_WRITE", "ROLE_READ", "ROLE_WRITE", "ROLE_DELETE",
-      "SERVICE_KEY_READ", "SERVICE_KEY_WRITE", "SERVICE_KEY_DELETE",
+      "USER_READ",
+      "USER_WRITE",
+      "ROLE_READ",
+      "ROLE_WRITE",
+      "ROLE_DELETE",
+      "SERVICE_KEY_READ",
+      "SERVICE_KEY_WRITE",
+      "SERVICE_KEY_DELETE",
     ],
   },
   {
     key: "interfaces",
     label: "Interfaces, storage & routing",
     permissions: [
-      "INTERFACE_MONITOR", "INTERFACE_ADMIN", "STORAGE_ADMIN", "HL7_READ",
-      "HL7_WRITE", "ROUTING_READ", "ROUTING_WRITE", "DICOMWEB_READ",
-      "DICOMWEB_WRITE", "REPLICA_READ", "REPLICA_WRITE", "SYSTEM_ADMIN",
+      "INTERFACE_MONITOR",
+      "INTERFACE_ADMIN",
+      "STORAGE_ADMIN",
+      "HL7_READ",
+      "HL7_WRITE",
+      "ROUTING_READ",
+      "ROUTING_WRITE",
+      "DICOMWEB_READ",
+      "DICOMWEB_WRITE",
+      "REPLICA_READ",
+      "REPLICA_WRITE",
+      "SYSTEM_ADMIN",
     ],
   },
   {
@@ -70,18 +88,24 @@ const PERMISSION_GROUPS: {
     key: "clinical",
     label: "Clinical read-only",
     permissions: [
-      "PATIENT_READ", "STUDY_READ", "SERIES_READ", "FILE_READ",
-      "REPORT_READ", "VIEWER_READ", "WORKLIST_READ", "CHART_READ",
-      "RESULTS_READ", "ORDER_READ", "EXAM_READ",
+      "PATIENT_READ",
+      "STUDY_READ",
+      "SERIES_READ",
+      "FILE_READ",
+      "REPORT_READ",
+      "VIEWER_READ",
+      "WORKLIST_READ",
+      "CHART_READ",
+      "RESULTS_READ",
+      "ORDER_READ",
+      "EXAM_READ",
     ],
   },
   {
     key: "roadmap",
     label: "Roadmap-only",
     roadmap: true,
-    permissions: [
-      "BILLING_READ", "CDS_ADMIN", "REPORT_TEMPLATE_ADMIN",
-    ],
+    permissions: ["BILLING_READ", "CDS_ADMIN", "REPORT_TEMPLATE_ADMIN"],
   },
 ];
 
@@ -292,7 +316,10 @@ function Account(props: any) {
             if (inGroup.length === 0) return null;
             return (
               <div key={group.key} style={{ marginBottom: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginBottom: 6 }}
+                >
                   {group.label}
                   {group.roadmap && (
                     <Tag style={{ marginLeft: 8 }} color="default">
@@ -327,7 +354,10 @@ function Account(props: any) {
             if (ungrouped.length === 0) return null;
             return (
               <div>
-                <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginBottom: 6 }}
+                >
                   Other
                 </Text>
                 {ungrouped.map((perm: string) => (

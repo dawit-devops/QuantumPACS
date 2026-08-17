@@ -29,8 +29,9 @@ export interface ConfigSetting {
   restart: boolean;
 }
 
-export const getAdminConfig = (): Promise<{ settings: Record<string, ConfigSetting> }> =>
-  request<{ settings: Record<string, ConfigSetting> }>("admin/config");
+export const getAdminConfig = (): Promise<{
+  settings: Record<string, ConfigSetting>;
+}> => request<{ settings: Record<string, ConfigSetting> }>("admin/config");
 
 export const updateAdminConfig = (
   settings: Record<string, { value: string | number | boolean }>,

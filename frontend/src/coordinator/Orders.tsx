@@ -78,8 +78,7 @@ function ageTag(o: OrderRow) {
   const days = ageDays(o);
   if (days === null) return <Text type="secondary">—</Text>;
   const color = days > 3 ? "red" : days > 1 ? "orange" : undefined;
-  const label =
-    days < 1 ? `${Math.round(days * 24)}h` : `${Math.round(days)}d`;
+  const label = days < 1 ? `${Math.round(days * 24)}h` : `${Math.round(days)}d`;
   return <Tag color={color}>{label}</Tag>;
 }
 
@@ -115,7 +114,9 @@ function Orders() {
 
   const summary = useMemo(() => {
     const open = (rows ?? []).filter(
-      (r) => derivedOrderStatus(r) !== "reported" && derivedOrderStatus(r) !== "cancelled",
+      (r) =>
+        derivedOrderStatus(r) !== "reported" &&
+        derivedOrderStatus(r) !== "cancelled",
     );
     const waiting = open.filter((r) => (ageDays(r) ?? 0) > 1);
     const reportedToday = (rows ?? []).filter((r) => {
@@ -137,7 +138,8 @@ function Orders() {
       if (statusFilter && derivedOrderStatus(r) !== statusFilter) return false;
       if (modalityFilter && r.modality !== modalityFilter) return false;
       if (q) {
-        const hay = `${r.patient_name ?? ""} ${r.patient_id} ${r.requested_procedure}`.toLowerCase();
+        const hay =
+          `${r.patient_name ?? ""} ${r.patient_id} ${r.requested_procedure}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -235,29 +237,31 @@ function Orders() {
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({
             // The patient route key is the patients table id, not the MRN.
-            onClick: () => navigate(`/patients/${r.patient_db_id ?? r.patient_id}`),
+            onClick: () =>
+              navigate(`/patients/${r.patient_db_id ?? r.patient_id}`),
             style: { cursor: "pointer" },
           })}
           locale={{
-            emptyText: rows?.length === 0 ? (
-              <div style={{ padding: 24 }}>
-                <p style={{ marginBottom: 8 }}>No orders yet.</p>
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  New imaging requests will appear here. Book one from the
-                  Schedule Board.
-                </Text>
-                <div style={{ marginTop: 12 }}>
-                  <Button
-                    icon={<CalendarOutlined />}
-                    onClick={() => navigate("/schedule-board")}
-                  >
-                    Open Schedule Board
-                  </Button>
+            emptyText:
+              rows?.length === 0 ? (
+                <div style={{ padding: 24 }}>
+                  <p style={{ marginBottom: 8 }}>No orders yet.</p>
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    New imaging requests will appear here. Book one from the
+                    Schedule Board.
+                  </Text>
+                  <div style={{ marginTop: 12 }}>
+                    <Button
+                      icon={<CalendarOutlined />}
+                      onClick={() => navigate("/schedule-board")}
+                    >
+                      Open Schedule Board
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              "No orders match your filters"
-            ),
+              ) : (
+                "No orders match your filters"
+              ),
           }}
           columns={[
             {

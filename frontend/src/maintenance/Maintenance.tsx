@@ -20,7 +20,11 @@ import { PlayCircleOutlined, PauseCircleOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import PageHeader from "../common/PageHeader";
 import { PageState } from "../common/PageState";
-import { getAdminStatus, setMaintenance, type MaintenanceState } from "../api/admin";
+import {
+  getAdminStatus,
+  setMaintenance,
+  type MaintenanceState,
+} from "../api/admin";
 import { listLogs } from "../api/logs";
 import { useAuth } from "../auth/AuthContext";
 import { useTenantRefetch } from "../hooks";
@@ -120,14 +124,26 @@ function Maintenance() {
             <Space align="center" size={16} wrap>
               <span
                 className={`dashboard-health-dot dashboard-health-dot-${active ? "error" : "ok"}`}
-                style={{ width: 12, height: 12, borderRadius: "50%", display: "inline-block" }}
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  display: "inline-block",
+                }}
                 aria-hidden="true"
               />
               {active ? (
                 <>
                   <Tag color="orange">MAINTENANCE ACTIVE</Tag>
-                  <Text>since {state?.since ? new Date(state.since).toLocaleString() : "—"}</Text>
-                  {state?.reason && <Text type="secondary">Reason: {state.reason}</Text>}
+                  <Text>
+                    since{" "}
+                    {state?.since
+                      ? new Date(state.since).toLocaleString()
+                      : "—"}
+                  </Text>
+                  {state?.reason && (
+                    <Text type="secondary">Reason: {state.reason}</Text>
+                  )}
                 </>
               ) : (
                 <>
@@ -185,7 +201,8 @@ function Maintenance() {
                     title: "Time",
                     dataIndex: "created_at",
                     width: 200,
-                    render: (t: string) => (t ? new Date(t).toLocaleString() : "—"),
+                    render: (t: string) =>
+                      t ? new Date(t).toLocaleString() : "—",
                   },
                   { title: "Actor", dataIndex: "actor", width: 160 },
                   { title: "Event", dataIndex: "description" },
@@ -223,8 +240,16 @@ function Maintenance() {
               rows={3}
             />
           </Form.Item>
-          <Form.Item name="duration_hours" label="Expected duration (hours, optional)">
-            <InputNumber min={1} max={720} style={{ width: "100%" }} placeholder="Optional" />
+          <Form.Item
+            name="duration_hours"
+            label="Expected duration (hours, optional)"
+          >
+            <InputNumber
+              min={1}
+              max={720}
+              style={{ width: "100%" }}
+              placeholder="Optional"
+            />
           </Form.Item>
         </Form>
       </Modal>

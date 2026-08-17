@@ -1,5 +1,9 @@
 import { Button, Card, Typography } from "antd";
-import { CloseCircleOutlined, HomeOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  CloseCircleOutlined,
+  HomeOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { landingRouteFor } from "../navigator";

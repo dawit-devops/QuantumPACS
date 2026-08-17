@@ -75,11 +75,7 @@ const EVENT_GROUPS: Record<string, string[]> = {
     "user.role_synced",
     "user.notification_prefs_changed",
   ],
-  "Roles & Access": [
-    "role.created",
-    "role.updated",
-    "role.deleted",
-  ],
+  "Roles & Access": ["role.created", "role.updated", "role.deleted"],
   "Tenant Management": [
     "tenant.created",
     "tenant.updated",
@@ -98,7 +94,7 @@ const EVENT_GROUPS: Record<string, string[]> = {
     "replica.sync_status_changed",
     "backup.deleted",
   ],
-  "Workflow": [
+  Workflow: [
     "exam.radiologist_assigned",
     "exam.created",
     "exam.completed",

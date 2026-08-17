@@ -232,7 +232,8 @@ function FhirMonitoring(props: any) {
               suffix="ms"
               styles={{
                 content: {
-                  color: (metrics?.latency?.p99 || 0) > 1000 ? "red" : undefined,
+                  color:
+                    (metrics?.latency?.p99 || 0) > 1000 ? "red" : undefined,
                 },
               }}
             />

@@ -13,7 +13,11 @@ import {
   Checkbox,
   Tooltip,
 } from "antd";
-import { FileDoneOutlined, ReloadOutlined, AlertOutlined } from "@ant-design/icons";
+import {
+  FileDoneOutlined,
+  ReloadOutlined,
+  AlertOutlined,
+} from "@ant-design/icons";
 import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
@@ -292,17 +296,14 @@ function ReadingWorklist() {
           style={{ width: 150 }}
           value={statusFilter}
           onChange={setStatusFilter}
-          options={[
-            "draft",
-            "preliminary",
-            "submitted",
-            "returned",
-          ].map((s) => ({
-            value: s,
-            // "returned" maps server-side to draft + review_feedback set
-            // (R13 resident revision loop); label reads as a revision queue.
-            label: s === "returned" ? "needs revision" : s,
-          }))}
+          options={["draft", "preliminary", "submitted", "returned"].map(
+            (s) => ({
+              value: s,
+              // "returned" maps server-side to draft + review_feedback set
+              // (R13 resident revision loop); label reads as a revision queue.
+              label: s === "returned" ? "needs revision" : s,
+            }),
+          )}
         />
         <Select
           id="reading-worklist-modality-filter"
