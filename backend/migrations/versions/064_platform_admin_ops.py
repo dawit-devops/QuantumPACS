@@ -34,8 +34,8 @@ Drops the four tables. Safe: no pre-existing data lives in them.
 import sqlalchemy as sa
 from alembic import op
 
-revision = '060'
-down_revision = '059'
+revision = '064'
+down_revision = '063'
 branch_labels = None
 depends_on = None
 

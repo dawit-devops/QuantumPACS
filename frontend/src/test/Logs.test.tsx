@@ -119,7 +119,9 @@ describe("Logs", () => {
   it("renders export CSV button", async () => {
     renderWithAuth(<Logs />);
     await waitForTable();
-    expect(screen.getByText("CSV")).toBeInTheDocument();
+    // P2-2: server-side export of the full filtered set — button labels the
+    // row count instead of the old client-side "CSV".
+    expect(screen.getByText(/Export all/)).toBeInTheDocument();
   });
 
   it("shows empty state when no logs", async () => {
