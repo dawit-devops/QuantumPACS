@@ -132,8 +132,31 @@ test.describe("Care coordinator workflow (real backend)", () => {
   test("P2-1: patient page shows the Reports & Results card", async ({
     page,
   }) => {
+    // Create our own patient (receptionist REGISTRATION_WRITE path) instead
+    // of assuming a hard-coded id: a fresh CI DB only contains the
+    // E2E-FIXTURE-001 seed row (id 1), so /patients/13 404s there.
+    const stamp = Date.now();
+    const login = await page.request.post(`${API_BASE}/api/v2/login`, {
+      data: { username: "test.receptionist", password: "Test@123456" },
+    });
+    expect(login.status()).toBe(200);
+    const recTok = (await login.json()).token;
+    const recH = { ...csrf, Authorization: `Bearer ${recTok}` };
+
+    const patient = await page.request.post(`${API_BASE}/api/v2/patients`, {
+      headers: recH,
+      data: {
+        patient_id: `E2E-CC-PATIENT-${stamp}`,
+        name: "E2E^CareCoordinatorReports",
+        birth_date: "1990-01-01",
+        sex: "F",
+      },
+    });
+    expect(patient.status()).toBe(201);
+    const patientId = (await patient.json()).data.id;
+
     await loginAs(page, "test.care_coordinator", "Test@123456");
-    await page.goto("/patients/13", { waitUntil: "domcontentloaded" });
+    await page.goto(`/patients/${patientId}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText(/Reports & Results/)).toBeVisible({
       timeout: 10000,
     });

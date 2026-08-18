@@ -323,15 +323,18 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
     # with 403 "Tenant not available" (tenant_middleware R5-04). Its data
     # store IS the main database, so the row is pure registry metadata.
     # Idempotent (no-op once tenants exist) and non-fatal pre-migration.
-    async with db.conn.get_conn() as conn:
-        await _ensure_default_tenant(conn)
+    # Pool guard: the no-services lifecycle unit test boots without a pool.
+    if db.conn.get_database().pool is not None:
+        async with db.conn.get_conn() as conn:
+            await _ensure_default_tenant(conn)
 
-        # The superadmin account gets the same treatment: CI/dev/docker boots
-        # never sync_db, and without the admin row the admin-login e2e specs
-        # (and any bare deployment's first login) dead-end at the login page.
-        # Idempotent — skipped when the row already exists — and keyed to
-        # config superadmin_pass so password parity holds across environments.
-        await Users(conn).add_superadmin()
+            # The superadmin account gets the same treatment: CI/dev/docker
+            # boots never sync_db, and without the admin row the admin-login
+            # e2e specs (and any bare deployment's first login) dead-end at
+            # the login page. Idempotent — skipped when the row already
+            # exists — and keyed to config superadmin_pass so password parity
+            # holds across environments.
+            await Users(conn).add_superadmin()
 
     if sync_db:
         async with db.conn.get_conn() as conn:
