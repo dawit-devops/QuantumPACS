@@ -106,8 +106,11 @@ async function assertViewerRenders(page: Page, fileId: number) {
   });
   // .first(): the name can also surface in the thumbnail strip when other
   // files exist in the DB (same precedent as viewer-state.spec.ts).
+  // 60s: the Detail route is a lazy chunk whose import graph pulls in
+  // cornerstone3D — a cold vite dev worker recompiles it on first hit, which
+  // can exceed the 15s default on local runs.
   await expect(page.getByText(`File ${fileRecord.name}`).first()).toBeVisible({
-    timeout: 15000,
+    timeout: 60000,
   });
 
   // The viewport mounts and the loading overlay shows while the first

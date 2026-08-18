@@ -44,6 +44,11 @@ export const lightTheme: ThemeConfig = {
     // secondary text (files page "No files uploaded" etc.). Slate-600 is
     // 7.1:1 on #f8fafc and matches --text-secondary in tokens.css.
     colorTextSecondary: "#475569",
+    // Typography `secondary` resolves colorTextDescription, not
+    // colorTextSecondary (verified: computed color stayed rgba(0,0,0,0.45)
+    // and the cssinjs rule reads var(--ant-color-text-description)) — pin it
+    // too so empty-state/description text passes AA (R1-11).
+    colorTextDescription: "#475569",
     fontFamily:
       "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', sans-serif",
     borderRadius: 6,
@@ -112,6 +117,8 @@ export const darkTheme: ThemeConfig = {
     colorText: "#F1F5F9",
     colorTextSecondary: "#CBD5E1",
     colorTextTertiary: "#94A3B8",
+    // Typography `secondary` reads colorTextDescription (see light theme).
+    colorTextDescription: "#CBD5E1",
     fontFamily:
       "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', sans-serif",
     borderRadius: 6,

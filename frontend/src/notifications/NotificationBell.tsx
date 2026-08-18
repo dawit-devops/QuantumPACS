@@ -151,7 +151,11 @@ function NotificationBell() {
 
   return (
     <>
-      <Badge count={unread} size="small" offset={[2, -2]}>
+      <Badge
+        count={<span aria-hidden="true">{unread}</span>}
+        size="small"
+        offset={[2, -2]}
+      >
         <Button
           type="text"
           aria-label="Notifications"

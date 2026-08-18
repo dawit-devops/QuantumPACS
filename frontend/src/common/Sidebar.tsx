@@ -719,15 +719,19 @@ function Sidebar() {
             })),
             {
               key: "notifications",
-              // P2-6: the unread badge's text was joining the menu item's
-              // accessible name ("49Notifications"). aria-hidden keeps the
-              // visual count while the menuitem announces "Notifications".
+              // P2-6: the unread badge's text must not join the menu item's
+              // accessible name ("49Notifications"). The count is already
+              // aria-hidden inside NotificationBell; this span (pure text,
+              // never focusable) is hidden so the bell button's own
+              // aria-label "Notifications" is the menuitem's sole name —
+              // wrapping the focusable button in aria-hidden would trip
+              // axe's aria-hidden-focus rule.
               label: (
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span aria-hidden="true">
-                    <NotificationBell />
+                  <NotificationBell />
+                  <span className="nav-text" aria-hidden="true">
+                    Notifications
                   </span>
-                  <span className="nav-text">Notifications</span>
                 </span>
               ),
               style: {
