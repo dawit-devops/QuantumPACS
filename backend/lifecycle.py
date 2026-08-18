@@ -317,6 +317,22 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
     except Exception:
         log.warning('Failed to start dcm4chee self-heal sync worker', exc_info=True)
 
+    # Registry bootstrap must not ride the sync_db gate: CI e2e and container
+    # entrypoints boot uvicorn with sync_db=False, and until the `default`
+    # tenant's registry row exists every tenant-scoped request fails closed
+    # with 403 "Tenant not available" (tenant_middleware R5-04). Its data
+    # store IS the main database, so the row is pure registry metadata.
+    # Idempotent (no-op once tenants exist) and non-fatal pre-migration.
+    async with db.conn.get_conn() as conn:
+        await _ensure_default_tenant(conn)
+
+        # The superadmin account gets the same treatment: CI/dev/docker boots
+        # never sync_db, and without the admin row the admin-login e2e specs
+        # (and any bare deployment's first login) dead-end at the login page.
+        # Idempotent — skipped when the row already exists — and keyed to
+        # config superadmin_pass so password parity holds across environments.
+        await Users(conn).add_superadmin()
+
     if sync_db:
         async with db.conn.get_conn() as conn:
             for t in Table.tables:
@@ -327,8 +343,6 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
                     raise
 
             await Roles(conn).seed_built_in_roles()
-            await Users(conn).add_superadmin()
-            await _ensure_default_tenant(conn)
             log.info('Database schema synced')
 
 
