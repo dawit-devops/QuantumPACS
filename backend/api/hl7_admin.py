@@ -14,6 +14,7 @@ from db.conn import get_conn
 from db.hl7_message import Hl7Message
 from db.ris_hl7 import RisHl7Messages, RisInterfaceEndpoints
 from log import get_logger
+from services.hl7_engine.service import Hl7InterfaceEngine
 
 log = get_logger(__name__)
 
@@ -214,3 +215,21 @@ class RisInterfaceExceptionsHandler(HTTPEndpoint):
             'exceptions': [_row_dict(m) for m in exceptions],
             'count': len(exceptions),
         }})
+
+
+class RisInterfaceExceptionRetryHandler(HTTPEndpoint):
+    @requires_permission(Permission.HL7_WRITE)
+    async def post(self, request):
+        msg_id = _require_uuid(request.path_params['id'])
+        if msg_id is None:
+            return api_error('MESSAGE_NOT_FOUND', 'Message not found', status=404)
+        # Unknown/over-budget messages 404; a failed replay returns 200 with
+        # retried=false so the UI can show the new retry count from the queue.
+        engine = Hl7InterfaceEngine()
+        retried = await engine.retry_message(msg_id)
+        if not retried:
+            async with get_conn() as conn:
+                msg = await RisHl7Messages(conn).get(msg_id)
+            if not msg:
+                return api_error('MESSAGE_NOT_FOUND', 'Message not found', status=404)
+        return ok({'data': {'message_id': msg_id, 'retried': retried}})

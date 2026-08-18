@@ -20,7 +20,8 @@ from api.validate import parse_body
 from api.schemas.frontdesk import (
     AttachConsentRequest, CreateAppointmentRequest, CreateConsentRequest,
     CreateInsuranceRequest, CreateOrderRequest, CreatePatientRequest,
-    CreateVisitRequest, UpdateInsuranceRequest, UpdateVisitRequest,
+    CreateVisitRequest, UpdateInsuranceRequest, UpdatePatientRequest,
+    UpdateVisitRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -67,46 +68,169 @@ class PatientsSearchHandler(HTTPEndpoint):
         return ok({'data': [_row_dict(r) for r in rows]})
 
 
+async def _register_patient(conn, request, body):
+    """Shared register path for the legacy and RIS patient endpoints — the
+    MPI pre-check (R5-13) must behave identically whichever contract the
+    front desk uses."""
+    fd = FrontDesk(conn)
+    patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
+    name = body.name.strip()
+    existing = await fd.find_patient_duplicate(name, body.birth_date)
+    if existing:
+        return api_error(
+            'PATIENT_EXISTS',
+            'Patient with this name and birth date already exists',
+            details={'patient': _row_dict(existing)},
+            status=409,
+        )
+    try:
+        row = await fd.create_patient({
+            'patient_id': patient_id,
+            'name': name,
+            'birth_date': body.birth_date,
+            'sex': body.sex,
+            'meta': body.meta,
+        })
+    except UniqueViolationError:
+        return validation_error('Patient with this ID already exists')
+    await AuditLog(conn).log_event(
+        event_type='frontdesk.patient_registered',
+        actor_id=request.user.id,
+        resource_type='patient',
+        resource_id=row['id'],
+        details={'patient_id': patient_id},
+        tenant=effective_tenant(request),
+        request_id=request_id_var.get(),
+    )
+    return created({'data': _row_dict(row)})
+
+
 class PatientsRegistrationHandler(HTTPEndpoint):
     @requires_permission(Permission.REGISTRATION_WRITE)
     async def post(self, request):
         body = await parse_body(CreatePatientRequest, request)
-        patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
-        name = body.name.strip()
+        async with get_conn() as conn:
+            return await _register_patient(conn, request, body)
+
+
+# ---- RIS patient contract (§4.1) ----
+# Same registration/search/insurance logic as the legacy frontdesk endpoints,
+# gated by the RIS permission vocabulary (PATIENT_READ/PATIENT_WRITE) and
+# adding update + check-in, which the legacy contract never exposed.
+
+
+class RisPatientsHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def post(self, request):
+        body = await parse_body(CreatePatientRequest, request)
+        async with get_conn() as conn:
+            return await _register_patient(conn, request, body)
+
+
+class RisPatientsSearchHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        q = (request.query_params.get('q') or '').strip()
+        if len(q) < 2:
+            return ok({'data': []})
+        async with get_conn() as conn:
+            rows = await FrontDesk(conn).search_patients(q)
+        return ok({'data': [_row_dict(r) for r in rows]})
+
+
+class RisPatientHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        patient_id = request.path_params['id']
+        async with get_conn() as conn:
+            row = await FrontDesk(conn).get_patient(patient_id)
+        if not row:
+            return not_found('Patient not found')
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def put(self, request):
+        patient_id = request.path_params['id']
+        body = await parse_body(UpdatePatientRequest, request)
+        updates = body.model_dump(exclude_none=True)
         async with get_conn() as conn:
             fd = FrontDesk(conn)
-            # R5-13: MPI dedup belongs on the server, not in a client banner —
-            # two registrations of the same person (same name + birth date,
-            # different MRNs) must not create two records. 409 with the
-            # existing row lets the front desk re-use it instead of probing.
-            existing = await fd.find_patient_duplicate(name, body.birth_date)
-            if existing:
-                return api_error(
-                    'PATIENT_EXISTS',
-                    'Patient with this name and birth date already exists',
-                    details={'patient': _row_dict(existing)},
-                    status=409,
-                )
-            try:
-                row = await fd.create_patient({
-                    'patient_id': patient_id,
-                    'name': name,
-                    'birth_date': body.birth_date,
-                    'sex': body.sex,
-                    'meta': body.meta,
-                })
-            except UniqueViolationError:
-                return validation_error('Patient with this ID already exists')
+            if not await fd.get_patient(patient_id):
+                return not_found('Patient not found')
+            if updates:
+                await fd.update_patient(patient_id, updates)
+            row = await fd.get_patient(patient_id)
             await AuditLog(conn).log_event(
-                event_type='frontdesk.patient_registered',
+                event_type='frontdesk.patient_updated',
                 actor_id=request.user.id,
                 resource_type='patient',
+                resource_id=row['id'],
+                details={'patient_id': patient_id, 'updates': updates},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': _row_dict(row)})
+
+
+class RisPatientInsuranceHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def post(self, request):
+        patient_id = request.path_params['id']
+        body = await parse_body(CreateInsuranceRequest, request)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            row = await fd.create_insurance({
+                'patient_id': patient_id,
+                'policy_number': body.policy_number,
+                'guarantor_name': body.guarantor_name,
+                'authorization_status': body.authorization_status,
+                'authorization_number': body.authorization_number,
+                'notes': body.notes,
+                'created_by': str(request.user.id),
+            })
+            await AuditLog(conn).log_event(
+                event_type='frontdesk.insurance_created',
+                actor_id=request.user.id,
+                resource_type='insurance',
                 resource_id=row['id'],
                 details={'patient_id': patient_id},
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
+
+
+class RisPatientCheckInHandler(HTTPEndpoint):
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        patient_id = request.path_params['id']
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            if not await fd.get_patient(patient_id):
+                return not_found('Patient not found')
+            visit = await fd.find_open_visit(patient_id)
+            if not visit:
+                return api_error(
+                    'NO_OPEN_VISIT',
+                    'Patient has no open visit to check in',
+                    status=409,
+                )
+            await fd.update_visit(visit['id'], {'status': 'checked_in'})
+            row = dict(visit)
+            row['status'] = 'checked_in'
+            await AuditLog(conn).log_event(
+                event_type='frontdesk.checkin',
+                actor_id=request.user.id,
+                resource_type='visit',
+                resource_id=visit['id'],
+                details={'patient_id': patient_id},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': _row_dict(row)})
 
 
 class VisitsHandler(HTTPEndpoint):

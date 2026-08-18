@@ -125,6 +125,9 @@ const NotificationPreferences = React.lazy(
 const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
 const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
+const InterfaceDashboard = React.lazy(
+  () => import("./admin/InterfaceDashboard"),
+);
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
 function NavigatorSetter() {
@@ -215,6 +218,14 @@ function ThemedApp() {
                       element={
                         <PermissionRoute permission="SYSTEM_ADMIN">
                           <Settings />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/interfaces"
+                      element={
+                        <PermissionRoute permission="HL7_READ">
+                          <InterfaceDashboard />
                         </PermissionRoute>
                       }
                     />

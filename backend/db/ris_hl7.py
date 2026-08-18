@@ -110,6 +110,11 @@ class RisHl7Messages(Table):
         rows = await self.fetch(q)
         return [dict(r) for r in rows]
 
+    async def get(self, msg_id):
+        q = self.select('*').where(self.table.id == msg_id)
+        row = await self.fetchone(q)
+        return dict(row) if row else None
+
     async def list_by_endpoint(self, endpoint_id, limit=50, offset=0):
         """Message history for one interface endpoint (S3-15 dashboard)."""
         q = self.select(
@@ -209,19 +214,27 @@ class RisInterfaceEndpoints(Table):
         row = await self.fetchone(q)
         return dict(row) if row else None
 
+    async def get_by_name(self, name):
+        q = self.select('*').where(self.table.name == name)
+        row = await self.fetchone(q)
+        return dict(row) if row else None
+
     async def touch(self, endpoint_id, status='ok'):
-        """Record message flow on the endpoint (dashboard counters)."""
+        """Record message flow on the endpoint (dashboard counters).
+
+        Table.exec() takes no query params, so the id is interpolated —
+        safe because endpoint_id is a UUID (validated by _require_uuid or
+        produced by our own SELECT ... RETURNING id).
+        """
         if status == 'ok':
             await self.exec(
                 'UPDATE ris_interface_endpoints SET message_count = message_count + 1, '
-                'last_message_at = now() WHERE id = $1',
-                endpoint_id,
+                f"last_message_at = now() WHERE id = '{endpoint_id}'",
             )
         else:
             await self.exec(
                 'UPDATE ris_interface_endpoints SET message_count = message_count + 1, '
-                'error_count = error_count + 1, last_message_at = now() WHERE id = $1',
-                endpoint_id,
+                f"error_count = error_count + 1, last_message_at = now() WHERE id = '{endpoint_id}'",
             )
 
 

@@ -1,0 +1,101 @@
+import { request } from "./client";
+
+export interface RisInterface {
+  id: string;
+  name: string;
+  interface_type: string;
+  protocol: string;
+  is_active: boolean;
+  last_message_at: string | null;
+  message_count: number;
+  error_count: number;
+  status_counts: Record<string, number>;
+  [key: string]: unknown;
+}
+
+export interface RisHl7MessageRow {
+  id: string;
+  message_type: string;
+  trigger_event: string;
+  control_id: string;
+  status: string;
+  error_message: string | null;
+  retry_count: number;
+  created_at: string | null;
+  processed_at: string | null;
+  [key: string]: unknown;
+}
+
+export interface RisMessagePage {
+  messages: RisHl7MessageRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface RisMetrics {
+  endpoint_id: string;
+  period: string;
+  [key: string]: unknown;
+}
+
+export interface RisException {
+  id: string;
+  retry_count: number;
+  error_message: string | null;
+  created_at: string | null;
+  [key: string]: unknown;
+}
+
+// The /api/ris/* handlers wrap payloads in {"data": ...} — unwrap here so
+// callers get the resource directly (same shape the legacy hl7 module
+// surfaces for /hl7/admin/*, which does not wrap).
+export const listRisInterfaces = async (): Promise<RisInterface[]> => {
+  const body = await request<{
+    data: { interfaces: RisInterface[]; total: number };
+  }>("ris/interfaces");
+  return body.data.interfaces;
+};
+
+export const listRisInterfaceMessages = async (
+  id: string,
+  params: { limit?: number; offset?: number } = {},
+): Promise<RisMessagePage> => {
+  const query: Record<string, string> = {};
+  if (params.limit !== undefined) query.limit = String(params.limit);
+  if (params.offset !== undefined) query.offset = String(params.offset);
+  const body = await request<{ data: RisMessagePage }>(
+    `ris/interfaces/${id}/messages`,
+    { query },
+  );
+  return body.data;
+};
+
+export const getRisInterfaceMetrics = async (
+  id: string,
+  period: string,
+): Promise<RisMetrics> => {
+  const body = await request<{ data: RisMetrics }>(
+    `ris/interfaces/${id}/metrics`,
+    { query: { period } },
+  );
+  return body.data;
+};
+
+export const listRisExceptions = async (
+  limit = 50,
+): Promise<RisException[]> => {
+  const body = await request<{
+    data: { exceptions: RisException[]; count: number };
+  }>("ris/interfaces/exceptions", { query: { limit: String(limit) } });
+  return body.data.exceptions;
+};
+
+export const retryRisException = async (
+  id: string,
+): Promise<{ retried: boolean }> => {
+  const body = await request<{
+    data: { message_id: string; retried: boolean };
+  }>(`ris/interfaces/exceptions/${id}/retry`, { method: "POST" });
+  return body.data;
+};

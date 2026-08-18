@@ -297,6 +297,78 @@ class TestRetryQueue:
         )
 
     @pytest.mark.asyncio
+    async def test_retry_message_replays_single_failed(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        messages = AsyncMock()
+        messages.get.return_value = {
+            'id': 'msg-uuid', 'status': 'FAILED', 'retry_count': 1, 'raw_message': SAMPLE_ORM_O01,
+        }
+        engine_patches['RisHl7Messages'].return_value = messages
+        orders = AsyncMock()
+        orders.get_by_accession.return_value = None
+        orders.create.return_value = {'id': 'order-uuid'}
+        engine_patches['RisOrders'].return_value = orders
+        engine_patches['RisOrderProcedures'].return_value = AsyncMock()
+        engine_patches['handle_orm_message'].return_value = True
+
+        ok = await Hl7InterfaceEngine().retry_message('msg-uuid')
+
+        assert ok is True
+        messages.update_status.assert_any_await('msg-uuid', 'RETRYING')
+        messages.update_status.assert_any_await('msg-uuid', 'PROCESSED')
+        orders.create.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_retry_message_refuses_unknown_or_not_failed(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        messages = AsyncMock()
+        engine_patches['RisHl7Messages'].return_value = messages
+
+        engine = Hl7InterfaceEngine()
+
+        messages.get.return_value = None
+        assert await engine.retry_message('missing') is False
+
+        messages.get.return_value = {'id': 'x', 'status': 'PROCESSED', 'retry_count': 0}
+        assert await engine.retry_message('x') is False
+
+        messages.get.return_value = {'id': 'x', 'status': 'FAILED', 'retry_count': 3}
+        assert await engine.retry_message('x') is False
+
+        messages.update_status.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retry_message_failure_increments_retry_count(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        messages = AsyncMock()
+        messages.get.return_value = {
+            'id': 'msg-uuid', 'status': 'FAILED', 'retry_count': 1, 'raw_message': SAMPLE_ORM_O01,
+        }
+        engine_patches['RisHl7Messages'].return_value = messages
+        orders = AsyncMock()
+        orders.create.side_effect = RuntimeError('still broken')
+        orders.get_by_accession.return_value = None
+        engine_patches['RisOrders'].return_value = orders
+        engine_patches['RisOrderProcedures'].return_value = AsyncMock()
+        engine_patches['handle_orm_message'].return_value = True
+
+        ok = await Hl7InterfaceEngine().retry_message('msg-uuid')
+
+        assert ok is False
+        messages.update_status.assert_any_await(
+            'msg-uuid', 'FAILED', error='still broken (retry 2/3)', retry_count=2,
+        )
+
+    @pytest.mark.asyncio
     async def test_duplicate_accession_is_idempotent(self, engine_patches):
         from services.hl7_engine.service import Hl7InterfaceEngine
 
@@ -348,6 +420,83 @@ class TestParserNormalization:
             validate({'message_type': 'ORM', 'patient_id': 'P1'})
         with pytest.raises(Exception):
             validate({'message_type': 'ORU', 'accession_number': ''})
+
+
+class TestEndpointResolution:
+    @pytest.mark.asyncio
+    async def test_first_message_registers_endpoint(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        endpoints = AsyncMock()
+        endpoints.get_by_name.return_value = None
+        endpoints.create.return_value = 'ep-uuid'
+        engine_patches['RisInterfaceEndpoints'].return_value = endpoints
+        messages = AsyncMock()
+        messages.create.return_value = 'msg-uuid'
+        engine_patches['RisHl7Messages'].return_value = messages
+        orders = AsyncMock()
+        orders.get_by_accession.return_value = None
+        orders.create.return_value = {'id': 'order-uuid'}
+        engine_patches['RisOrders'].return_value = orders
+        engine_patches['RisOrderProcedures'].return_value = AsyncMock()
+        engine_patches['handle_orm_message'].return_value = True
+
+        result = await Hl7InterfaceEngine().receive_message(SAMPLE_ORM_O01.encode())
+
+        assert result == b'ACK'
+        endpoints.get_by_name.assert_awaited_once_with('SENDING_FACILITY')
+        endpoints.create.assert_awaited_once_with({
+            'name': 'SENDING_FACILITY',
+            'interface_type': 'HL7_ORM',
+            'protocol': 'HL7V2',
+            'config': {},
+        })
+        messages.create.assert_awaited_once()
+        # _persist attached the message to the resolved endpoint and touched it
+        assert messages.create.call_args.args[0]['endpoint_id'] == 'ep-uuid'
+        endpoints.touch.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_existing_endpoint_is_reused(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        endpoints = AsyncMock()
+        endpoints.get_by_name.return_value = {'id': 'existing-ep'}
+        engine_patches['RisInterfaceEndpoints'].return_value = endpoints
+        messages = AsyncMock()
+        messages.create.return_value = 'msg-uuid'
+        engine_patches['RisHl7Messages'].return_value = messages
+        engine_patches['handle_orm_message'].return_value = True
+        engine_patches['RisOrders'].return_value = AsyncMock()
+        engine_patches['RisOrderProcedures'].return_value = AsyncMock()
+
+        result = await Hl7InterfaceEngine().receive_message(SAMPLE_ORM_O01.encode())
+
+        assert result == b'ACK'
+        endpoints.create.assert_not_awaited()
+        assert messages.create.call_args.args[0]['endpoint_id'] == 'existing-ep'
+
+    @pytest.mark.asyncio
+    async def test_unknown_type_skips_endpoint(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        engine_patches['RisInterfaceEndpoints'].return_value = AsyncMock()
+        messages = AsyncMock()
+        messages.create.return_value = 'msg-uuid'
+        engine_patches['RisHl7Messages'].return_value = messages
+        engine_patches['handle_orm_message'].return_value = True
+
+        await Hl7InterfaceEngine().receive_message(SAMPLE_UNKNOWN_TYPE.encode())
+
+        # ORR^O02 has no endpoint mapping — the message persists unattached
+        assert messages.create.call_args.args[0]['endpoint_id'] is None
+        engine_patches['RisInterfaceEndpoints'].return_value.create.assert_not_awaited()
 
 
 class TestMetrics:

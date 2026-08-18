@@ -7,6 +7,7 @@ appointments, consent_documents, insurance_records, modality_capacity).
 No Table base class: these tables are owned by Alembic, not sync_db().
 """
 from datetime import datetime, timezone
+import json
 
 from db.conn import get_tenant_slug
 
@@ -32,14 +33,17 @@ class FrontDesk:
         return rows
 
     async def create_patient(self, data):
+        # meta is JSONB — asyncpg rejects bare dicts, so serialize here and
+        # cast in SQL (same pattern as the RIS tables).
+        meta = json.dumps(data.get('meta')) if data.get('meta') is not None else None
         return await self.conn.fetchrow(
             """
             INSERT INTO patients (patient_id, name, birth_date, sex, meta, tenant_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
             RETURNING id, patient_id, name, birth_date, sex
             """,
             data['patient_id'], data['name'], data.get('birth_date', ''),
-            data.get('sex', ''), data.get('meta'),
+            data.get('sex', ''), meta,
             get_tenant_slug() or 'default',
         )
 
@@ -64,6 +68,29 @@ class FrontDesk:
     async def get_patient(self, patient_id):
         return await self.conn.fetchrow(
             "SELECT id, patient_id, name, birth_date, sex FROM patients WHERE patient_id = $1",
+            patient_id,
+        )
+
+    async def update_patient(self, patient_id, updates):
+        # patients has no updated_at column — update only the caller-supplied
+        # demographic columns.
+        keys = list(updates.keys())
+        set_clause = ', '.join(f"{k} = ${i + 2}" for i, k in enumerate(keys))
+        await self.conn.execute(
+            f"UPDATE patients SET {set_clause} WHERE patient_id = $1",
+            patient_id, *updates.values(),
+        )
+
+    async def find_open_visit(self, patient_id):
+        """Earliest open visit (registered/checked_in) for check-in; a visit
+        already in progress or complete is no longer checkable."""
+        return await self.conn.fetchrow(
+            """
+            SELECT * FROM visits
+            WHERE patient_id = $1 AND status IN ('registered', 'checked_in')
+            ORDER BY visit_date, created_at
+            LIMIT 1
+            """,
             patient_id,
         )
 

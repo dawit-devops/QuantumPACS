@@ -50,6 +50,7 @@ from api.hl7_admin import (
     Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
     RisInterfacesHandler, RisInterfaceMessagesHandler,
     RisInterfaceMetricsHandler, RisInterfaceExceptionsHandler,
+    RisInterfaceExceptionRetryHandler,
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
@@ -91,7 +92,8 @@ from api.frontdesk import (
     PatientsSearchHandler, PatientsRegistrationHandler, VisitsHandler,
     VisitHandler, VisitOrdersHandler, AppointmentAvailabilityHandler,
     AppointmentsHandler, AppointmentHandler, ConsentsHandler, InsuranceHandler,
-    WaitingQueueHandler,
+    WaitingQueueHandler, RisPatientsHandler, RisPatientsSearchHandler,
+    RisPatientHandler, RisPatientInsuranceHandler, RisPatientCheckInHandler,
 )
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
@@ -155,6 +157,11 @@ _V1_ROUTES = [
     v2(Route('/patients', endpoint=PatientsRegistrationHandler, methods=['POST'])),
     v2(Route('/patients/{id}/insurance', endpoint=InsuranceHandler)),
     v2(Route('/patients/{id}', endpoint=PatientHandler)),
+    v2(Route('/ris/patients', endpoint=RisPatientsHandler, methods=['POST'])),
+    v2(Route('/ris/patients/search', endpoint=RisPatientsSearchHandler)),
+    v2(Route('/ris/patients/{id}', endpoint=RisPatientHandler)),
+    v2(Route('/ris/patients/{id}/insurance', endpoint=RisPatientInsuranceHandler, methods=['POST'])),
+    v2(Route('/ris/patients/{id}/check-in', endpoint=RisPatientCheckInHandler, methods=['POST'])),
     v2(Route('/files/upload', endpoint=Upload)),
     v2(Route('/files/download_token', endpoint=DownloadToken)),
     v2(Route('/files/download.zip', endpoint=DownloadFiles)),
@@ -295,6 +302,7 @@ _V1_ROUTES = [
     # history, metrics, exception queue — reads the engine's ris_* tables.
     v2(Route('/ris/interfaces', endpoint=RisInterfacesHandler)),
     v2(Route('/ris/interfaces/exceptions', endpoint=RisInterfaceExceptionsHandler)),
+    v2(Route('/ris/interfaces/exceptions/{id}/retry', endpoint=RisInterfaceExceptionRetryHandler, methods=['POST'])),
     v2(Route('/ris/interfaces/{id}/messages', endpoint=RisInterfaceMessagesHandler)),
     v2(Route('/ris/interfaces/{id}/metrics', endpoint=RisInterfaceMetricsHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),

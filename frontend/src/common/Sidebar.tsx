@@ -368,6 +368,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["HL7_READ"],
       },
       {
+        // Interface health (RIS-UI-37): the S3-16 dashboard under /admin.
+        // Admin-scoped like dicomweb — clinical roles holding legacy
+        // HL7_READ keep the /hl7 console, the /admin surface is ops-only.
+        key: "interfaces",
+        path: "/admin/interfaces",
+        label: "Interface Health",
+        icon: <ApiOutlined />,
+        permissions: ["HL7_READ"],
+        adminOnly: true,
+      },
+      {
         // Platform-ops surfaces (super_admin review): only the platform
         // admin holds SYSTEM_ADMIN, so these items are super_admin-only.
         key: "maintenance",

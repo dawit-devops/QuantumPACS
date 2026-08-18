@@ -49,6 +49,7 @@ def _make_app(user=None):
     from api.hl7_admin import (
         RisInterfacesHandler, RisInterfaceMessagesHandler,
         RisInterfaceMetricsHandler, RisInterfaceExceptionsHandler,
+        RisInterfaceExceptionRetryHandler,
     )
     return Starlette(
         routes=[
@@ -56,6 +57,7 @@ def _make_app(user=None):
             Route('/ris/interfaces/{id}/messages', endpoint=RisInterfaceMessagesHandler),
             Route('/ris/interfaces/{id}/metrics', endpoint=RisInterfaceMetricsHandler),
             Route('/ris/interfaces/exceptions', endpoint=RisInterfaceExceptionsHandler),
+            Route('/ris/interfaces/exceptions/{id}/retry', endpoint=RisInterfaceExceptionRetryHandler, methods=['POST']),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -198,6 +200,79 @@ class TestInterfaceExceptions:
         assert body['count'] == 1
         assert body['exceptions'][0]['error_message'] == 'Unparseable message'
         messages.list_failed.assert_awaited_once_with(50)
+
+
+class TestInterfaceExceptionRetry:
+    def test_retry_replays_message(self, dashboard_patches):
+        engine = AsyncMock()
+        engine.retry_message.return_value = True
+        with patch('api.hl7_admin.Hl7InterfaceEngine', return_value=engine):
+            client = TestClient(_make_app(User({'id': 1, 'permissions': ['HL7_WRITE']})))
+            resp = client.post('/ris/interfaces/exceptions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/retry')
+
+        assert resp.status_code == 200
+        assert resp.json()['data'] == {'message_id': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'retried': True}
+        engine.retry_message.assert_awaited_once_with('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+
+    def test_retry_unknown_message_404(self, dashboard_patches):
+        engine = AsyncMock()
+        engine.retry_message.return_value = False
+        messages = AsyncMock()
+        messages.get.return_value = None
+        dashboard_patches['RisHl7Messages'].return_value = messages
+        with patch('api.hl7_admin.Hl7InterfaceEngine', return_value=engine):
+            client = TestClient(_make_app(User({'id': 1, 'permissions': ['HL7_WRITE']})))
+            resp = client.post('/ris/interfaces/exceptions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/retry')
+
+        assert resp.status_code == 404
+        messages.get.assert_awaited_once()
+
+    def test_retry_over_budget_returns_retried_false(self, dashboard_patches):
+        engine = AsyncMock()
+        engine.retry_message.return_value = False
+        messages = AsyncMock()
+        messages.get.return_value = {'id': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'status': 'FAILED', 'retry_count': 3}
+        dashboard_patches['RisHl7Messages'].return_value = messages
+        with patch('api.hl7_admin.Hl7InterfaceEngine', return_value=engine):
+            client = TestClient(_make_app(User({'id': 1, 'permissions': ['HL7_WRITE']})))
+            resp = client.post('/ris/interfaces/exceptions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/retry')
+
+        assert resp.status_code == 200
+        assert resp.json()['data'] == {'message_id': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'retried': False}
+
+    def test_retry_requires_hl7_write(self, dashboard_patches):
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['HL7_READ']})))
+        resp = client.post('/ris/interfaces/exceptions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/retry')
+        assert resp.status_code == 403
+
+
+class TestEndpointTouch:
+    """Regression: Table.exec() takes no query params — touch used to pass
+    the id positionally and crash every live message flow (S3-16 live smoke
+    exposed it; the engine tests mock touch so it stayed invisible)."""
+
+    @pytest.mark.asyncio
+    async def test_touch_ok_increments_counters(self):
+        from db.ris_hl7 import RisInterfaceEndpoints
+
+        conn = AsyncMock()
+        await RisInterfaceEndpoints(conn).touch('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+
+        sql = conn.execute.call_args.args[0]
+        assert 'message_count = message_count + 1' in sql
+        assert 'error_count' not in sql
+        assert 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' in sql
+
+    @pytest.mark.asyncio
+    async def test_touch_failed_increments_error_count(self):
+        from db.ris_hl7 import RisInterfaceEndpoints
+
+        conn = AsyncMock()
+        await RisInterfaceEndpoints(conn).touch('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'failed')
+
+        sql = conn.execute.call_args.args[0]
+        assert 'message_count = message_count + 1' in sql
+        assert 'error_count = error_count + 1' in sql
 
 
 if __name__ == '__main__':

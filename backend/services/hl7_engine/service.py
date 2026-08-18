@@ -65,6 +65,8 @@ class Hl7InterfaceEngine:
             return f'ERR {exc}'.encode()
 
         self._record(parsed['message_type'], parsed.get('event_type', ''), 'RECEIVED')
+        if endpoint_id is None:
+            endpoint_id = await self._resolve_endpoint(parsed)
         msg_id = await self._persist(raw, raw_hash, parsed, 'RECEIVED', '', endpoint_id)
         await _store_hl7_message(raw, parsed, 'ok')
         await self._mark(msg_id, 'PARSED')
@@ -100,6 +102,39 @@ class Hl7InterfaceEngine:
     def _record(msg_type: str, trigger: str, status: str):
         ris_hl7_messages_total.labels(type=msg_type, trigger=trigger, status=status).inc()
 
+    _ENDPOINT_TYPES = {'ORM': 'HL7_ORM', 'ADT': 'HL7_ADT', 'ORU': 'HL7_ORU'}
+
+    async def _resolve_endpoint(self, parsed: dict):
+        """Map a live message to its interface endpoint (S3-16 dashboard).
+
+        The legacy listener never registered endpoints, so the dashboard
+        would be permanently empty on feeds that predate the registry.
+        Resolve-or-create from the MSH sending application/facility instead:
+        the first message of a feed creates its row, later ones reuse it,
+        and _persist() keeps the counters/last_message_at current.
+        """
+        iface_type = self._ENDPOINT_TYPES.get(parsed.get('message_type'))
+        if not iface_type:
+            return None
+        name = f"{parsed.get('sending_app', '')} {parsed.get('sending_facility', '')}".strip() or 'HL7 feed'
+        try:
+            async with get_conn() as conn:
+                endpoints = RisInterfaceEndpoints(conn)
+                row = await endpoints.get_by_name(name)
+                if row:
+                    return row['id']
+                created_id = await endpoints.create({
+                    'name': name,
+                    'interface_type': iface_type,
+                    'protocol': 'HL7V2',
+                    'config': {},
+                })
+                log.info('Registered interface endpoint %s (%s)', name, iface_type)
+                return created_id
+        except Exception:
+            log.warning('Endpoint resolution failed for %s — persisting unattached', name)
+            return None
+
     async def retry_failed(self, limit=50) -> int:
         """Replay the exception queue; returns how many messages were retried.
 
@@ -112,29 +147,46 @@ class Hl7InterfaceEngine:
             messages = RisHl7Messages(conn)
             failed = await messages.list_failed(limit=limit, max_retries=self.max_retries)
             for row in failed:
-                msg_id = row['id']
-                await messages.update_status(msg_id, 'RETRYING')
-                try:
-                    parsed = parse_hl7_message(row['raw_message'])
-                    if parsed is None:
-                        raise Hl7ValidationError('Unparseable message')
-                    validate(parsed)
-                    if not await self._route(parsed):
-                        raise Hl7ValidationError(
-                            f"{parsed.get('message_type')} handler returned False",
-                        )
-                except Exception as exc:
-                    attempt = row['retry_count'] + 1
-                    await messages.update_status(
-                        msg_id, 'FAILED',
-                        error=f'{exc} (retry {attempt}/{self.max_retries})',
-                        retry_count=attempt,
-                    )
-                    log.warning('HL7 retry %s/%s failed for %s', attempt, self.max_retries, msg_id)
-                    continue
-                await messages.update_status(msg_id, 'PROCESSED')
-                log.info('HL7 retry succeeded for %s', msg_id)
+                await self._retry_one(messages, row)
         return len(failed)
+
+    async def retry_message(self, msg_id) -> bool:
+        """Replay a single FAILED message (S3-16 exception-queue retry).
+
+        Returns True when the message was replayed and reached PROCESSED;
+        False when it is unknown, past its retry budget, or failed again.
+        """
+        async with get_conn() as conn:
+            messages = RisHl7Messages(conn)
+            row = await messages.get(msg_id)
+            if not row or row['status'] != 'FAILED' or row['retry_count'] >= self.max_retries:
+                return False
+            return await self._retry_one(messages, row)
+
+    async def _retry_one(self, messages, row) -> bool:
+        msg_id = row['id']
+        await messages.update_status(msg_id, 'RETRYING')
+        try:
+            parsed = parse_hl7_message(row['raw_message'])
+            if parsed is None:
+                raise Hl7ValidationError('Unparseable message')
+            validate(parsed)
+            if not await self._route(parsed):
+                raise Hl7ValidationError(
+                    f"{parsed.get('message_type')} handler returned False",
+                )
+        except Exception as exc:
+            attempt = row['retry_count'] + 1
+            await messages.update_status(
+                msg_id, 'FAILED',
+                error=f'{exc} (retry {attempt}/{self.max_retries})',
+                retry_count=attempt,
+            )
+            log.warning('HL7 retry %s/%s failed for %s', attempt, self.max_retries, msg_id)
+            return False
+        await messages.update_status(msg_id, 'PROCESSED')
+        log.info('HL7 retry succeeded for %s', msg_id)
+        return True
 
     async def _route(self, parsed: dict) -> bool:
         msg_type = parsed['message_type']

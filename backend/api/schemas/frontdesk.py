@@ -12,6 +12,13 @@ class CreatePatientRequest(BaseModel):
     meta: dict | None = Field(None, description="Free-form registration metadata")
 
 
+class UpdatePatientRequest(BaseModel):
+    name: str | None = Field(None, description="Patient full name")
+    birth_date: str | None = Field(None, description="Patient date of birth (YYYY-MM-DD)")
+    sex: str | None = Field(None, description="Patient sex (M/F/O)")
+    meta: dict | None = Field(None, description="Free-form registration metadata")
+
+
 class CreateVisitRequest(BaseModel):
     patient_id: str = Field(..., description="Patient identifier (MRN)")
     visit_date: date | None = Field(None, description="Visit date (defaults to today)")
