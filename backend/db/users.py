@@ -157,7 +157,7 @@ class Users(Table):
         await self.exec(q)
         return {'password': pswd}
 
-    async def get_users(self, offset=None, limit=None, username=None):
+    async def get_users(self, offset=None, limit=None, username=None, tenant=None):
         if offset is None:
             offset = 0
         if limit is None:
@@ -165,19 +165,26 @@ class Users(Table):
         roles_t = Table_('roles')
         q = self.select(
             'id', 'username', 'admin', 'created', 'status',
+            'tenant',
             roles_t.id.as_('role_id'),
             roles_t.name.as_('role_name'),
             roles_t.slug.as_('role_slug'),
         ).left_join(roles_t).on(self.table.role_id == roles_t.id)
         if username:
             q = q.where(self.table.username.ilike('%' + username + '%'))
+        if tenant:
+            # Tenant-scoped admins (P2-2, tenant_admin review) see only their
+            # own tenant's directory — mirrors the tenants-list scoping.
+            q = q.where(self.table.tenant == tenant)
         q = q.orderby('username').offset(offset).limit(limit)
         return await self.fetch(q)
 
-    async def count_users(self, username=None):
+    async def count_users(self, username=None, tenant=None):
         q = self.select(Count(1))
         if username:
             q = q.where(self.table.username.ilike('%' + username + '%'))
+        if tenant:
+            q = q.where(self.table.tenant == tenant)
         return await self.fetchval(q)
 
     async def deactivate(self, user_id):

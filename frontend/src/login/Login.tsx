@@ -17,6 +17,7 @@ import { UserOutlined, LockOutlined, LoginOutlined } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../common/ThemeProvider";
 import QuantumLogo from "../common/QuantumLogo";
+import MaintenanceBanner from "../common/MaintenanceBanner";
 import { landingRouteFor } from "../navigator";
 import { NAME_MAP } from "../api/roles";
 import "./Login.css";
@@ -213,6 +214,9 @@ function LoginForm(props: any) {
           "linear-gradient(135deg, var(--login-gradient-start) 0%, var(--login-gradient-mid) 50%, var(--login-gradient-end) 100%)",
       }}
     >
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+        <MaintenanceBanner />
+      </div>
       <Content>
         <Card
           className="animate-scale-in"

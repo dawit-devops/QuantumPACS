@@ -119,7 +119,10 @@ describe("AdminDashboard", () => {
   });
 
   it("renders the health strip with component statuses", async () => {
-    seedAdmin(["METRICS_READ"]);
+    // tenant_admin review P1-1: drill-down "Open … dashboard" buttons are
+    // permission-gated — REPLICA_READ unlocks Storage, DICOMWEB_READ the
+    // DICOM Listener link.
+    seedAdmin(["METRICS_READ", "REPLICA_READ", "DICOMWEB_READ"]);
     renderWithAuth(<AdminDashboard />);
 
     await waitFor(() => {

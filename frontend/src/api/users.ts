@@ -10,6 +10,9 @@ export interface User {
   role_id?: number | null;
   role_name?: string | null;
   role_slug?: string | null;
+  // P2-2 (tenant_admin review): users carry their tenant so the directory
+  // can show a tenant column; tenant-scoped admins only ever see their own.
+  tenant?: string | null;
 }
 
 export interface ListUsersParams {

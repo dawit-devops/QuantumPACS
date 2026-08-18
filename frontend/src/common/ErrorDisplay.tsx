@@ -1,5 +1,12 @@
 import { Button, Card, Typography } from "antd";
-import { CloseCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  CloseCircleOutlined,
+  HomeOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
+import { useNavigate } from "react-router";
+import { useAuth } from "../auth/AuthContext";
+import { landingRouteFor } from "../navigator";
 
 const { Text, Paragraph } = Typography;
 
@@ -9,7 +16,16 @@ interface ErrorDisplayProps {
   onRetry?: () => void;
 }
 
+// Care-coordinator review (P2-2): a "Missing permission" failure is not
+// transient — Retry can never succeed. Detect it, drop the Retry button, and
+// offer the user's own landing route instead of a dead retry loop. The
+// permission name is kept in the detail line so the user knows what to ask an
+// administrator for.
 export function ErrorDisplay({ message, detail, onRetry }: ErrorDisplayProps) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isPermissionError = /missing permission/i.test(message ?? "");
+
   return (
     <Card
       style={{
@@ -28,20 +44,33 @@ export function ErrorDisplay({ message, detail, onRetry }: ErrorDisplayProps) {
       />
       <Paragraph>
         <Text strong style={{ fontSize: 16 }}>
-          {message || "Something went wrong"}
+          {isPermissionError
+            ? "You don't have access to this area"
+            : message || "Something went wrong"}
         </Text>
       </Paragraph>
-      {detail && (
+      {(detail || isPermissionError) && (
         <Paragraph
           type="secondary"
           style={{ fontSize: 13, whiteSpace: "pre-wrap" }}
+          role={isPermissionError ? "alert" : undefined}
         >
-          {detail}
+          {isPermissionError
+            ? `${message}. Ask an administrator to grant this access for your role.`
+            : detail}
         </Paragraph>
       )}
-      {onRetry && (
+      {onRetry && !isPermissionError && (
         <Button icon={<ReloadOutlined />} onClick={onRetry}>
           Retry
+        </Button>
+      )}
+      {isPermissionError && user && (
+        <Button
+          icon={<HomeOutlined />}
+          onClick={() => navigate(landingRouteFor(user))}
+        >
+          Go to home
         </Button>
       )}
     </Card>

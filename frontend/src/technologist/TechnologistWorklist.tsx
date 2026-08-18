@@ -4,11 +4,23 @@ import {
   useVisibilityGatedInterval,
 } from "../hooks";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Layout, Table, Tag, Button, Select, Input, Alert, Spin } from "antd";
+import {
+  Layout,
+  Table,
+  Tag,
+  Button,
+  Select,
+  Input,
+  Alert,
+  Spin,
+  Space,
+  message,
+} from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
+import { useAuth } from "../auth/AuthContext";
 import "./TechnologistWorklist.css";
 // Status chips reuse the shared Front Desk chip styles (fd-chips/fd-chip).
 import "../frontdesk/FrontDesk.css";
@@ -20,6 +32,15 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: "gold",
   completed: "green",
   cancelled: "red",
+};
+
+// technologist review P1-3: the read state of an exam the tech completed
+// (reports.status machine: draft -> preliminary -> submitted -> final).
+const READ_STATE: Record<string, { label: string; color: string }> = {
+  final: { label: "Reported", color: "green" },
+  submitted: { label: "In review", color: "gold" },
+  preliminary: { label: "Preliminary", color: "blue" },
+  draft: { label: "In draft", color: "default" },
 };
 
 const PRIORITY_LABEL: Record<string, string> = {
@@ -79,6 +100,27 @@ function TechnologistWorklist() {
   const prevFilterKey = useRef<string | null>(null);
   const seeded = useRef(false);
   const [newArrivals, setNewArrivals] = useState<any[]>([]);
+  // technologist review P1-2: claiming an unassigned exam assigns it to the
+  // caller; the row flips via the next poll (no separate fetch surface).
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+
+  // P1-2: current user id for the "Unassigned" vs "mine" row distinction.
+  // AuthContext exposes the id via user?.id.
+  const { user } = useAuth();
+  const myId = user?.id != null ? String(user.id) : "";
+
+  const claimExam = async (examId: string, accession: string) => {
+    setClaimingId(examId);
+    try {
+      await request(`exams/${examId}/claim`, { data: {} });
+      message.success("Exam claimed");
+      fetchExams();
+    } catch (e: any) {
+      message.error(e.message || "Claim failed");
+    } finally {
+      setClaimingId(null);
+    }
+  };
   // C9: elapsed "time in queue" needs a ticking clock; 30s cadence matches
   // the refresh interval so the column never shows stale minutes.
   const [now, setNow] = useState(() => Date.now());
@@ -173,6 +215,16 @@ function TechnologistWorklist() {
 
   const totalCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
+  // P2-4: one-line queue summary — ready count and anything past the 30-minute
+  // attention threshold — derived from the per_page=500 fetch (no new call).
+  const overdueCount = data.filter(
+    (e: any) =>
+      e.status !== "completed" &&
+      e.status !== "cancelled" &&
+      e.created_at &&
+      Date.now() - new Date(e.created_at).getTime() > 30 * 60 * 1000,
+  ).length;
+
   const modalities = [...new Set(data.map((e) => e.modality).filter(Boolean))];
 
   const columns = [
@@ -208,7 +260,21 @@ function TechnologistWorklist() {
     {
       title: "Patient",
       key: "patient",
-      render: (_: unknown, r: any) => r.patient_name || r.patient_id || "—",
+      render: (_: unknown, r: any) => (
+        <span>
+          {r.patient_name || r.patient_id || "—"}
+          {/* P1-2: unassigned pool rows are labeled, not silently blended
+              with the tech's own assignments — ownership is honest. */}
+          {r.assigned_technologist && r.assigned_technologist !== myId && (
+            <Tag style={{ marginLeft: 8 }}>Other tech</Tag>
+          )}
+          {(!r.assigned_technologist || r.assigned_technologist === "") && (
+            <Tag color="default" style={{ marginLeft: 8 }}>
+              Unassigned
+            </Tag>
+          )}
+        </span>
+      ),
     },
     { title: "Modality", dataIndex: "modality", key: "modality", width: 90 },
     { title: "Protocol", dataIndex: "protocol_name", key: "protocol_name" },
@@ -220,6 +286,22 @@ function TechnologistWorklist() {
       render: (s: string) => (
         <Tag color={STATUS_COLORS[s] || "default"}>{s || "ready"}</Tag>
       ),
+    },
+    {
+      // P1-3: the read state of a completed exam — the tech sees the loop
+      // close (reported / in review / awaiting read) instead of a dead end.
+      title: "Read State",
+      key: "read_state",
+      width: 130,
+      render: (_: unknown, r: any) => {
+        if (r.status !== "completed") return "—";
+        const st = READ_STATE[r.report_status];
+        return st ? (
+          <Tag color={st.color}>{st.label}</Tag>
+        ) : (
+          <Tag color="default">Awaiting read</Tag>
+        );
+      },
     },
     {
       // C9: elapsed time in queue (created_at = handoff to the worklist) or
@@ -249,16 +331,30 @@ function TechnologistWorklist() {
     {
       title: "",
       key: "action",
-      width: 120,
+      width: 210,
       render: (_: unknown, r: any) => (
-        <Button
-          size="small"
-          type="primary"
-          ghost
-          onClick={() => navigate(`/exams/${r.id}`)}
-        >
-          Open Exam
-        </Button>
+        <Space>
+          {/* P1-2: an unassigned pool row gets a one-click Claim so ownership
+              is explicit (and audited) instead of implicit. */}
+          {(!r.assigned_technologist || r.assigned_technologist === "") && (
+            <Button
+              size="small"
+              loading={claimingId === r.id}
+              onClick={() => claimExam(r.id, r.accession_number)}
+              aria-label={`Claim exam ${r.accession_number || r.id}`}
+            >
+              Claim
+            </Button>
+          )}
+          <Button
+            size="small"
+            type="primary"
+            ghost
+            onClick={() => navigate(`/exams/${r.id}`)}
+          >
+            Open Exam
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -279,6 +375,19 @@ function TechnologistWorklist() {
         </Button>
       </div>
 
+      {/* P2-4: a headline instead of a row-count — the tech knows at a
+          glance whether the queue needs attention (overdue = past the 30m
+          attention threshold, same rule the Elapsed column colorizes). */}
+      {data.length > 0 && (
+        <div style={{ marginBottom: 12, fontSize: 13 }} aria-live="polite">
+          <Tag color="blue">{statusCounts.ready || 0} ready</Tag>
+          {overdueCount > 0 && (
+            <Tag color="gold">{overdueCount} overdue (≥30m)</Tag>
+          )}
+          {overdueCount === 0 && <Tag>nothing overdue</Tag>}
+        </div>
+      )}
+
       <div className="tech-wl-filters">
         <div className="fd-chips" style={{ marginBottom: 0 }}>
           {STATUS_TABS.map((tab) => (
@@ -286,6 +395,7 @@ function TechnologistWorklist() {
               key={tab.key || "all"}
               type="button"
               className={`fd-chip ${statusFilter === tab.key ? "is-active" : ""}`}
+              aria-pressed={statusFilter === tab.key}
               onClick={() => setStatusFilter(tab.key || undefined)}
             >
               {tab.label} (
@@ -294,6 +404,8 @@ function TechnologistWorklist() {
           ))}
         </div>
         <Select
+          id="tech-wl-modality-filter"
+          aria-label="Modality"
           allowClear
           placeholder="Modality"
           style={{ width: 150 }}
@@ -315,6 +427,7 @@ function TechnologistWorklist() {
             .map((m) => ({ value: m, label: m }))}
         />
         <Input.Search
+          aria-label="Search patient or accession"
           placeholder="Search patient / accession"
           allowClear
           style={{ width: 260 }}

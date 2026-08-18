@@ -31,6 +31,20 @@ class RolesHandler(HTTPEndpoint):
     async def get(self, request):
         async with get_conn() as conn:
             roles = await Roles(conn).get_all()
+        # P2-3 (tenant_admin review): tell the Roles page which rows the
+        # caller can actually modify, so it can show a lock hint instead of
+        # inviting a 403. Immutable anchors and platform-admin-only tiers are
+        # locked for everyone below the platform admin; deletion of built-in
+        # roles is blocked for every tier (R2-16).
+        platform_admin = bool(getattr(request.user, 'admin', False))
+        from api.permissions import IMMUTABLE_ROLE_SLUGS, PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
+        for role in roles:
+            slug = role.get('slug')
+            locked_tier = bool(slug) and (
+                slug in IMMUTABLE_ROLE_SLUGS
+                or (slug in PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES and not platform_admin)
+            )
+            role['modifiable'] = not (role.get('built_in') and locked_tier)
         return ok({'data': roles})
 
     @requires_permission(Permission.ROLE_WRITE)
@@ -164,8 +178,11 @@ class RoleUsersHandler(HTTPEndpoint):
     async def get(self, request):
         role_id = request.path_params['id']
         async with get_conn() as conn:
+            # users has no `active` column — status carries it (default
+            # 'active'). Fixes a 500 that made the roles membership modal
+            # (P2-5) fail for every role.
             rows = await conn.fetch(
-                'SELECT id, username, admin, active FROM users WHERE role_id = $1 ORDER BY username',
+                'SELECT id, username, admin, status FROM users WHERE role_id = $1 ORDER BY username',
                 role_id,
             )
         return ok({'data': [dict(r) for r in rows]})

@@ -84,6 +84,7 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const Orders = React.lazy(() => import("./coordinator/Orders"));
 const FrontDeskRegistration = React.lazy(
   () => import("./frontdesk/Registration"),
 );
@@ -118,6 +119,12 @@ const StowUpload = React.lazy(() => import("./dicomweb/StowUpload"));
 const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
 const AdminDashboard = React.lazy(() => import("./dashboard/AdminDashboard"));
+const NotificationPreferences = React.lazy(
+  () => import("./notifications/NotificationPreferences"),
+);
+const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
+const Backups = React.lazy(() => import("./admin/Backups"));
+const Settings = React.lazy(() => import("./admin/Settings"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
 function NavigatorSetter() {
@@ -180,6 +187,37 @@ function ThemedApp() {
                   <Route path="/login" element={<Login />} />
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
+                    {/* Per-user notification subscriptions (P1-1). */}
+                    <Route
+                      path="/account/notifications"
+                      element={<NotificationPreferences />}
+                    />
+                    {/* Platform-ops surfaces (super_admin review) — only the
+                        platform admin holds SYSTEM_ADMIN. */}
+                    <Route
+                      path="/admin/maintenance"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <Maintenance />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/backups"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <Backups />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/settings"
+                      element={
+                        <PermissionRoute permission="SYSTEM_ADMIN">
+                          <Settings />
+                        </PermissionRoute>
+                      }
+                    />
                     <Route
                       path="/admin"
                       element={
@@ -280,6 +318,17 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="EXAM_READ">
                           <ExamConsole />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/orders"
+                      element={
+                        // Care-coordinator review (P0-2/P1-2): the coordination
+                        // surface. ORDER_READ is the read gate; write actions
+                        // (status updates) will require ORDER_WRITE when shipped.
+                        <ClinicalRoute permission="ORDER_READ">
+                          <Orders />
                         </ClinicalRoute>
                       }
                     />

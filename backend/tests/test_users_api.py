@@ -105,6 +105,48 @@ class TestUsersHandler:
         assert args['limit'] == 20
         assert args['offset'] == 40
 
+    def test_list_scopes_tenant_scoped_admin_to_own_tenant(self):
+        """P2-2 (tenant_admin review): a tenant-scoped non-admin holder of
+        USER_READ sees only their own tenant's directory — the get_users call
+        must carry tenant=<own>."""
+        mock_conn = _mock_conn()
+        mock_users = MagicMock()
+        mock_users.get_users = AsyncMock(return_value=[])
+        mock_users.count_users = AsyncMock(return_value=0)
+        user = User({'id': 9, 'permissions': ['USER_READ'], 'tenant': 'default', 'admin': False})
+        with (
+            patch('api.users.get_conn', return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            )),
+            patch('api.users.Users', return_value=mock_users),
+        ):
+            client = TestClient(self._make_app(user=user))
+            resp = client.get('/users')
+        assert resp.status_code == 200
+        assert mock_users.get_users.await_args.kwargs['tenant'] == 'default'
+        assert mock_users.count_users.await_args.kwargs['tenant'] == 'default'
+
+    def test_list_platform_admin_has_no_tenant_scope(self):
+        """P2-2: super_admin / legacy admin keeps the full directory — the
+        tenant filter must be None."""
+        mock_conn = _mock_conn()
+        mock_users = MagicMock()
+        mock_users.get_users = AsyncMock(return_value=[])
+        mock_users.count_users = AsyncMock(return_value=0)
+        user = User({'id': 1, 'permissions': ['USER_READ'], 'admin': True})
+        with (
+            patch('api.users.get_conn', return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            )),
+            patch('api.users.Users', return_value=mock_users),
+        ):
+            client = TestClient(self._make_app(user=user))
+            resp = client.get('/users')
+        assert resp.status_code == 200
+        assert mock_users.get_users.await_args.kwargs['tenant'] is None
+
 
 class TestUsersDeactivate:
     def _make_app(self, user=None):

@@ -394,9 +394,9 @@ function DicomWebAdmin(props: any) {
                           title={`Failed stores (${metrics.period})`}
                           value={metrics.failed_stores || 0}
                           prefix={<InboxOutlined />}
-                          valueStyle={
+                          styles={
                             metrics.failed_stores
-                              ? { color: "#cf1322" }
+                              ? { content: { color: "#cf1322" } }
                               : undefined
                           }
                         />
@@ -442,9 +442,9 @@ function DicomWebAdmin(props: any) {
                           title={`Failed requests (${metrics.period})`}
                           value={metrics.requests_failed || 0}
                           prefix={<CloseCircleOutlined />}
-                          valueStyle={
+                          styles={
                             metrics.requests_failed
-                              ? { color: "#cf1322" }
+                              ? { content: { color: "#cf1322" } }
                               : undefined
                           }
                         />

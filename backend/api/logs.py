@@ -1,4 +1,9 @@
+import csv
+import io
+import json
+
 from starlette.endpoints import HTTPEndpoint
+from starlette.responses import Response
 
 from api.rbac import requires_permission
 from api.permissions import Permission
@@ -17,6 +22,7 @@ class LogsHandler(HTTPEndpoint):
         date_to = request.query_params.get('date_to')
         tenant_filter = request.query_params.get('tenant')
         cursor = request.query_params.get('cursor')
+        download = request.query_params.get('download') == 'csv'
         # the web client serializes JS null to the literal string 'null'
         if cursor and cursor.lower() in ('null', 'none', ''):
             cursor = None
@@ -42,6 +48,50 @@ class LogsHandler(HTTPEndpoint):
 
         async with get_conn() as conn:
             audit = AuditLog(conn)
+            if download:
+                # P2-2: export the FULL filtered result set server-side — the
+                # old client-side CSV only ever had the current 50-row page.
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow([
+                    'timestamp', 'actor', 'event_type', 'resource_type',
+                    'resource_id', 'description', 'tenant', 'payload',
+                ])
+                row_cursor = cursor
+                while True:
+                    chunk = await audit.query(
+                        event_type=event_type,
+                        actor=actor,
+                        date_from=date_from,
+                        date_to=date_to,
+                        tenant=tenant,
+                        cursor=row_cursor,
+                        limit=200,
+                    )
+                    for row in chunk:
+                        writer.writerow([
+                            row.get('created_at') or '',
+                            row.get('actor') or '',
+                            row.get('event_type') or '',
+                            row.get('resource_type') or '',
+                            row.get('resource_id') or '',
+                            row.get('description') or '',
+                            row.get('tenant') or '',
+                            json.dumps(row.get('payload')),
+                        ])
+                    if len(chunk) < 200:
+                        break
+                    row_cursor = chunk[-1]['id']
+                return Response(
+                    content='\ufeff'.encode('utf-8') + buf.getvalue().encode('utf-8'),
+                    media_type='text/csv',
+                    headers={
+                        'Content-Disposition': (
+                            'attachment; filename="audit-logs-'
+                            + str(date_from or 'all') + '.csv"'
+                        ),
+                    },
+                )
             data = await audit.query(
                 event_type=event_type,
                 actor=actor,

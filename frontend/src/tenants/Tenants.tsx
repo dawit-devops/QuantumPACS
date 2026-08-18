@@ -588,11 +588,11 @@ function Tenants() {
                       >
                         <span>
                           <UserOutlined style={{ marginRight: 4 }} />
-                          {tenant.user_count ?? "?"} users
+                          {tenant.user_count ?? "—"} users
                         </span>
                         <span>
                           <DatabaseOutlined style={{ marginRight: 4 }} />
-                          {tenant.study_count ?? "?"} studies
+                          {tenant.study_count ?? "—"} studies
                         </span>
                       </div>
                       {tenant.last_activity && (

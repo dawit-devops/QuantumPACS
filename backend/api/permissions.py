@@ -253,6 +253,13 @@ MATRIX_B_PHYS = {
     'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MAR_READ',
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
+    # Care-coordinator review (P0-1): WORKLIST_READ (read-only, no
+    # WORKLIST_WRITE) unlocks the Schedule Board's day data (GET /api/worklist);
+    # without it the SCHEDULE_READ route gate renders a dead end. Same pattern
+    # as the R13 resident fix. FILE_READ matches the R13 comment's claim that
+    # every viewer role (radiologist/technologist/physician/teleradiologist)
+    # holds it — without it the always-visible Files page 403s.
+    'WORKLIST_READ', 'FILE_READ',
 }
 MATRIX_B_RES = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',  # no NOTE_SIGN (cosign)
@@ -266,13 +273,23 @@ MATRIX_B_RES = {
     # FILE_READ lets the Cornerstone viewport fetch DICOM pixels
     # (/api/files/{id}) and the notification bell load — every viewer role
     # (radiologist/technologist/physician/teleradiologist) holds it.
-    'REPORT_WRITE', 'FILE_READ',
+    # WORKLIST_READ (read-only, no WORKLIST_WRITE) unlocks the Schedule
+    # Board's day data (GET /api/worklist); without it the SCHEDULE_READ
+    # route gate renders a dead end.
+    'REPORT_WRITE', 'FILE_READ', 'WORKLIST_READ',
 }
 MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',
     'MED_ORDER_READ',  # no MED_ORDER_WRITE
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
+    # Care-coordinator review (P0-1/P1-1): WORKLIST_READ (read-only) unlocks
+    # the Schedule Board's day data (GET /api/worklist) — the SCHEDULE_READ
+    # route gate was a dead end without it (same defect R13 fixed for
+    # resident). FILE_READ (read-only, no FILE_WRITE/DELETE) un-dead-ends the
+    # always-visible Files page, matching the read-imaging stack
+    # (STUDY_READ/VIEWER_READ) the role already holds.
+    'WORKLIST_READ', 'FILE_READ',
 }
 MATRIX_B_EMRADM = {
     'AUDIT_READ',
@@ -295,6 +312,12 @@ MATRIX_C_TENANT_ADMIN = {
     'STORAGE_ADMIN', 'BILLING_READ', 'REPORT_TEMPLATE_ADMIN', 'CDS_ADMIN',
     'PATIENT_READ', 'ORDER_READ', 'WORKLIST_READ', 'REPORT_READ',
     'STUDY_READ', 'VIEWER_READ', 'CHART_READ', 'RESULTS_READ',
+    # Interface surfaces the facility operator manages (tenant_admin review
+    # C2): the dashboard links and sidebar gates require these read grants;
+    # INTERFACE_ADMIN/INTERFACE_MONITOR/STORAGE_ADMIN alone were dead grants
+    # that unlocked no reachable UI. FHIR stays SYSTEM_ADMIN-only (platform
+    # FHIR server policy).
+    'HL7_READ', 'ROUTING_READ', 'DICOMWEB_READ',
     # no clinical writes (PATIENT_WRITE, ORDER_WRITE, REPORT_*, MAR_*, ...)
 }
 MATRIX_C_PATIENT = {

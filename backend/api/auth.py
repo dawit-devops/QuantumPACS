@@ -203,6 +203,10 @@ class TokenAuth(AuthenticationBackend):
         '/api/login',
         '/api/v2/health',
         '/api/health',
+        # Maintenance status is a status-page signal (non-sensitive): public
+        # so the login page can render the maintenance banner pre-auth.
+        '/api/admin/status',
+        '/api/v2/admin/status',
         '/api/auth/refresh',
         '/api/auth/logout',
         '/api/oauth/login',

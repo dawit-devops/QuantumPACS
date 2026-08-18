@@ -15,6 +15,7 @@ import {
 import {
   FolderOutlined,
   FileOutlined,
+  FileDoneOutlined,
   ExperimentOutlined,
   CalendarOutlined,
   UserOutlined,
@@ -23,13 +24,33 @@ import {
 import withSidebar from "../common/base";
 import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
+import { useAuth } from "../auth/AuthContext";
 import { useNavigate, useParams } from "react-router";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
 
+// Care-coordinator review (P2-1): report status labels + colors mirror the
+// reading worklist conventions.
+const REPORT_STATUS_COLORS: Record<string, string> = {
+  draft: "gold",
+  preliminary: "purple",
+  submitted: "cyan",
+  final: "green",
+};
+
+const REPORT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  preliminary: "Preliminary",
+  submitted: "In review",
+  final: "Final",
+};
+
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
+
+  const { hasPermission } = useAuth();
+  const canReadReports = hasPermission("REPORT_READ");
 
   const [data, setData] = useState<PatientSummary>({});
   const [loading, setLoading] = useState(false);
@@ -226,6 +247,73 @@ function Patient(props: any) {
               </Descriptions.Item>
             </Descriptions>
           </Card>
+
+          {canReadReports && (
+            <Card
+              title={
+                <span>
+                  <FileDoneOutlined style={{ marginRight: 8 }} />
+                  Reports & Results
+                </span>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              {(data.reports || []).length === 0 ? (
+                <Empty description="No reports yet" />
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Status", "Procedure", "Accession", "Date"].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign: "left",
+                            fontSize: 12,
+                            color: "var(--color-secondary)",
+                            padding: "6px 8px",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.reports as any[]).map((r: any) => (
+                      <tr
+                        key={r.id}
+                        style={{
+                          borderTop: "1px solid var(--color-slate-200)",
+                        }}
+                      >
+                        <td style={{ padding: "6px 8px" }}>
+                          <Tag
+                            color={REPORT_STATUS_COLORS[r.status] ?? "default"}
+                          >
+                            {REPORT_STATUS_LABEL[r.status] ?? r.status}
+                          </Tag>
+                        </td>
+                        <td style={{ padding: "6px 8px", fontSize: 13 }}>
+                          {r.procedure_desc || r.modality || "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                          {r.accession_number || "—"}
+                        </td>
+                        <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                          {r.signed_at || r.created_at
+                            ? new Date(
+                                r.signed_at || r.created_at,
+                              ).toLocaleDateString()
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          )}
 
           <Card
             title={

@@ -4,6 +4,8 @@
 /es
 /db
 /storage
+# Backup artifacts written by the e2e/CI master replica ('fs' storage type).
+/backend/e2e-master
 # Local DICOM test data (may contain real patient imaging — PHI).
 # Referenced only via E2E_DICOM_PATH in e2e specs; never commit.
 /DICOM

@@ -100,6 +100,17 @@ const HEALTH_LINKS: Record<string, string> = {
   fhir: "/fhir/monitoring",
 };
 
+// Permission each drill-down target requires (tenant_admin review P1-1): a
+// role holding INTERFACE_MONITOR (which shows the Interfaces panel) but not
+// the target's read grant must get a plain status row — never a dead "Open"
+// button that bounces back to /admin. Mirrors Metrics' AREA_LINKS guard.
+const HEALTH_LINK_PERMISSIONS: Record<string, string> = {
+  storage: "REPLICA_READ",
+  dicom_listener: "DICOMWEB_READ",
+  hl7: "HL7_READ",
+  fhir: "SYSTEM_ADMIN",
+};
+
 // Interface components surfaced in the Interfaces panel (INTERFACE_MONITOR).
 const INTERFACE_LINKS: Record<string, string> = {
   dicom_listener: "/dicomweb",
@@ -146,9 +157,11 @@ function formatBytes(bytes: number): string {
 function HealthStrip({
   health,
   loading,
+  hasPermission,
 }: {
   health: HealthStatus | null;
   loading: boolean;
+  hasPermission: (p: string) => boolean;
 }) {
   const navigate = useNavigate();
   const components: Record<string, HealthComponent> = health?.components ?? {};
@@ -186,7 +199,9 @@ function HealthStrip({
             </span>
           </>
         );
-        return link ? (
+        const targetPerm = HEALTH_LINK_PERMISSIONS[name];
+        const canOpen = link && (!targetPerm || hasPermission(targetPerm));
+        return canOpen ? (
           <button
             key={name}
             type="button"
@@ -470,7 +485,11 @@ function AdminDashboard() {
         }
       />
 
-      <HealthStrip health={health} loading={healthLoading} />
+      <HealthStrip
+        health={health}
+        loading={healthLoading}
+        hasPermission={hasPermission}
+      />
 
       {/* KPI row is assembled per-permission: the metrics cards need
           METRICS_READ/ANALYTICS_READ, the Users card only USER_READ, and
@@ -578,6 +597,12 @@ function AdminDashboard() {
                   const comp = health?.components?.[name];
                   if (!comp) return null;
                   const target = INTERFACE_LINKS[name];
+                  const targetPerm = HEALTH_LINK_PERMISSIONS[name];
+                  // P1-1: only render "Open" when the caller can actually
+                  // open the target route — INTERFACE_MONITOR holders without
+                  // DICOMWEB_READ/HL7_READ/SYSTEM_ADMIN get a status line.
+                  const canOpen =
+                    target && (!targetPerm || hasPermission(targetPerm));
                   return (
                     <Space key={name}>
                       <Tag
@@ -600,7 +625,7 @@ function AdminDashboard() {
                           {comp.latency_ms}ms
                         </Text>
                       )}
-                      {target && (
+                      {canOpen && (
                         <Button
                           size="small"
                           type="link"

@@ -12,6 +12,7 @@ import {
   Grid,
   Card,
   Tag,
+  Alert,
 } from "antd";
 import type { InputRef } from "antd";
 import type { ColumnType } from "antd/es/table";
@@ -152,6 +153,11 @@ function Files() {
     initialAdvancedFields.map((e) => [...e]),
   );
   const [selected, setSelected] = useState<FileRow[]>([]);
+  // P2-5 (tenant_admin review): when the search backend is down the empty
+  // table is a degradation, not an empty archive — the response carries
+  // search_available:false and the page shows a notice instead of the bare
+  // "No files uploaded" copy.
+  const [searchAvailable, setSearchAvailable] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTableChange = (pagination: any, filters: any, sorter: any) => {
@@ -263,6 +269,9 @@ function Files() {
         // flat string keys shared with the QIDO path.
         setData(data.data as FileRow[]);
         setPagination((prev) => Object.assign({}, prev, { total: data.total }));
+        // P2-5: the backend marks the response when search was unavailable;
+        // absent flag (truthy) keeps the normal path untouched.
+        setSearchAvailable(data.search_available !== false);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -589,14 +598,25 @@ function Files() {
         reload={fetch}
         onClose={() => setShowUpload(false)}
       />
+      {!searchAvailable && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Search is unavailable"
+          description="The search service is down — archived files are not listed right now. Uploads still work."
+        />
+      )}
       <PageState
         error={error}
         onRetry={() => fetch()}
         empty={!loading && !error && data.length === 0}
         emptyMessage={
-          globSearch || searchText
-            ? "No files match your search"
-            : "No files uploaded"
+          !searchAvailable
+            ? "Search is unavailable — no archive results can be shown."
+            : globSearch || searchText
+              ? "No files match your search"
+              : "No files uploaded"
         }
       >
         {isMobile ? (

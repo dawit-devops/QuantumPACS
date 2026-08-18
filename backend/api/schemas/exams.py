@@ -80,3 +80,21 @@ class IncidentRequest(BaseModel):
 class OverrideRequest(BaseModel):
     justification: str = Field(..., min_length=1, description="Required override justification")
     overridden_parameters: dict = Field(default_factory=dict, description="Overridden protocol parameters")
+
+
+class CriticalFlagRequest(BaseModel):
+    """technologist review P1-1: flag an exam for immediate radiology read.
+
+    severity mirrors the incident scale; series_id optionally points at the
+    acquisition that triggered the flag; note is free-text justification.
+    """
+    severity: str = Field('critical', description="low/medium/high/critical")
+    series_id: str | None = Field(None, description="Acquisition id that triggered the flag")
+    note: str = Field(..., min_length=1, description="Why this is critical")
+
+    @field_validator('severity')
+    @classmethod
+    def _valid_severity(cls, v):
+        if v not in ('low', 'medium', 'high', 'critical'):
+            raise ValueError('severity must be low/medium/high/critical')
+        return v

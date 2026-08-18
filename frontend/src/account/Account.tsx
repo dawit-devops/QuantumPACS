@@ -28,6 +28,87 @@ import { useAuth } from "../auth/AuthContext";
 const { Content } = Layout;
 const { Text, Title } = Typography;
 
+// Capability-family grouping for the Account permission list (P1-2,
+// tenant_admin review). roadmap: true marks grants with no reachable surface
+// yet, so a tenant admin never reads their grant list as live capability.
+const PERMISSION_GROUPS: {
+  key: string;
+  label: string;
+  roadmap?: boolean;
+  permissions: string[];
+}[] = [
+  {
+    key: "tenant",
+    label: "Tenant & platform ops",
+    permissions: [
+      "TENANT_READ",
+      "TENANT_ADMIN",
+      "CROSS_TENANT_READ",
+      "METERING_READ",
+    ],
+  },
+  {
+    key: "users",
+    label: "Users, roles & service keys",
+    permissions: [
+      "USER_READ",
+      "USER_WRITE",
+      "ROLE_READ",
+      "ROLE_WRITE",
+      "ROLE_DELETE",
+      "SERVICE_KEY_READ",
+      "SERVICE_KEY_WRITE",
+      "SERVICE_KEY_DELETE",
+    ],
+  },
+  {
+    key: "interfaces",
+    label: "Interfaces, storage & routing",
+    permissions: [
+      "INTERFACE_MONITOR",
+      "INTERFACE_ADMIN",
+      "STORAGE_ADMIN",
+      "HL7_READ",
+      "HL7_WRITE",
+      "ROUTING_READ",
+      "ROUTING_WRITE",
+      "DICOMWEB_READ",
+      "DICOMWEB_WRITE",
+      "REPLICA_READ",
+      "REPLICA_WRITE",
+      "SYSTEM_ADMIN",
+    ],
+  },
+  {
+    key: "audit",
+    label: "Audit, logs & metrics",
+    permissions: ["AUDIT_READ", "LOG_READ", "METRICS_READ", "ANALYTICS_READ"],
+  },
+  {
+    key: "clinical",
+    label: "Clinical read-only",
+    permissions: [
+      "PATIENT_READ",
+      "STUDY_READ",
+      "SERIES_READ",
+      "FILE_READ",
+      "REPORT_READ",
+      "VIEWER_READ",
+      "WORKLIST_READ",
+      "CHART_READ",
+      "RESULTS_READ",
+      "ORDER_READ",
+      "EXAM_READ",
+    ],
+  },
+  {
+    key: "roadmap",
+    label: "Roadmap-only",
+    roadmap: true,
+    permissions: ["BILLING_READ", "CDS_ADMIN", "REPORT_TEMPLATE_ADMIN"],
+  },
+];
+
 function Account(props: any) {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Account");
@@ -225,17 +306,68 @@ function Account(props: any) {
 
       {p.permissions && p.permissions.length > 0 && (
         <Card title="Permissions" size="small" style={{ marginBottom: 24 }}>
-          {p.permissions.map((perm: string) => (
-            <Tag
-              key={perm}
-              color={
-                permissionColors[perm.split("_")[0]?.toLowerCase()] || "default"
-              }
-              style={{ marginBottom: 4 }}
-            >
-              {perm}
-            </Tag>
-          ))}
+          {/* P1-2 (tenant_admin review): the raw flat list hid which grants
+              actually unlock a surface. Grouped by capability family;
+              roadmap-only grants are annotated so the list is honest. */}
+          {PERMISSION_GROUPS.map((group) => {
+            const inGroup = p.permissions.filter((perm: string) =>
+              group.permissions.includes(perm),
+            );
+            if (inGroup.length === 0) return null;
+            return (
+              <div key={group.key} style={{ marginBottom: 12 }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginBottom: 6 }}
+                >
+                  {group.label}
+                  {group.roadmap && (
+                    <Tag style={{ marginLeft: 8 }} color="default">
+                      roadmap — no surface yet
+                    </Tag>
+                  )}
+                </Text>
+                <div>
+                  {inGroup.map((perm: string) => (
+                    <Tag
+                      key={perm}
+                      color={
+                        permissionColors[perm.split("_")[0]?.toLowerCase()] ||
+                        "default"
+                      }
+                      style={{ marginBottom: 4 }}
+                    >
+                      {perm}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {(() => {
+            const grouped = new Set(
+              PERMISSION_GROUPS.flatMap((g) => g.permissions),
+            );
+            const ungrouped = p.permissions.filter(
+              (perm: string) => !grouped.has(perm),
+            );
+            if (ungrouped.length === 0) return null;
+            return (
+              <div>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, display: "block", marginBottom: 6 }}
+                >
+                  Other
+                </Text>
+                {ungrouped.map((perm: string) => (
+                  <Tag key={perm} style={{ marginBottom: 4 }}>
+                    {perm}
+                  </Tag>
+                ))}
+              </div>
+            );
+          })()}
         </Card>
       )}
 

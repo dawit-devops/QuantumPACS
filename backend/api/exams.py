@@ -19,7 +19,7 @@ from api.validate import parse_body
 from api.schemas.exams import (
     CreateExamRequest, IdentityConfirmRequest, StartProtocolRequest,
     CreateAcquisitionRequest, AcquisitionDecisionRequest, SafetyCheckRequest,
-    CompleteExamRequest, IncidentRequest, OverrideRequest,
+    CompleteExamRequest, IncidentRequest, OverrideRequest, CriticalFlagRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -163,6 +163,14 @@ async def _notify_role(conn, role_slug, event_type, title, body, link):
         await n.create(row['id'], event_type, title, body, link)
 
 
+async def _notify_user(conn, user_id, event_type, title, body, link):
+    """Create a single-user notification (technologist review P2-2: incident
+    authors get told when QA resolves their report)."""
+    if not user_id:
+        return
+    await Notifications(conn).create(user_id, event_type, title, body, link)
+
+
 class ExamsHandler(HTTPEndpoint):
     """Adopt a worklist entry (or create an exam) and drive its lifecycle."""
 
@@ -186,13 +194,16 @@ class ExamsHandler(HTTPEndpoint):
         modality = request.query_params.get('modality')
         priority = request.query_params.get('priority')
         search = request.query_params.get('search')
+        # P1-2: 'mine' / 'pool' narrows the assignment union; None keeps the
+        # default (assigned-to-me + unassigned pool).
+        assigned = request.query_params.get('assigned')
         # User.id is the only stable technologist identity on the request object.
         username = str(request.user.id)
         async with get_conn() as conn:
             await _seed_protocols(conn)
             exams = await Exams(conn).list_for_technologist(
                 username=username, status=status, modality=modality,
-                priority=priority, search=search,
+                priority=priority, search=search, assigned=assigned,
             )
         return ok({'data': exams})
 
@@ -309,6 +320,31 @@ class ExamHandler(HTTPEndpoint):
             imaging_patient = await _exam_imaging(
                 conn, exam, patient=patient_extra,
             )
+            # technologist review P1-3: the completed-exam feedback loop — the
+            # tech's worklist shows the read state of exams they completed.
+            # reports.status machine: draft -> preliminary -> submitted -> final.
+            report_status = await conn.fetchval(
+                "SELECT status FROM reports WHERE exam_id = $1", exam_id,
+            )
+            # P1-3: QA flags on the tech's images = open incidents for this exam.
+            qa_flags = await conn.fetchval(
+                "SELECT count(*) FROM incidents WHERE exam_id = $1 "
+                "AND status != 'resolved'", exam_id,
+            ) or 0
+            # P2-3: prior safety/contrast screening for the same patient
+            # (excluding this exam) so the tech sees documented reactions
+            # before scanning. Rows carry checked item, answer, who, when.
+            prior_safety_checks = []
+            if mrn:
+                prior_safety_checks = await conn.fetch(
+                    """SELECT sc.check_item, sc.answer, sc.checked_by, sc.checked_at,
+                            e.accession_number, e.created_at AS exam_date
+                       FROM safety_checks sc
+                       JOIN exams e ON e.id = sc.exam_id
+                       WHERE e.patient_id = $1 AND e.id != $2
+                       ORDER BY sc.checked_at DESC""",
+                    mrn, exam_id,
+                )
         return ok({
             'data': {
                 **exam,
@@ -322,8 +358,50 @@ class ExamHandler(HTTPEndpoint):
                 'prior_studies': prior_studies,
                 'imaging': imaging_patient is not None,
                 'imaging_patient': imaging_patient,
+                'report_status': report_status,
+                'qa_flags': qa_flags,
+                'prior_safety_checks': [dict(r) for r in prior_safety_checks],
             },
         })
+
+
+class ExamClaimHandler(HTTPEndpoint):
+    """technologist review P1-2: claim an unassigned exam.
+
+    The worklist lists exams with `assigned_technologist = ''` in every
+    technologist's queue; claiming assigns it to the caller so ownership is
+    explicit and auditable. Rejected with a conflict when already assigned to
+    someone else, so two techs can't both take the same STAT.
+    """
+
+    @requires_permission(Permission.EXAM_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['id']
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            current = exam.get('assigned_technologist') or ''
+            if current and current != str(request.user.id):
+                return validation_error(
+                    'Exam already claimed by another technologist',
+                )
+            if not current:
+                await conn.execute(
+                    "UPDATE exams SET assigned_technologist = $2, updated_at = now() "
+                    "WHERE id = $1",
+                    exam_id, str(request.user.id),
+                )
+                await AuditLog(conn).log_event(
+                    event_type='exam.claimed',
+                    actor_id=request.user.id,
+                    resource_type='exam',
+                    resource_id=exam_id,
+                    details={'accession_number': exam.get('accession_number') or ''},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
+        return ok({'data': {'claimed': True}})
 
 
 class ExamIdentityHandler(HTTPEndpoint):
@@ -535,6 +613,48 @@ class ExamCompleteHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({'data': {'status': 'completed'}})
+
+
+class ExamCriticalFlagHandler(HTTPEndpoint):
+    """technologist review P1-1: flag an exam for immediate radiology read.
+
+    Converts the dead CRITICAL_RESULTS_WRITE grant into a live, auditable
+    safety action: the technologist marks an alarming finding during
+    acquisition and the radiologist worklist surfaces it above routine work.
+    Re-flagging is an upsert (idempotent, updates severity/note).
+    """
+
+    @requires_permission(Permission.CRITICAL_RESULTS_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['id']
+        body = await parse_body(CriticalFlagRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            await conn.execute(
+                "UPDATE exams SET critical_flag = $2, critical_flag_note = $3, "
+                "critical_flagged_at = now(), critical_flagged_by = $4, "
+                "updated_at = now() WHERE id = $1",
+                exam_id, body.severity, body.note, str(request.user.id),
+            )
+            await AuditLog(conn).log_event(
+                event_type='exam.critical_flagged',
+                actor_id=request.user.id,
+                resource_type='exam',
+                resource_id=exam_id,
+                details={'severity': body.severity, 'note': body.note[:120]},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+            accession = exam.get('accession_number') or ''
+            await _notify_role(
+                conn, 'radiologist', 'exam.critical_flagged',
+                f'CRITICAL: {accession}',
+                f'{body.severity.upper()} — {body.note[:120]}',
+                f'/reading/{exam_id}',
+            )
+        return created({'data': {'flagged': True, 'severity': body.severity}})
 
 
 class ExamIncidentsHandler(HTTPEndpoint):

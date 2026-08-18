@@ -45,7 +45,15 @@ describe("workspaceFor", () => {
     {
       role: "care_coordinator",
       permissions: ["REPORT_READ"],
-      expected: "clinical",
+      // Care-coordinator review (P1-2): the coordination workspace requires
+      // ORDER_READ — a coordinator without it falls through to the generic
+      // reading surface.
+      expected: "reading",
+    },
+    {
+      role: "care_coordinator",
+      permissions: ["ORDER_READ"],
+      expected: "coordination",
     },
     { role: "patient", permissions: ["PORTAL_READ"], expected: "portal" },
     {
@@ -252,14 +260,10 @@ describe("landingRouteFor", () => {
   });
 
   it("lands the clinical workspace roles on the reading worklist", () => {
-    // physician / referring_physician / care_coordinator all hold REPORT_READ
-    // (Matrix A/B): the clinical landing is /reading, never the DICOMweb
-    // console even when the legacy DICOMWEB_READ grant passes.
-    for (const role of [
-      "physician",
-      "referring_physician",
-      "care_coordinator",
-    ]) {
+    // physician / referring_physician hold REPORT_READ (Matrix A/B): the
+    // clinical landing is /reading, never the DICOMweb console even when the
+    // legacy DICOMWEB_READ grant passes.
+    for (const role of ["physician", "referring_physician"]) {
       expect(
         landingRouteFor(
           user({ role, permissions: ["REPORT_READ", "DICOMWEB_READ"] }),

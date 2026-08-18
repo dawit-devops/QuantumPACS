@@ -202,6 +202,7 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | RESULTS_RELEASE | | | | | ✓ | | | | |
 | LAB_SPECIMEN_WRITE | | | | | ✓ | | | | |
 | SCHEDULE_READ | ✓ | ✓ | ✓ | | | | | ✓ | |
+| WORKLIST_READ | ✓ | ✓ | | | | | | ✓ | |
 | PRIOR_AUTH_READ | ✓ | ✓ | | | | ✓ | | ✓ | |
 | REPORT_READ / STUDY_READ / VIEWER_READ | ✓ | ✓ | ✓ | | | ✓ | ✓ | ✓ | |
 | CODING_WRITE / BILLING_READ / BILLING_WRITE | | | | | | ✓ | | | |
@@ -225,7 +226,9 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | USER_READ, USER_WRITE, ROLE_READ, ROLE_WRITE, SERVICE_KEY_* | ✓ | ✓ | |
 | ROLE_DELETE | ✓ | ✓ | |
 | AUDIT_READ, INTERFACE_MONITOR, INTERFACE_ADMIN | ✓ | ✓ | |
-| STORAGE_ADMIN, BILLING_READ, REPORT_TEMPLATE_ADMIN, CDS_ADMIN | ✓ | ✓ | |
+| STORAGE_ADMIN | ✓ | ✓ | |
+| HL7_READ, ROUTING_READ, DICOMWEB_READ | ✓ | ✓ | |
+| BILLING_READ, REPORT_TEMPLATE_ADMIN, CDS_ADMIN (roadmap-only) | ✓ | ✓ | |
 | PATIENT_READ, ORDER_READ, WORKLIST_READ, REPORT_READ, STUDY_READ, VIEWER_READ, CHART_READ, RESULTS_READ | ✓ | ✓ | |
 | PORTAL_READ, CHART_READ (own), RESULTS_READ (released), MED_ORDER_READ (own), SCHEDULE_READ (own), VIEWER_READ (share) | ✓ | | ✓ |
 | **All clinical writes** (PATIENT_WRITE, ORDER_WRITE, REPORT_*, MAR_*, …) | ✓ | — (no clinical writes) | — |

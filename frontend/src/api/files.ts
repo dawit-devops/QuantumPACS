@@ -16,6 +16,9 @@ export const qidoSearch = (
 export interface FileSearchResult {
   data: Record<string, unknown>[];
   total?: number;
+  // P2-5 (tenant_admin review): false when the search backend was down, so
+  // the Files page can distinguish a degraded search from an empty archive.
+  search_available?: boolean;
 }
 
 // POST /api/files runs an Elasticsearch query for the file browser.

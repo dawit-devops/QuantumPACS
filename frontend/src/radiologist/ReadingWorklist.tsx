@@ -13,7 +13,11 @@ import {
   Checkbox,
   Tooltip,
 } from "antd";
-import { FileDoneOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  FileDoneOutlined,
+  ReloadOutlined,
+  AlertOutlined,
+} from "@ant-design/icons";
 import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
@@ -187,6 +191,21 @@ function ReadingWorklist() {
       ),
     },
     {
+      // technologist review P1-1: a critical flag (set during acquisition)
+      // renders as a red tag so the reading team sees it at a glance — the
+      // backend already sorts flagged exams above their priority tier.
+      title: "Flag",
+      dataIndex: "critical_flag",
+      key: "critical_flag",
+      width: 90,
+      render: (f: string) =>
+        f ? (
+          <Tag color="red" icon={<AlertOutlined />}>
+            {String(f).toUpperCase()}
+          </Tag>
+        ) : null,
+    },
+    {
       title: "Completed",
       dataIndex: "completed_at",
       key: "completed_at",
@@ -270,17 +289,25 @@ function ReadingWorklist() {
 
       <div className="reading-wl-filters">
         <Select
+          id="reading-worklist-status-filter"
+          aria-label="Report status"
           allowClear
           placeholder="Report status"
           style={{ width: 150 }}
           value={statusFilter}
           onChange={setStatusFilter}
-          options={["draft", "preliminary", "submitted"].map((s) => ({
-            value: s,
-            label: s,
-          }))}
+          options={["draft", "preliminary", "submitted", "returned"].map(
+            (s) => ({
+              value: s,
+              // "returned" maps server-side to draft + review_feedback set
+              // (R13 resident revision loop); label reads as a revision queue.
+              label: s === "returned" ? "needs revision" : s,
+            }),
+          )}
         />
         <Select
+          id="reading-worklist-modality-filter"
+          aria-label="Modality"
           allowClear
           placeholder="Modality"
           style={{ width: 150 }}

@@ -207,8 +207,10 @@ function FhirMonitoring(props: any) {
               value={metrics?.error_rate || 0}
               suffix="%"
               precision={2}
-              valueStyle={{
-                color: (metrics?.error_rate || 0) > 5 ? "red" : "green",
+              styles={{
+                content: {
+                  color: (metrics?.error_rate || 0) > 5 ? "red" : "green",
+                },
               }}
             />
           </Card>
@@ -228,8 +230,11 @@ function FhirMonitoring(props: any) {
               title="p99 Latency"
               value={metrics?.latency?.p99 || 0}
               suffix="ms"
-              valueStyle={{
-                color: (metrics?.latency?.p99 || 0) > 1000 ? "red" : undefined,
+              styles={{
+                content: {
+                  color:
+                    (metrics?.latency?.p99 || 0) > 1000 ? "red" : undefined,
+                },
               }}
             />
           </Card>
@@ -251,7 +256,7 @@ function FhirMonitoring(props: any) {
               { title: "Method", dataIndex: "method", key: "method" },
               { title: "Count", dataIndex: "count", key: "count" },
             ]}
-            rowKey={(r, i) => `${r.resource_type}-${r.method}-${i}`}
+            rowKey={(r) => `${r.resource_type}-${r.method}`}
             pagination={false}
             size="small"
           />

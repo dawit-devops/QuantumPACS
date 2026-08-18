@@ -36,7 +36,8 @@ def _make_app(user=None):
         ExamsHandler, ExamHandler, ExamIdentityHandler, ExamProtocolHandler,
         ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
         ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
-        ExamOverridesHandler, ProtocolsHandler,
+        ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
+        ProtocolsHandler,
     )
     return Starlette(
         routes=[
@@ -49,6 +50,8 @@ def _make_app(user=None):
             Route('/exams/{id}/dose', endpoint=ExamDoseHandler),
             Route('/exams/{id}/safety-checks', endpoint=ExamSafetyHandler),
             Route('/exams/{id}/complete', endpoint=ExamCompleteHandler),
+            Route('/exams/{id}/claim', endpoint=ExamClaimHandler),
+            Route('/exams/{id}/critical-flag', endpoint=ExamCriticalFlagHandler),
             Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler),
             Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler),
             Route('/protocols', endpoint=ProtocolsHandler),
@@ -76,14 +79,17 @@ def _audit_ok():
 
 @contextmanager
 def _conn(fetchrow=None, fetch=None, fetchval=None):
-    """Provide a fake async context-manager connection with optional handlers."""
+    """Provide a fake async context-manager connection with optional handlers.
+
+    fetchval defaults to None (not an AsyncMock): the exam detail handler now
+    calls fetchval for report_status / qa_flags, and an AsyncMock return is
+    not JSON-serializable."""
     conn = AsyncMock()
     if fetchrow is not None:
         conn.fetchrow = fetchrow
     if fetch is not None:
         conn.fetch = fetch
-    if fetchval is not None:
-        conn.fetchval = fetchval
+    conn.fetchval = fetchval if fetchval is not None else AsyncMock(return_value=None)
     conn.__aenter__ = AsyncMock(return_value=conn)
     conn.__aexit__ = AsyncMock(return_value=False)
     with patch('api.exams.get_conn', return_value=conn):
@@ -426,6 +432,89 @@ class TestExamOverrides:
             })
         assert resp.status_code == 201
         assert resp.json()['data']['justification'].startswith('Trauma')
+
+
+class TestCriticalFlag:
+    """technologist review P1-1: CRITICAL_RESULTS_WRITE flags an exam for
+    immediate read; radiologist role is notified; re-flag is idempotent."""
+
+    FLAG_USER = User({'id': 42, 'permissions': ['CRITICAL_RESULTS_WRITE']})
+    NO_FLAG_USER = User({'id': 43, 'permissions': ['EXAM_READ']})
+
+    def test_flag_requires_permission(self):
+        client = TestClient(_make_app(self.NO_FLAG_USER))
+        with _conn(fetchrow=AsyncMock(return_value={'id': 'e1'})), _audit_ok():
+            resp = client.post('/exams/e1/critical-flag', json={'note': 'huge bleed'})
+        assert resp.status_code == 403
+
+    def test_flag_persists_and_notifies_radiologist(self):
+        client = TestClient(_make_app(self.FLAG_USER))
+        executed = []
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'accession_number': 'A1'}
+        conn = AsyncMock()
+        conn.fetchrow = fake_fetchrow
+        conn.execute = AsyncMock(side_effect=lambda q, *a: executed.append(q))
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        with patch('api.exams.get_conn', return_value=conn), _audit_ok(), \
+             patch('api.exams._notify_role') as notify:
+            resp = client.post(
+                '/exams/e1/critical-flag',
+                json={'severity': 'critical', 'note': 'massive subdural hematoma'},
+            )
+        assert resp.status_code == 201
+        assert resp.json()['data']['flagged'] is True
+        # The UPDATE persists severity + note + author.
+        assert any('critical_flag' in q for q in executed)
+        notify.assert_called_once()
+        assert notify.call_args.args[1] == 'radiologist'
+        assert notify.call_args.args[2] == 'exam.critical_flagged'
+
+    def test_flag_404(self):
+        client = TestClient(_make_app(self.FLAG_USER))
+        with _conn(fetchrow=AsyncMock(return_value=None)), _audit_ok():
+            resp = client.post('/exams/e1/critical-flag', json={'note': 'x'})
+        assert resp.status_code == 404
+
+
+class TestClaim:
+    """technologist review P1-2: claiming an unassigned exam assigns it to the
+    caller; claiming someone else's exam conflicts."""
+
+    def test_claim_unassigned_exam(self):
+        client = TestClient(_make_app(TECH))
+        executed = []
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'accession_number': 'A1', 'assigned_technologist': ''}
+        conn = AsyncMock()
+        conn.fetchrow = fake_fetchrow
+        conn.execute = AsyncMock(side_effect=lambda q, *a: executed.append(q))
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        with patch('api.exams.get_conn', return_value=conn), _audit_ok():
+            resp = client.post('/exams/e1/claim')
+        assert resp.status_code == 200
+        assert resp.json()['data']['claimed'] is True
+        assert any('assigned_technologist' in q for q in executed)
+
+    def test_claim_conflicts_when_taken(self):
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'assigned_technologist': 'OTHER_USER'}
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim')
+        assert resp.status_code == 400
+
+    def test_claim_own_exam_is_idempotent(self):
+        client = TestClient(_make_app(TECH))
+        # TECH id is 42 -> already assigned to the caller.
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'assigned_technologist': '42'}
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim')
+        assert resp.status_code == 200
+        assert resp.json()['data']['claimed'] is True
 
 
 class TestProtocols:

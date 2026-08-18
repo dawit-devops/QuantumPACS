@@ -70,6 +70,7 @@ function ResidentHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [mine, setMine] = useState<ReadingItem[] | null>(null);
+  const [claimedToday, setClaimedToday] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -78,6 +79,12 @@ function ResidentHome() {
         query: { radiologist: "me" },
       });
       setMine(Array.isArray(m.data) ? m.data : []);
+      // R13 review fix P0-2: the "Claimed today" figure comes from the
+      // backend (drafts started today), not the queue total — previously
+      // it double-counted the whole queue and misled the resident.
+      if (typeof m.claimed_today === "number") {
+        setClaimedToday(m.claimed_today);
+      }
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -209,7 +216,7 @@ function ResidentHome() {
                 />
               </Col>
               <Col span={8}>
-                <Statistic title="Claimed today" value={totalMine} />
+                <Statistic title="Claimed today" value={claimedToday} />
               </Col>
             </Row>
             <Alert
@@ -229,7 +236,14 @@ function ResidentHome() {
           >
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Teaching cases will land here once the teaching-file workflow ships."
+              description={
+                <>
+                  No curated teaching cases yet.
+                  <br />
+                  Ask your attending to flag interesting studies during QA
+                  review so they can be added to the library.
+                </>
+              }
             />
           </Card>
         </Col>

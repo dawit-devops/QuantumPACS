@@ -2,6 +2,7 @@ import React from "react";
 import { Layout, Grid } from "antd";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
+import MaintenanceBanner from "./MaintenanceBanner";
 import { useTheme } from "./ThemeProvider";
 
 const { useBreakpoint } = Grid;
@@ -26,6 +27,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
             "background-color var(--duration-normal) var(--easing-standard)",
         }}
       >
+        <MaintenanceBanner />
         <a
           href="#main-content"
           className="skip-link"

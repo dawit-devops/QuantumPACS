@@ -359,12 +359,12 @@ function Roles() {
                     { title: "Username", dataIndex: "username" },
                     {
                       title: "Status",
-                      dataIndex: "active",
-                      render: (a: boolean) =>
-                        a ? (
+                      dataIndex: "status",
+                      render: (s: string) =>
+                        s === "active" ? (
                           <Tag color="green">Active</Tag>
                         ) : (
-                          <Tag color="default">Inactive</Tag>
+                          <Tag color="default">{s}</Tag>
                         ),
                     },
                   ]}

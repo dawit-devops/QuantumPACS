@@ -2,9 +2,61 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok
+from api.response import ok, api_error
+from api.validate import parse_body
+from api.schemas.notifications import NotificationPrefsRequest
 from db.conn import get_conn
 from db.notifications import Notifications
+from db.notification_prefs import NotificationPrefs
+
+
+class NotificationPreferencesHandler(HTTPEndpoint):
+    @requires_permission(Permission.FILE_READ)
+    async def get(self, request):
+        """Return explicit prefs plus role-default resolution per event type."""
+        user_id = request.user.id
+        async with get_conn() as conn:
+            prefs = NotificationPrefs(conn)
+            explicit = await prefs.get(user_id)
+        defaults = {
+            et: NotificationPrefs.default_enabled(
+                getattr(request.user, 'role_slug', ''), et,
+            )
+            for et in NotificationPrefs.EVENT_CATALOG
+        }
+        merged = {
+            et: explicit.get(et, defaults[et]) for et in NotificationPrefs.EVENT_CATALOG
+        }
+        return ok({
+            'preferences': merged,
+            'explicit': explicit,
+            'role_defaults': defaults,
+        })
+
+    @requires_permission(Permission.FILE_READ)
+    async def put(self, request):
+        body = await parse_body(NotificationPrefsRequest, request)
+        user_id = request.user.id
+        async with get_conn() as conn:
+            prefs = NotificationPrefs(conn)
+            known = set(NotificationPrefs.EVENT_CATALOG)
+            unknown = set(body.preferences) - known
+            if unknown:
+                return api_error(
+                    'VALIDATION',
+                    f'Unknown event types: {", ".join(sorted(unknown))}',
+                    status=422,
+                )
+            await prefs.set(user_id, body.preferences)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='user.notification_prefs_changed',
+                actor_id=user_id,
+                resource_type='user',
+                resource_id=str(user_id),
+                details={'description': 'Notification preferences updated'},
+            )
+        return ok({'updated': sorted(body.preferences)})
 
 
 class NotificationsHandler(HTTPEndpoint):

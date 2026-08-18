@@ -151,7 +151,11 @@ function NotificationBell() {
 
   return (
     <>
-      <Badge count={unread} size="small" offset={[2, -2]}>
+      <Badge
+        count={<span aria-hidden="true">{unread}</span>}
+        size="small"
+        offset={[2, -2]}
+      >
         <Button
           type="text"
           aria-label="Notifications"
@@ -189,6 +193,19 @@ function NotificationBell() {
         size={400}
       >
         <Spin spinning={loading}>
+          <div style={{ padding: "0 8px 8px" }}>
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0, fontSize: 12 }}
+              onClick={() => {
+                setOpen(false);
+                navigate("/account/notifications");
+              }}
+            >
+              Manage notification preferences
+            </Button>
+          </div>
           {notifs.length === 0 ? (
             <Empty description="No notifications" />
           ) : (

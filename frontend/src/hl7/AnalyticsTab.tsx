@@ -119,7 +119,7 @@ export function AnalyticsTab({
                       key: "count",
                     },
                   ]}
-                  rowKey={(r, i) => `${r.message_type}-${r.event_type}-${i}`}
+                  rowKey={(r) => `${r.message_type}-${r.event_type}`}
                   pagination={false}
                   size="small"
                 />

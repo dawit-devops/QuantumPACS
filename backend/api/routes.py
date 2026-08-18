@@ -10,7 +10,11 @@ from api.files import (
     FileChangesHandler, ShareFilesHandler, ShareFilesListHandler, ServeFile, ServeThumbnail
 )
 from api.logs import LogsHandler, LogEventTypesHandler, LogActorsHandler
-from api.notifications import NotificationsHandler, NotificationHandler, NotificationsReadAllHandler, NotificationsUnreadCountHandler
+from api.notifications import NotificationsHandler, NotificationHandler, NotificationsReadAllHandler, NotificationsUnreadCountHandler, NotificationPreferencesHandler
+from api.admin import (
+    AdminStatusHandler, AdminMaintenanceHandler, AdminConfigHandler,
+    AdminBackupsHandler, AdminBackupHandler, AdminBackupRestoreHandler,
+)
 from api.replicas import ReplicasHandlers, ReplicaHandlers
 from api.roles import RolesHandler, RoleHandler, PermissionsHandler, RoleUsersHandler
 from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
@@ -52,7 +56,8 @@ from api.exams import (
     ExamsHandler, ExamHandler, ExamIdentityHandler, ExamProtocolHandler,
     ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
     ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
-    ExamOverridesHandler, ProtocolsHandler,
+    ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
+    ProtocolsHandler,
 )
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
@@ -91,6 +96,7 @@ from api.portal import (
     PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
     PortalFollowUpStatusHandler,
 )
+from api.orders import OrdersHandler
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
 from api.tenant_health import TenantHealthHandler
@@ -166,6 +172,7 @@ _V1_ROUTES = [
     v2(Route('/roles/{id}/users', endpoint=RoleUsersHandler)),
     v2(Route('/permissions', endpoint=PermissionsHandler)),
     v2(Route('/notifications', endpoint=NotificationsHandler)),
+    v2(Route('/notifications/preferences', endpoint=NotificationPreferencesHandler)),
     v2(Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler)),
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
@@ -231,6 +238,8 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/dose', endpoint=ExamDoseHandler)),
     v2(Route('/exams/{id}/safety-checks', endpoint=ExamSafetyHandler)),
     v2(Route('/exams/{id}/complete', endpoint=ExamCompleteHandler)),
+    v2(Route('/exams/{id}/claim', endpoint=ExamClaimHandler)),
+    v2(Route('/exams/{id}/critical-flag', endpoint=ExamCriticalFlagHandler)),
     v2(Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler)),
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
@@ -271,6 +280,9 @@ _V1_ROUTES = [
     Route('/v2/dashboard/health', endpoint=DashboardHealthHandler),
     v2(Route('/visits', endpoint=VisitsHandler)),
     v2(Route('/visits/{id}', endpoint=VisitHandler)),
+    # Orders coordination view (care_coordinator review P0-2): read-only list
+    # for ORDER_READ holders, joined to the imaging lifecycle.
+    v2(Route('/orders', endpoint=OrdersHandler)),
     v2(Route('/visits/{id}/orders', endpoint=VisitOrdersHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),
     v2(Route('/visits/{id}/consents/attach', endpoint=ConsentsHandler)),
@@ -319,6 +331,12 @@ _V1_ROUTES = [
     v2(Route('/portal/patients/{patient_id}/orders', endpoint=PortalOrdersHandler)),
     v2(Route('/portal/follow-ups', endpoint=PortalFollowUpHandler)),
     v2(Route('/portal/follow-ups/{id}', endpoint=PortalFollowUpStatusHandler, methods=['PUT'])),
+    v2(Route('/admin/status', endpoint=AdminStatusHandler)),
+    v2(Route('/admin/maintenance', endpoint=AdminMaintenanceHandler, methods=['POST'])),
+    v2(Route('/admin/config', endpoint=AdminConfigHandler)),
+    v2(Route('/admin/backups', endpoint=AdminBackupsHandler)),
+    v2(Route('/admin/backups/{id}', endpoint=AdminBackupHandler)),
+    v2(Route('/admin/backups/{id}/restore', endpoint=AdminBackupRestoreHandler, methods=['POST'])),
     v2(Route('/ws_token', endpoint=WSToken)),
     v2(WebSocketRoute('/ws', endpoint=WebsocketHandler)),
 ]

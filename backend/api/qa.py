@@ -320,11 +320,26 @@ class QAIncidentHandler(HTTPEndpoint):
         body = await parse_body(ResolveIncidentRequest, request)
         async with get_conn() as conn:
             row = await conn.fetchrow(
-                "SELECT id FROM incidents WHERE id = $1", incident_id,
+                "SELECT id, reported_by, incident_type, exam_id FROM incidents "
+                "WHERE id = $1",
+                incident_id,
             )
             if not row:
                 return not_found('Incident not found')
             await IncidentsQA(conn).mark_resolved(incident_id, body.notes)
+            # technologist review P2-2: tell the incident author (usually the
+            # technologist who logged it) that QA closed their report — the
+            # author has no QA_READ, so the event is the only feedback loop.
+            reported_by = row.get('reported_by') or ''
+            if reported_by and reported_by != str(request.user.id):
+                from api.exams import _notify_user
+                await _notify_user(
+                    conn, reported_by, 'incident.resolved',
+                    'Incident resolved',
+                    f'Your {row.get("incident_type") or ""} report was resolved: '
+                    f'{body.notes[:120]}',
+                    f'/exams/{row.get("exam_id") or incident_id}',
+                )
             await AuditLog(conn).log_event(
                 event_type='qa.incident_resolved',
                 actor_id=request.user.id,
