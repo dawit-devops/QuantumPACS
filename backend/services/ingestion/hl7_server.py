@@ -195,6 +195,11 @@ def _seg_field_raw(seg, hl7_field, default=''):
 def parse_hl7_message(data) -> dict | None:
     if isinstance(data, bytes):
         data = data.decode('utf-8', errors='replace')
+    # Line-ending normalization: python-hl7 splits segments on \r only, so
+    # \r\n (Windows senders) leaves the \n glued to the next segment name
+    # ('\nPID' never matches 'PID') and bare \n swallows the segment. Real
+    # HIS feeds use both — normalize before parsing (S3-05 conformance).
+    data = data.replace('\r\n', '\r').replace('\n', '\r')
     try:
         msg = hl7.parse(data)
     except Exception:

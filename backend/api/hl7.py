@@ -7,7 +7,7 @@ from starlette.responses import PlainTextResponse
 from api.rbac import requires_permission
 from api.permissions import Permission
 from config import config
-from services.ingestion.hl7_server import default_handler
+from services.hl7_engine.service import Hl7InterfaceEngine
 from log import get_logger
 
 log = get_logger(__name__)
@@ -51,5 +51,7 @@ class Hl7Receiver(HTTPEndpoint):
             raise HTTPException(
                 status_code=413, detail='HL7 message exceeds 10MB limit',
             )
-        result = await default_handler(body)
+        # S3-01b: inline processing replaced by the interface engine — the
+        # response contract (ACK/ERR bytes) is unchanged for callers.
+        result = await Hl7InterfaceEngine().receive_message(body)
         return PlainTextResponse(result.decode('utf-8') if isinstance(result, bytes) else result)

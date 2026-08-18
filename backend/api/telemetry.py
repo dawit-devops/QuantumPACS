@@ -110,6 +110,18 @@ dicomweb_requests_total = Counter(
     'dicomweb_requests_total', 'Total DICOMweb requests',
     ['method', 'resource'],
 )
+# RIS interface engine (S3-04, spec §10.4): the failure-rate SLO alert
+# divides rate{status="FAILED"} by the RECEIVED total, so the engine
+# counts RECEIVED once per message and PROCESSED/FAILED as terminal
+# states (retries re-increment their terminal state).
+ris_hl7_messages_total = Counter(
+    'ris_hl7_messages_total', 'HL7 messages processed',
+    ['type', 'trigger', 'status'],
+)
+ris_hl7_message_latency_seconds = Histogram(
+    'ris_hl7_message_latency_seconds', 'HL7 message processing latency',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
 
 
 def record_request(method, path, status_code, elapsed):

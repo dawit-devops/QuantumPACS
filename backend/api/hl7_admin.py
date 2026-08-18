@@ -1,4 +1,6 @@
 import time
+from datetime import date, datetime
+from uuid import UUID
 
 from starlette.endpoints import HTTPEndpoint
 
@@ -10,6 +12,7 @@ from api.validate import parse_body
 from config import config
 from db.conn import get_conn
 from db.hl7_message import Hl7Message
+from db.ris_hl7 import RisHl7Messages, RisInterfaceEndpoints
 from log import get_logger
 
 log = get_logger(__name__)
@@ -115,3 +118,99 @@ class Hl7StatusHandler(HTTPEndpoint):
             'port': port,
             'response_time_ms': elapsed,
         })
+
+
+# --- S3-15 Interface dashboard API (E-RIS-02 #4, RIS-AC-P06-02) ----------
+# Reads the engine's own tables (ris_interface_endpoints / ris_hl7_messages)
+# rather than the legacy hl7_messages admin views above. Endpoints are the
+# registered interfaces; exceptions is the FAILED queue backing the UI.
+
+_PERIODS = {'1h': '1 hour', '24h': '24 hours', '7d': '7 days', '30d': '30 days'}
+
+
+def _require_uuid(value):
+    """Validate the {id} path param is a UUID — repo queries inline it."""
+    try:
+        return str(UUID(value))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _row_dict(row):
+    """Serialize a DB row for JSON responses — uuid/date/datetime become strings."""
+    if row is None:
+        return None
+    d = dict(row)
+    for k, v in d.items():
+        if isinstance(v, (UUID, date, datetime)):
+            d[k] = str(v)
+    return d
+
+
+class RisInterfacesHandler(HTTPEndpoint):
+    @requires_permission(Permission.HL7_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            endpoints = await RisInterfaceEndpoints(conn).list()
+            counts = await RisHl7Messages(conn).count_by_endpoints(
+                [e['id'] for e in endpoints],
+            )
+        interfaces = []
+        for ep in endpoints:
+            row = _row_dict(ep)
+            # Expose only the interesting statuses; RECEIVED is implied by
+            # the totals and would duplicate the counter row for every msg.
+            row['status_counts'] = {
+                st: n for st, n in counts.get(ep['id'], {}).items() if st != 'RECEIVED'
+            }
+            interfaces.append(row)
+        return ok({'data': {'interfaces': interfaces, 'total': len(interfaces)}})
+
+
+class RisInterfaceMessagesHandler(HTTPEndpoint):
+    @requires_permission(Permission.HL7_READ)
+    async def get(self, request):
+        endpoint_id = _require_uuid(request.path_params['id'])
+        if endpoint_id is None:
+            return api_error('INTERFACE_NOT_FOUND', 'Interface endpoint not found', status=404)
+        limit = int(request.query_params.get('limit', '50'))
+        offset = int(request.query_params.get('offset', '0'))
+        async with get_conn() as conn:
+            ep = await RisInterfaceEndpoints(conn).get(endpoint_id)
+            if not ep:
+                return api_error('INTERFACE_NOT_FOUND', 'Interface endpoint not found', status=404)
+            msgs, total = await RisHl7Messages(conn).list_by_endpoint(
+                endpoint_id, limit=limit, offset=offset,
+            )
+        return ok({'data': {
+            'messages': [_row_dict(m) for m in msgs],
+            'total': total, 'limit': limit, 'offset': offset,
+        }})
+
+
+class RisInterfaceMetricsHandler(HTTPEndpoint):
+    @requires_permission(Permission.HL7_READ)
+    async def get(self, request):
+        endpoint_id = _require_uuid(request.path_params['id'])
+        if endpoint_id is None:
+            return api_error('INTERFACE_NOT_FOUND', 'Interface endpoint not found', status=404)
+        period_key = request.query_params.get('period', '24h')
+        period = _PERIODS.get(period_key, '24 hours')
+        async with get_conn() as conn:
+            ep = await RisInterfaceEndpoints(conn).get(endpoint_id)
+            if not ep:
+                return api_error('INTERFACE_NOT_FOUND', 'Interface endpoint not found', status=404)
+            metrics = await RisHl7Messages(conn).metrics_by_endpoint(endpoint_id, period)
+        return ok({'data': {'endpoint_id': endpoint_id, 'period': period_key, **metrics}})
+
+
+class RisInterfaceExceptionsHandler(HTTPEndpoint):
+    @requires_permission(Permission.HL7_READ)
+    async def get(self, request):
+        limit = int(request.query_params.get('limit', '50'))
+        async with get_conn() as conn:
+            exceptions = await RisHl7Messages(conn).list_failed(limit)
+        return ok({'data': {
+            'exceptions': [_row_dict(m) for m in exceptions],
+            'count': len(exceptions),
+        }})

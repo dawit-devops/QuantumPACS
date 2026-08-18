@@ -823,8 +823,13 @@ class TestHl7HttpEndpoint:
                 # Isolate from any whitelist in config.local.yaml: the
                 # success path assumes no IP restriction is configured.
                 with patch('api.hl7.config', {}):
-                    client = TestClient(self._make_app())
-                    resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+                    # S3-01b: api/hl7.py delegates to the interface engine,
+                    # which has its own get_conn import — patch it too.
+                    with patch('services.hl7_engine.service.get_conn') as mock_engine_get:
+                        mock_engine_get.return_value.__aenter__.return_value = mock_conn
+                        mock_engine_get.return_value.__aexit__ = AsyncMock(return_value=None)
+                        client = TestClient(self._make_app())
+                        resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
 
         assert resp.status_code == 200
         assert resp.text == 'ACK'

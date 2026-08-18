@@ -48,6 +48,8 @@ from api.fhir_admin import (
 from api.hl7_admin import (
     Hl7MessagesHandler, Hl7MessageHandler,
     Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
+    RisInterfacesHandler, RisInterfaceMessagesHandler,
+    RisInterfaceMetricsHandler, RisInterfaceExceptionsHandler,
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
@@ -97,6 +99,7 @@ from api.portal import (
     PortalFollowUpStatusHandler,
 )
 from api.orders import OrdersHandler
+from api.ris_orders import RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
 from api.tenant_health import TenantHealthHandler
@@ -284,6 +287,16 @@ _V1_ROUTES = [
     # for ORDER_READ holders, joined to the imaging lifecycle.
     v2(Route('/orders', endpoint=OrdersHandler)),
     v2(Route('/visits/{id}/orders', endpoint=VisitOrdersHandler)),
+    # RIS order intake (E-RIS-03): ris_orders schema + lifecycle transitions.
+    v2(Route('/ris/orders', endpoint=RisOrdersHandler)),
+    v2(Route('/ris/orders/{id}', endpoint=RisOrderHandler)),
+    v2(Route('/ris/orders/{id}/status', endpoint=RisOrderStatusHandler)),
+    # RIS interface dashboard (E-RIS-02 #4 / S3-15): endpoint list, message
+    # history, metrics, exception queue — reads the engine's ris_* tables.
+    v2(Route('/ris/interfaces', endpoint=RisInterfacesHandler)),
+    v2(Route('/ris/interfaces/exceptions', endpoint=RisInterfaceExceptionsHandler)),
+    v2(Route('/ris/interfaces/{id}/messages', endpoint=RisInterfaceMessagesHandler)),
+    v2(Route('/ris/interfaces/{id}/metrics', endpoint=RisInterfaceMetricsHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),
     v2(Route('/visits/{id}/consents/attach', endpoint=ConsentsHandler)),
     v2(Route('/schedule/availability', endpoint=AppointmentAvailabilityHandler)),
