@@ -32,8 +32,22 @@ const completed: any = {
   created_by: 1,
   created_at: new Date().toISOString(),
 };
-const running: any = { ...completed, id: "b2", status: "running", files_count: 7, bytes_count: 512, size_bytes: 51200 };
-const failed: any = { ...completed, id: "b3", status: "failed", files_count: 0, bytes_count: 0, size_bytes: 0 };
+const running: any = {
+  ...completed,
+  id: "b2",
+  status: "running",
+  files_count: 7,
+  bytes_count: 512,
+  size_bytes: 51200,
+};
+const failed: any = {
+  ...completed,
+  id: "b3",
+  status: "failed",
+  files_count: 0,
+  bytes_count: 0,
+  size_bytes: 0,
+};
 
 describe("Backups", () => {
   beforeEach(() => {
@@ -65,9 +79,7 @@ describe("Backups", () => {
     mockList.mockResolvedValue({ data: [] });
     renderWithAuth(<Backups />);
     await waitFor(() =>
-      expect(
-        screen.getByText(/No backups yet/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/No backups yet/i)).toBeInTheDocument(),
     );
   });
 

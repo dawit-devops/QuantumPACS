@@ -63,9 +63,7 @@ describe("Settings", () => {
     const storageCard = screen
       .getByText("Storage & Upload")
       .closest(".ant-card")!;
-    fireEvent.click(
-      storageCard.querySelector("button")!,
-    );
+    fireEvent.click(storageCard.querySelector("button")!);
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][0]).toEqual({
       max_upload_size_mb: { value: 200 },
@@ -79,7 +77,9 @@ describe("Settings", () => {
   it("surfaces a load error and retries", async () => {
     mockGet.mockRejectedValueOnce(new Error("config boom"));
     renderWithAuth(<Settings />);
-    await waitFor(() => expect(screen.getByText("config boom")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("config boom")).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByText("Retry"));
     await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
     expect(screen.getByText("Storage & Upload")).toBeInTheDocument();
