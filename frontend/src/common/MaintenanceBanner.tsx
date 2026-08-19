@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
 import { Alert } from "antd";
+import React, { useEffect, useState } from "react";
+
 import { getAdminStatus } from "../api/admin";
 
 /**

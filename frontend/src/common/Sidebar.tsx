@@ -1,7 +1,3 @@
-import React, { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router";
-import { Layout, Menu, Grid, Drawer, Button, Space } from "antd";
-import type { MenuProps } from "antd";
 import {
   MenuOutlined,
   FileSearchOutlined,
@@ -37,14 +33,18 @@ import {
   SettingOutlined,
   ScheduleOutlined,
 } from "@ant-design/icons";
-import NotificationBell from "../notifications/NotificationBell";
+import { Layout, Menu, Grid, Drawer, Button } from "antd";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router";
 
 const { useBreakpoint } = Grid;
-import { useAuth } from "../auth/AuthContext";
-import { useTheme } from "./ThemeProvider";
+
 import QuantumLogo from "./QuantumLogo";
-import TenantSelector from "../auth/TenantSelector";
+import { useTheme } from "./ThemeProvider";
 import { logout } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
+import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
+import TenantSelector from "../auth/TenantSelector";
 import { request } from "../helpers";
 import {
   ADMIN_DASHBOARD_PERMISSIONS,
@@ -52,7 +52,10 @@ import {
   isAdminScopedRole,
   NON_ADMIN_WORKSPACES,
 } from "../navigator";
-import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
+import NotificationBell from "../notifications/NotificationBell";
+
+import type { MenuProps } from "antd";
+
 import "./Sidebar.css";
 
 const { Sider } = Layout;
@@ -69,8 +72,7 @@ function getKey(loc: string) {
     return "dashboard";
   }
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
-  if (parts[0] === "reading")
-    return parts[1] === "home" ? "resident-home" : "reading-worklist";
+  if (parts[0] === "reading") return parts[1] === "home" ? "resident-home" : "reading-worklist";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",
@@ -89,6 +91,8 @@ function getKey(loc: string) {
     };
     return fdMap[parts[1]] || "fd-registration";
   }
+  if (parts[0] === "schedule")
+    return parts[1] === "resources" ? "schedule-resources" : "schedule-calendar";
   if (parts[0] === "portal") return "portal-records";
   return parts[0];
 }
@@ -198,6 +202,23 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         // endpoint the page actually needs; SCHEDULE_READ stays the route gate
         // and unlocks the write actions (book/cancel) inside.
         permissions: ["WORKLIST_READ"],
+      },
+      {
+        key: "schedule-calendar",
+        path: "/schedule",
+        label: "Calendar",
+        icon: <CalendarOutlined />,
+        // S4-14/16 day view: RIS-native schedule over resources (rooms/
+        // modalities/techs). Loads GET /ris/resources + /ris/appointments,
+        // both SCHEDULE_READ-gated, so the sidebar gate matches the page.
+        permissions: ["SCHEDULE_READ"],
+      },
+      {
+        key: "schedule-resources",
+        path: "/schedule/resources",
+        label: "Resources",
+        icon: <ApartmentOutlined />,
+        permissions: ["SCHEDULE_READ"],
       },
     ],
   },
@@ -536,6 +557,8 @@ const SECTION_OF_KEY: Record<string, string> = {
   worklist: "acquisition",
   exams: "acquisition",
   "schedule-board": "acquisition",
+  "schedule-calendar": "acquisition",
+  "schedule-resources": "acquisition",
   "reading-worklist": "reading",
   "resident-home": "reading",
   "peer-review": "reading",
@@ -559,7 +582,7 @@ export function hasItemPermission(
   item: NavItemDef,
   hasPermission: (p: string) => boolean,
   isAdminScoped = false,
-  role?: string,
+  role?: string
 ): boolean {
   if (item.adminOnly && !isAdminScoped) return false;
   if (item.roles && !item.roles.includes(role ?? "")) return false;
@@ -568,7 +591,7 @@ export function hasItemPermission(
 
 function navItemToItem(
   item: NavItemDef,
-  selectedKey: string,
+  selectedKey: string
 ): NonNullable<MenuProps["items"]>[number] {
   const link = (child: NavItemDef) => (
     <Link to={child.path!}>
@@ -642,15 +665,11 @@ function Sidebar() {
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission, isAdminScoped, user?.role),
+      hasItemPermission(item, hasPermission, isAdminScoped, user?.role)
     ),
   }))
-    .filter(
-      ({ section, items }) => userWorkspace === section.key || items.length > 0,
-    )
-    .filter(
-      ({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key),
-    );
+    .filter(({ section, items }) => userWorkspace === section.key || items.length > 0)
+    .filter(({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key));
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
@@ -690,90 +709,86 @@ function Sidebar() {
         onClick={() => {
           if (isMobile) setDrawerOpen(false);
         }}
-        items={
-          [
-            hasItemPermission(
-              {
+        items={[
+          hasItemPermission(
+            {
+              key: "files",
+              path: "/",
+              label: "Files",
+              icon: <FileSearchOutlined />,
+              permissions: [...VIEWER_ROUTE_PERMISSIONS],
+            },
+            hasPermission,
+            isAdminScoped
+          )
+            ? {
                 key: "files",
-                path: "/",
-                label: "Files",
-                icon: <FileSearchOutlined />,
-                permissions: [...VIEWER_ROUTE_PERMISSIONS],
-              },
-              hasPermission,
-              isAdminScoped,
-            )
-              ? {
-                  key: "files",
-                  label: (
-                    <Link to="/">
-                      <FileSearchOutlined />
-                      <span className="nav-text">Files</span>
-                    </Link>
-                  ),
-                }
-              : null,
-            {
-              key: "account",
-              label: (
-                <Link to="/account">
-                  <UserOutlined />
-                  <span className="nav-text">Account</span>
-                </Link>
-              ),
-            },
-            ...sections.map(({ section, items }) => ({
-              key: section.key,
-              icon: section.icon,
-              label: section.title,
-              children: items.map((item) => navItemToItem(item, selectedKey)),
-            })),
-            {
-              key: "notifications",
-              // P2-6: the unread badge's text must not join the menu item's
-              // accessible name ("49Notifications"). The count is already
-              // aria-hidden inside NotificationBell; this span (pure text,
-              // never focusable) is hidden so the bell button's own
-              // aria-label "Notifications" is the menuitem's sole name —
-              // wrapping the focusable button in aria-hidden would trip
-              // axe's aria-hidden-focus rule.
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <NotificationBell />
-                  <span className="nav-text" aria-hidden="true">
-                    Notifications
-                  </span>
+                label: (
+                  <Link to="/">
+                    <FileSearchOutlined />
+                    <span className="nav-text">Files</span>
+                  </Link>
+                ),
+              }
+            : null,
+          {
+            key: "account",
+            label: (
+              <Link to="/account">
+                <UserOutlined />
+                <span className="nav-text">Account</span>
+              </Link>
+            ),
+          },
+          ...sections.map(({ section, items }) => ({
+            key: section.key,
+            icon: section.icon,
+            label: section.title,
+            children: items.map((item) => navItemToItem(item, selectedKey)),
+          })),
+          {
+            key: "notifications",
+            // P2-6: the unread badge's text must not join the menu item's
+            // accessible name ("49Notifications"). The count is already
+            // aria-hidden inside NotificationBell; this span (pure text,
+            // never focusable) is hidden so the bell button's own
+            // aria-label "Notifications" is the menuitem's sole name —
+            // wrapping the focusable button in aria-hidden would trip
+            // axe's aria-hidden-focus rule.
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <NotificationBell />
+                <span className="nav-text" aria-hidden="true">
+                  Notifications
                 </span>
-              ),
-              style: {
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                marginTop: 8,
-              },
+              </span>
+            ),
+            style: {
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              marginTop: 8,
             },
-            {
-              key: "theme-toggle",
-              onClick: toggleTheme,
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {isDark ? <SunOutlined /> : <MoonOutlined />}
-                  <span className="nav-text">
-                    {isDark ? "Light Mode" : "Dark Mode"}
-                  </span>
-                </span>
-              ),
-            },
-            {
-              key: "logout",
-              onClick: handleLogout,
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <LogoutOutlined />
-                  <span className="nav-text">Logout</span>
-                </span>
-              ),
-            },
-          ].filter(Boolean) as MenuProps["items"]
-        }
+          },
+          {
+            key: "theme-toggle",
+            onClick: toggleTheme,
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isDark ? <SunOutlined /> : <MoonOutlined />}
+                <span className="nav-text">{isDark ? "Light Mode" : "Dark Mode"}</span>
+              </span>
+            ),
+          },
+          {
+            key: "logout",
+            onClick: handleLogout,
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <LogoutOutlined />
+                <span className="nav-text">Logout</span>
+              </span>
+            ),
+          },
+        ].filter(Boolean)}
       />
     </div>
   );

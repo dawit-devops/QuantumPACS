@@ -1,5 +1,3 @@
-import React, { useState, useEffect } from "react";
-import { Button, Typography, Space } from "antd";
 import {
   SearchOutlined,
   EyeOutlined,
@@ -8,6 +6,9 @@ import {
   RightOutlined,
   LeftOutlined,
 } from "@ant-design/icons";
+import { Button, Typography, Space } from "antd";
+import React, { useState, useEffect } from "react";
+
 import { useAuth } from "../auth/AuthContext";
 
 const { Text, Title } = Typography;
@@ -17,29 +18,21 @@ const TOUR_DONE_KEY = "quantumpacs-tour-done";
 const STEPS = [
   {
     title: "Search Studies",
-    icon: (
-      <SearchOutlined style={{ fontSize: 28, color: "var(--color-primary)" }} />
-    ),
+    icon: <SearchOutlined style={{ fontSize: 28, color: "var(--color-primary)" }} />,
     description:
       "Find studies by patient name, ID, or accession number. Use Advanced Search for DICOM tag filtering.",
     targetHint: "Try typing a patient name in the search bar above.",
   },
   {
     title: "View & Diagnose",
-    icon: (
-      <EyeOutlined style={{ fontSize: 28, color: "var(--color-primary)" }} />
-    ),
+    icon: <EyeOutlined style={{ fontSize: 28, color: "var(--color-primary)" }} />,
     description:
       "Interact with images using your mouse or keyboard. Press ? for keyboard shortcuts, or use the measurement tools.",
     targetHint: "Click any study in the list to open the viewer.",
   },
   {
     title: "Share Securely",
-    icon: (
-      <ShareAltOutlined
-        style={{ fontSize: 28, color: "var(--color-primary)" }}
-      />
-    ),
+    icon: <ShareAltOutlined style={{ fontSize: 28, color: "var(--color-primary)" }} />,
     description:
       "Share studies securely with referring physicians via expiring links. Control access with granular permissions.",
     targetHint: "Open a study and click the Share tab to generate a link.",
@@ -143,10 +136,7 @@ export function OnboardingTour({ onComplete }: OnboardingTourProps) {
           />
         </div>
 
-        <Title
-          level={4}
-          style={{ margin: 0, fontSize: 18, color: "var(--text-primary)" }}
-        >
+        <Title level={4} style={{ margin: 0, fontSize: 18, color: "var(--text-primary)" }}>
           {current.title}
         </Title>
 
@@ -192,10 +182,8 @@ export function OnboardingTour({ onComplete }: OnboardingTourProps) {
                   width: 8,
                   height: 8,
                   borderRadius: "50%",
-                  background:
-                    i === step ? "var(--color-primary)" : "var(--border-color)",
-                  transition:
-                    "background var(--duration-fast) var(--easing-standard)",
+                  background: i === step ? "var(--color-primary)" : "var(--border-color)",
+                  transition: "background var(--duration-fast) var(--easing-standard)",
                 }}
               />
             ))}

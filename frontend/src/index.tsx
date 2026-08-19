@@ -1,26 +1,27 @@
-import React, { Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
 import { App as AntdApp, ConfigProvider, Spin } from "antd";
+import React, { Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
+
 import "./common/tokens.css";
 import "./index.css";
-import { init } from "./ws";
-import { setNavigator } from "./navigator";
-import { ThemeProvider, useTheme } from "./common/ThemeProvider";
-import { lightTheme, darkTheme } from "./common/theme";
+
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import { ErrorBoundary } from "./common/ErrorBoundary";
-import { renderEmpty } from "./common/EmptyState";
-import { OnboardingTour } from "./common/OnboardingTour";
-import { HelpButton } from "./common/HelpButton";
-import ProtectedRoute from "./auth/ProtectedRoute";
 import PermissionRoute, {
   VIEWER_ROUTE_PERMISSIONS,
   PATIENT_ROUTE_PERMISSIONS,
   METRICS_ROUTE_PERMISSIONS,
   ADMIN_DASHBOARD_PERMISSIONS,
 } from "./auth/PermissionRoute";
-import { ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import { renderEmpty } from "./common/EmptyState";
+import { ErrorBoundary } from "./common/ErrorBoundary";
+import { HelpButton } from "./common/HelpButton";
+import { OnboardingTour } from "./common/OnboardingTour";
+import { lightTheme, darkTheme } from "./common/theme";
+import { ThemeProvider, useTheme } from "./common/ThemeProvider";
+import { setNavigator, ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
+import { init } from "./ws";
 
 // (L8) Stable no-op: a fresh arrow per render would hand OnboardingTour a new
 // onComplete reference each time ThemedApp re-renders, defeating memoization.
@@ -39,10 +40,7 @@ function ClinicalRoute({
   children: React.ReactNode;
 }) {
   return (
-    <PermissionRoute
-      permission={permission}
-      excludedRoles={[...ADMIN_SCOPED_ROLES]}
-    >
+    <PermissionRoute permission={permission} excludedRoles={[...ADMIN_SCOPED_ROLES]}>
       {children}
     </PermissionRoute>
   );
@@ -61,10 +59,7 @@ function AdminConsoleRoute({
   children: React.ReactNode;
 }) {
   return (
-    <PermissionRoute
-      permission={permission}
-      excludedRoles={[...CLINICAL_SCOPED_ROLES]}
-    >
+    <PermissionRoute permission={permission} excludedRoles={[...CLINICAL_SCOPED_ROLES]}>
       {children}
     </PermissionRoute>
   );
@@ -84,25 +79,19 @@ const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const ResourceManager = React.lazy(() => import("./schedule/ResourceManager"));
+const CalendarView = React.lazy(() => import("./schedule/CalendarView"));
 const Orders = React.lazy(() => import("./coordinator/Orders"));
-const FrontDeskRegistration = React.lazy(
-  () => import("./frontdesk/Registration"),
-);
+const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
 const PatientPortal = React.lazy(() => import("./portal/Portal"));
-const TechnologistWorklist = React.lazy(
-  () => import("./technologist/TechnologistWorklist"),
-);
+const TechnologistWorklist = React.lazy(() => import("./technologist/TechnologistWorklist"));
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
-const ReadingWorklist = React.lazy(
-  () => import("./radiologist/ReadingWorklist"),
-);
+const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
 const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
-const PeerReviewInbox = React.lazy(
-  () => import("./radiologist/PeerReviewInbox"),
-);
+const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
 const QAQueue = React.lazy(() => import("./qa/QAQueue"));
 const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
 const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
@@ -119,15 +108,11 @@ const StowUpload = React.lazy(() => import("./dicomweb/StowUpload"));
 const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
 const AdminDashboard = React.lazy(() => import("./dashboard/AdminDashboard"));
-const NotificationPreferences = React.lazy(
-  () => import("./notifications/NotificationPreferences"),
-);
+const NotificationPreferences = React.lazy(() => import("./notifications/NotificationPreferences"));
 const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
 const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
-const InterfaceDashboard = React.lazy(
-  () => import("./admin/InterfaceDashboard"),
-);
+const InterfaceDashboard = React.lazy(() => import("./admin/InterfaceDashboard"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
 function NavigatorSetter() {
@@ -162,10 +147,7 @@ function ThemedApp() {
   }, [tempKey]);
 
   return (
-    <ConfigProvider
-      theme={isDark ? darkTheme : lightTheme}
-      renderEmpty={renderEmpty}
-    >
+    <ConfigProvider theme={isDark ? darkTheme : lightTheme} renderEmpty={renderEmpty}>
       <AntdApp>
         <BrowserRouter>
           <AuthProvider>
@@ -191,10 +173,7 @@ function ThemedApp() {
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
                     {/* Per-user notification subscriptions (P1-1). */}
-                    <Route
-                      path="/account/notifications"
-                      element={<NotificationPreferences />}
-                    />
+                    <Route path="/account/notifications" element={<NotificationPreferences />} />
                     {/* Platform-ops surfaces (super_admin review) — only the
                         platform admin holds SYSTEM_ADMIN. */}
                     <Route
@@ -232,10 +211,7 @@ function ThemedApp() {
                     <Route
                       path="/admin"
                       element={
-                        <PermissionRoute
-                          permission={ADMIN_DASHBOARD_PERMISSIONS}
-                          adminOnly
-                        >
+                        <PermissionRoute permission={ADMIN_DASHBOARD_PERMISSIONS} adminOnly>
                           <AdminDashboard />
                         </PermissionRoute>
                       }
@@ -287,9 +263,7 @@ function ThemedApp() {
                         // Matrix A admin roles carry only AUDIT_READ; the nav
                         // gate already accepts both and the backend resolves
                         // the alias symmetrically (rbac.py).
-                        <PermissionRoute
-                          permission={["LOG_READ", "AUDIT_READ"]}
-                        >
+                        <PermissionRoute permission={["LOG_READ", "AUDIT_READ"]}>
                           <Logs />
                         </PermissionRoute>
                       }
@@ -313,6 +287,25 @@ function ThemedApp() {
                         // R08) unlocks the write actions inside.
                         <ClinicalRoute permission="SCHEDULE_READ">
                           <ScheduleBoard />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule"
+                      element={
+                        // S4-16 day view: the RIS-native schedule surface.
+                        // Gated on SCHEDULE_READ like the board; SCHEDULE_WRITE
+                        // unlocks book/reschedule/cancel inside.
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <CalendarView />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule/resources"
+                      element={
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <ResourceManager />
                         </ClinicalRoute>
                       }
                     />

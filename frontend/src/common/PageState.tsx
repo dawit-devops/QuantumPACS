@@ -1,8 +1,10 @@
-import type { ReactNode } from "react";
-import { Spin } from "antd";
 import { LoadingOutlined } from "@ant-design/icons";
+import { Spin } from "antd";
+
 import { EmptyState } from "./EmptyState";
 import { ErrorDisplay } from "./ErrorDisplay";
+
+import type { ReactNode } from "react";
 
 interface PageStateProps {
   loading?: boolean;
@@ -60,9 +62,7 @@ export function PageState({
     }
 
     if (error) {
-      return (
-        <ErrorDisplay message={error} detail={errorDetail} onRetry={onRetry} />
-      );
+      return <ErrorDisplay message={error} detail={errorDetail} onRetry={onRetry} />;
     }
 
     if (empty) {

@@ -1,8 +1,9 @@
-import React from "react";
 import { Layout, Grid } from "antd";
-import Sidebar from "./Sidebar";
-import MobileNav from "./MobileNav";
+import React from "react";
+
 import MaintenanceBanner from "./MaintenanceBanner";
+import MobileNav from "./MobileNav";
+import Sidebar from "./Sidebar";
 import { useTheme } from "./ThemeProvider";
 
 const { useBreakpoint } = Grid;
@@ -17,14 +18,10 @@ function withSidebar(Comp: React.ComponentType<any>) {
       <Layout
         style={{
           minHeight: "100dvh",
-          paddingBottom:
-            isMobile && !tempKey
-              ? "calc(56px + env(safe-area-inset-bottom, 0px))"
-              : 0,
+          paddingBottom: isMobile && !tempKey ? "calc(56px + env(safe-area-inset-bottom, 0px))" : 0,
           paddingLeft: "env(safe-area-inset-left, 0px)",
           paddingRight: "env(safe-area-inset-right, 0px)",
-          transition:
-            "background-color var(--duration-normal) var(--easing-standard)",
+          transition: "background-color var(--duration-normal) var(--easing-standard)",
         }}
       >
         <MaintenanceBanner />

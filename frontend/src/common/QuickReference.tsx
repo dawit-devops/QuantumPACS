@@ -1,5 +1,6 @@
-import React from "react";
 import { Modal, Tabs, Table, Typography } from "antd";
+import React from "react";
+
 import { getToolShortcut } from "../detail/KeyboardShortcuts";
 
 const { Text } = Typography;
@@ -37,13 +38,7 @@ const SHORTCUTS: ShortcutEntry[] = [
   { key: "?", action: "Show this reference", group: "Help" },
 ];
 
-const GROUP_ORDER = [
-  "Tool Selection",
-  "Viewer Controls",
-  "Annotations",
-  "Navigation",
-  "Help",
-];
+const GROUP_ORDER = ["Tool Selection", "Viewer Controls", "Annotations", "Navigation", "Help"];
 
 const GESTURES = [
   { gesture: "Tap", action: "Focus thumbnail / select tool" },
@@ -75,7 +70,7 @@ export function QuickReference({ open, onClose }: QuickReferenceProps) {
       ...s,
       groupOrder: GROUP_ORDER.indexOf(s.group),
       rowKey: `${group}-${i}`,
-    })),
+    }))
   ).sort((a, b) => a.groupOrder - b.groupOrder);
 
   const shortcutColumns = [
@@ -173,8 +168,8 @@ export function QuickReference({ open, onClose }: QuickReferenceProps) {
                     color: "var(--text-secondary)",
                   }}
                 >
-                  Press a number key to activate a tool. Press{" "}
-                  <kbd style={kbdStyle}>1</kbd> to return to Pan.
+                  Press a number key to activate a tool. Press <kbd style={kbdStyle}>1</kbd> to
+                  return to Pan.
                 </Text>
                 <Table
                   dataSource={[

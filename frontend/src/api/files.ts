@@ -1,17 +1,15 @@
 import { request } from "./client";
+
 import type { PatientSummary } from "./patient";
 
 export type DicomJsonObject = Record<string, unknown>;
 
 // QIDO-RS returns a bare DICOM JSON array (possibly wrapped in {data} by a
 // legacy proxy layer — accept both so callers don't care).
-export const qidoSearch = (
-  params: Record<string, string>,
-): Promise<DicomJsonObject[]> =>
-  request<DicomJsonObject[] | { data: DicomJsonObject[] }>(
-    "v2/dicomweb/studies",
-    { query: params },
-  ).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
+export const qidoSearch = (params: Record<string, string>): Promise<DicomJsonObject[]> =>
+  request<DicomJsonObject[] | { data: DicomJsonObject[] }>("v2/dicomweb/studies", {
+    query: params,
+  }).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
 
 export interface FileSearchResult {
   data: Record<string, unknown>[];
@@ -89,7 +87,7 @@ export const deleteFile = (id: number | string): Promise<void> =>
 
 export const listFileChanges = (
   id: number,
-  params: Record<string, string> = {},
+  params: Record<string, string> = {}
 ): Promise<FileChange[]> =>
   request<{ data: FileChange[] } | FileChange[]>(`files/${id}/changes`, {
     query: params,
@@ -100,14 +98,8 @@ export const listFileShares = (id: number | string): Promise<FileShare[]> =>
     method: "GET",
   }).then((res) => (Array.isArray(res) ? res : (res?.data ?? [])));
 
-export const createFileShare = (
-  id: number,
-  data: Record<string, unknown>,
-): Promise<FileShare> =>
+export const createFileShare = (id: number, data: Record<string, unknown>): Promise<FileShare> =>
   request<FileShare>(`files/${id}/share`, { data }).then((res) => res ?? {});
 
-export const revokeFileShare = (
-  id: number | string,
-  shareId: number | string,
-): Promise<void> =>
+export const revokeFileShare = (id: number | string, shareId: number | string): Promise<void> =>
   request(`files/${id}/shares/${shareId}`, { method: "DELETE" });
