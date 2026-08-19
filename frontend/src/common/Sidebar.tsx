@@ -196,12 +196,11 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/schedule-board",
         label: "Schedule",
         icon: <CalendarOutlined />,
-        // Schedule surface: the board loads its day data from GET /api/worklist
-        // (WORKLIST_READ), so showing the item to SCHEDULE_READ-only roles is a
-        // permission dead end (R13 resident review finding P0-1). Gate on the
-        // endpoint the page actually needs; SCHEDULE_READ stays the route gate
-        // and unlocks the write actions (book/cancel) inside.
-        permissions: ["WORKLIST_READ"],
+        // The board loads day data from GET /api/worklist (WORKLIST_READ)
+        // and supports capacity booking (SCHEDULE_READ). Accept either
+        // permission so both physicians (WORKLIST_READ) and schedulers
+        // (SCHEDULE_READ) see the nav item — matches the route gate.
+        permissions: ["WORKLIST_READ", "SCHEDULE_READ"],
       },
       {
         key: "schedule-calendar",

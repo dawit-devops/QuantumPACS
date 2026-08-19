@@ -279,13 +279,13 @@ function ThemedApp() {
                     <Route
                       path="/schedule-board"
                       element={
-                        // The board is a schedule surface (view + capacity
-                        // booking + cancel), so it gates on SCHEDULE_READ
-                        // rather than the worklist permission: front-office
-                        // roles holding SCHEDULE_READ reach it, and the
-                        // SCHEDULE_WRITE grant (scheduler; receptionist via
-                        // R08) unlocks the write actions inside.
-                        <ClinicalRoute permission="SCHEDULE_READ">
+                        // The board loads day data from GET /api/worklist
+                        // (WORKLIST_READ) and supports capacity booking
+                        // (SCHEDULE_READ/WRITE). Accept either permission
+                        // so both physician/resident (WORKLIST_READ) and
+                        // scheduler/receptionist (SCHEDULE_READ) reach the
+                        // page without a dead-end redirect.
+                        <ClinicalRoute permission={["WORKLIST_READ", "SCHEDULE_READ"]}>
                           <ScheduleBoard />
                         </ClinicalRoute>
                       }

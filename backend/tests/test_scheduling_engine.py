@@ -25,7 +25,8 @@ class TestBook:
             engine._schedules.for_resource = AsyncMock(return_value=[])
             engine._orders = AsyncMock()
             engine._orders.get = AsyncMock(return_value={
-                'id': 'ord-1', 'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
             created = {
                 'id': 'appt-1', 'tenant_id': 'default', 'order_id': 'ord-1',
                 'resource_id': 'res-1', 'patient_id': 'MRN-1',
@@ -122,6 +123,9 @@ class TestBookGates:
             'id': 'ord-1', 'status': 'SCHEDULED'})
         engine._orders = AsyncMock()
         engine._orders.get = AsyncMock(return_value=order)
+        # Ensure the mock order carries patient_id matching MRN-1
+        if order and 'patient_id' not in order:
+            order['patient_id'] = 'MRN-1'
         return engine
 
     def test_book_refuses_order_with_pending_prior_auth(self):
@@ -207,7 +211,8 @@ class TestOverride:
         engine._schedules.for_resource = AsyncMock(return_value=[])
         engine._orders = AsyncMock()
         engine._orders.get = AsyncMock(return_value={
-            'id': 'ord-1', 'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+            'id': 'ord-1', 'patient_id': 'MRN-1',
+            'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
         engine._lifecycle = AsyncMock()
         engine._lifecycle.transition = AsyncMock(return_value={
             'id': 'ord-1', 'status': 'SCHEDULED'})
@@ -471,5 +476,138 @@ class TestAvailableSlots:
             booked = [s for s in slots
                       if s['start'] == '09:00' and s['end'] == '09:30']
             assert booked == []
+
+        asyncio.run(run())
+
+    def test_available_slots_treats_cancelled_as_free(self):
+        # F-03 — a CANCELLED appointment must not occupy capacity; the slot
+        # it held must reappear as free so the calendar can offer it again.
+        async def run():
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[
+                {'id': 'appt-9', 'status': 'CANCELLED',
+                 'start_time': '2026-08-20 09:00:00+00',
+                 'end_time': '2026-08-20 09:30:00+00'},
+            ])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[
+                {'id': 'sch-1', 'day_of_week': 4,
+                 'start_time': '08:00:00', 'end_time': '17:00:00'},
+            ])
+
+            slots = await engine.available_slots(
+                resource_id='res-1', day='2026-08-20', slot_minutes=30)
+
+            freed = [s for s in slots
+                     if s['start'] == '09:00' and s['end'] == '09:30']
+            assert freed, 'cancelled slot must be offered as free'
+
+        asyncio.run(run())
+
+
+class TestOrderlessPatientCheck:
+    """F-02 — order-less booking must verify the patient exists (R5-06).
+
+    A scheduler typing a MRN directly cannot create an appointment against a
+    phantom patient; the engine must reject an unknown patient_id before
+    persisting.
+    """
+
+    def _engine(self, patient_row):
+        engine = SchedulingEngine()
+        engine._appointments = AsyncMock()
+        engine._appointments.for_resource = AsyncMock(return_value=[])
+        engine._appointments.create = AsyncMock(return_value={
+            'id': 'appt-1', 'order_id': None, 'resource_id': 'res-1',
+            'patient_id': 'MRN-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00', 'status': 'SCHEDULED'})
+        engine._schedules = AsyncMock()
+        engine._schedules.for_resource = AsyncMock(return_value=[])
+        engine._orders = AsyncMock()
+        engine._patients = AsyncMock()
+        engine._patients.get_by_mrn = AsyncMock(return_value=patient_row)
+        return engine
+
+    def test_orderless_book_rejects_unknown_patient(self):
+        async def run():
+            engine = self._engine(None)
+            with pytest.raises(ValueError) as exc:
+                await engine.book(
+                    order_id='', patient_id='MRN-GHOST', resource_id='res-1',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00')
+            assert 'MRN-GHOST' in str(exc.value)
+            engine._appointments.create.assert_not_awaited()
+
+        asyncio.run(run())
+
+    def test_orderless_book_accepts_known_patient(self):
+        async def run():
+            engine = self._engine({'id': 7, 'patient_id': 'MRN-1'})
+            got = await engine.book(
+                order_id='', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00')
+            assert got['id'] == 'appt-1'
+            engine._patients.get_by_mrn.assert_awaited_once_with('MRN-1')
+
+        asyncio.run(run())
+
+
+class TestCancelledSlotRelease:
+    """F-03 — booking over a slot held only by CANCELLED appointments must
+    succeed without an override reason; cancelled rows are physically removed
+    (their audit trail lives in audit_log), keeping S4-11's "slot release"
+    promise real."""
+
+    def _engine(self, existing):
+        engine = SchedulingEngine(actor_id='sched-1')
+        engine._appointments = AsyncMock()
+        engine._appointments.for_resource = AsyncMock(return_value=existing)
+        engine._appointments.create = AsyncMock(return_value={
+            'id': 'appt-new', 'order_id': None, 'resource_id': 'res-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00', 'status': 'SCHEDULED'})
+        engine._appointments.delete = AsyncMock()
+        engine._schedules = AsyncMock()
+        engine._schedules.for_resource = AsyncMock(return_value=[])
+        engine._orders = AsyncMock()
+        engine._audit = AsyncMock()
+        engine._audit.log_event = AsyncMock()
+        return engine
+
+    def test_book_releases_cancelled_slot_without_override(self):
+        async def run():
+            engine = self._engine([
+                {'id': 'appt-old', 'status': 'CANCELLED', 'resource_id': 'res-1',
+                 'start_time': '2026-08-20 09:00:00+00',
+                 'end_time': '2026-08-20 09:30:00+00'},
+            ])
+            got = await engine.book(
+                order_id='', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00')
+            assert got['id'] == 'appt-new'
+            engine._appointments.delete.assert_awaited_once_with('appt-old')
+            events = [c.args[0] for c in engine._audit.log_event.await_args_list]
+            assert 'APPOINTMENT_OVERRIDE' not in events
+
+        asyncio.run(run())
+
+    def test_book_still_requires_override_for_active_conflict(self):
+        async def run():
+            engine = self._engine([
+                {'id': 'appt-act', 'status': 'SCHEDULED', 'resource_id': 'res-1',
+                 'start_time': '2026-08-20 09:00:00+00',
+                 'end_time': '2026-08-20 09:30:00+00'},
+            ])
+            with pytest.raises(SchedulingConflict):
+                await engine.book(
+                    order_id='', patient_id='MRN-1', resource_id='res-1',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00')
+            engine._appointments.create.assert_not_awaited()
 
         asyncio.run(run())

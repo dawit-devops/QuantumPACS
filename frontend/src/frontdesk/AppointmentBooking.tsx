@@ -19,9 +19,8 @@ import {
   type AvailabilitySlot,
   type FrontDeskPatient,
 } from "../api/frontdesk";
+import { MODALITIES } from "../common/modalities";
 import "./FrontDesk.css";
-
-const MODALITIES = ["CT", "MR", "PET", "DX", "US", "MG", "FL", "XA", "NM"];
 
 interface AppointmentBookingProps {
   open: boolean;
@@ -230,8 +229,7 @@ function AppointmentBooking({
           value={modality}
           onChange={setModality}
           style={{ width: 120 }}
-          aria-label="Modality"
-          options={MODALITIES.map((m) => ({ value: m, label: m }))}
+          aria-label="Modality"              options={MODALITIES.filter((m) => m !== "MRI").map((m) => ({ value: m, label: m }))}
         />
         <DatePicker
           value={date}

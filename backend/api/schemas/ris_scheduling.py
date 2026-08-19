@@ -36,19 +36,19 @@ class CreateScheduleRequest(BaseModel):
 
 
 class CreateAppointmentRequest(BaseModel):
-    order_id: str
+    order_id: str = Field(default='', max_length=64)
     resource_id: str
-    patient_id: str
+    patient_id: str = Field(..., min_length=1, max_length=128)
     start_time: str
     end_time: str
-    reason: str = ''
-    override_reason: str = ''
+    reason: str = Field('', max_length=500)
+    override_reason: str = Field('', max_length=500)
 
 
 class RescheduleRequest(BaseModel):
     new_start_time: str
     new_end_time: str
-    reason: str = ''
+    reason: str = Field('', max_length=500)
 
     @model_validator(mode='after')
     def _end_after_start(self):
@@ -58,4 +58,4 @@ class RescheduleRequest(BaseModel):
 
 
 class CancelRequest(BaseModel):
-    reason: str = ''
+    reason: str = Field(..., min_length=1)

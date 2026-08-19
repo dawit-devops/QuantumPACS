@@ -25,8 +25,15 @@ class WorklistHandler(HTTPEndpoint):
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
         search = request.query_params.get('search')
-        page = int(request.query_params.get('page', '1'))
-        per_page = int(request.query_params.get('per_page', '20'))
+        # F-01: clamp page/per_page like sibling endpoints — an unbounded
+        # per_page lets any WORKLIST_READ holder dump the entire tenant PHI
+        # schedule in one call (CWE-770/CWE-200).
+        try:
+            page = max(1, int(request.query_params.get('page', '1')))
+            per_page = min(200, max(1, int(request.query_params.get('per_page', '20'))))
+        except (TypeError, ValueError):
+            from api.response import validation_error
+            return validation_error('Invalid pagination parameters')
 
         async with get_conn() as conn:
             entries, total = await Worklist(conn).search(

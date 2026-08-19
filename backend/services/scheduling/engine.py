@@ -24,7 +24,7 @@ class SchedulingEngine:
     def __init__(self, actor_id='system', appointments=None,
                  schedules=None, lifecycle=None, orders=None,
                  contraindications=None, audit=None, worklist=None,
-                 resources=None):
+                 resources=None, patients=None):
         self.actor_id = actor_id
         self._appointments = appointments
         self._schedules = schedules
@@ -33,6 +33,7 @@ class SchedulingEngine:
         self._audit = audit
         self._worklist = worklist
         self._resources = resources
+        self._patients = patients
         # Injectable async checker: order_id -> list[str] of contraindication
         # reasons. None = no contraindication gate (default behaviour).
         self._contraindication_check = contraindications
@@ -85,23 +86,46 @@ class SchedulingEngine:
         async for conn in self._open():
             appointments, schedules, lifecycle, orders = self._repos(conn)
 
-            order = await orders.get(order_id)
-            if order is None:
-                raise ValueError(f'Order {order_id} not found for scheduling')
+            # Order-less booking (scheduler types a patient ID directly):
+            # no order gates apply, no lifecycle/worklist hand-off. The
+            # appointment still audits and enforces availability/conflicts.
+            order = None
+            if order_id:
+                order = await orders.get(order_id)
+                if order is None:
+                    raise ValueError(f'Order {order_id} not found for scheduling')
 
-            # Prior-authorization gate (S4-10 stub): orders that need auth
-            # cannot be booked until APPROVED — visible in the booking form
-            # as a warning (RIS-UI-14/15) instead of a silent block.
-            pa = order.get('prior_auth_status', 'NOT_REQUIRED')
-            if pa in ('REQUIRED', 'PENDING', 'DENIED'):
-                raise SchedulingConflict(
-                    f'Order {order_id} requires prior authorization ({pa})')
+                # F-02: order.patient_id must match booking patient_id —
+                # otherwise the appointment and the order refer to different
+                # patients, causing a wrong-patient scheduling event.
+                if order.get('patient_id') != patient_id:
+                    raise SchedulingConflict(
+                        'order.patient_id and booking patient_id must match')
 
-            # Contraindication gate: injectable checker; default off.
-            if self._contraindication_check is not None:
-                reasons = await self._contraindication_check(order_id)
-                if reasons:
-                    raise SchedulingConflict('; '.join(reasons))
+                # Prior-authorization gate (S4-10 stub): orders that need auth
+                # cannot be booked until APPROVED — visible in the booking form
+                # as a warning (RIS-UI-14/15) instead of a silent block.
+                pa = order.get('prior_auth_status', 'NOT_REQUIRED')
+                if pa in ('REQUIRED', 'PENDING', 'DENIED'):
+                    raise SchedulingConflict(
+                        f'Order {order_id} requires prior authorization ({pa})')
+
+                # Contraindication gate: injectable checker; default off.
+                if self._contraindication_check is not None:
+                    reasons = await self._contraindication_check(order_id)
+                    if reasons:
+                        raise SchedulingConflict('; '.join(reasons))
+
+            # F-02: order-less booking must verify the patient exists
+            # (R5-06). A scheduler typing a MRN directly cannot create an
+            # appointment against a phantom patient.
+            if not order_id:
+                patients = self._patients
+                if patients is not None:
+                    patient = await patients.get_by_mrn(patient_id)
+                    if patient is None:
+                        raise ValueError(
+                            f'Patient {patient_id} not found')
 
             windows = await schedules.for_resource(resource_id)
             if windows and not self._slot_within_windows(start, end, windows):
@@ -109,8 +133,22 @@ class SchedulingEngine:
                     f'Slot outside availability for resource {resource_id}')
 
             existing = await appointments.for_resource(resource_id, start, end)
+            # F-08: whitespace-only override must collapse to '' so a
+            # scheduler cannot bypass the mandatory-reason audit gate.
+            override_reason = (override_reason or '').strip()
+
+            # F-03: CANCELLED appointments do not occupy capacity. Separate
+            # them from active conflicts — they are physically removed
+            # (released) without requiring an override reason.
+            cancelled = [a for a in existing if a.get('status') == 'CANCELLED']
+            active = [a for a in existing if a.get('status') != 'CANCELLED']
+
+            # Release cancelled slots (audit lives in audit_log, not the row)
+            for appt in cancelled:
+                await appointments.delete(appt['id'])
+
             overrode = []
-            if existing:
+            if active:
                 if not override_reason:
                     raise SchedulingConflict(
                         f'Resource {resource_id} already booked '
@@ -118,8 +156,8 @@ class SchedulingEngine:
                 # Override: mandatory reason, audited; the EXCLUDE constraint
                 # cannot express "only CANCELLED" so the conflicting rows are
                 # physically removed before the new booking.
-                overrode = [str(a['id']) for a in existing]
-                for appt in existing:
+                overrode = [str(a['id']) for a in active]
+                for appt in active:
                     await appointments.delete(appt['id'])
                 await self._audit_log(conn).log_event(
                     'APPOINTMENT_OVERRIDE', self.actor_id,
@@ -127,7 +165,7 @@ class SchedulingEngine:
                     details={'overrode': overrode, 'reason': override_reason})
 
             row = await appointments.create({
-                'order_id': order_id,
+                'order_id': order_id or None,
                 'resource_id': resource_id,
                 'patient_id': patient_id,
                 'start_time': start,
@@ -136,6 +174,12 @@ class SchedulingEngine:
                 'override_reason': override_reason if overrode else '',
                 'created_by': self.actor_id,
             })
+
+            if not order:
+                # Order-less booking: nothing to transition or hand off — the
+                # appointment is the record (a later order may be linked via
+                # reschedule/update endpoints, none exist yet).
+                return dict(row)
 
             # ORDERED -> SCHEDULED is the only valid transition out of
             # ORDERED (lifecycle service enforces + audits).
@@ -246,6 +290,10 @@ class SchedulingEngine:
             appointments, schedules, _, _ = self._repos(conn)
             windows = await schedules.for_resource(resource_id)
             existing = await appointments.for_resource(resource_id, start, end)
+
+        # F-03: CANCELLED appointments do not occupy capacity — filter them
+        # out so their slots appear free to the calendar.
+        existing = [a for a in existing if a.get('status') != 'CANCELLED']
 
         window = (day_start, day_end)
         for w in windows:

@@ -1,25 +1,9 @@
 import { Form, Input, Select, DatePicker, TimePicker } from "antd";
+import { MODALITIES } from "../common/modalities";
 
-const MODALITIES = [
-  "CT",
-  "MR",
-  "XA",
-  "US",
-  "NM",
-  "PET",
-  "PT",
-  "DX",
-  "CR",
-  "MG",
-  "IO",
-  "RF",
-  "SC",
-  "OT",
-  "BI",
-  "SR",
-  "SEG",
-  "REG",
-];
+// CreateEntry supports a broad modality set for manual worklist entry.
+// REG is a non-standard addition kept for backwards compatibility.
+const WORKLIST_MODALITIES = [...MODALITIES, "REG"] as const;
 
 interface CreateEntryProps {
   form: any;
@@ -64,7 +48,7 @@ export function CreateEntry({ form, editingEntry }: CreateEntryProps) {
       <div style={{ display: "flex", gap: 12 }}>
         <Form.Item name="modality" label="Modality" style={{ flex: 1 }}>
           <Select allowClear placeholder="Select modality" showSearch>
-            {MODALITIES.map((m) => (
+            {WORKLIST_MODALITIES.map((m) => (
               <Select.Option key={m} value={m}>
                 {m}
               </Select.Option>

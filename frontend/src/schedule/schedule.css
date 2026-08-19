@@ -1,0 +1,329 @@
+/* ── S4 Scheduling workspace ────────────────────────────────────────────────
+   Resource manager + calendar grid + booking. Reuses the token system
+   (tokens.css) — teal/cyan primary, slate neutrals, same radius/spacing
+   scales as the Front Desk / Schedule Board surfaces. */
+
+.sched-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.sched-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sched-header-title h2 {
+  margin: 0;
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-h3);
+  color: var(--text-primary);
+}
+
+.sched-header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sched-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+/* ── Resource manager ─────────────────────────────────────────────────── */
+
+.sched-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.sched-resource-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  transition:
+    border-color var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.sched-resource-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+}
+
+.sched-resource-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.sched-resource-card-title b {
+  font-family: var(--font-family-heading);
+  color: var(--text-primary);
+}
+
+.sched-resource-meta {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
+  margin-bottom: var(--space-3);
+}
+
+.sched-week {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-2);
+}
+
+.sched-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+}
+
+.sched-week-row span:first-child {
+  color: var(--text-secondary);
+  min-width: 90px;
+}
+
+/* ── Calendar grid ────────────────────────────────────────────────────── */
+
+.sched-calendar-scroll {
+  overflow: auto;
+  max-height: calc(100dvh - 260px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.sched-grid {
+  display: grid;
+  min-width: max-content;
+}
+
+.sched-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+}
+
+.sched-resource-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-2) var(--space-3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.sched-resource-header:hover {
+  background: var(--color-info-bg);
+}
+
+.sched-resource-header .sched-resource-sub {
+  display: block;
+  font-size: var(--font-size-body-sm);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.sched-time-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sched-time-col.is-half {
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.sched-cell {
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  min-height: 28px;
+  padding: 2px;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.sched-cell:hover {
+  background: var(--color-info-bg);
+}
+
+.sched-cell.is-full {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(0, 0, 0, 0.02) 6px,
+    rgba(0, 0, 0, 0.02) 12px
+  );
+}
+
+.sched-block {
+  border-radius: var(--radius-md);
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-primary);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--easing-standard);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sched-block:hover {
+  transform: translateY(-1px);
+}
+
+.sched-block.is-scheduled {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-primary);
+}
+
+.sched-block.is-arrived {
+  background: var(--color-warning-bg, #fff7e6);
+  border-left-color: var(--color-warning);
+}
+
+.sched-block.is-in_progress {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-info, #1677ff);
+}
+
+.sched-block.is-completed {
+  background: var(--color-success-bg, #f6ffed);
+  border-left-color: var(--color-success);
+}
+
+.sched-block.is-cancelled {
+  background: var(--color-error-bg, #fff1f0);
+  border-left-color: var(--color-error);
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.sched-block-title {
+  font-weight: var(--font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sched-block-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.sched-block-meta .ant-tag {
+  margin: 0;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+/* ── Booking form / modals ─────────────────────────────────────────────── */
+
+.sched-form-section {
+  margin-bottom: var(--space-4);
+}
+
+.sched-form-section-title {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.sched-slot-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sched-slot-option {
+  min-width: 72px;
+  text-align: center;
+}
+
+.sched-warning {
+  margin-bottom: var(--space-3);
+}
+
+.sched-order-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  transition: border-color var(--duration-fast) var(--easing-standard);
+}
+
+.sched-order-result:hover {
+  border-color: var(--color-primary);
+}
+
+.sched-order-result.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-info-bg);
+}
+
+.sched-order-meta {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+.sched-priority-STAT {
+  color: var(--color-error);
+}
+
+.sched-priority-URGENT {
+  color: var(--color-warning);
+}
+
+.sched-priority-ROUTINE {
+  color: var(--color-success);
+}

@@ -18,13 +18,17 @@ import {
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { useAuth } from "../auth/AuthContext";
+import { MODALITIES } from "../common/modalities";
 import { request } from "../helpers";
 import "./ProtocolRegistry.css";
 
 const Content = Layout.Content;
 const { TextArea } = Input;
 
-const MODALITIES = ["CT", "MR", "US", "DX", "MG", "FL", "PET"];
+// Protocol registry modalities — subset of the canonical list.
+const PROTOCOL_MODALITIES = MODALITIES.filter((m) =>
+  ["CT", "MR", "US", "DX", "MG", "FL", "PET"].includes(m)
+);
 
 function ProtocolRegistry() {
   useDocumentTitle("QuantumPACS - Protocol Registry");
@@ -192,7 +196,7 @@ function ProtocolRegistry() {
             style={{ width: 120 }}
             value={modality}
             onChange={setModality}
-            options={MODALITIES.map((m) => ({ value: m, label: m }))}
+            options={PROTOCOL_MODALITIES.map((m) => ({ value: m, label: m }))}
           />
           <Input
             allowClear
@@ -267,7 +271,7 @@ function ProtocolRegistry() {
               rules={[{ required: true }]}
             >
               <Select
-                options={MODALITIES.map((m) => ({ value: m, label: m }))}
+                options={PROTOCOL_MODALITIES.map((m) => ({ value: m, label: m }))}
               />
             </Form.Item>
             <Form.Item name="body_part" label="Body Part">

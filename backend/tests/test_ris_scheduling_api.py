@@ -16,6 +16,7 @@ from starlette.testclient import TestClient
 
 from api.auth import User
 from api.validate import validation_exception_handler, _ValidationException
+from services.scheduling.engine import SchedulingConflict
 
 
 def _http_exception(request, exc):
@@ -299,3 +300,51 @@ class TestResourceSchedules:
             'day_of_week': 1, 'start_time': '17:00:00', 'end_time': '08:00:00',
         })
         assert resp.status_code == 422
+
+
+class TestRequestHardening:
+    """F-06/F-07/F-08 — input hardening for the scheduling API."""
+
+    def _app(self, perms):
+        return _make_app(user=User({'id': 1, 'permissions': perms}))
+
+    def test_availability_rejects_malformed_date(self):
+        # F-06 — a non-ISO date must be a 422 client error, not a 500.
+        client = TestClient(self._app(['SCHEDULE_READ']))
+        resp = client.get('/ris/resources/res-1/availability?date=Aug-20')
+        assert resp.status_code == 422
+
+    def test_list_appointments_rejects_malformed_date(self):
+        client = TestClient(self._app(['SCHEDULE_READ']))
+        resp = client.get('/ris/appointments?date=not-a-date&resource_id=res-1')
+        assert resp.status_code == 422
+
+    def test_create_appointment_rejects_overlong_fields(self):
+        # F-07 — schema max_lengths keep a runaway caller out of the DB.
+        client = TestClient(self._app(['SCHEDULE_WRITE']))
+        resp = client.post('/ris/appointments', json={
+            'order_id': 'ord-1', 'resource_id': 'res-1',
+            'patient_id': 'X' * 200,
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00',
+            'reason': 'r' * 5000,
+        })
+        assert resp.status_code == 422
+
+    def test_override_reason_whitespace_only_is_treated_as_no_override(self):
+        # F-08 — whitespace-only override must collapse to '' (no override),
+        # so the engine rejects a conflict instead of silently overriding it.
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.book = AsyncMock(side_effect=SchedulingConflict('busy'))
+            engine_cls.return_value = engine
+            client = TestClient(self._app(['SCHEDULE_WRITE']))
+            resp = client.post('/ris/appointments', json={
+                'order_id': 'ord-1', 'resource_id': 'res-1',
+                'patient_id': 'MRN-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00',
+                'override_reason': '   ',
+            })
+        assert resp.status_code == 409
+        assert engine.book.await_args.kwargs['override_reason'] == ''

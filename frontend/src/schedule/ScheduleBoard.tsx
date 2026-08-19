@@ -1,5 +1,10 @@
-import { useDocumentTitle } from "../hooks";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  LeftOutlined,
+  RightOutlined,
+  CalendarOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
 import {
   App,
   Layout,
@@ -12,30 +17,28 @@ import {
   Alert,
   Popconfirm,
 } from "antd";
-import {
-  LeftOutlined,
-  RightOutlined,
-  CalendarOutlined,
-  PlusOutlined,
-  DeleteOutlined,
-} from "@ant-design/icons";
-import withSidebar from "../common/base";
-import { request } from "../helpers";
-import { useAuth } from "../auth/AuthContext";
-import {
-  listAppointments,
-  cancelAppointment,
-  type Appointment,
-} from "../api/frontdesk";
-import AppointmentBooking from "../frontdesk/AppointmentBooking";
 import dayjs from "dayjs";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+
+import { listAppointments, cancelAppointment, type Appointment } from "../api/frontdesk";
+import { useAuth } from "../auth/AuthContext";
+import withSidebar from "../common/base";
+import { MODALITIES } from "../common/modalities";
+import AppointmentBooking from "../frontdesk/AppointmentBooking";
+import { request } from "../helpers";
+import { toErrorMessage } from "../common/errors";
+import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import "./ScheduleBoard.css";
 
 const Content = Layout.Content;
 
 // Standard radiology modalities per the R04 spec (FR-R04-01). Custom station AE
 // titles seen in the worklist data are appended dynamically.
-const DEFAULT_MODALITIES = ["CT", "MRI", "PET", "DX", "MG", "US", "FL"];
+// Uses canonical "MR" (not "MRI") — the board unions this with worklist
+// data at runtime so any modality seen in the DB will appear as a column.
+const DEFAULT_MODALITIES = MODALITIES.filter((m) =>
+  ["CT", "MR", "PET", "DX", "MG", "US", "FL"].includes(m)
+);
 
 // Board day window 08:00–18:00 in 30-min slots per FR-R04-01.
 const BOARD_START_HOUR = 8;
@@ -92,28 +95,46 @@ function ScheduleBoard() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
+  // R1: A slow response for an earlier day must never paint over a newer
+  // one — independent monotonic refs guard each fetcher so a late
+  // worklist response doesn't overwrite a fresh one, and vice versa.
+  const worklistSeq = useRef(0);
+  const apptSeq = useRef(0);
+
   const fetch = useCallback(() => {
+    const seq = ++worklistSeq.current;
     setLoading(true);
     setError(null);
     request("worklist", {
-      query: { date_from: day, date_to: day, per_page: "500" },
+      query: { date_from: day, date_to: day, per_page: "200" },
     })
       .then((res: any) => {
-        setLoading(false);
+        if (seq !== worklistSeq.current) return;
         setData(Array.isArray(res.data) ? res.data : []);
       })
-      .catch((e: any) => {
-        setLoading(false);
-        setError(e.message);
+      .catch((e: unknown) => {
+        if (seq !== worklistSeq.current) return;
+        setError(toErrorMessage(e) || "Failed to load schedule");
+      })
+      .finally(() => {
+        if (seq === worklistSeq.current) setLoading(false);
       });
   }, [day]);
 
   // Appointments feed the same day: list them so the board shows booked
   // capacity and the drawer can cancel them (SCHEDULE_WRITE).
   const fetchAppointments = useCallback(() => {
+    const seq = ++apptSeq.current;
     listAppointments({ date: day })
-      .then(setAppointments)
-      .catch(() => {});
+      .then((rows) => {
+        if (seq === apptSeq.current) setAppointments(rows);
+      })
+      .catch(() => {
+        // R1: surface appointment errors instead of swallowing them
+        if (seq === apptSeq.current) {
+          setError((prev) => prev || "Failed to load appointments");
+        }
+      });
   }, [day]);
 
   useEffect(() => {
@@ -121,10 +142,14 @@ function ScheduleBoard() {
     fetchAppointments();
   }, [fetch, fetchAppointments]);
 
+  // R2: Tenant switch must repaint this page with the new tenant's data.
+  useTenantRefetch(() => {
+    fetch();
+    fetchAppointments();
+  });
+
   const modalities = useMemo(() => {
-    const fromData = new Set(
-      data.map((e) => e.modality).filter(Boolean) as string[],
-    );
+    const fromData = new Set(data.map((e) => e.modality).filter(Boolean) as string[]);
     return [...new Set([...DEFAULT_MODALITIES, ...fromData])];
   }, [data]);
 
@@ -194,33 +219,17 @@ function ScheduleBoard() {
           <CalendarOutlined />
           <h2>Schedule Board</h2>
           <Tag>{day}</Tag>
-          {appointments.length > 0 && (
-            <Tag color="cyan">{appointments.length} booked</Tag>
-          )}
+          {appointments.length > 0 && <Tag color="cyan">{appointments.length} booked</Tag>}
         </div>
         <div className="schedule-header-nav">
           {canBook && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setBookingOpen(true)}
-            >
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setBookingOpen(true)}>
               Book Appointment
             </Button>
           )}
-          <Button
-            icon={<LeftOutlined />}
-            onClick={() => changeDay(-1)}
-            aria-label="Previous day"
-          />
-          <Button onClick={() => setDay(dayjs().format("YYYY-MM-DD"))}>
-            Today
-          </Button>
-          <Button
-            icon={<RightOutlined />}
-            onClick={() => changeDay(1)}
-            aria-label="Next day"
-          />
+          <Button icon={<LeftOutlined />} onClick={() => changeDay(-1)} aria-label="Previous day" />
+          <Button onClick={() => setDay(dayjs().format("YYYY-MM-DD"))}>Today</Button>
+          <Button icon={<RightOutlined />} onClick={() => changeDay(1)} aria-label="Next day" />
         </div>
       </div>
 
@@ -229,32 +238,23 @@ function ScheduleBoard() {
           Total <b>{stats.total}</b>
         </span>
         <span>
-          Scheduled{" "}
-          <b style={{ color: "var(--color-primary)" }}>{stats.scheduled}</b>
+          Scheduled <b style={{ color: "var(--color-primary)" }}>{stats.scheduled}</b>
         </span>
         <span>
-          Performed{" "}
-          <b style={{ color: "var(--color-success)" }}>{stats.performed}</b>
+          Performed <b style={{ color: "var(--color-success)" }}>{stats.performed}</b>
         </span>
         <span>
-          Cancelled{" "}
-          <b style={{ color: "var(--color-error)" }}>{stats.cancelled}</b>
+          Cancelled <b style={{ color: "var(--color-error)" }}>{stats.cancelled}</b>
         </span>
       </div>
 
       {appointments.length > 0 && (
         <div className="schedule-appointments">
-          <div className="schedule-appointments-title">
-            Booked appointments — {day}
-          </div>
+          <div className="schedule-appointments-title">Booked appointments — {day}</div>
           {appointments.map((appt) => (
             <div key={appt.id} className="schedule-appointment">
-              <span className="schedule-appointment-time">
-                {appt.scheduled_time || "—"}
-              </span>
-              <span className="schedule-appointment-patient">
-                {appt.patient_id}
-              </span>
+              <span className="schedule-appointment-time">{appt.scheduled_time || "—"}</span>
+              <span className="schedule-appointment-patient">{appt.patient_id}</span>
               <Tag color="cyan" style={{ margin: 0 }}>
                 {appt.modality || "—"}
               </Tag>
@@ -299,10 +299,7 @@ function ScheduleBoard() {
       ) : (
         <>
           {data.length === 0 && (
-            <Empty
-              description={`No worklist entries for ${day}`}
-              style={{ marginBottom: 16 }}
-            />
+            <Empty description={`No worklist entries for ${day}`} style={{ marginBottom: 16 }} />
           )}
           {data.length >= 500 && (
             <Alert
@@ -312,21 +309,13 @@ function ScheduleBoard() {
               message="Showing the first 500 exams for this day — refine the date or use the worklist for more."
             />
           )}
-          <div
-            className="schedule-board"
-            role="grid"
-            aria-label="Schedule board"
-          >
+          <div className="schedule-board" role="grid" aria-label="Schedule board">
             <div className="schedule-grid">
               <div className="schedule-corner" role="columnheader">
                 Time / Modality
               </div>
               {modalities.map((mod) => (
-                <div
-                  key={mod}
-                  className="schedule-modality-header"
-                  role="columnheader"
-                >
+                <div key={mod} className="schedule-modality-header" role="columnheader">
                   {mod}
                 </div>
               ))}
@@ -404,15 +393,12 @@ function ScheduleBoard() {
             <Descriptions.Item label="Accession #">
               {selectedEntry.accession_number || "—"}
             </Descriptions.Item>
-            <Descriptions.Item label="Modality">
-              {selectedEntry.modality || "—"}
-            </Descriptions.Item>
+            <Descriptions.Item label="Modality">{selectedEntry.modality || "—"}</Descriptions.Item>
             <Descriptions.Item label="Station AE">
               {selectedEntry.station_ae_title || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="Scheduled">
-              {selectedEntry.scheduled_date || "—"}{" "}
-              {selectedEntry.scheduled_time || ""}
+              {selectedEntry.scheduled_date || "—"} {selectedEntry.scheduled_time || ""}
             </Descriptions.Item>
             <Descriptions.Item label="Requested Procedure">
               {selectedEntry.requested_procedure_desc ||

@@ -22,7 +22,7 @@ from api.validate import parse_body
 from db.conn import get_conn
 from db.ris_appointments import RisAppointments
 from db.ris_resources import RisResourceSchedules, RisResources
-from services.scheduling.engine import SchedulingEngine
+from services.scheduling.engine import SchedulingConflict, SchedulingEngine
 
 
 def _row_dict(row):
@@ -92,6 +92,11 @@ class RisResourceAvailabilityHandler(HTTPEndpoint):
         day = request.query_params.get('date')
         if not day:
             return api_error('VALIDATION', 'date query parameter is required', status=422)
+        # F-06: validate date format before it reaches the engine
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            return api_error('VALIDATION', f'Invalid date format: {day}', status=422)
         slots = await SchedulingEngine().available_slots(
             resource_id=request.path_params['id'],
             day=day,
@@ -106,8 +111,12 @@ class RisAppointmentsHandler(HTTPEndpoint):
         day = params.get('date')
         if not day:
             return api_error('VALIDATION', 'date query parameter is required', status=422)
-        day_start = datetime.combine(
-            date.fromisoformat(day), time.min).replace(tzinfo=None)
+        # F-06: validate date format before it reaches the engine
+        try:
+            day_parsed = date.fromisoformat(day)
+        except ValueError:
+            return api_error('VALIDATION', f'Invalid date format: {day}', status=422)
+        day_start = datetime.combine(day_parsed, time.min).replace(tzinfo=None)
         day_end = day_start + timedelta(days=1)
         async with get_conn() as conn:
             rows = await RisAppointments(conn).for_resource(
@@ -117,15 +126,24 @@ class RisAppointmentsHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_WRITE)
     async def post(self, request):
         body = await parse_body(CreateAppointmentRequest, request)
-        row = await SchedulingEngine().book(
-            order_id=body.order_id,
-            patient_id=body.patient_id,
-            resource_id=body.resource_id,
-            start_time=body.start_time,
-            end_time=body.end_time,
-            reason=body.reason,
-            override_reason=body.override_reason,
-        )
+        # F-08: collapse whitespace-only override to '' so the engine rejects
+        # a conflict instead of silently overriding with an empty audit reason.
+        override_reason = (body.override_reason or '').strip()
+        try:
+            row = await SchedulingEngine().book(
+                order_id=body.order_id,
+                patient_id=body.patient_id,
+                resource_id=body.resource_id,
+                start_time=body.start_time,
+                end_time=body.end_time,
+                reason=body.reason,
+                override_reason=override_reason,
+            )
+        except SchedulingConflict as exc:
+            # Overlap / prior-auth / outside-window rejections are expected
+            # business outcomes, not server faults — the calendar must get a
+            # 409 it can surface and refresh against (mirrors frontdesk.py).
+            return api_error('SLOT_CONFLICT', str(exc), status=409)
         return created({'data': _row_dict(row)})
 
 
@@ -133,12 +151,15 @@ class RisAppointmentRescheduleHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_WRITE)
     async def post(self, request):
         body = await parse_body(RescheduleRequest, request)
-        row = await SchedulingEngine().reschedule(
-            appointment_id=request.path_params['id'],
-            new_start_time=body.new_start_time,
-            new_end_time=body.new_end_time,
-            reason=body.reason,
-        )
+        try:
+            row = await SchedulingEngine().reschedule(
+                appointment_id=request.path_params['id'],
+                new_start_time=body.new_start_time,
+                new_end_time=body.new_end_time,
+                reason=body.reason,
+            )
+        except SchedulingConflict as exc:
+            return api_error('SLOT_CONFLICT', str(exc), status=409)
         return ok({'data': _row_dict(row)})
 
 
