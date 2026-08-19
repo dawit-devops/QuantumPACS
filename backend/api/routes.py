@@ -104,6 +104,10 @@ from api.portal import (
 )
 from api.orders import OrdersHandler
 from api.ris_orders import RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler
+from api.scheduling import (
+    RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
+    RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
+)
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
 from api.tenant_health import TenantHealthHandler
@@ -310,6 +314,13 @@ _V1_ROUTES = [
     v2(Route('/ris/interfaces/exceptions/{id}/retry', endpoint=RisInterfaceExceptionRetryHandler, methods=['POST'])),
     v2(Route('/ris/interfaces/{id}/messages', endpoint=RisInterfaceMessagesHandler)),
     v2(Route('/ris/interfaces/{id}/metrics', endpoint=RisInterfaceMetricsHandler)),
+    # RIS scheduling capacity (S4-06/07): resources + weekly availability.
+    v2(Route('/ris/resources', endpoint=RisResourcesHandler)),
+    v2(Route('/ris/resources/{id}/schedules', endpoint=RisResourceSchedulesHandler)),
+    v2(Route('/ris/resources/{id}/availability', endpoint=RisResourceAvailabilityHandler)),
+    v2(Route('/ris/appointments', endpoint=RisAppointmentsHandler)),
+    v2(Route('/ris/appointments/{id}/reschedule', endpoint=RisAppointmentRescheduleHandler)),
+    v2(Route('/ris/appointments/{id}/cancel', endpoint=RisAppointmentCancelHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),
     v2(Route('/visits/{id}/consents/attach', endpoint=ConsentsHandler)),
     v2(Route('/schedule/availability', endpoint=AppointmentAvailabilityHandler)),
