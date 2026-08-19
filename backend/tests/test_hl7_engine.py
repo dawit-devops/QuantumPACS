@@ -499,6 +499,57 @@ class TestEndpointResolution:
         engine_patches['RisInterfaceEndpoints'].return_value.create.assert_not_awaited()
 
 
+class TestFailureAlerting:
+    """S3-17 — every FAILED status path triggers notify_interface_failure;
+    success paths stay silent."""
+
+    def _patched_engine(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        engine_patches['get_conn'].return_value = _conn_ctx()
+        engine_patches['RisHl7Messages'].return_value = AsyncMock()
+        engine_patches['RisInterfaceEvents'].return_value = AsyncMock()
+        engine_patches['RisOrders'].return_value = AsyncMock()
+        engine_patches['RisOrderProcedures'].return_value = AsyncMock()
+        engine_patches['RisInterfaceEndpoints'].return_value = AsyncMock()
+        return Hl7InterfaceEngine()
+
+    @pytest.mark.asyncio
+    async def test_unparseable_message_alerts(self, engine_patches):
+        engine = self._patched_engine(engine_patches)
+        with patch('services.hl7_engine.service.notify_interface_failure', new=AsyncMock()) as alert:
+            result = await engine.receive_message(b'not hl7 at all')
+
+        assert result == b'ERR Unparseable message'
+        alert.assert_awaited_once()
+        assert alert.await_args.kwargs['error'] == 'Unparseable message'
+
+    @pytest.mark.asyncio
+    async def test_handler_false_alerts(self, engine_patches):
+        engine = self._patched_engine(engine_patches)
+        engine_patches['handle_orm_message'].return_value = False
+        with patch('services.hl7_engine.service.notify_interface_failure', new=AsyncMock()) as alert:
+            result = await engine.receive_message(SAMPLE_ORM_O01.encode())
+
+        assert result == b'ERR ORM processing failed'
+        alert.assert_awaited_once()
+        assert alert.await_args.kwargs['error'] == 'ORM handler returned False'
+
+    @pytest.mark.asyncio
+    async def test_success_does_not_alert(self, engine_patches):
+        engine = self._patched_engine(engine_patches)
+        orders = AsyncMock()
+        orders.create.return_value = {'id': 'order-uuid'}
+        orders.get_by_accession.return_value = None
+        engine_patches['RisOrders'].return_value = orders
+        engine_patches['handle_orm_message'].return_value = True
+        with patch('services.hl7_engine.service.notify_interface_failure', new=AsyncMock()) as alert:
+            result = await engine.receive_message(SAMPLE_ORM_O01.encode())
+
+        assert result == b'ACK'
+        alert.assert_not_awaited()
+
+
 class TestMetrics:
     """S3-04 — interface health metrics recorded by the engine."""
 

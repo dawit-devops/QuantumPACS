@@ -39,6 +39,7 @@ class NotificationPrefs:
         'storage.quota_breach',
         'quota.warning',
         'system.alert',
+        'interface.failure',
         'exam.assigned',
         'report.returned',
         'report.signed',

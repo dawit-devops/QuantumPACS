@@ -259,9 +259,11 @@ class TestEndpointTouch:
         await RisInterfaceEndpoints(conn).touch('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
 
         sql = conn.execute.call_args.args[0]
+        params = conn.execute.call_args.args[1:]
         assert 'message_count = message_count + 1' in sql
         assert 'error_count' not in sql
-        assert 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' in sql
+        assert '$1' in sql
+        assert params[0] == 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 
     @pytest.mark.asyncio
     async def test_touch_failed_increments_error_count(self):

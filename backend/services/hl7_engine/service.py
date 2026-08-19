@@ -22,6 +22,7 @@ from db.conn import get_conn
 from db.ris_hl7 import RisHl7Messages, RisInterfaceEndpoints, RisInterfaceEvents
 from db.ris_orders import RisOrders, RisOrderProcedures
 from log import get_logger
+from services.hl7_engine.alerts import notify_interface_failure
 from services.hl7_engine.parser import (
     Hl7ValidationError,
     normalize_priority,
@@ -78,6 +79,7 @@ class Hl7InterfaceEngine:
             log.exception('HL7 %s^%s processing failed', msg_type, parsed.get('event_type', '?'))
             self._record(msg_type, parsed.get('event_type', ''), 'FAILED')
             await self._mark(msg_id, 'FAILED', error=str(exc))
+            await self._alert_failure(parsed, str(exc), endpoint_id)
             await self._event(parsed, 'HL7_PROCESSING_ERROR', 'ERROR', str(exc), endpoint_id)
             ris_hl7_message_latency_seconds.observe(time.monotonic() - started)
             return f'ERR {msg_type} processing failed'.encode()
@@ -85,6 +87,7 @@ class Hl7InterfaceEngine:
         if not ok:
             self._record(msg_type, parsed.get('event_type', ''), 'FAILED')
             await self._mark(msg_id, 'FAILED', error=f'{msg_type} handler returned False')
+            await self._alert_failure(parsed, f'{msg_type} handler returned False', endpoint_id)
             await self._event(
                 parsed, 'HL7_PROCESSING_ERROR', 'ERROR',
                 f'{msg_type} handler returned False', endpoint_id,
@@ -258,6 +261,8 @@ class Hl7InterfaceEngine:
                     await RisInterfaceEndpoints(conn).touch(
                         endpoint_id, 'failed' if status == 'FAILED' else 'ok',
                     )
+                if status == 'FAILED':
+                    await self._alert_failure(parsed, error, endpoint_id)
                 return msg_id
         except Exception:
             # Best-effort audit: the exception queue must never break the
@@ -265,6 +270,20 @@ class Hl7InterfaceEngine:
             # _store_hl7_message, which swallows its own failures.
             log.exception('Failed to persist HL7 message (sha256 %s)', raw_hash[:16])
             return None
+
+    async def _alert_failure(self, parsed, error, endpoint_id):
+        """≤5-min failure alerting (S3-17 / G5).
+
+        Best-effort like every observability path: a failing notification
+        fan-out must never break the wire contract (ACK/ERR).
+        """
+        try:
+            async with get_conn() as conn:
+                await notify_interface_failure(
+                    conn, endpoint_id=endpoint_id, parsed=parsed, error=error,
+                )
+        except Exception:
+            log.exception('Interface failure alert skipped')
 
     async def _mark(self, msg_id, status: str, error=''):
         if msg_id is None:

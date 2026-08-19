@@ -85,6 +85,17 @@ class CreateInsuranceRequest(BaseModel):
     notes: str = Field('', description="Free-form notes")
 
 
+class MergePatientsRequest(BaseModel):
+    surviving_patient_id: str = Field(..., description="Patient ID that will survive the merge")
+    merged_patient_id: str = Field(..., description="Patient ID that will be merged into the survivor")
+    reason: str = Field('', description="Reason for the merge (audit trail)")
+
+
+class UndoMergeRequest(BaseModel):
+    patient_id: str = Field(..., description="Patient ID to reactivate (undo merge)")
+    reason: str = Field('', description="Reason for undo (audit trail)")
+
+
 class UpdateInsuranceRequest(BaseModel):
     policy_number: str | None = Field(None, description="Insurance policy number")
     guarantor_name: str | None = Field(None, description="Guarantor name")

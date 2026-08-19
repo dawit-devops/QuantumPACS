@@ -365,6 +365,69 @@ class FrontDesk:
             insurance_id, *values,
         )
 
+    # ---- MPI: fuzzy search ----
+
+    async def search_patients_fuzzy(self, q, threshold=0.3, limit=20):
+        """pg_trgm fuzzy search for probable MPI matches (S3-11).
+
+        Returns patients whose name similarity to *q* exceeds *threshold*,
+        ordered by descending similarity.  The GIN trigram index
+        (migration 047) makes this index-assisted at scale.
+        """
+        return await self.conn.fetch(
+            """
+            SELECT id, patient_id, name, birth_date, sex,
+                   similarity(name, $1) AS sim
+            FROM patients
+            WHERE similarity(name, $1) > $2
+            ORDER BY sim DESC
+            LIMIT $3
+            """,
+            q, threshold, limit,
+        )
+
+    # ---- MPI: merge / undo ----
+
+    async def merge_patients(self, surviving_id, merged_id, *, reason=''):
+        """Merge *merged_id* into *surviving_id* (S3-11).
+
+        Sets ``meta.merged_into`` on the loser, flips ``meta.active`` to
+        false.  The audit trail is the caller's responsibility.
+        Both updates run in a single transaction to prevent partial state
+        if the connection drops between them.
+        """
+        async with self.conn.transaction():
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{merged_into}', to_jsonb($1::text)) WHERE patient_id = $2",
+                surviving_id, merged_id,
+            )
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{active}', to_jsonb(false)) WHERE patient_id = $1",
+                merged_id,
+            )
+        return {'surviving_patient_id': surviving_id, 'merged_patient_id': merged_id}
+
+    async def undo_merge(self, patient_id, *, reason=''):
+        """Undo a previous merge: reactivate *patient_id* (S3-11).
+
+        Removes ``meta.merged_into`` and flips ``meta.active`` back to true.
+        Both updates run in a single transaction to prevent partial state
+        if the connection drops between them.
+        """
+        async with self.conn.transaction():
+            await self.conn.execute(
+                "UPDATE patients SET meta = (meta - 'merged_into') WHERE patient_id = $1",
+                patient_id,
+            )
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{active}', to_jsonb(true)) WHERE patient_id = $1",
+                patient_id,
+            )
+        return {'patient_id': patient_id, 'status': 'active'}
+
     # ---- waiting queue ----
 
     async def waiting_queue(self, date=''):

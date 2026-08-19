@@ -94,6 +94,8 @@ from api.frontdesk import (
     AppointmentsHandler, AppointmentHandler, ConsentsHandler, InsuranceHandler,
     WaitingQueueHandler, RisPatientsHandler, RisPatientsSearchHandler,
     RisPatientHandler, RisPatientInsuranceHandler, RisPatientCheckInHandler,
+    RisPatientsMergeHandler, RisPatientsUndoMergeHandler,
+    RisPatientEligibilityHandler,
 )
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
@@ -159,9 +161,12 @@ _V1_ROUTES = [
     v2(Route('/patients/{id}', endpoint=PatientHandler)),
     v2(Route('/ris/patients', endpoint=RisPatientsHandler, methods=['POST'])),
     v2(Route('/ris/patients/search', endpoint=RisPatientsSearchHandler)),
+    v2(Route('/ris/patients/merge', endpoint=RisPatientsMergeHandler, methods=['POST'])),
+    v2(Route('/ris/patients/undo-merge', endpoint=RisPatientsUndoMergeHandler, methods=['POST'])),
     v2(Route('/ris/patients/{id}', endpoint=RisPatientHandler)),
     v2(Route('/ris/patients/{id}/insurance', endpoint=RisPatientInsuranceHandler, methods=['POST'])),
     v2(Route('/ris/patients/{id}/check-in', endpoint=RisPatientCheckInHandler, methods=['POST'])),
+    v2(Route('/ris/patients/{id}/eligibility', endpoint=RisPatientEligibilityHandler)),
     v2(Route('/files/upload', endpoint=Upload)),
     v2(Route('/files/download_token', endpoint=DownloadToken)),
     v2(Route('/files/download.zip', endpoint=DownloadFiles)),

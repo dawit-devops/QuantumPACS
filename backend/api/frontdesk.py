@@ -20,8 +20,8 @@ from api.validate import parse_body
 from api.schemas.frontdesk import (
     AttachConsentRequest, CreateAppointmentRequest, CreateConsentRequest,
     CreateInsuranceRequest, CreateOrderRequest, CreatePatientRequest,
-    CreateVisitRequest, UpdateInsuranceRequest, UpdatePatientRequest,
-    UpdateVisitRequest,
+    CreateVisitRequest, MergePatientsRequest, UndoMergeRequest,
+    UpdateInsuranceRequest, UpdatePatientRequest, UpdateVisitRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -647,6 +647,88 @@ class InsuranceHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({})
+
+
+# ---- MPI merge / undo (S3-11) ----
+
+
+class RisPatientsMergeHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_MERGE)
+    async def post(self, request):
+        body = await parse_body(MergePatientsRequest, request)
+        if body.surviving_patient_id == body.merged_patient_id:
+            return api_error('SAME_PATIENT', 'Cannot merge a patient with itself', status=400)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            surviving = await fd.get_patient(body.surviving_patient_id)
+            if not surviving:
+                return not_found('Surviving patient not found')
+            merged = await fd.get_patient(body.merged_patient_id)
+            if not merged:
+                return not_found('Merged patient not found')
+            result = await fd.merge_patients(
+                body.surviving_patient_id, body.merged_patient_id,
+                reason=body.reason or '',
+            )
+            await AuditLog(conn).log_event(
+                event_type='mpi.patient_merged',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=surviving['id'],
+                details={
+                    'surviving_patient_id': body.surviving_patient_id,
+                    'merged_patient_id': body.merged_patient_id,
+                    'reason': body.reason or '',
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': result})
+
+
+class RisPatientsUndoMergeHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_MERGE)
+    async def post(self, request):
+        body = await parse_body(UndoMergeRequest, request)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(body.patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            result = await fd.undo_merge(body.patient_id, reason=body.reason or '')
+            await AuditLog(conn).log_event(
+                event_type='mpi.patient_unmerged',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient['id'],
+                details={'patient_id': body.patient_id, 'reason': body.reason or ''},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': result})
+
+
+# ---- Insurance eligibility stub (S3-14) ----
+
+
+class RisPatientEligibilityHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        patient_id = request.path_params['id']
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+        from datetime import datetime, timezone
+        return ok({
+            'data': {
+                'patient_id': patient_id,
+                'status': 'active',
+                'provider': 'stub',
+                'checked_at': datetime.now(timezone.utc).isoformat(),
+            },
+        })
 
 
 class WaitingQueueHandler(HTTPEndpoint):

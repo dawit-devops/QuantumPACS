@@ -1,10 +1,5 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import InterfaceDashboard from "../admin/InterfaceDashboard";

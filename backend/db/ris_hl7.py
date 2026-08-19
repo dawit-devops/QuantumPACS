@@ -148,19 +148,23 @@ class RisHl7Messages(Table):
         """Status counts, error total and avg processing latency (ms) over the
         period. Latency is measured on PROCESSED rows (processed_at−created_at)
         so retries and FAILED rows never distort the SLO view (S3-15).
-        endpoint_id is a validated UUID (handlers 404 on non-UUID ids) and
-        period comes from a fixed map, so both are safe to inline."""
-        interval = f"now() - interval '{period}'"
+
+        Uses parameterized queries ($1, $2) for endpoint_id and period
+        to prevent SQL injection — period is a PostgreSQL interval string
+        (e.g. '24 hours') cast via ``$2::interval``."""
         counts: dict[str, int] = {}
-        for r in await self.fetch(
+        for r in await self.conn.fetch(
             f'SELECT status, count(*) AS n FROM {self.name} '
-            f"WHERE endpoint_id = '{endpoint_id}' AND created_at >= {interval} GROUP BY status",
+            'WHERE endpoint_id = $1 AND created_at >= now() - $2::interval '
+            'GROUP BY status',
+            endpoint_id, period,
         ):
             counts[r['status']] = r['n']
-        avg = await self.fetchval(
+        avg = await self.conn.fetchval(
             f'SELECT AVG(EXTRACT(EPOCH FROM (processed_at - created_at))) * 1000 '
-            f"FROM {self.name} WHERE endpoint_id = '{endpoint_id}' AND status = 'PROCESSED' "
-            f'AND processed_at IS NOT NULL AND created_at >= {interval}',
+            f'FROM {self.name} WHERE endpoint_id = $1 AND status = $3 '
+            'AND processed_at IS NOT NULL AND created_at >= now() - $2::interval',
+            endpoint_id, period, 'PROCESSED',
         )
         return {
             'counts': counts,
@@ -222,19 +226,19 @@ class RisInterfaceEndpoints(Table):
     async def touch(self, endpoint_id, status='ok'):
         """Record message flow on the endpoint (dashboard counters).
 
-        Table.exec() takes no query params, so the id is interpolated —
-        safe because endpoint_id is a UUID (validated by _require_uuid or
-        produced by our own SELECT ... RETURNING id).
+        Uses parameterized $1 for endpoint_id to prevent SQL injection.
         """
         if status == 'ok':
-            await self.exec(
+            await self.conn.execute(
                 'UPDATE ris_interface_endpoints SET message_count = message_count + 1, '
-                f"last_message_at = now() WHERE id = '{endpoint_id}'",
+                'last_message_at = now() WHERE id = $1',
+                endpoint_id,
             )
         else:
-            await self.exec(
+            await self.conn.execute(
                 'UPDATE ris_interface_endpoints SET message_count = message_count + 1, '
-                f"error_count = error_count + 1, last_message_at = now() WHERE id = '{endpoint_id}'",
+                'error_count = error_count + 1, last_message_at = now() WHERE id = $1',
+                endpoint_id,
             )
 
 
