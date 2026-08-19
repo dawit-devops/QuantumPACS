@@ -1,15 +1,12 @@
 import { App, Input, Modal } from "antd";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import React, { useEffect, useState } from "react";
 import { toErrorMessage } from "../common/errors";
 import {
   cancelRisAppointment,
   type RisAppointment,
 } from "../api/scheduling";
+import { dayjs } from "./time";
 import "./schedule.css";
-
-dayjs.extend(utc);
 
 export interface CancelModalProps {
   open: boolean;

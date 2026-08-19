@@ -145,7 +145,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 or path.startswith('/api/fhir') or path.startswith('/api/v2/fhir')
             )
             if path not in self._PUBLIC_PATHS and not is_machine:
-                if request.headers.get('X-CSRF-Token') != '1':
+                # Double-submit cookie pattern: the client reads the
+                # csrf_token cookie (non-HttpOnly) and echoes it in the
+                # X-CSRF-Token header. The middleware verifies they match.
+                # Fallback to '1' for backwards compat with clients that
+                # haven't updated yet.
+                cookie_token = request.cookies.get('csrf_token', '1')
+                header_token = request.headers.get('X-CSRF-Token', '')
+                if header_token != cookie_token:
                     from api.response import forbidden
                     return forbidden('CSRF token missing or invalid')
         response = await call_next(request)

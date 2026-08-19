@@ -195,6 +195,19 @@ class Login(HTTPEndpoint):
                     secure=cookie_secure(),
                     path='/api/auth',
                 )
+                # CSRF double-submit token: a random value set as a readable
+                # cookie (NOT HttpOnly) that the client echoes in X-CSRF-Token.
+                # SameSite=Strict prevents cross-origin携带; the middleware
+                # verifies header == cookie on every mutating request.
+                import secrets
+                resp.set_cookie(
+                    key='csrf_token',
+                    value=secrets.token_hex(32),
+                    httponly=False,
+                    samesite='strict',
+                    secure=cookie_secure(),
+                    path='/',
+                )
                 return resp
         finally:
             if tenant_slug:
@@ -248,6 +261,7 @@ class Logout(HTTPEndpoint):
         resp = ok({'message': 'Logged out'})
         resp.delete_cookie('token', path='/')
         resp.delete_cookie('refresh_token', path='/api/auth')
+        resp.delete_cookie('csrf_token', path='/')
         return resp
 
 
@@ -489,6 +503,16 @@ class RefreshToken(HTTPEndpoint):
             key='token',
             value=access,
             httponly=True,
+            samesite='strict',
+            secure=cookie_secure(),
+            path='/',
+        )
+        # Rotate the CSRF token on refresh for defense-in-depth.
+        import secrets
+        resp.set_cookie(
+            key='csrf_token',
+            value=secrets.token_hex(32),
+            httponly=False,
             samesite='strict',
             secure=cookie_secure(),
             path='/',

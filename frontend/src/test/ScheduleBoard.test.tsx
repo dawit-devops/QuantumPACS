@@ -169,8 +169,10 @@ describe("ScheduleBoard", () => {
 
     // Compute expected dates relative to the real "today" (the component defaults
     // `day` to dayjs()) so the test is date-independent.
-    const today = dayjs().format("YYYY-MM-DD");
-    const tomorrow = dayjs().add(1, "day").format("YYYY-MM-DD");
+    // Compute once to avoid a midnight rollover between the two calls.
+    const now = dayjs();
+    const today = now.format("YYYY-MM-DD");
+    const tomorrow = now.add(1, "day").format("YYYY-MM-DD");
     expect(screen.getByText(today)).toBeInTheDocument();
 
     const nextDay = screen.getByRole("button", { name: "Next day" });

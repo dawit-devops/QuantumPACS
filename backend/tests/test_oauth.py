@@ -262,7 +262,10 @@ class TestOAuthCallback:
         assert b'token' in body
         set_cookies = [v.decode() for k, v in resp.raw_headers if k == b'set-cookie']
         assert any(c.startswith('refresh_token=qp-refresh-jwt') for c in set_cookies)
-        assert all('HttpOnly' in c for c in set_cookies)
+        # Auth cookies (token, refresh_token) must be HttpOnly; the
+        # csrf_token cookie is intentionally readable by JS.
+        auth_cookies = [c for c in set_cookies if not c.startswith('csrf_token=')]
+        assert all('HttpOnly' in c for c in auth_cookies)
         assert any('Path=/api/auth' in c for c in set_cookies)
         kwargs = mock_create_pair.call_args[0][0]
         assert kwargs.get('id') == 42

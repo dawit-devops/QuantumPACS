@@ -1,6 +1,4 @@
 import { App, Button, Input, Modal } from "antd";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import React, { useEffect, useState } from "react";
 import { toErrorMessage } from "../common/errors";
 import {
@@ -8,9 +6,8 @@ import {
   type ResourceAvailabilitySlot,
   type RisAppointment,
 } from "../api/scheduling";
+import { dayjs, slotToIso } from "./time";
 import "./schedule.css";
-
-dayjs.extend(utc);
 
 export interface RescheduleModalProps {
   open: boolean;
@@ -58,8 +55,8 @@ export default function RescheduleModal({
     if (!appointment || !newSlot) return;
     setSubmitting(true);
     try {
-      const startISO = dayjs.utc(`${day} ${newSlot.start}`).toISOString();
-      const endISO = dayjs.utc(`${day} ${newSlot.end}`).toISOString();
+      const startISO = slotToIso(day, newSlot.start);
+      const endISO = slotToIso(day, newSlot.end);
       await rescheduleAppointment(appointment.id, {
         new_start_time: startISO,
         new_end_time: endISO,

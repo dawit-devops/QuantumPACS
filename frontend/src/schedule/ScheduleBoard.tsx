@@ -1,6 +1,4 @@
 import {
-  LeftOutlined,
-  RightOutlined,
   CalendarOutlined,
   PlusOutlined,
   DeleteOutlined,
@@ -25,6 +23,8 @@ import { useAuth } from "../auth/AuthContext";
 import withSidebar from "../common/base";
 import { MODALITIES } from "../common/modalities";
 import AppointmentBooking from "../frontdesk/AppointmentBooking";
+import ScheduleDayNav from "./ScheduleDayNav";
+import { buildSlots, slotIndexForClamped, type Window } from "./boardSlots";
 import { request } from "../helpers";
 import { toErrorMessage } from "../common/errors";
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
@@ -40,10 +40,8 @@ const DEFAULT_MODALITIES = MODALITIES.filter((m) =>
   ["CT", "MR", "PET", "DX", "MG", "US", "FL"].includes(m)
 );
 
-// Board day window 08:00–18:00 in 30-min slots per FR-R04-01.
-const BOARD_START_HOUR = 8;
-const BOARD_END_HOUR = 18;
-const SLOT_MINUTES = 30;
+// ScheduleBoard uses the legacy 08:00–18:00 window (FR-R04-01).
+const BOARD_WINDOW: Window = { start: 8, end: 18 };
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "blue",
@@ -56,30 +54,6 @@ const BOARD_STATUS_COLORS: Record<string, string> = {
   performed: "var(--color-success)",
   cancelled: "var(--color-error)",
 };
-
-function buildSlots(): string[] {
-  const slots: string[] = [];
-  for (let h = BOARD_START_HOUR; h < BOARD_END_HOUR; h += 1) {
-    slots.push(`${String(h).padStart(2, "0")}:00`);
-    slots.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  return slots;
-}
-
-// Slot index of an exam's scheduled_time ("HH:mm") within the board window.
-// Clamps out-of-window times to the nearest edge so nothing is lost from view.
-function slotIndexFor(time: string | null | undefined): number | null {
-  if (!time) return null;
-  const [hStr, mStr] = time.split(":");
-  const minutes = Number(hStr) * 60 + Number(mStr);
-  const startMin = BOARD_START_HOUR * 60;
-  const endMin = BOARD_END_HOUR * 60;
-  const slotCount = ((BOARD_END_HOUR - BOARD_START_HOUR) * 60) / SLOT_MINUTES;
-  if (minutes < startMin || minutes >= endMin) {
-    return minutes < startMin ? 0 : slotCount - 1;
-  }
-  return Math.floor((minutes - startMin) / SLOT_MINUTES);
-}
 
 function ScheduleBoard() {
   useDocumentTitle("QuantumPACS - Schedule Board");
@@ -153,7 +127,7 @@ function ScheduleBoard() {
     return [...new Set([...DEFAULT_MODALITIES, ...fromData])];
   }, [data]);
 
-  const slots = useMemo(() => buildSlots(), []);
+  const slots = useMemo(() => buildSlots(BOARD_WINDOW), []);
 
   const entriesByModality = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -171,7 +145,7 @@ function ScheduleBoard() {
     const map: Record<string, any[]> = {};
     for (const entry of data) {
       const mod = entry.modality || "—";
-      const si = slotIndexFor(entry.scheduled_time);
+      const si = slotIndexForClamped(entry.scheduled_time, BOARD_WINDOW);
       if (si === null) continue;
       const key = `${mod}|${si}`;
       if (!map[key]) map[key] = [];
@@ -206,7 +180,7 @@ function ScheduleBoard() {
       fetchAppointments();
       setSelectedEntry(null);
     } catch (e: any) {
-      message.error(e.message || "Cancel failed");
+      message.error(toErrorMessage(e) || "Cancel failed");
     }
   };
 
@@ -227,9 +201,10 @@ function ScheduleBoard() {
               Book Appointment
             </Button>
           )}
-          <Button icon={<LeftOutlined />} onClick={() => changeDay(-1)} aria-label="Previous day" />
-          <Button onClick={() => setDay(dayjs().format("YYYY-MM-DD"))}>Today</Button>
-          <Button icon={<RightOutlined />} onClick={() => changeDay(1)} aria-label="Next day" />
+          <ScheduleDayNav
+            onDayChange={changeDay}
+            onToday={() => setDay(dayjs().format("YYYY-MM-DD"))}
+          />
         </div>
       </div>
 

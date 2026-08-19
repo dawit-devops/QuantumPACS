@@ -1,11 +1,11 @@
-import { LeftOutlined, RightOutlined, CalendarOutlined, PlusOutlined } from "@ant-design/icons";
+import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
 import { App, Button, Drawer, Empty, Spin, Tag, Alert } from "antd";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { BOARD_END_HOUR, BOARD_START_HOUR, SLOT_MINUTES } from "./boardSlots";
+import { buildSlots, slotIndexFor, slotSpanFor, SLOT_MINUTES, type Window } from "./boardSlots";
+import { dayjs, slotToIso } from "./time";
 import BookingFormModal from "./BookingFormModal";
+import ScheduleDayNav from "./ScheduleDayNav";
 import CancelModal from "./CancelModal";
 import RescheduleModal from "./RescheduleModal";
 import {
@@ -22,8 +22,6 @@ import { toErrorMessage } from "../common/errors";
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import "./schedule.css";
 
-dayjs.extend(utc);
-
 const STATUS_COLORS: Record<string, string> = {
   SCHEDULED: "blue",
   ARRIVED: "orange",
@@ -32,35 +30,9 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "red",
 };
 
-function buildSlots(): string[] {
-  const slots: string[] = [];
-  for (let h = BOARD_START_HOUR; h < BOARD_END_HOUR; h += 1) {
-    slots.push(`${String(h).padStart(2, "0")}:00`);
-    slots.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  return slots;
-}
-
-// Slot index of a start time (HH:MM) within the board window. Returns null
-// for anything outside the window — the row simply does not exist in the grid.
-function slotIndexFor(time: string | null | undefined): number | null {
-  if (!time) return null;
-  const [hStr, mStr] = time.split(":");
-  const minutes = Number(hStr) * 60 + Number(mStr);
-  const startMin = BOARD_START_HOUR * 60;
-  if (minutes < startMin || minutes >= BOARD_END_HOUR * 60) return null;
-  return Math.floor((minutes - startMin) / SLOT_MINUTES);
-}
-
-// Number of grid rows an appointment spans (30-min slots), clamped to the
-// board window so a long exam never bleeds past the last rendered row.
-function slotSpanFor(appt: RisAppointment): number {
-  const start = dayjs.utc(appt.start_time);
-  const end = dayjs.utc(appt.end_time);
-  if (!start.isValid() || !end.isValid()) return 1;
-  const minutes = Math.max(0, end.diff(start, "minute"));
-  return Math.max(1, Math.ceil(minutes / SLOT_MINUTES));
-}
+// CalendarView uses the 07:00–19:00 window (default) — out-of-window
+// times return null so the row simply doesn't render.
+const BOARD_WINDOW: Window = { start: 7, end: 19 };
 
 /**
  * S4-14/S4-16 calendar grid — per-resource day view. Rows are 30-min slots
@@ -75,7 +47,11 @@ function CalendarView() {
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("SCHEDULE_WRITE");
 
-  const [day, setDay] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
+  // T1: anchor the day in UTC — the backend interprets dates as UTC
+  // (engine.py _slot_within_windows compares UTC wall-clock), so the
+  // calendar must match. Browser-local dayjs() would point at yesterday
+  // for users in UTC+8 between 00:00-08:00.
+  const [day, setDay] = useState<string>(() => dayjs.utc().format("YYYY-MM-DD"));
   const [resources, setResources] = useState<RisResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +78,11 @@ function CalendarView() {
     const seq = ++fetchSeq.current;
     setLoading(true);
     setError(null);
+    // R3: clear stale grid data on fetch start — if this fetch fails,
+    // the user sees an empty grid + error, not the previous day's bookings
+    // under a new date header.
+    setAppointments({});
+    setFreeSlots({});
     listRisResources()
       .then(async (res) => {
         const [apptMap, freeMap] = await Promise.all([
@@ -143,7 +124,7 @@ function CalendarView() {
     setCancelFor(null);
   };
 
-  const slots = useMemo(() => buildSlots(), []);
+  const slots = useMemo(() => buildSlots(BOARD_WINDOW), []);
 
   // appointment blocks bucketed by resource|slotIndex — each appointment is
   // registered on every row it spans so covered cells read as busy.
@@ -231,9 +212,10 @@ function CalendarView() {
               Book Appointment
             </Button>
           )}
-          <Button icon={<LeftOutlined />} onClick={() => changeDay(-1)} aria-label="Previous day" />
-          <Button onClick={() => setDay(dayjs().format("YYYY-MM-DD"))}>Today</Button>
-          <Button icon={<RightOutlined />} onClick={() => changeDay(1)} aria-label="Next day" />
+          <ScheduleDayNav
+            onDayChange={changeDay}
+            onToday={() => setDay(dayjs.utc().format("YYYY-MM-DD"))}
+          />
         </div>
       </div>
 
@@ -389,7 +371,7 @@ function CalendarView() {
             ? (resources.find((x) => x.id === rescheduleFor.resource_id)
                 ? (freeSlots[rescheduleFor.resource_id] ?? [])
                 : []
-              ).filter((s) => s.start !== dayjs.utc(rescheduleFor.start_time).format("HH:mm"))
+              )
             : []
         }
         onClose={() => setRescheduleFor(null)}

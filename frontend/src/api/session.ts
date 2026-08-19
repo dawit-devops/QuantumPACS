@@ -83,7 +83,10 @@ export async function tryRefreshToken(): Promise<boolean> {
         credentials: "include",
         headers: new Headers({
           "Content-Type": "application/json",
-          "X-CSRF-Token": "1",
+          "X-CSRF-Token": (() => {
+            const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+            return m?.[1] ?? "1";
+          })(),
         }),
       });
       if (!resp.ok) {

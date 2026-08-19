@@ -141,9 +141,14 @@ export const request = async <T = any>(
   if (!url.startsWith("http")) {
     url = `${API_URL}/${url}`;
   }
+  // CSRF double-submit: read the csrf_token cookie (set by the server
+  // on login) and echo it in the header. Falls back to "1" for backwards
+  // compat with older sessions.
+  const csrfMatch = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  const csrfToken = csrfMatch?.[1] ?? "1";
   options.headers = new Headers({
     "Content-Type": "application/json",
-    "X-CSRF-Token": "1",
+    "X-CSRF-Token": csrfToken,
   });
   // IAM audit H-2: authentication rides the HttpOnly access cookie, so every
   // request must include credentials (dev is cross-origin: 5173 -> 8080).

@@ -204,6 +204,10 @@ class RisPatientInsuranceHandler(HTTPEndpoint):
 
 
 class RisPatientCheckInHandler(HTTPEndpoint):
+    # F-09: The Visits UI performs check-in via PUT /visits/{id} (REGISTRATION_WRITE),
+    # not this endpoint. Both permissions are held by receptionists. This endpoint
+    # is kept on SCHEDULE_WRITE for backend/machine-to-machine callers (HL7, RIS)
+    # that may not hold REGISTRATION_WRITE.
     @requires_permission(Permission.SCHEDULE_WRITE)
     async def post(self, request):
         patient_id = request.path_params['id']

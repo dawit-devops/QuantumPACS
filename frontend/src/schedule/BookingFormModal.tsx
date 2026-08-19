@@ -1,6 +1,4 @@
 import { App, Button, Input, Modal, Tag } from "antd";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import React, { useEffect, useState } from "react";
 import { toErrorMessage } from "../common/errors";
 import {
@@ -10,9 +8,8 @@ import {
   type RisOrderRow,
   type RisResource,
 } from "../api/scheduling";
+import { dayjs, slotToIso } from "./time";
 import "./schedule.css";
-
-dayjs.extend(utc);
 
 export interface BookingFormModalProps {
   open: boolean;
@@ -82,8 +79,8 @@ export default function BookingFormModal({
     }
     setSubmitting(true);
     try {
-      const startISO = dayjs.utc(`${day} ${slot.start}`).toISOString();
-      const endISO = dayjs.utc(`${day} ${slot.end}`).toISOString();
+      const startISO = slotToIso(day, slot.start);
+      const endISO = slotToIso(day, slot.end);
       await bookAppointment({
         order_id: pickedOrder?.id ?? "",
         resource_id: resource.id,
