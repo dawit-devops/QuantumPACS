@@ -264,9 +264,16 @@ function CalendarView() {
                     <div
                       key={r.id}
                       className={`sched-cell ${isBooked ? "is-full" : ""}`}
-                      role="gridcell"
+                      role={free && canWrite ? "button" : "gridcell"}
+                      tabIndex={free && canWrite ? 0 : undefined}
                       onClick={() => {
                         if (free && canWrite) {
+                          openBooking(r, free);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if ((e.key === "Enter" || e.key === " ") && free && canWrite) {
+                          e.preventDefault();
                           openBooking(r, free);
                         }
                       }}
@@ -290,7 +297,8 @@ function CalendarView() {
                               setDetailResource(r);
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
                                 e.stopPropagation();
                                 setSelected(a);
                                 setDetailResource(r);

@@ -107,6 +107,12 @@ function AppointmentBooking({
   useEffect(() => {
     if (open) {
       setConflict(null);
+      // S13: Reset patient-pick state on reopen — without this, reopening
+      // after a completed booking still shows the previous patient selected,
+      // letting the scheduler accidentally confirm for the wrong patient.
+      setPickedPatient(null);
+      setPatientQuery("");
+      setPatientResults([]);
       fetchAvailability(modality, date);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

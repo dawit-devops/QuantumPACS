@@ -68,6 +68,8 @@ export default function RescheduleModal({
       const conflict = e as { status?: number; message?: string };
       if (conflict.status === 409 || (conflict as { code?: string }).code === "SLOT_CONFLICT") {
         onConflict?.(conflict.message || "Slot just taken — availability refreshed");
+        setNewSlot(null);
+        onClose();
       } else {
         message.error(toErrorMessage(e) || "Reschedule failed");
       }

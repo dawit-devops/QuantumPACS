@@ -136,7 +136,7 @@ describe("CalendarView", () => {
 
     // click the 09:00 free cell (the grid renders time column + resource cells)
     const freeCell = screen
-      .getAllByRole("gridcell")
+      .getAllByRole("button")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
     expect(freeCell).toBeDefined();
     fireEvent.click(freeCell!);
@@ -169,7 +169,7 @@ describe("CalendarView", () => {
 
     // Click a free cell to open the booking modal
     const freeCell = screen
-      .getAllByRole("gridcell")
+      .getAllByRole("button")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
     fireEvent.click(freeCell!);
 
@@ -196,7 +196,7 @@ describe("CalendarView", () => {
     await screen.findByText("CT Room 1");
 
     const freeCell = screen
-      .getAllByRole("gridcell")
+      .getAllByRole("button")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
     fireEvent.click(freeCell!);
 
@@ -217,7 +217,7 @@ describe("CalendarView", () => {
     await screen.findByText("CT Room 1");
 
     const freeCell = screen
-      .getAllByRole("gridcell")
+      .getAllByRole("button")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
     fireEvent.click(freeCell!);
 
@@ -315,7 +315,7 @@ describe("CalendarView", () => {
     renderWithAuth(<CalendarView />);
     await screen.findByText("CT Room 1");
 
-    // Find a free cell and click it
+    // Find a free cell and click it — read-only users get gridcell (not button)
     const freeCell = screen
       .getAllByRole("gridcell")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
@@ -329,6 +329,47 @@ describe("CalendarView", () => {
       ).not.toBeInTheDocument();
     });
     expect(mockBook).not.toHaveBeenCalled();
+  });
+
+  // ---- A1: Keyboard-accessible free cells ----------------------------------
+
+  it("free cells are focusable and activatable via Enter key", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // A1: free cells must have role="button" and tabIndex for keyboard access
+    const freeCells = screen
+      .getAllByRole("button")
+      .filter((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    expect(freeCells.length).toBeGreaterThan(0);
+    const freeCell = freeCells[0];
+    expect(freeCell).toHaveAttribute("tabindex", "0");
+
+    // Activate via Enter key
+    freeCell.focus();
+    await userEvent.keyboard("{Enter}");
+
+    // Booking modal should open
+    expect(
+      await screen.findByPlaceholderText("Search order (name, MRN or accession)")
+    ).toBeInTheDocument();
+  });
+
+  it("free cells are activatable via Space key", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const freeCells = screen
+      .getAllByRole("button")
+      .filter((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    const freeCell = freeCells[0];
+
+    freeCell.focus();
+    await userEvent.keyboard(" ");
+
+    expect(
+      await screen.findByPlaceholderText("Search order (name, MRN or accession)")
+    ).toBeInTheDocument();
   });
 
   // ---- HI-002: Day navigation + modal-state reset -------------------------
@@ -454,7 +495,7 @@ describe("CalendarView", () => {
 
     // Click a free cell to open the booking modal
     const freeCell = screen
-      .getAllByRole("gridcell")
+      .getAllByRole("button")
       .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
     expect(freeCell).toBeDefined();
     fireEvent.click(freeCell!);
@@ -476,6 +517,12 @@ describe("CalendarView", () => {
     await waitFor(() => {
       expect(mockListResources).toHaveBeenCalled();
     });
+
+    // E1: after 409, onClose fires so the user can re-pick from the
+    // refreshed grid. The functional contract is that the calendar refetched
+    // (tested above) and the parent cleared bookFor (onClose called).
+    // Antd Modal keeps DOM content when open=false, so we verify the
+    // booking flow completed (mockBook called) and grid refreshed.
   });
 
   // ---- CR-001: RescheduleModal flow tests ---------------------------------

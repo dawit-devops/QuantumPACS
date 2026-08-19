@@ -320,7 +320,10 @@ function ScheduleBoard() {
                               tabIndex={0}
                               onClick={() => setSelectedEntry(entry)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") setSelectedEntry(entry);
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedEntry(entry);
+                                }
                               }}
                               aria-label={`${entry.patient_name || entry.patient_id} ${st} at ${entry.scheduled_time || slot}`}
                             >

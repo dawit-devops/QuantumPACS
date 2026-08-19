@@ -95,6 +95,8 @@ export default function BookingFormModal({
       const err = e as { status?: number; message?: string; code?: string };
       if (err.status === 409 || err.code === "SLOT_CONFLICT") {
         onConflict?.(err.message || "Slot just taken — availability refreshed");
+        reset();
+        onClose();
       } else {
         message.error(toErrorMessage(e) || "Booking failed");
       }

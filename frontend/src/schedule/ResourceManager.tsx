@@ -105,14 +105,26 @@ function ResourceManager() {
 
   useTenantRefetch(fetch);
 
+  // R5: seq guard for the schedule drawer — opening A then quickly B
+  // must not let A's finally flip schedLoading off while B is still pending.
+  const schedSeq = useRef(0);
   const openSchedules = useCallback(
     (r: RisResource) => {
+      const seq = ++schedSeq.current;
       setSchedResource(r);
       setSchedLoading(true);
       listRisSchedules(r.id)
-        .then((rows) => setSchedules((prev) => ({ ...prev, [r.id]: rows })))
-        .catch((e: unknown) => message.error(toErrorMessage(e) || "Failed to load schedules"))
-        .finally(() => setSchedLoading(false));
+        .then((rows) => {
+          if (seq !== schedSeq.current) return;
+          setSchedules((prev) => ({ ...prev, [r.id]: rows }));
+        })
+        .catch((e: unknown) => {
+          if (seq !== schedSeq.current) return;
+          message.error(toErrorMessage(e) || "Failed to load schedules");
+        })
+        .finally(() => {
+          if (seq === schedSeq.current) setSchedLoading(false);
+        });
     },
     [message]
   );

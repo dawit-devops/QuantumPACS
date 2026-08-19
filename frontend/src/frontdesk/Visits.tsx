@@ -96,17 +96,24 @@ function Visits() {
   const [insuranceForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
+  // R4: seq guard for the list fetch — rapid filter/pagination changes must
+  // not let an earlier slow response overwrite a newer one.
+  const listSeq = useRef(0);
   const fetch = useCallback(
-    (page = 1) => {
+    (page = 1, pageSize?: number) => {
+      const seq = ++listSeq.current;
       setLoading(true);
       setError(null);
       const query: Record<string, string> = {
         page: String(page),
-        per_page: String(pagination.pageSize),
+        // S14: accept pageSize as a parameter to avoid stale closure —
+        // setPagination hasn't applied yet when onChange calls fetch.
+        per_page: String(pageSize ?? pagination.pageSize),
       };
       if (statusFilter) query.status = statusFilter;
       listVisits(query)
         .then((res) => {
+          if (seq !== listSeq.current) return;
           setLoading(false);
           setData(res.data);
           setPagination({
@@ -116,6 +123,7 @@ function Visits() {
           });
         })
         .catch((e: any) => {
+          if (seq !== listSeq.current) return;
           setLoading(false);
           setError(e.message);
         });
@@ -408,12 +416,15 @@ function Visits() {
         loading={loading}
         pagination={pagination}
         onChange={(pag) => {
+          const newPageSize = pag.pageSize ?? 20;
           setPagination({
             current: pag.current ?? 1,
-            pageSize: pag.pageSize ?? 20,
+            pageSize: newPageSize,
             total: pag.total ?? data.length,
           });
-          fetch(pag.current ?? 1);
+          // S14: pass pageSize explicitly — fetch's closure still has the
+          // old value since setPagination hasn't applied yet.
+          fetch(pag.current ?? 1, newPageSize);
         }}
         scroll={{ x: 800 }}
         locale={{ emptyText: "No visits for this filter" }}
