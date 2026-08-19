@@ -2,11 +2,22 @@ from datetime import datetime, timezone
 
 from db.conn import get_tenant_slug
 from db.table import Table
+from pypika import Case, Order
 
 
 def _mwl_like(value):
     """Translate DICOM C-FIND wildcards to SQL LIKE patterns."""
     return value.replace('%', '').replace('_', '').replace('*', '%').replace('?', '_')
+
+
+# S6-02: STAT entries must sort first in MWL results.
+# Priority codes from HL7 OBR-27.7: S/STAT, A/ASAP, U/URGENT, R/Routine.
+PRIORITY_SORT_ORDER = {
+    'STAT': 0, 'S': 0,
+    'A': 1, 'ASAP': 1, 'U': 1, 'URGENT': 1, 'T': 1,
+    'B': 2,  # callback
+    'R': 3, 'ROUTINE': 3, '': 3,
+}
 
 
 class Worklist(Table):
@@ -179,9 +190,19 @@ class Worklist(Table):
                 (self.table.accession_number.ilike(like))
             )
 
+        # S6-02: STAT entries sort first, then by scheduled date/time.
+        priority_expr = (
+            Case()
+            .when(self.table.requested_procedure_priority.isin(['STAT', 'S']), 0)
+            .when(self.table.requested_procedure_priority.isin(['A', 'ASAP', 'U', 'URGENT', 'T']), 1)
+            .when(self.table.requested_procedure_priority == 'B', 2)
+            .else_(3)
+        )
         q = PypikaQuery.from_(self.table).select(
             self.table.star,
-        ).orderby(self.table.scheduled_date, order=Order.desc)
+        ).orderby(priority_expr, order=Order.asc).orderby(
+            self.table.scheduled_date, order=Order.desc,
+        ).orderby(self.table.scheduled_time, order=Order.desc)
         for c in conditions:
             q = q.where(c)
         q = q.limit(per_page).offset((page - 1) * per_page)

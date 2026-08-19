@@ -78,6 +78,33 @@ def _run_dicom_mwl_scp(port):
     server.serve_forever()
 
 
+def _run_dicom_mpps_scp(port):
+    """Serve the MPPS N-CREATE/N-SET model on a dedicated port (S6-07).
+
+    Modalities performing exams send MPPS messages to track procedure
+    progress (IN_PROGRESS → COMPLETED/DISCONTINUED). A dedicated port
+    (default 11114) keeps MPPS traffic separate from C-STORE/C-FIND.
+
+    Runs in its own daemon thread with its own AE. Like the MWL SCP, it
+    must NOT touch dcm.server._loop — the N-CREATE/N-SET handlers bridge
+    onto the main loop via run_coroutine_threadsafe.
+    """
+    from pynetdicom import AE
+    from pynetdicom.presentation import build_context
+    from pynetdicom.sop_class import ModalityPerformedProcedureStep
+    import dcm.server as _dcm_server
+    ae = AE()
+    ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+    _dcm_server.apply_association_policy(ae)
+    # MPPS SCP only supports N-CREATE and N-SET — no storage, no find.
+    ae.supported_contexts = [build_context(ModalityPerformedProcedureStep)]
+    server = ae.start_server(
+        ('', port), evt_handlers=_dcm_server.handlers, block=False,
+    )
+    log.info('DICOM MPPS server started on port %s', port)
+    server.serve_forever()
+
+
 def _run_dicom(loop=None):
     state = get_app_state()
     try:
@@ -133,6 +160,12 @@ def _run_dicom(loop=None):
         mwl_port = config.get('dicom_mwl_port', '')
         if mwl_port and int(mwl_port) != port:
             threading.Thread(target=_run_dicom_mwl_scp, args=(int(mwl_port),), daemon=True).start()
+
+        # Optional dedicated MPPS listener (S6-07): modalities send
+        # N-CREATE/N-SET to report procedure progress. Default port 11114.
+        mpps_port = config.get('dicom_mpps_port', '11114')
+        if mpps_port and int(mpps_port) != port:
+            threading.Thread(target=_run_dicom_mpps_scp, args=(int(mpps_port),), daemon=True).start()
 
         server.serve_forever()
     except Exception:

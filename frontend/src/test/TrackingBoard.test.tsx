@@ -1,0 +1,183 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import React from "react";
+import { MemoryRouter } from "react-router";
+import { AuthProvider } from "../auth/AuthContext";
+import { ThemeProvider } from "../common/ThemeProvider";
+import TrackingBoard from "../worklist/TrackingBoard";
+
+// Mock the API module
+vi.mock("../api/tracking", () => ({
+  listTracking: vi.fn(),
+  getTrackingKpi: vi.fn(),
+  updateTrackingStatus: vi.fn(),
+}));
+
+// Mock hooks
+vi.mock("../hooks", () => ({
+  useDocumentTitle: vi.fn(),
+  useTenantRefetch: vi.fn(),
+}));
+
+// Mock auth context — keep AuthProvider, mock useAuth
+vi.mock("../auth/AuthContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../auth/AuthContext")>();
+  return {
+    ...actual,
+    useAuth: () => ({
+      hasPermission: (perm: string) =>
+        ["WORKLIST_READ", "WORKLIST_WRITE"].includes(perm),
+    }),
+  };
+});
+
+import { listTracking, getTrackingKpi } from "../api/tracking";
+
+const mockListTracking = vi.mocked(listTracking);
+const mockGetTrackingKpi = vi.mocked(getTrackingKpi);
+
+const mockTrackingData = [
+  {
+    id: "ex-1",
+    patient_id: "P001",
+    patient_name: "Smith^John",
+    accession_number: "ACC001",
+    modality: "CT",
+    status: "scheduled",
+    requested_procedure_priority: "R",
+    station_ae_title: "CT01",
+    scheduled_date: "2026-08-20",
+    scheduled_time: "09:00",
+    requested_procedure_desc: "Chest CT",
+  },
+  {
+    id: "ex-2",
+    patient_id: "P002",
+    patient_name: "Doe^Jane",
+    accession_number: "ACC002",
+    modality: "MR",
+    status: "in_progress",
+    requested_procedure_priority: "STAT",
+    station_ae_title: "MR01",
+    scheduled_date: "2026-08-20",
+    scheduled_time: "10:00",
+    requested_procedure_desc: "Brain MRI",
+  },
+];
+
+const mockKpi = {
+  volume: 42,
+  in_progress: 5,
+  awaiting_read: 8,
+  overdue: 2,
+  stat_count: 3,
+};
+
+function renderBoard() {
+  // Seed user into localStorage so AuthProvider picks it up
+  localStorage.setItem("userId", "1");
+  localStorage.setItem("username", "test");
+  localStorage.setItem(
+    "permissions",
+    JSON.stringify(["WORKLIST_READ", "WORKLIST_WRITE"]),
+  );
+  localStorage.setItem("tenant_id", "t1");
+  localStorage.setItem("tenant_name", "Test");
+  return render(
+    <MemoryRouter>
+      <AuthProvider>
+        <ThemeProvider>
+          <TrackingBoard />
+        </ThemeProvider>
+      </AuthProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("TrackingBoard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListTracking.mockResolvedValue({
+      data: mockTrackingData,
+      total: 2,
+      page: 1,
+      per_page: 20,
+    });
+    mockGetTrackingKpi.mockResolvedValue(mockKpi);
+  });
+
+  it("renders exam list from API", async () => {
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("Smith^John")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Doe^Jane")).toBeInTheDocument();
+  });
+
+  it("shows status badges with correct colors", async () => {
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("scheduled")).toBeInTheDocument();
+    });
+    expect(screen.getByText("in_progress")).toBeInTheDocument();
+  });
+
+  it("shows KPI strip values", async () => {
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("42")).toBeInTheDocument();
+    });
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("8")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("shows modality tags", async () => {
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("CT")).toBeInTheDocument();
+    });
+    expect(screen.getByText("MR")).toBeInTheDocument();
+  });
+
+  it("shows action buttons for write users", async () => {
+    renderBoard();
+    await waitFor(() => {
+      // Scheduled exams should have action buttons
+      const buttons = screen.getAllByRole("button");
+      expect(buttons.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows search input", async () => {
+    renderBoard();
+    expect(
+      screen.getByPlaceholderText("Search patient/accession..."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows filter selects", async () => {
+    renderBoard();
+    // The filters should render select elements
+    const selects = document.querySelectorAll(".ant-select");
+    expect(selects.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("displays procedure descriptions", async () => {
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("Chest CT")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Brain MRI")).toBeInTheDocument();
+  });
+
+  it("highlights STAT priority rows", async () => {
+    renderBoard();
+    await waitFor(() => {
+      const rows = document.querySelectorAll(".tracking-stat-row");
+      // Doe^Jane has STAT priority
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});

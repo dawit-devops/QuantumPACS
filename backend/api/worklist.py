@@ -150,3 +150,218 @@ class WorklistStationAeHandler(HTTPEndpoint):
         async with get_conn() as conn:
             stations = await Worklist(conn).get_station_aes()
         return ok(stations)
+
+
+# ---------------------------------------------------------------------------
+# S6-13: Tracking Board API
+# ---------------------------------------------------------------------------
+
+# Valid status transitions for the tracking board.
+VALID_TRANSITIONS = {
+    'scheduled': {'arrived', 'cancelled'},
+    'arrived': {'in_progress', 'cancelled'},
+    'in_progress': {'completed', 'cancelled'},
+    'completed': set(),
+    'cancelled': set(),
+}
+
+
+class TrackingHandler(HTTPEndpoint):
+    """S6-13: Live tracking board — joins worklist entries with exams."""
+
+    @requires_permission(Permission.WORKLIST_READ)
+    async def get(self, request):
+        modality = request.query_params.get('modality')
+        status = request.query_params.get('status')
+        priority = request.query_params.get('priority')
+        search = request.query_params.get('search')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        try:
+            page = max(1, int(request.query_params.get('page', '1')))
+            per_page = min(200, max(1, int(request.query_params.get('per_page', '20'))))
+        except (TypeError, ValueError):
+            from api.response import validation_error
+            return validation_error('Invalid pagination parameters')
+
+        conditions = []
+        params = []
+        idx = 1
+        if modality:
+            conditions.append(f'w.modality = ${idx}')
+            params.append(modality)
+            idx += 1
+        if status:
+            conditions.append(f'w.status = ${idx}')
+            params.append(status)
+            idx += 1
+        if priority:
+            conditions.append(f'w.requested_procedure_priority = ${idx}')
+            params.append(priority)
+            idx += 1
+        if search:
+            conditions.append(
+                f'(w.patient_name ILIKE ${idx} OR w.patient_id ILIKE ${idx} '
+                f'OR w.accession_number ILIKE ${idx})'
+            )
+            params.append(f'%{search}%')
+            idx += 1
+        if date_from:
+            conditions.append(f'w.scheduled_date >= ${idx}')
+            params.append(date_from)
+            idx += 1
+        if date_to:
+            conditions.append(f'w.scheduled_date <= ${idx}')
+            params.append(date_to)
+            idx += 1
+
+        where = ' AND '.join(conditions) if conditions else '1=1'
+
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                f"SELECT w.*, e.status AS exam_status, e.priority AS exam_priority,"
+                f" e.assigned_technologist, e.protocol_name AS exam_protocol"
+                f" FROM worklist_entries w"
+                f" LEFT JOIN exams e ON e.accession_number = w.accession_number"
+                f" WHERE {where}"
+                f" ORDER BY"
+                f" CASE WHEN w.requested_procedure_priority IN ('STAT','S') THEN 0"
+                f"      WHEN w.requested_procedure_priority IN ('A','ASAP','U','URGENT') THEN 1"
+                f"      ELSE 3 END,"
+                f" w.scheduled_date DESC, w.scheduled_time DESC"
+                f" LIMIT ${idx} OFFSET ${idx + 1}",
+                *params, per_page, (page - 1) * per_page,
+            )
+            total = await conn.fetchval(
+                f"SELECT count(*) FROM worklist_entries w"
+                f" WHERE {where}",
+                *params,
+            )
+
+        return ok({
+            'data': [dict(r) for r in rows],
+            'total': total or 0,
+            'page': page,
+            'per_page': per_page,
+        })
+
+
+class TrackingKpiHandler(HTTPEndpoint):
+    """S6-14: KPI strip — live counts for today's exams."""
+
+    @requires_permission(Permission.WORKLIST_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            volume = await conn.fetchval(
+                "SELECT count(*) FROM worklist_entries"
+                " WHERE scheduled_date = current_date"
+            ) or 0
+            in_progress = await conn.fetchval(
+                "SELECT count(*) FROM worklist_entries"
+                " WHERE status = 'in_progress'"
+                " AND scheduled_date = current_date"
+            ) or 0
+            awaiting_read = await conn.fetchval(
+                "SELECT count(*) FROM worklist_entries"
+                " WHERE status = 'performed'"
+                " AND scheduled_date = current_date"
+            ) or 0
+            overdue = await conn.fetchval(
+                "SELECT count(*) FROM worklist_entries"
+                " WHERE status = 'scheduled'"
+                " AND scheduled_date < current_date"
+            ) or 0
+            stat_count = await conn.fetchval(
+                "SELECT count(*) FROM worklist_entries"
+                " WHERE requested_procedure_priority IN ('STAT','S')"
+                " AND scheduled_date = current_date"
+                " AND status NOT IN ('cancelled','performed')"
+            ) or 0
+
+        return ok({
+            'volume': volume,
+            'in_progress': in_progress,
+            'awaiting_read': awaiting_read,
+            'overdue': overdue,
+            'stat_count': stat_count,
+        })
+
+
+class TrackingTimelineHandler(HTTPEndpoint):
+    """S6-16: Status timeline — ordered status changes for an exam."""
+
+    @requires_permission(Permission.WORKLIST_READ)
+    async def get(self, request):
+        exam_id = request.path_params['id']
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                "SELECT event_type, actor_id, details, created_at"
+                " FROM audit_log"
+                " WHERE resource_type = 'worklist_entry'"
+                " AND resource_id = $1"
+                " ORDER BY created_at ASC",
+                exam_id,
+            )
+        return ok({'data': [dict(r) for r in rows]})
+
+
+# Valid status transitions for the manual update guard.
+TRACKING_VALID_TRANSITIONS = {
+    'scheduled': {'arrived', 'cancelled'},
+    'arrived': {'in_progress', 'cancelled'},
+    'in_progress': {'completed', 'cancelled'},
+    'completed': set(),
+    'cancelled': set(),
+}
+
+
+class TrackingStatusHandler(HTTPEndpoint):
+    """S6-15: Manual status update with guard validation."""
+
+    @requires_permission(Permission.WORKLIST_WRITE)
+    async def put(self, request):
+        from api.validate import parse_body
+        from pydantic import BaseModel
+
+        class StatusUpdate(BaseModel):
+            status: str
+
+        body = await parse_body(StatusUpdate, request)
+        new_status = body.status
+        entry_id = request.path_params['id']
+
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, status FROM worklist_entries WHERE id = $1",
+                entry_id,
+            )
+            if not row:
+                return not_found('Entry not found')
+
+            current = row['status']
+            allowed = TRACKING_VALID_TRANSITIONS.get(current, set())
+            if new_status not in allowed:
+                from api.response import api_error
+                return api_error(
+                    'VALIDATION',
+                    f'Cannot transition from {current} to {new_status}',
+                    status=409,
+                )
+
+            now = datetime.now(timezone.utc)
+            await conn.execute(
+                "UPDATE worklist_entries SET status = $2, updated_at = $3"
+                " WHERE id = $1",
+                entry_id, new_status, now,
+            )
+            await AuditLog(conn).log_event(
+                event_type='worklist.status_updated',
+                actor_id=request.user.id,
+                resource_type='worklist_entry',
+                resource_id=entry_id,
+                details={'from': current, 'to': new_status},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+
+        return ok({'data': {'status': new_status}})

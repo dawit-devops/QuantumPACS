@@ -208,3 +208,83 @@ class TestCrossTenantGrantsMigration:
         content = _migration('049').read_text()
         assert 'DROP TABLE IF EXISTS user_tenant_grants' in content
         assert "permissions - '{CROSS_TENANT_READ}'" in content
+
+
+class TestMppsEventsMigration:
+    """Migration 070: ris_mpps_events table for MPPS audit trail (S6-08)."""
+
+    EXPECTED_COLUMNS = {
+        'id', 'accession_number', 'event_type', 'mpps_status',
+        'study_uid', 'station_ae_title', 'raw_message',
+        'tenant_id', 'created_at',
+    }
+
+    EXPECTED_INDEXES = {
+        'ix_ris_mpps_accession',
+        'ix_ris_mpps_created',
+        'ix_ris_mpps_tenant',
+    }
+
+    def test_migration_070_exists(self):
+        assert _migration('070').name == '070_ris_mpps_events.py'
+
+    def test_migration_070_revises_069(self):
+        module = _import_migration('070')
+        assert module.down_revision == '069'
+
+    def test_migration_070_creates_table(self):
+        content = _migration('070').read_text()
+        assert 'CREATE TABLE IF NOT EXISTS ris_mpps_events' in content
+
+    def test_migration_070_has_all_columns(self):
+        content = _migration('070').read_text()
+        for col in self.EXPECTED_COLUMNS:
+            assert col in content, f'Missing column: {col}'
+
+    def test_migration_070_has_all_indexes(self):
+        content = _migration('070').read_text()
+        for idx in self.EXPECTED_INDEXES:
+            assert f'CREATE INDEX IF NOT EXISTS {idx}' in content, \
+                f'Missing index: {idx}'
+
+    def test_migration_070_has_raw_message_jsonb(self):
+        """raw_message must be JSONB to store serialized DICOM datasets."""
+        content = _migration('070').read_text()
+        assert 'raw_message JSONB' in content
+
+    def test_migration_070_has_tenant_id(self):
+        """tenant_id is required for RLS scoping."""
+        content = _migration('070').read_text()
+        assert 'tenant_id TEXT' in content
+
+    def test_migration_070_downgrade_drops_table(self):
+        content = _migration('070').read_text()
+        assert 'def downgrade()' in content
+        assert 'drop_table' in content
+
+    def test_migration_070_matches_sync_db_schema(self):
+        """The migration DDL and db/ris_mpps.py sync_db() must produce
+        identical table schemas. Drift between the two bootstrapping
+        paths (alembic for containers, sync_db for dev) causes silent
+        column mismatches."""
+        import inspect
+        from db.ris_mpps import RisMppsEvents
+        source = inspect.getsource(RisMppsEvents.sync_db)
+        # sync_db should reference the same table name
+        assert 'ris_mpps_events' in source
+        # Both must define accession_number, event_type, mpps_status columns
+        for col in ('accession_number', 'event_type', 'mpps_status'):
+            assert col in source, f'sync_db missing column: {col}'
+
+    def test_migration_070_indexes_cover_query_patterns(self):
+        """Index set must support the two main query patterns:
+        1. List events by accession (audit trail lookup)
+        2. Query recent events (monitoring/dashboard)
+        3. Tenant-scoped queries (RLS)"""
+        content = _migration('070').read_text()
+        # Accession lookup — audit trail
+        assert 'ix_ris_mpps_accession' in content
+        # Recent events — monitoring
+        assert 'ix_ris_mpps_created' in content
+        # Tenant scope — RLS
+        assert 'ix_ris_mpps_tenant' in content

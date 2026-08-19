@@ -78,6 +78,7 @@ const ShareView = React.lazy(() => import("./detail/ShareView"));
 const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
+const TrackingBoard = React.lazy(() => import("./worklist/TrackingBoard"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
 const ResourceManager = React.lazy(() => import("./schedule/ResourceManager"));
 const CalendarView = React.lazy(() => import("./schedule/CalendarView"));
@@ -273,6 +274,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="WORKLIST_READ">
                           <Worklist />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/tracking"
+                      element={
+                        <ClinicalRoute permission="WORKLIST_READ">
+                          <TrackingBoard />
                         </ClinicalRoute>
                       }
                     />

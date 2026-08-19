@@ -192,6 +192,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["WORKLIST_READ"],
       },
       {
+        key: "tracking",
+        path: "/tracking",
+        label: "Tracking Board",
+        icon: <DashboardOutlined />,
+        // S6-13: live tracking board for all exams — uses worklist_entries
+        // + exams tables, gated on WORKLIST_READ like the MWL.
+        permissions: ["WORKLIST_READ"],
+      },
+      {
         key: "schedule-board",
         path: "/schedule-board",
         label: "Schedule",
@@ -554,6 +563,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "dicomweb-browser": "admin",
   integrations: "admin",
   worklist: "acquisition",
+  tracking: "acquisition",
   exams: "acquisition",
   "schedule-board": "acquisition",
   "schedule-calendar": "acquisition",

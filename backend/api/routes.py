@@ -54,7 +54,11 @@ from api.hl7_admin import (
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
-from api.worklist import WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler
+from api.worklist import (
+    WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler,
+    TrackingHandler, TrackingKpiHandler, TrackingTimelineHandler,
+    TrackingStatusHandler,
+)
 from api.exams import (
     ExamsHandler, ExamHandler, ExamIdentityHandler, ExamProtocolHandler,
     ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
@@ -250,6 +254,11 @@ _V1_ROUTES = [
     v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
     v2(Route('/worklist', endpoint=WorklistHandler)),
     v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
+    # S6-13..16: Tracking board APIs
+    v2(Route('/ris/tracking', endpoint=TrackingHandler)),
+    v2(Route('/ris/tracking/kpi', endpoint=TrackingKpiHandler)),
+    v2(Route('/ris/tracking/{id}/timeline', endpoint=TrackingTimelineHandler)),
+    v2(Route('/ris/tracking/{id}/status', endpoint=TrackingStatusHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),

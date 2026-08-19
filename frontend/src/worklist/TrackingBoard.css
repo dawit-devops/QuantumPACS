@@ -1,0 +1,7 @@
+.tracking-stat-row {
+  background-color: #fff2f0 !important;
+}
+
+.tracking-stat-row:hover > td {
+  background-color: #fff2f0 !important;
+}

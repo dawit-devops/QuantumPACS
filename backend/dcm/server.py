@@ -382,9 +382,45 @@ def apply_association_policy(ae):
             ae.require_calling_aet = mapped_aets
 
 
+# MPPS N-CREATE handler (S6-07)
+def handle_n_create(event):
+    """MPPS N-CREATE: modality starts performing a procedure."""
+    from services.mpps_consumer.service import MppsConsumer
+    future = asyncio.run_coroutine_threadsafe(
+        MppsConsumer().handle_n_create(event), _loop,
+    )
+    try:
+        result = future.result(timeout=30)
+    except Exception:
+        log.error('MPPS N-CREATE failed: %s', traceback.format_exc())
+        return 0xA700  # Out of resources
+    if not result:
+        return 0xA700
+    return 0x0000  # Success
+
+
+# MPPS N-SET handler (S6-07)
+def handle_n_set(event):
+    """MPPS N-SET: modality completes or cancels a procedure."""
+    from services.mpps_consumer.service import MppsConsumer
+    future = asyncio.run_coroutine_threadsafe(
+        MppsConsumer().handle_n_set(event), _loop,
+    )
+    try:
+        result = future.result(timeout=30)
+    except Exception:
+        log.error('MPPS N-SET failed: %s', traceback.format_exc())
+        return 0xA700
+    if not result:
+        return 0xA700
+    return 0x0000
+
+
 handlers = [
     (evt.EVT_C_STORE, handle_store),
     (evt.EVT_C_FIND, handle_find),
+    (evt.EVT_N_CREATE, handle_n_create),
+    (evt.EVT_N_SET, handle_n_set),
     (evt.EVT_ACCEPTED, _handle_accept),
 ]
 _scp = None
