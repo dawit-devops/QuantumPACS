@@ -171,6 +171,95 @@ class TestRisWriteTenantTagging:
         asyncio.run(run())
 
 
+# ── Engine-level tenant tagging (S3-20) ──────────────────────────────────
+
+def _orm_o01(control_id: str, accession: str) -> str:
+    """Minimal but fully processable ORM^O01 (MSH/PID/ORC/OBR)."""
+    return (
+        f'MSH|^~\\&|E2E|TENANT_FACILITY|QUANTUMPACS||202608181030||ORM^O01|'
+        f'{control_id}|P|2.5\r'
+        f'PID|1||{control_id}||Tenant^Patient||19800101|M\r'
+        f'ORC|NW|{accession}|||CM|||||||202608181030\r'
+        f'OBR|1|{accession}|{accession}|CT CHEST^Chest CT^L|||202608190800|||||'
+        f'||||||CT_SCANNER^CT Room 1||||||CT|||1^CM^30^Q^30^A||||Routine'
+        f' screening|Lee^Kim\r'
+    )
+
+
+class TestRisEngineTenantTagging:
+    """Hl7InterfaceEngine writes (orders + message log) must carry the
+    tenant slug active in the engine's context.  The write-tagging tests
+    above prove repos tag raw INSERTs; this proves the engine's real
+    receive -> persist path tags them too.  The engine acquires its own
+    pool connections, so an outer transaction cannot wrap its writes —
+    rows are cleaned up by the unique run tag instead."""
+
+    def test_engine_orm_orders_and_messages_carry_tenant_tag(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = f'engine-{uuid.uuid4().hex[:8]}'
+            control_id = uuid.uuid4().hex[:8].upper()
+            accession = f'TAG-{uuid.uuid4().hex[:8].upper()}'
+            try:
+                from services.hl7_engine.service import Hl7InterfaceEngine
+                set_tenant_slug(tag)
+                result = await Hl7InterfaceEngine().receive_message(
+                    _orm_o01(control_id, accession).encode()
+                )
+                assert result == b'ACK', result
+
+                async with get_conn() as conn:
+                    order = await conn.fetchrow(
+                        'SELECT tenant_id FROM ris_orders '
+                        'WHERE accession_number = $1',
+                        accession,
+                    )
+                    assert order is not None
+                    assert order['tenant_id'] == tag
+
+                    msg = await conn.fetchrow(
+                        'SELECT tenant_id, status FROM ris_hl7_messages '
+                        'WHERE control_id = $1',
+                        control_id,
+                    )
+                    assert msg is not None
+                    assert msg['tenant_id'] == tag
+                    assert msg['status'] == 'PROCESSED'
+
+                    # No cross-tenant residue: rows must not land on 'default'.
+                    stray = await conn.fetchval(
+                        'SELECT count(*) FROM ris_orders '
+                        "WHERE accession_number = $1 AND tenant_id = 'default'",
+                        accession,
+                    )
+                    assert stray == 0
+            finally:
+                reset_tenant_slug()
+                try:
+                    async with get_conn() as conn:
+                        await conn.execute(
+                            'DELETE FROM ris_hl7_messages WHERE tenant_id = $1', tag
+                        )
+                        await conn.execute(
+                            'DELETE FROM ris_orders WHERE tenant_id = $1', tag
+                        )
+                        await conn.execute(
+                            'DELETE FROM ris_interface_events WHERE tenant_id = $1', tag
+                        )
+                        await conn.execute(
+                            'DELETE FROM ris_interface_endpoints WHERE tenant_id = $1', tag
+                        )
+                except Exception:
+                    pass
+                await teardown()
+
+        asyncio.run(run())
+
+
 # ── Cross-tenant read isolation (xfail until read-scoping enforced) ─────
 
 class TestRisCrossTenantReadIsolation:

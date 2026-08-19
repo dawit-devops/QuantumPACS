@@ -171,6 +171,7 @@ async def _start_mllp():
     state = get_app_state()
     try:
         import ssl
+        from services.hl7_engine.service import Hl7InterfaceEngine
         from services.ingestion.hl7_server import MllpServer
         port = int(config.get('hl7_mllp_port', '12579'))
         ssl_context = None
@@ -181,7 +182,13 @@ async def _start_mllp():
             ssl_context.load_cert_chain(cert_file, key_file)
         allowed_ips_str = config.get('hl7_mllp_allowed_ips', '')
         allowed_ips = [ip.strip() for ip in allowed_ips_str.split(',') if ip.strip()] if allowed_ips_str else []
-        server = MllpServer(host='', port=port, ssl_context=ssl_context, allowed_ips=allowed_ips)
+        # Single engine entry point (S3-18): the wire must exercise the same
+        # parse -> persist -> route -> alert pipeline as the HTTP receiver,
+        # so dashboard, exception queue, and failure alerts see MLLP feeds too.
+        server = MllpServer(
+            host='', port=port, ssl_context=ssl_context, allowed_ips=allowed_ips,
+            handler=Hl7InterfaceEngine().receive_message,
+        )
 
         async def _run():
             await server.start()
