@@ -17,9 +17,14 @@
     "@vitejs/plugin-react": "^6.0.4",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.13.0",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
@@ -55,7 +60,8 @@
     "test:e2e:all": "playwright test",
     "test:e2e:fast": "playwright test --project=chromium e2e/login.spec.ts e2e/role-based-access.spec.ts e2e/qa.spec.ts e2e/stow-upload.spec.ts e2e/share-link.spec.ts e2e/study-viewer.spec.ts e2e/viewer-render.spec.ts",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "npm run test:unit && npm run test:e2e:all"
+    "test:all": "npm run test:unit && npm run test:e2e:all",
+    "prepare": "husky"
   },
   "overrides": {
     "adm-zip": "0.6.0"
