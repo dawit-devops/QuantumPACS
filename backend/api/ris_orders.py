@@ -14,6 +14,7 @@ from api.permissions import Permission
 from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.ris_orders import CreateOrderRequest, OrderStatusUpdateRequest
+from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.ris_orders import RisOrders, RisOrderProcedures
 from services.order_lifecycle.service import OrderLifecycleService, InvalidTransitionError
@@ -62,16 +63,38 @@ class RisOrdersHandler(HTTPEndpoint):
 
     @requires_permission(Permission.ORDER_READ)
     async def get(self, request):
-        limit = int(request.query_params.get('limit', 25))
-        offset = int(request.query_params.get('offset', 0))
-        status = request.query_params.get('status')
-        patient_id = request.query_params.get('patient_id')
+        params = request.query_params
+        try:
+            page = max(int(params.get('page', 1)), 1)
+            per_page = min(max(int(params.get('per_page', 25)), 1), 100)
+        except ValueError:
+            return api_error('VALIDATION', 'page/per_page must be integers', status=422)
+        offset = (page - 1) * per_page
         async with get_conn() as conn:
-            rows = await RisOrders(conn).list(
-                limit=min(limit, 100), offset=offset,
-                status=status, patient_id=patient_id,
+            repo = RisOrders(conn)
+            rows = await repo.list(
+                limit=per_page, offset=offset,
+                status=params.get('status') or None,
+                patient_id=params.get('patient_id') or None,
+                search=params.get('search') or None,
+                referring_md=params.get('referring_md') or None,
+                date_from=params.get('date_from') or None,
+                date_to=params.get('date_to') or None,
             )
-        return ok({'data': [_row_dict(r) for r in rows]})
+            total = await repo.count(
+                status=params.get('status') or None,
+                patient_id=params.get('patient_id') or None,
+                search=params.get('search') or None,
+                referring_md=params.get('referring_md') or None,
+                date_from=params.get('date_from') or None,
+                date_to=params.get('date_to') or None,
+            ) or 0
+        return ok({
+            'data': [_row_dict(r) for r in rows],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
 
 
 class RisOrderHandler(HTTPEndpoint):
@@ -87,6 +110,30 @@ class RisOrderHandler(HTTPEndpoint):
             'order': _row_dict(order),
             'procedures': [_row_dict(p) for p in procs],
         }})
+
+
+class RisOrderHistoryHandler(HTTPEndpoint):
+    @requires_permission(Permission.ORDER_READ)
+    async def get(self, request):
+        order_id = request.path_params['id']
+        async with get_conn() as conn:
+            order = await RisOrders(conn).get(order_id)
+            if not order:
+                return not_found('Order not found')
+            # Audit timeline for this order: status transitions, bookings,
+            # cancellations — newest first from the log, reversed to
+            # chronological for the UI.
+            rows = await AuditLog(conn).query(
+                resource_id=order_id, limit=200)
+        events = []
+        for r in reversed(rows):
+            events.append({
+                'event': r['event_type'],
+                'actor': r['actor'],
+                'timestamp': r['created_at'],
+                'details': r['description'],
+            })
+        return ok({'data': events})
 
 
 class RisOrderStatusHandler(HTTPEndpoint):

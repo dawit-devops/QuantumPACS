@@ -90,14 +90,51 @@ class RisOrders(Table):
         q = self.select('*').where(self.table.accession_number == accession_number)
         return await self.fetchone(q)
 
-    async def list(self, limit=25, offset=0, status=None, patient_id=None):
+    async def list(self, limit=25, offset=0, status=None, patient_id=None,
+                   search=None, referring_md=None, date_from=None, date_to=None):
         q = self.select('*')
         if status:
             q = q.where(self.table.status == status)
         if patient_id:
             q = q.where(self.table.patient_id == patient_id)
+        if search:
+            like = f'%{search}%'
+            q = q.where(
+                (self.table.patient_name.ilike(like))
+                | (self.table.patient_id.ilike(like))
+                | (self.table.accession_number.ilike(like))
+            )
+        if referring_md:
+            q = q.where(self.table.referring_physician.ilike(f'%{referring_md}%'))
+        if date_from:
+            q = q.where(self.table.created_at >= date_from)
+        if date_to:
+            q = q.where(self.table.created_at <= date_to)
         q = q.orderby(self.table.created_at, order=Order.desc).limit(limit).offset(offset)
         return await self.fetch(q)
+
+    async def count(self, status=None, patient_id=None, search=None,
+                    referring_md=None, date_from=None, date_to=None):
+        from pypika import functions as fn
+        q = self.select(fn.Count('*'))
+        if status:
+            q = q.where(self.table.status == status)
+        if patient_id:
+            q = q.where(self.table.patient_id == patient_id)
+        if search:
+            like = f'%{search}%'
+            q = q.where(
+                (self.table.patient_name.ilike(like))
+                | (self.table.patient_id.ilike(like))
+                | (self.table.accession_number.ilike(like))
+            )
+        if referring_md:
+            q = q.where(self.table.referring_physician.ilike(f'%{referring_md}%'))
+        if date_from:
+            q = q.where(self.table.created_at >= date_from)
+        if date_to:
+            q = q.where(self.table.created_at <= date_to)
+        return await self.fetchval(q)
 
     async def update_status(self, order_id, status):
         q = self.update().set(

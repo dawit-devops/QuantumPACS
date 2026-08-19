@@ -33,12 +33,14 @@ class _FakeAuth(BaseHTTPMiddleware):
 def _make_app(user=None):
     from api.ris_orders import (
         RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler,
+        RisOrderHistoryHandler,
     )
     return Starlette(
         routes=[
             Route('/ris/orders', endpoint=RisOrdersHandler),
             Route('/ris/orders/{id}', endpoint=RisOrderHandler),
             Route('/ris/orders/{id}/status', endpoint=RisOrderStatusHandler),
+            Route('/ris/orders/{id}/history', endpoint=RisOrderHistoryHandler),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -150,6 +152,7 @@ class TestOrderList:
             _order_row('ord-1', 'ORDERED'),
             _order_row('ord-2', 'SCHEDULED'),
         ]
+        mock_conn.fetchval.return_value = 2
         with patch('api.ris_orders.get_conn', return_value=mock_conn):
             resp = client.get('/ris/orders?status=ORDERED&patient_id=MRN-001&limit=10&offset=20')
         assert resp.status_code == 200
@@ -187,6 +190,84 @@ class TestOrderDetail:
         data = resp.json()['data']
         assert data['order']['id'] == 'ord-1'
         assert data['procedures'][0]['procedure_code'] == 'CTCHEST'
+
+
+class TestOrderSearch:
+    def test_list_returns_pagination_metadata(self):
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = [
+            _order_row('ord-1', 'ORDERED'),
+            _order_row('ord-2', 'SCHEDULED'),
+        ]
+        mock_conn.fetchval.return_value = 42
+        with patch('api.ris_orders.get_conn', return_value=mock_conn):
+            resp = client.get('/ris/orders?page=2&per_page=10')
+        assert resp.status_code == 200
+        payload = resp.json()['data']
+        assert len(payload) == 2
+        assert resp.json()['total'] == 42
+        assert resp.json()['page'] == 2
+        assert resp.json()['per_page'] == 10
+
+    def test_list_passes_search_filters_to_repo(self):
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = []
+        mock_conn.fetchval.return_value = 0
+        with patch('api.ris_orders.get_conn', return_value=mock_conn):
+            resp = client.get(
+                '/ris/orders?search=jane&referring_md=Dr.+Smith'
+                '&date_from=2026-08-01&date_to=2026-08-31')
+        assert resp.status_code == 200
+        call = mock_conn.fetch.call_args
+        sql = str(call.args[0])
+        assert '"patient_name" ILIKE' in sql or '"accession_number" ILIKE' in sql \
+            or '"patient_id" ILIKE' in sql
+        assert '"referring_physician"' in sql
+        assert '"created_at">=' in sql and '"created_at"<=' in sql
+        assert 'LIMIT' in sql
+
+    def test_list_requires_order_read(self):
+        user = User({'id': 1, 'permissions': []})
+        resp = TestClient(_make_app(user)).get('/ris/orders')
+        assert resp.status_code == 403
+
+
+class TestOrderHistory:
+    def test_history_requires_order_read(self):
+        user = User({'id': 1, 'permissions': []})
+        resp = TestClient(_make_app(user)).get('/ris/orders/ord-1/history')
+        assert resp.status_code == 403
+
+    def test_history_returns_order_timeline(self):
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = [
+            {'id': 2, 'created': '2026-08-20 09:00:00+00',
+             'event_type': 'ORDER_STATUS_TRANSITION', 'actor_name': 'system',
+             'log': '{"event":"ORDER_STATUS_TRANSITION","actor":"sched-1"}',
+             'tenant': 'default'},
+            {'id': 1, 'created': '2026-08-20 08:00:00+00',
+             'event_type': 'ORDER_CREATED', 'actor_name': 'tech-1',
+             'log': '{"event":"ORDER_CREATED","actor":"tech-1"}',
+             'tenant': 'default'},
+        ]
+        with patch('api.ris_orders.get_conn', return_value=mock_conn):
+            resp = client.get('/ris/orders/ord-1/history')
+        assert resp.status_code == 200
+        events = resp.json()['data']
+        assert len(events) == 2
+        assert events[0]['event'] == 'ORDER_CREATED'
+        assert events[0]['actor'] == 'tech-1'
+        # Oldest first (timeline order): transition is the newest.
+        assert events[-1]['event'] == 'ORDER_STATUS_TRANSITION'
 
 
 class TestOrderStatusTransition:

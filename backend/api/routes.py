@@ -103,7 +103,9 @@ from api.portal import (
     PortalFollowUpStatusHandler,
 )
 from api.orders import OrdersHandler
-from api.ris_orders import RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler
+from api.ris_orders import (
+    RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler, RisOrderHistoryHandler,
+)
 from api.scheduling import (
     RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
     RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
@@ -307,6 +309,7 @@ _V1_ROUTES = [
     v2(Route('/ris/orders', endpoint=RisOrdersHandler)),
     v2(Route('/ris/orders/{id}', endpoint=RisOrderHandler)),
     v2(Route('/ris/orders/{id}/status', endpoint=RisOrderStatusHandler)),
+    v2(Route('/ris/orders/{id}/history', endpoint=RisOrderHistoryHandler)),
     # RIS interface dashboard (E-RIS-02 #4 / S3-15): endpoint list, message
     # history, metrics, exception queue — reads the engine's ris_* tables.
     v2(Route('/ris/interfaces', endpoint=RisInterfacesHandler)),
