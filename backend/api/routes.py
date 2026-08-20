@@ -10,7 +10,11 @@ from api.files import (
     FileChangesHandler, ShareFilesHandler, ShareFilesListHandler, ServeFile, ServeThumbnail
 )
 from api.logs import LogsHandler, LogEventTypesHandler, LogActorsHandler
-from api.notifications import NotificationsHandler, NotificationHandler, NotificationsReadAllHandler, NotificationsUnreadCountHandler, NotificationPreferencesHandler
+from api.notifications import (
+    NotificationsHandler, NotificationHandler, NotificationsReadAllHandler,
+    NotificationsUnreadCountHandler, NotificationPreferencesHandler,
+    CriticalResultsHandler, CriticalResultAckHandler, DeliveryStatusHandler,
+)
 from api.admin import (
     AdminStatusHandler, AdminMaintenanceHandler, AdminConfigHandler,
     AdminBackupsHandler, AdminBackupHandler, AdminBackupRestoreHandler,
@@ -201,6 +205,9 @@ _V1_ROUTES = [
     v2(Route('/notifications/preferences', endpoint=NotificationPreferencesHandler)),
     v2(Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler)),
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
+    v2(Route('/notifications/critical', endpoint=CriticalResultsHandler)),
+    v2(Route('/notifications/critical/{id}/ack', endpoint=CriticalResultAckHandler)),
+    v2(Route('/notifications/delivery-status', endpoint=DeliveryStatusHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
     v2(Route('/tenants', endpoint=TenantsHandler)),
     v2(Route('/tenants/health', endpoint=TenantHealthHandler)),

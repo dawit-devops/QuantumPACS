@@ -115,3 +115,76 @@ class NotificationsUnreadCountHandler(HTTPEndpoint):
         async with get_conn() as conn:
             count = await Notifications(conn).unread_count(user_id)
         return ok({'count': count})
+
+
+class CriticalResultsHandler(HTTPEndpoint):
+    """S10-02, S10-07: Critical flag creation and list endpoints."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        status = request.query_params.get('status')
+        recipient_id = request.query_params.get('recipient_id')
+        async with get_conn() as conn:
+            from db.ris_critical_results import RisCriticalResults
+            items = await RisCriticalResults(conn).list_active(
+                recipient_id=recipient_id, status=status,
+            )
+        return ok({'data': items})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        data = await request.json()
+        if not data.get('finding_description'):
+            from api.response import validation_error
+            return validation_error('finding_description is required')
+        async with get_conn() as conn:
+            from db.ris_critical_results import RisCriticalResults
+            flag = await RisCriticalResults(conn).create_flag(data, flagged_by=request.user.id)
+            from api.notify import notify_role, notify_user
+            rec_id = data.get('recipient_id')
+            if rec_id:
+                await notify_user(
+                    conn, rec_id, 'critical.flagged',
+                    f"CRITICAL FINDING: {data.get('accession_number', '')}",
+                    f"Critical finding flagged for {data.get('patient_name', '')}: {data['finding_description']}",
+                    f"/reading/{data.get('exam_id')}",
+                )
+            else:
+                await notify_role(
+                    conn, 'radiologist', 'critical.flagged',
+                    f"CRITICAL FINDING: {data.get('accession_number', '')}",
+                    f"Critical finding flagged for {data.get('patient_name', '')}: {data['finding_description']}",
+                    f"/reading/{data.get('exam_id')}",
+                )
+        return ok({'data': flag})
+
+
+class CriticalResultAckHandler(HTTPEndpoint):
+    """S10-03: Mandatory acknowledgment for critical finding."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def post(self, request):
+        critical_id = request.path_params['id']
+        async with get_conn() as conn:
+            from db.ris_critical_results import RisCriticalResults
+            ack = await RisCriticalResults(conn).acknowledge(critical_id, acknowledged_by=request.user.id)
+            if not ack:
+                from api.response import not_found
+                return not_found('Critical result entry not found')
+        return ok({'data': ack})
+
+
+class DeliveryStatusHandler(HTTPEndpoint):
+    """S10-12: Per-recipient result delivery status endpoint."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        report_id = request.query_params.get('report_id')
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                """SELECT * FROM ris_results_distribution
+                   WHERE report_id = $1::uuid ORDER BY created_at DESC""",
+                report_id,
+            ) if report_id else []
+        return ok({'data': [dict(r) for r in rows]})
+
