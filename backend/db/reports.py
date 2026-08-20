@@ -42,8 +42,16 @@ class Reports(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_reports_status ON reports(status)
         """)
+        await self.exec("""
+        ALTER TABLE reports
+            ADD COLUMN IF NOT EXISTS ris_order_id UUID,
+            ADD COLUMN IF NOT EXISTS template_id UUID,
+            ADD COLUMN IF NOT EXISTS distributed_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE
+        """)
 
     async def create(self, exam_id, data, created_by):
+        await self.sync_db()
         now = datetime.now(timezone.utc)
         q = self.insert().columns(
             'exam_id', 'status', 'findings', 'impression', 'recommendations',
@@ -65,22 +73,25 @@ class Reports(Table):
         return await self.get(row['id'])
 
     async def get(self, report_id):
+        await self.sync_db()
         row = await self.conn.fetchrow(
             "SELECT * FROM reports WHERE id = $1", report_id,
         )
         return dict(row) if row else None
 
     async def get_by_exam(self, exam_id):
+        await self.sync_db()
         row = await self.conn.fetchrow(
             "SELECT * FROM reports WHERE exam_id = $1", exam_id,
         )
         return dict(row) if row else None
 
-    async def update(self, report_id, data):
+    async def update(self, report_id, data, edited_by=''):
         """Update draft fields (findings/impression/status)."""
+        await self.sync_db()
         fields = ['updated_at']
         values = [datetime.now(timezone.utc)]
-        for k in ('status', 'findings', 'impression', 'recommendations', 'template_name'):
+        for k in ('status', 'findings', 'impression', 'recommendations', 'template_name', 'template_id', 'ris_order_id', 'is_critical'):
             if k in data:
                 fields.append(k)
                 values.append(data[k])
@@ -89,16 +100,53 @@ class Reports(Table):
             f"UPDATE reports SET {set_clause} WHERE id = $1",
             report_id, *values,
         )
-        return await self.get(report_id)
+        updated = await self.get(report_id)
+        if updated:
+            try:
+                from db.ris_report_versions import RisReportVersions
+                await RisReportVersions(self.conn).add_version(
+                    report_id, updated.get('findings', ''),
+                    updated.get('impression', ''), updated.get('recommendations', ''),
+                    edited_by=edited_by or updated.get('created_by', ''),
+                )
+            except Exception:
+                pass
+        return updated
 
     async def sign(self, report_id, signed_by):
         """Transition to final with the signing radiologist recorded."""
+        await self.sync_db()
+        now = datetime.now(timezone.utc)
         await self.conn.execute(
-            "UPDATE reports SET status = 'final', signed_by = $2, signed_at = now(), "
-            "updated_at = now() WHERE id = $1",
-            report_id, signed_by,
+            "UPDATE reports SET status = 'final', signed_by = $2, signed_at = $3, "
+            "distributed_at = $3, updated_at = $3 WHERE id = $1",
+            report_id, signed_by, now,
         )
-        return await self.get(report_id)
+        updated = await self.get(report_id)
+        if updated:
+            try:
+                from db.ris_report_versions import RisReportVersions
+                await RisReportVersions(self.conn).add_version(
+                    report_id, updated.get('findings', ''),
+                    updated.get('impression', ''), updated.get('recommendations', ''),
+                    edited_by=signed_by,
+                )
+            except Exception:
+                pass
+            try:
+                from api.billing import drop_charge_stub
+                exam_row = await self.conn.fetchrow(
+                    "SELECT accession_number FROM exams WHERE id = $1",
+                    updated.get('exam_id'),
+                )
+                accession = exam_row['accession_number'] if exam_row else ''
+                await drop_charge_stub(
+                    self.conn, report_id, updated.get('exam_id'),
+                    accession, signed_by,
+                )
+            except Exception:
+                pass
+        return updated
 
     async def submit(self, report_id):
         """R13 resident hands a draft to the supervising attending (co-sign).

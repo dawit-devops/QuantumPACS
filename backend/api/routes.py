@@ -70,7 +70,8 @@ from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
     ExamReportSubmitHandler, ExamReportReturnHandler,
     ExamAssignHandler, ExamImagesHandler,
-    ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
+    ReportTemplatesHandler, ReportVersionsHandler,
+    PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
 )
 from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
@@ -276,6 +277,7 @@ _V1_ROUTES = [
     v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
     v2(Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler)),
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
+    v2(Route('/reports/{report_id}/versions', endpoint=ReportVersionsHandler)),
     v2(Route('/reports/{exam_id}', endpoint=ExamReportHandler)),
     v2(Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler)),
     v2(Route('/reports/{exam_id}/submit', endpoint=ExamReportSubmitHandler)),

@@ -36,6 +36,30 @@ REFUND_THRESHOLD = 500.00
 _BALANCE_EPSILON = 0.005
 
 
+async def drop_charge_stub(conn, report_id, exam_id, accession_number, radiologist_id):
+    """S8-14 charge drop stub — creates placeholder charge record."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ris_charges (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                report_id UUID,
+                exam_id UUID,
+                accession_number TEXT,
+                status TEXT DEFAULT 'pending',
+                amount NUMERIC(12, 2) DEFAULT 0.00,
+                created_by TEXT,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+        await conn.execute("""
+            INSERT INTO ris_charges (report_id, exam_id, accession_number, created_by)
+            VALUES ($1, $2, $3, $4)
+        """, str(report_id), str(exam_id), str(accession_number), str(radiologist_id))
+    except Exception:
+        pass
+
+
+
 def _now():
     return datetime.now(timezone.utc)
 

@@ -318,6 +318,27 @@ class ExamReportSignHandler(HTTPEndpoint):
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
+            # S8-13: ORU^R01 distribution stub — log event and stamp distribution
+            await AuditLog(conn).log_event(
+                event_type='report.oru_distributed',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'accession_number': exam.get('accession_number'),
+                    'message_type': 'ORU^R01',
+                    'status': 'SENT',
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+            # S8-14: Charge drop stub — placeholder ris_charges row
+            from api.billing import drop_charge_stub
+            await drop_charge_stub(
+                conn, report['id'], exam_id,
+                exam.get('accession_number', ''), request.user.id
+            )
             # Notify QA that a report is final and ready for any scheduled
             # peer review (R05 consumes signed reports for quality sampling).
             await notify_role(
@@ -529,8 +550,37 @@ class ReportTemplatesHandler(HTTPEndpoint):
         modality = request.query_params.get('modality')
         async with get_conn() as conn:
             await _seed_report_templates(conn)
-            templates = await ReportTemplates(conn).list_by_modality(modality)
+            from db.ris_templates import RisReportTemplates
+            templates = await RisReportTemplates(conn).list_templates(modality)
         return ok({'data': templates})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        data = await request.json()
+        if not data.get('name') or not data.get('modality'):
+            return validation_error('name and modality are required')
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            tpl = await RisReportTemplates(conn).create_template(data)
+        return created({'data': tpl})
+
+
+class ReportVersionsHandler(HTTPEndpoint):
+    """S8-08 Report version history & diffs."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        report_id = request.path_params['report_id']
+        v1 = request.query_params.get('v1')
+        v2 = request.query_params.get('v2')
+        async with get_conn() as conn:
+            from db.ris_report_versions import RisReportVersions
+            rv = RisReportVersions(conn)
+            if v1 and v2:
+                diff = await rv.get_version_diff(report_id, int(v1), int(v2))
+                return ok({'data': diff})
+            versions = await rv.get_history(report_id)
+        return ok({'data': versions})
 
 
 class PeerReviewReviewersHandler(HTTPEndpoint):
