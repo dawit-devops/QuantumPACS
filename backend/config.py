@@ -34,6 +34,10 @@ default_config = {
     'redis_port': '6379',
     'redis_password': '',
     'db_pool_size': '8',
+    'clinic_timezone': 'UTC',
+    # S10-10/B-6: EMR endpoint for ORU^R01 delivery; empty = no endpoint
+    # reachable, so distribution attempts record FAILED honestly.
+    'distribution_endpoint': '',
     'tenant_default_quota_bytes': '0',
     'sentry_dsn': '',
     'sentry_traces_sample_rate': '1.0',
@@ -79,6 +83,11 @@ default_config = {
     # deployments must use the container DNS http://dcm4chee-arc:8080/dcm4chee-arc).
     'dcm4chee_url': 'http://localhost:8082/dcm4chee-arc',
     'dcm4chee_ae': 'DCM4CHEE',
+    # C-ECHO SCU target (S6-09): connectivity probe fired after an MPPS
+    # COMPLETED. Empty host = no PACS configured, probe is a silent no-op.
+    'pacs_echo_host': '',
+    'pacs_echo_port': '11112',
+    'pacs_echo_ae': 'DCM4CHEE',
     # When true, the /dicomweb/* surface proxies QIDO-RS/WADO-RS/frames/
     # WADO-URI to dcm4chee (archive owns pixels); when false, QuantumPACS
     # serves its own DICOMweb implementation from the files table.

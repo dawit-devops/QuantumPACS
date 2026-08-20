@@ -24,6 +24,8 @@ CLINICAL_EVENT_TYPES = frozenset({
     'share.accessed',
     'annotation.shared',
     'report.ready',
+    'critical.flagged',
+    'critical.escalated',
 })
 
 class NotificationPrefs:
@@ -43,6 +45,10 @@ class NotificationPrefs:
         'exam.assigned',
         'report.returned',
         'report.signed',
+        # S10: critical-results lifecycle — the bell must be able to carry
+        # these, and the preference page must be able to toggle them (H11).
+        'critical.flagged',
+        'critical.escalated',
     })
     def __init__(self, conn=None):
         self.conn = conn

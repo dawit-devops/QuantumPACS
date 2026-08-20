@@ -150,6 +150,8 @@ def create_token(user, expire=None, role=None, permissions=None, token_version=N
         'id': user['id'],
         'admin': user['admin'],
     }
+    if user.get('username'):
+        payload['username'] = user['username']
     if role is not None:
         payload['role'] = role
     if permissions is not None:

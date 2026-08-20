@@ -143,6 +143,7 @@ export default function BookingFormModal({
           Search order or enter patient
         </div>
         <Input.Search
+          aria-label="Search order"
           placeholder="Search order (name, MRN or accession)"
           value={orderSearch}
           onChange={(e) => setOrderSearch(e.target.value)}
@@ -161,8 +162,10 @@ export default function BookingFormModal({
             }}
             role="button"
             tabIndex={0}
+            aria-label={`Select order ${o.patient_name || o.patient_id}`}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
                 setPickedOrder(o);
                 setPatientId(o.patient_id);
               }
@@ -179,6 +182,7 @@ export default function BookingFormModal({
           </div>
         ))}
         <Input
+          aria-label="Patient ID"
           placeholder="Or patient ID directly (no order)"
           value={patientId}
           onChange={(e) => {
@@ -188,6 +192,7 @@ export default function BookingFormModal({
           style={{ marginTop: 8 }}
         />
         <Input
+          aria-label="Reason"
           placeholder="Reason (optional)"
           value={reason}
           onChange={(e) => setReason(e.target.value)}

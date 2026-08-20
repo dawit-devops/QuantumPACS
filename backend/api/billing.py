@@ -51,9 +51,16 @@ async def drop_charge_stub(conn, report_id, exam_id, accession_number, radiologi
                 created_at TIMESTAMPTZ DEFAULT now()
             )
         """)
+        # V-3: idempotent — a report signed twice (or co-signed) must not
+        # insert a second charge row. The NOT EXISTS guard makes the
+        # INSERT a no-op for an already-charged report instead of relying
+        # on a unique constraint the inline schema never declared.
         await conn.execute("""
             INSERT INTO ris_charges (report_id, exam_id, accession_number, created_by)
-            VALUES ($1, $2, $3, $4)
+            SELECT $1, $2, $3, $4
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ris_charges WHERE report_id = $1
+            )
         """, str(report_id), str(exam_id), str(accession_number), str(radiologist_id))
     except Exception:
         pass

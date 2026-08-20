@@ -3,6 +3,8 @@
 Resource type and schedule literals mirror the DB CHECK constraints so a
 schema validation error surfaces before a DB constraint violation.
 """
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 RESOURCE_TYPES = ('ROOM', 'MODALITY', 'TECH')
@@ -37,12 +39,31 @@ class CreateScheduleRequest(BaseModel):
 
 class CreateAppointmentRequest(BaseModel):
     order_id: str = Field(default='', max_length=64)
-    resource_id: str
+    resource_id: str = Field(..., min_length=1, max_length=64)
     patient_id: str = Field(..., min_length=1, max_length=128)
     start_time: str
     end_time: str
     reason: str = Field('', max_length=500)
     override_reason: str = Field('', max_length=500)
+
+    @field_validator('start_time', 'end_time')
+    @classmethod
+    def _valid_datetime(cls, v):
+        # B-8: reject malformed datetimes at the schema boundary so the
+        # engine/API never see a 500-worthy string.
+        try:
+            datetime.fromisoformat(str(v).replace('Z', '+00:00'))
+        except ValueError as exc:
+            raise ValueError(f'Invalid datetime {v!r}: expected ISO 8601') from exc
+        return v
+
+    @model_validator(mode='after')
+    def _end_after_start(self):
+        start = datetime.fromisoformat(str(self.start_time).replace('Z', '+00:00'))
+        end = datetime.fromisoformat(str(self.end_time).replace('Z', '+00:00'))
+        if end <= start:
+            raise ValueError('end_time must be after start_time')
+        return self
 
 
 class RescheduleRequest(BaseModel):
@@ -50,9 +71,21 @@ class RescheduleRequest(BaseModel):
     new_end_time: str
     reason: str = Field('', max_length=500)
 
+    @field_validator('new_start_time', 'new_end_time')
+    @classmethod
+    def _valid_datetime(cls, v):
+        try:
+            datetime.fromisoformat(str(v).replace('Z', '+00:00'))
+        except ValueError as exc:
+            raise ValueError(f'Invalid datetime {v!r}: expected ISO 8601') from exc
+        return v
+
     @model_validator(mode='after')
     def _end_after_start(self):
-        if self.new_end_time <= self.new_start_time:
+        # Real datetime comparison — string ordering breaks across timezones.
+        start = datetime.fromisoformat(str(self.new_start_time).replace('Z', '+00:00'))
+        end = datetime.fromisoformat(str(self.new_end_time).replace('Z', '+00:00'))
+        if end <= start:
             raise ValueError('new_end_time must be after new_start_time')
         return self
 

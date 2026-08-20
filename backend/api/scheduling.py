@@ -8,12 +8,15 @@ SCHEDULE_WRITE.
 """
 from datetime import date, datetime, time, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
+
+from config import config as _config
 
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import api_error, created, ok
+from api.response import api_error, created, not_found, ok
 from api.schemas.ris_scheduling import (
     CancelRequest, CreateAppointmentRequest, CreateResourceRequest,
     CreateScheduleRequest, RescheduleRequest,
@@ -22,7 +25,10 @@ from api.validate import parse_body
 from db.conn import get_conn
 from db.ris_appointments import RisAppointments
 from db.ris_resources import RisResourceSchedules, RisResources
-from services.scheduling.engine import SchedulingConflict, SchedulingEngine
+from services.scheduling.engine import (
+    SchedulingConflict, SchedulingEngine, SchedulingNotFound,
+    SchedulingValidation,
+)
 
 
 def _row_dict(row):
@@ -116,7 +122,11 @@ class RisAppointmentsHandler(HTTPEndpoint):
             day_parsed = date.fromisoformat(day)
         except ValueError:
             return api_error('VALIDATION', f'Invalid date format: {day}', status=422)
-        day_start = datetime.combine(day_parsed, time.min).replace(tzinfo=None)
+        # B-10: the day window must be interpreted in the clinic's
+        # configured timezone — a naive UTC window shows a UTC+8 clinic
+        # its slots on the wrong calendar day.
+        tz = ZoneInfo(_config.get('clinic_timezone', 'UTC'))
+        day_start = datetime.combine(day_parsed, time.min, tzinfo=tz)
         day_end = day_start + timedelta(days=1)
         async with get_conn() as conn:
             rows = await RisAppointments(conn).for_resource(
@@ -130,7 +140,9 @@ class RisAppointmentsHandler(HTTPEndpoint):
         # a conflict instead of silently overriding with an empty audit reason.
         override_reason = (body.override_reason or '').strip()
         try:
-            row = await SchedulingEngine().book(
+            # H1: audit attribution — the engine's actor_id seeds created_by
+            # and every APPOINTMENT_* audit event; it must be the real user.
+            row = await SchedulingEngine(actor_id=request.user.id).book(
                 order_id=body.order_id,
                 patient_id=body.patient_id,
                 resource_id=body.resource_id,
@@ -144,6 +156,10 @@ class RisAppointmentsHandler(HTTPEndpoint):
             # business outcomes, not server faults — the calendar must get a
             # 409 it can surface and refresh against (mirrors frontdesk.py).
             return api_error('SLOT_CONFLICT', str(exc), status=409)
+        except SchedulingNotFound as exc:
+            return not_found(str(exc))
+        except SchedulingValidation as exc:
+            return api_error('VALIDATION', str(exc), status=422)
         return created({'data': _row_dict(row)})
 
 
@@ -152,7 +168,7 @@ class RisAppointmentRescheduleHandler(HTTPEndpoint):
     async def post(self, request):
         body = await parse_body(RescheduleRequest, request)
         try:
-            row = await SchedulingEngine().reschedule(
+            row = await SchedulingEngine(actor_id=request.user.id).reschedule(
                 appointment_id=request.path_params['id'],
                 new_start_time=body.new_start_time,
                 new_end_time=body.new_end_time,
@@ -160,6 +176,10 @@ class RisAppointmentRescheduleHandler(HTTPEndpoint):
             )
         except SchedulingConflict as exc:
             return api_error('SLOT_CONFLICT', str(exc), status=409)
+        except SchedulingNotFound as exc:
+            return not_found(str(exc))
+        except SchedulingValidation as exc:
+            return api_error('VALIDATION', str(exc), status=422)
         return ok({'data': _row_dict(row)})
 
 
@@ -167,8 +187,12 @@ class RisAppointmentCancelHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_WRITE)
     async def post(self, request):
         body = await parse_body(CancelRequest, request)
-        row = await SchedulingEngine().cancel(
-            appointment_id=request.path_params['id'],
-            reason=body.reason,
-        )
+        # H1: audit attribution on cancellation too.
+        try:
+            row = await SchedulingEngine(actor_id=request.user.id).cancel(
+                appointment_id=request.path_params['id'],
+                reason=body.reason,
+            )
+        except SchedulingNotFound as exc:
+            return not_found(str(exc))
         return ok({'data': _row_dict(row)})

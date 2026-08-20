@@ -47,6 +47,7 @@ def _fake_conn_factory(rows=None, fetchrow_result=None, fetchval_result=None):
     conn.fetchrow = AsyncMock(return_value=fetchrow_result)
     conn.fetchval = AsyncMock(return_value=fetchval_result)
     conn.execute = AsyncMock()
+    conn.transaction = MagicMock(return_value=AsyncMock())
     return conn
 
 
@@ -186,6 +187,94 @@ class TestMppsConsumer:
         assert any('cancelled' in c for c in calls)
 
     @pytest.mark.asyncio
+    async def test_n_create_audits_audit_log_event(self):
+        """H7: N-CREATE writes an audit_log entry (worklist_entry timeline)."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC110', mpps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-9', 'accession_number': 'ACC110',
+                             'status': 'scheduled'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            await consumer.handle_n_create(event)
+
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any("INSERT INTO logs" in c and 'MPPS' in c and 'wl-9' in c
+                   for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_n_set_audits_audit_log_event(self):
+        """H7: N-SET writes an audit_log entry (worklist_entry timeline)."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC210', mpps_status='COMPLETED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-10', 'accession_number': 'ACC210',
+                             'status': 'in_progress'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            await consumer.handle_n_set(event)
+
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any("INSERT INTO logs" in c and 'MPPS' in c and 'wl-10' in c
+                   for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_mpps_processing_latency_histogram_observed(self):
+        """H8: each processed MPPS message records ris_mpps_latency_seconds."""
+        from prometheus_client.registry import REGISTRY
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC120', mpps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-12', 'accession_number': 'ACC120',
+                             'status': 'scheduled'},
+        )
+        count_before = REGISTRY.get_sample_value(
+            'ris_mpps_latency_seconds_count', {'event_type': 'N_CREATE'}) or 0.0
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            await MppsConsumer().handle_n_create(event)
+        after = REGISTRY.get_sample_value(
+            'ris_mpps_latency_seconds_count', {'event_type': 'N_CREATE'}) or 0.0
+        assert after == count_before + 1
+
+    @pytest.mark.asyncio
+    async def test_n_set_completed_echoes_pacs(self):
+        """H8: a completed exam triggers the C-ECHO SCU stub to the PACS."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC220', mpps_status='COMPLETED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-13', 'accession_number': 'ACC220',
+                             'status': 'in_progress'},
+        )
+        echo = AsyncMock(return_value=True)
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn), \
+             patch('services.mpps_consumer.service.echo_to_pacs', echo):
+            result = await MppsConsumer().handle_n_set(event)
+        assert result is True
+        echo.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_n_set_discontinued_does_not_echo(self):
+        """H8: only COMPLETED exams probe PACS connectivity."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC320', mpps_status='DISCONTINUED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-14', 'accession_number': 'ACC320',
+                             'status': 'in_progress'},
+        )
+        echo = AsyncMock(return_value=True)
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn), \
+             patch('services.mpps_consumer.service.echo_to_pacs', echo):
+            await MppsConsumer().handle_n_set(event)
+        echo.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_n_create_unknown_accession_returns_false(self):
         """N-CREATE with unknown accession returns False (no worklist match)."""
         from services.mpps_consumer.service import MppsConsumer
@@ -216,6 +305,91 @@ class TestMppsConsumer:
 # S6-12: MPPS → exam status linkage tests
 # ---------------------------------------------------------------------------
 
+
+class TestMppsConsumerAtomicity:
+    """M-2/M-3: multi-write sequences must be atomic;
+    N-CREATE must never regress a terminal entry."""
+
+    @pytest.mark.asyncio
+    async def test_n_create_wraps_writes_in_transaction(self):
+        """M-2: N-CREATE's multi-write sequence (worklist + exam + event
+        + audit) must be atomic — a mid-sequence failure must not leave
+        half-applied state."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC130', mpps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-13', 'accession_number': 'ACC130',
+                             'status': 'scheduled'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            await consumer.handle_n_create(event)
+
+        conn.transaction.assert_called_once()
+        conn.transaction.return_value.__aenter__.assert_awaited_once()
+        conn.transaction.return_value.__aexit__.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_n_set_wraps_writes_in_transaction(self):
+        """M-2: N-SET's multi-write sequence must be atomic too."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC230', mpps_status='COMPLETED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-23', 'accession_number': 'ACC230',
+                             'status': 'in_progress'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            await consumer.handle_n_set(event)
+
+        conn.transaction.assert_called_once()
+        conn.transaction.return_value.__aenter__.assert_awaited_once()
+        conn.transaction.return_value.__aexit__.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_n_create_does_not_regress_performed_entry(self):
+        """M-3: a late/repeated N-CREATE must not regress a performed
+        entry back to in_progress — the message is still audited."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC140', mpps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-14', 'accession_number': 'ACC140',
+                             'status': 'performed'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_create(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert not any("UPDATE worklist_entries" in c and 'in_progress' in c
+                       for c in calls)
+        assert any('ris_mpps_events' in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_n_create_does_not_regress_cancelled_entry(self):
+        """M-3: same guard for cancelled entries."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC150', mpps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-15', 'accession_number': 'ACC150',
+                             'status': 'cancelled'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_create(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert not any("UPDATE worklist_entries" in c and 'in_progress' in c
+                       for c in calls)
+        assert any('ris_mpps_events' in c for c in calls)
+
+
 class TestMppsExamLinkage:
     """S6-12: MPPS events drive exam status transitions."""
 
@@ -236,6 +410,7 @@ class TestMppsExamLinkage:
         conn.__aexit__ = AsyncMock(return_value=None)
         conn.fetchrow = AsyncMock(side_effect=[wl_row, exam_row])
         conn.execute = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
 
         consumer = MppsConsumer()
         with patch('services.mpps_consumer.service.get_conn',
@@ -261,6 +436,7 @@ class TestMppsExamLinkage:
         conn.__aexit__ = AsyncMock(return_value=None)
         conn.fetchrow = AsyncMock(side_effect=[wl_row, exam_row])
         conn.execute = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
 
         consumer = MppsConsumer()
         with patch('services.mpps_consumer.service.get_conn',
@@ -284,6 +460,7 @@ class TestMppsExamLinkage:
         # First call returns worklist row, second returns None (no exam)
         conn.fetchrow = AsyncMock(side_effect=[wl_row, None])
         conn.execute = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
 
         consumer = MppsConsumer()
         with patch('services.mpps_consumer.service.get_conn',
@@ -296,9 +473,10 @@ class TestMppsExamLinkage:
         assert any('worklist_entries' in c for c in calls)
 
 
-# ---------------------------------------------------------------------------
-# S6-07: DICOM handler wiring tests
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # S6-07: DICOM handler wiring tests
+    # ---------------------------------------------------------------------------
+
 
 class TestMppsHandlersWired:
     """S6-07: MPPS N-CREATE/N-SET handlers are registered in dcm/server.py."""
@@ -341,3 +519,117 @@ class TestMppsLifecycleWiring:
         mwl = config.get('dicom_mwl_port', '11113')
         assert default_port != cstore
         assert default_port != mwl
+
+
+    # ---------------------------------------------------------------------------
+    # CR-2: MPPS status must come from PerformedProcedureStepSequence
+    # ---------------------------------------------------------------------------
+
+class TestMppsPerformedProcedureStepStatus:
+    """CR-2: N-CREATE/N-SET must read (0040,0252) PerformedProcedureStepStatus.
+
+    A conformant MPPS message carries the status in
+    PerformedProcedureStepSequence[0].PerformedProcedureStepStatus, not in
+    ScheduledProcedureStepSequence[0].ScheduledProcedureStepStatus. The
+    original implementation read the SPS element, so a COMPLETED N-SET was
+    mapped to `in_progress` (or left as the 'IN_PROGRESS' echo) instead of
+    `performed`.
+    """
+
+    def _fake_pps_event(self, accession='ACC-PPS-01', pps_status='COMPLETED',
+                        sps_status='IN_PROGRESS', study_uid='1.2.3.4.6',
+                        station_ae='CT01'):
+        """Conformant event: status lives in the PPS sequence."""
+        from pydicom.dataset import Dataset
+        ds = Dataset()
+        ds.AccessionNumber = accession
+        ds.StudyInstanceUID = study_uid
+        ds.ScheduledProcedureStepSequence = [Dataset()]
+        ds.ScheduledProcedureStepSequence[0].Modality = 'CT'
+        ds.ScheduledProcedureStepSequence[0].ScheduledStationAETitle = station_ae
+        ds.ScheduledProcedureStepSequence[0].ScheduledProcedureStepStatus = sps_status
+        # (0040,0270) performed-step block: pydicom stores it under the
+        # retired keyword ScheduledStepAttributesSequence — build by tag.
+        ds.add_new((0x0040, 0x0270), 'SQ', [Dataset()])
+        pps_item = ds.get_item((0x0040, 0x0270))
+        pps_item.value[0].Modality = 'CT'
+        pps_item.value[0].PerformedProcedureStepStatus = pps_status
+
+        event = MagicMock()
+        event.identifier = ds
+        event.assoc = MagicMock()
+        event.assoc.requestor = MagicMock()
+        event.assoc.requestor.ae_title = station_ae
+        return event
+
+    @pytest.mark.asyncio
+    async def test_n_set_completed_reads_pps_status(self):
+        """N-SET COMPLETED in PPS (SPS echoes IN_PROGRESS) → worklist performed."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = self._fake_pps_event(accession='ACC-PPS-01', pps_status='COMPLETED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-pps1', 'accession_number': 'ACC-PPS-01',
+                             'status': 'in_progress'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_set(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any('performed' in c for c in calls), calls
+
+    @pytest.mark.asyncio
+    async def test_n_create_in_progress_reads_pps_status(self):
+        """N-CREATE IN_PROGRESS in PPS (SPS absent) → worklist in_progress."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = self._fake_pps_event(accession='ACC-PPS-02', pps_status='IN_PROGRESS')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-pps2', 'accession_number': 'ACC-PPS-02',
+                             'status': 'scheduled'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_create(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any('in_progress' in c for c in calls), calls
+
+    @pytest.mark.asyncio
+    async def test_n_set_discontinued_reads_pps_status(self):
+        """N-SET DISCONTINUED in PPS → worklist cancelled."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = self._fake_pps_event(accession='ACC-PPS-03', pps_status='DISCONTINUED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-pps3', 'accession_number': 'ACC-PPS-03',
+                             'status': 'in_progress'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_set(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any('cancelled' in c for c in calls), calls
+
+    @pytest.mark.asyncio
+    async def test_sps_only_dataset_falls_back_to_sps_status(self):
+        """Legacy/non-conformant dataset with only SPS still works."""
+        from services.mpps_consumer.service import MppsConsumer
+        event = _fake_event(accession='ACC-PPS-04', mpps_status='COMPLETED')
+        conn = _fake_conn_factory(
+            fetchrow_result={'id': 'wl-pps4', 'accession_number': 'ACC-PPS-04',
+                             'status': 'in_progress'},
+        )
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                    return_value=conn):
+            result = await consumer.handle_n_set(event)
+
+        assert result is True
+        calls = [str(c) for c in conn.execute.await_args_list]
+        assert any('performed' in c for c in calls), calls

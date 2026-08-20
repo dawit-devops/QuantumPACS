@@ -1,5 +1,5 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   App,
   Layout,
@@ -12,19 +12,16 @@ import {
   Popconfirm,
   Badge,
   Space,
-  Statistic,
-  Row,
-  Col,
   Modal,
   Descriptions,
 } from "antd";
 import {
-  ReloadOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   ArrowRightOutlined,
+  AlertOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { useAuth } from "../auth/AuthContext";
@@ -36,29 +33,15 @@ import {
   type TrackingKpi,
 } from "../api/tracking";
 import { PageState } from "../common/PageState";
+import { TRACKING_STATUS_COLORS, TRACKING_PRIORITY_COLORS } from "../common/statusColors";
+import KpiStrip from "./KpiStrip";
 import "./TrackingBoard.css";
 
 const { Content } = Layout;
 
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: "blue",
-  arrived: "cyan",
-  in_progress: "orange",
-  completed: "green",
-  cancelled: "red",
-};
+const STATUS_COLORS = TRACKING_STATUS_COLORS;
 
-const PRIORITY_COLORS: Record<string, string> = {
-  STAT: "red",
-  S: "red",
-  A: "orange",
-  ASAP: "orange",
-  U: "orange",
-  URGENT: "orange",
-  T: "orange",
-  R: "default",
-  ROUTINE: "default",
-};
+const PRIORITY_COLORS = TRACKING_PRIORITY_COLORS;
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   scheduled: ["arrived", "cancelled"],
@@ -83,11 +66,19 @@ function TrackingBoard() {
     total: 0,
   });
   const [kpi, setKpi] = useState<TrackingKpi | null>(null);
+  const [kpiError, setKpiError] = useState<string | null>(null);
   const [modalityFilter, setModalityFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [detailModal, setDetailModal] = useState<TrackingEntry | null>(null);
+  // M-1: staleness guard — last successful fetch time so operators can see
+  // when the board data was actually retrieved.
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // M-2: keep the user's page across auto-refresh (30s) so the board does not
+  // silently jump back to page 1 while they review a later page.
+  const pageRef = useRef(1);
+  const pageSizeRef = useRef(20);
 
   // Debounce search
   useEffect(() => {
@@ -109,8 +100,11 @@ function TrackingBoard() {
 
   const fetchKpi = useCallback(() => {
     getTrackingKpi()
-      .then((res) => setKpi(res))
-      .catch(() => {});
+      .then((res) => {
+        setKpi(res);
+        setKpiError(null);
+      })
+      .catch(() => setKpiError("KPI unavailable"));
   }, []);
 
   const fetch = useCallback(
@@ -118,17 +112,23 @@ function TrackingBoard() {
       setLoading(true);
       setError(null);
       const query = buildQuery();
-      if (params?.page) query.page = String(params.page);
-      if (params?.per_page) query.per_page = String(params.per_page);
+      const page = params?.page ?? pageRef.current;
+      const perPage = params?.per_page ?? pageSizeRef.current;
+      if (page) query.page = String(page);
+      if (perPage) query.per_page = String(perPage);
       listTracking(query)
         .then((res: any) => {
           setLoading(false);
           setData(Array.isArray(res.data) ? res.data : []);
+          pageRef.current = res.page || page;
+          pageSizeRef.current = res.per_page || perPage;
           setPagination((prev: any) => ({
             ...prev,
             total: res.total || 0,
             current: res.page || prev.current,
+            pageSize: res.per_page || prev.pageSize,
           }));
+          setLastUpdated(new Date());
         })
         .catch((e: any) => {
           setLoading(false);
@@ -226,6 +226,20 @@ function TrackingBoard() {
           return <Badge count={v} style={{ backgroundColor: color === "red" ? "#ff4d4f" : color === "orange" ? "#fa8c16" : "#d9d9d9", color: "#fff" }} />;
         },
       },
+      {
+        // S6-21: critical-result badge — persists until the finding is
+        // acknowledged (backend surfaces has_critical from ris_critical_results).
+        title: "Critical",
+        dataIndex: "has_critical",
+        key: "has_critical",
+        width: "7%",
+        render: (v: boolean | undefined) =>
+          v ? (
+            <Tag color="red" icon={<AlertOutlined />}>
+              CRITICAL
+            </Tag>
+          ) : null,
+      },
       ...(canWrite
         ? [
             {
@@ -241,6 +255,7 @@ function TrackingBoard() {
                       <Tooltip title="Check In">
                         <Button
                           size="small"
+                          aria-label="Check In"
                           icon={<CheckCircleOutlined />}
                           onClick={() => handleStatusUpdate(record, "arrived")}
                         />
@@ -251,6 +266,7 @@ function TrackingBoard() {
                         <Button
                           size="small"
                           type="primary"
+                          aria-label="Start Exam"
                           icon={<ArrowRightOutlined />}
                           onClick={() =>
                             handleStatusUpdate(record, "in_progress")
@@ -262,6 +278,7 @@ function TrackingBoard() {
                       <Tooltip title="Complete">
                         <Button
                           size="small"
+                          aria-label="Complete"
                           style={{ color: "#52c41a", borderColor: "#52c41a" }}
                           icon={<CheckCircleOutlined />}
                           onClick={() =>
@@ -280,6 +297,7 @@ function TrackingBoard() {
                         <Tooltip title="Cancel">
                           <Button
                             size="small"
+                            aria-label="Cancel"
                             danger
                             icon={<CloseCircleOutlined />}
                           />
@@ -298,54 +316,15 @@ function TrackingBoard() {
 
   return (
     <Content style={{ padding: 24 }} role="main">
-      {/* KPI Strip */}
-      {kpi && (
-        <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col span={4}>
-            <Statistic title="Today's Volume" value={kpi.volume} />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="In Progress"
-              value={kpi.in_progress}
-              valueStyle={{ color: "#fa8c16" }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="Awaiting Read"
-              value={kpi.awaiting_read}
-              valueStyle={{ color: "#1890ff" }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="Overdue"
-              value={kpi.overdue}
-              valueStyle={{ color: kpi.overdue > 0 ? "#ff4d4f" : undefined }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="STAT Queue"
-              value={kpi.stat_count}
-              valueStyle={{ color: kpi.stat_count > 0 ? "#ff4d4f" : undefined }}
-            />
-          </Col>
-          <Col span={4}>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => {
-                fetch();
-                fetchKpi();
-              }}
-              style={{ marginTop: 24 }}
-            >
-              Refresh
-            </Button>
-          </Col>
-        </Row>
-      )}
+      <KpiStrip
+        kpi={kpi}
+        kpiError={kpiError}
+        lastUpdated={lastUpdated}
+        onRefresh={() => {
+          fetch();
+          fetchKpi();
+        }}
+      />
 
       {/* Filters */}
       <Space style={{ marginBottom: 16 }} wrap>
@@ -363,6 +342,7 @@ function TrackingBoard() {
           value={modalityFilter}
           onChange={(v) => {
             setModalityFilter(v);
+            pageRef.current = 1;
             setPagination((p: any) => ({ ...p, current: 1 }));
           }}
           style={{ width: 120 }}
@@ -384,6 +364,7 @@ function TrackingBoard() {
           value={statusFilter}
           onChange={(v) => {
             setStatusFilter(v);
+            pageRef.current = 1;
             setPagination((p: any) => ({ ...p, current: 1 }));
           }}
           style={{ width: 140 }}
@@ -415,6 +396,8 @@ function TrackingBoard() {
             showTotal: (total: number) => `${total} exams`,
           }}
           onChange={(pag: any) => {
+            pageRef.current = pag.current || 1;
+            pageSizeRef.current = pag.pageSize || 20;
             setPagination(pag);
             fetch({ page: pag.current, per_page: pag.pageSize });
           }}

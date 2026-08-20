@@ -15,13 +15,14 @@ import {
   Alert,
   Popconfirm,
 } from "antd";
-import dayjs from "dayjs";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 import { listAppointments, cancelAppointment, type Appointment } from "../api/frontdesk";
 import { useAuth } from "../auth/AuthContext";
 import withSidebar from "../common/base";
+import { SCHEDULE_BOARD_STATUS_COLORS, SCHEDULE_BOARD_BOARD_STATUS_COLORS } from "../common/statusColors";
 import { MODALITIES } from "../common/modalities";
+import { dayjs } from "./time";
 import AppointmentBooking from "../frontdesk/AppointmentBooking";
 import ScheduleDayNav from "./ScheduleDayNav";
 import { buildSlots, slotIndexForClamped, type Window } from "./boardSlots";
@@ -43,17 +44,9 @@ const DEFAULT_MODALITIES = MODALITIES.filter((m) =>
 // ScheduleBoard uses the legacy 08:00–18:00 window (FR-R04-01).
 const BOARD_WINDOW: Window = { start: 8, end: 18 };
 
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: "blue",
-  performed: "green",
-  cancelled: "red",
-};
+const STATUS_COLORS = SCHEDULE_BOARD_STATUS_COLORS;
 
-const BOARD_STATUS_COLORS: Record<string, string> = {
-  scheduled: "var(--color-primary)",
-  performed: "var(--color-success)",
-  cancelled: "var(--color-error)",
-};
+const BOARD_STATUS_COLORS = SCHEDULE_BOARD_BOARD_STATUS_COLORS;
 
 function ScheduleBoard() {
   useDocumentTitle("QuantumPACS - Schedule Board");
@@ -61,7 +54,7 @@ function ScheduleBoard() {
   const { hasPermission } = useAuth();
   const canBook = hasPermission("SCHEDULE_WRITE");
 
-  const [day, setDay] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
+  const [day, setDay] = useState<string>(() => dayjs.utc().format("YYYY-MM-DD"));
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,7 +161,7 @@ function ScheduleBoard() {
   }, [data]);
 
   const changeDay = (delta: number) => {
-    setDay((prev) => dayjs(prev).add(delta, "day").format("YYYY-MM-DD"));
+    setDay((prev) => dayjs.utc(prev).add(delta, "day").format("YYYY-MM-DD"));
     setSelectedEntry(null);
   };
 
@@ -203,7 +196,7 @@ function ScheduleBoard() {
           )}
           <ScheduleDayNav
             onDayChange={changeDay}
-            onToday={() => setDay(dayjs().format("YYYY-MM-DD"))}
+            onToday={() => setDay(dayjs.utc().format("YYYY-MM-DD"))}
           />
         </div>
       </div>

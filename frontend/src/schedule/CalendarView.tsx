@@ -2,12 +2,13 @@ import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
 import { App, Button, Drawer, Empty, Spin, Tag, Alert } from "antd";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { buildSlots, slotIndexFor, slotSpanFor, SLOT_MINUTES, type Window } from "./boardSlots";
-import { dayjs, slotToIso } from "./time";
+import { type Window } from "./boardSlots";
+import { dayjs } from "./time";
 import BookingFormModal from "./BookingFormModal";
 import ScheduleDayNav from "./ScheduleDayNav";
 import CancelModal from "./CancelModal";
 import RescheduleModal from "./RescheduleModal";
+import CalendarGrid, { statusLabel } from "./CalendarGrid";
 import {
   listRisResources,
   listResourceAppointments,
@@ -20,15 +21,10 @@ import { useAuth } from "../auth/AuthContext";
 import withSidebar from "../common/base";
 import { toErrorMessage } from "../common/errors";
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
+import { SCHEDULE_CALENDAR_STATUS_COLORS } from "../common/statusColors";
 import "./schedule.css";
 
-const STATUS_COLORS: Record<string, string> = {
-  SCHEDULED: "blue",
-  ARRIVED: "orange",
-  IN_PROGRESS: "cyan",
-  COMPLETED: "green",
-  CANCELLED: "red",
-};
+const STATUS_COLORS = SCHEDULE_CALENDAR_STATUS_COLORS;
 
 // CalendarView uses the 07:00–19:00 window (default) — out-of-window
 // times return null so the row simply doesn't render.
@@ -124,42 +120,6 @@ function CalendarView() {
     setCancelFor(null);
   };
 
-  const slots = useMemo(() => buildSlots(BOARD_WINDOW), []);
-
-  // appointment blocks bucketed by resource|slotIndex — each appointment is
-  // registered on every row it spans so covered cells read as busy.
-  const blocksByResourceSlot = useMemo(() => {
-    const map: Record<string, RisAppointment[]> = {};
-    for (const r of resources) {
-      for (const a of appointments[r.id] ?? []) {
-        const si = slotIndexFor(dayjs.utc(a.start_time).format("HH:mm"));
-        if (si === null) continue;
-        const span = slotSpanFor(a);
-        for (let k = 0; k < span; k++) {
-          const key = `${r.id}|${si + k}`;
-          if (!map[key]) map[key] = [];
-          map[key].push(a);
-        }
-      }
-    }
-    return map;
-  }, [resources, appointments]);
-
-  // free-slot lookup by resource|slotIndex (skip slots covered by a booking)
-  const slotByResourceSlot = useMemo(() => {
-    const map: Record<string, ResourceAvailabilitySlot> = {};
-    for (const r of resources) {
-      for (const s of freeSlots[r.id] ?? []) {
-        const si = slotIndexFor(s.start);
-        if (si === null) continue;
-        const key = `${r.id}|${si}`;
-        const booked = blocksByResourceSlot[key]?.length ?? 0;
-        if (booked === 0) map[key] = s;
-      }
-    }
-    return map;
-  }, [resources, freeSlots, blocksByResourceSlot]);
-
   const openBooking = (resource: RisResource, slot: ResourceAvailabilitySlot) =>
     setBookFor({ resource, slot });
 
@@ -228,100 +188,19 @@ function CalendarView() {
       ) : resources.length === 0 ? (
         <Empty description="No resources configured — add them from the Resources page." />
       ) : (
-        <div className="sched-calendar-scroll">
-          <div
-            className="sched-grid"
-            role="grid"
-            aria-label={`Schedule grid for ${day}`}
-            style={{
-              gridTemplateColumns: `90px repeat(${resources.length}, minmax(160px, 1fr))`,
-            }}
-          >
-            <div className="sched-corner" role="columnheader">
-              Time
-            </div>
-            {resources.map((r) => (
-              <div key={r.id} className="sched-resource-header" role="columnheader">
-                {r.name}
-                <span className="sched-resource-sub">
-                  {r.resource_type}
-                  {r.modality ? ` · ${r.modality}` : ""}
-                </span>
-              </div>
-            ))}
-
-            {slots.map((slot, si) => (
-              <React.Fragment key={slot}>
-                <div className={`sched-time-col ${si % 2 === 1 ? "is-half" : ""}`} role="rowheader">
-                  {si % 2 === 0 ? slot : ""}
-                </div>
-                {resources.map((r) => {
-                  const cellKey = `${r.id}|${si}`;
-                  const blocks = blocksByResourceSlot[cellKey] ?? [];
-                  const free = slotByResourceSlot[cellKey];
-                  const isBooked = blocks.length > 0;
-                  return (
-                    <div
-                      key={r.id}
-                      className={`sched-cell ${isBooked ? "is-full" : ""}`}
-                      role={free && canWrite ? "button" : "gridcell"}
-                      tabIndex={free && canWrite ? 0 : undefined}
-                      onClick={() => {
-                        if (free && canWrite) {
-                          openBooking(r, free);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if ((e.key === "Enter" || e.key === " ") && free && canWrite) {
-                          e.preventDefault();
-                          openBooking(r, free);
-                        }
-                      }}
-                      aria-label={`${r.name} ${slot}${isBooked ? " (booked)" : free ? " (free)" : " (closed)"}`}
-                    >
-                      {blocks.map((a) => {
-                        const startSi = slotIndexFor(dayjs.utc(a.start_time).format("HH:mm"));
-                        const span = slotSpanFor(a);
-                        // Render the visible block only on the appointment's
-                        // start row; later rows in the span just stay "busy".
-                        if (startSi !== si) return null;
-                        return (
-                          <div
-                            key={a.id}
-                            className={`sched-block ${statusLabel(a.status).toLowerCase()}`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelected(a);
-                              setDetailResource(r);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setSelected(a);
-                                setDetailResource(r);
-                              }
-                            }}
-                          >
-                            <span className="sched-block-title">{a.patient_id}</span>
-                            <span className="sched-block-meta">
-                              <span>{dayjs.utc(a.start_time).format("HH:mm")}</span>
-                              <Tag color={STATUS_COLORS[statusLabel(a.status)]}>
-                                {statusLabel(a.status)}
-                              </Tag>
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
+        <CalendarGrid
+          day={day}
+          window={BOARD_WINDOW}
+          resources={resources}
+          appointments={appointments}
+          freeSlots={freeSlots}
+          canWrite={canWrite}
+          onOpenBooking={openBooking}
+          onSelectAppointment={(a, r) => {
+            setSelected(a);
+            setDetailResource(r);
+          }}
+        />
       )}
 
       <BookingFormModal

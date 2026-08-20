@@ -70,6 +70,13 @@ class RisOrdersHandler(HTTPEndpoint):
         except ValueError:
             return api_error('VALIDATION', 'page/per_page must be integers', status=422)
         offset = (page - 1) * per_page
+        # S-4: the referring-MD view is identity-scoped. A physician caller
+        # sees only orders attributed to their own identity (username) —
+        # the free-text probe is ignored, so one MD cannot enumerate
+        # another's orders by name. Staff keep the probe (their workflow).
+        referring_md = params.get('referring_md') or None
+        if request.user.role_slug == 'physician':
+            referring_md = request.user.username or None
         async with get_conn() as conn:
             repo = RisOrders(conn)
             rows = await repo.list(
@@ -77,7 +84,7 @@ class RisOrdersHandler(HTTPEndpoint):
                 status=params.get('status') or None,
                 patient_id=params.get('patient_id') or None,
                 search=params.get('search') or None,
-                referring_md=params.get('referring_md') or None,
+                referring_md=referring_md,
                 date_from=params.get('date_from') or None,
                 date_to=params.get('date_to') or None,
             )
@@ -85,7 +92,7 @@ class RisOrdersHandler(HTTPEndpoint):
                 status=params.get('status') or None,
                 patient_id=params.get('patient_id') or None,
                 search=params.get('search') or None,
-                referring_md=params.get('referring_md') or None,
+                referring_md=referring_md,
                 date_from=params.get('date_from') or None,
                 date_to=params.get('date_to') or None,
             ) or 0
@@ -127,11 +134,16 @@ class RisOrderHistoryHandler(HTTPEndpoint):
                 resource_id=order_id, limit=200)
         events = []
         for r in reversed(rows):
+            # B-3: expose the structured audit detail (from/to/reason,
+            # overrode lists, slot) — the UI renders these fields; a
+            # stringified description loses the shape.
             events.append({
                 'event': r['event_type'],
                 'actor': r['actor'],
                 'timestamp': r['created_at'],
-                'details': r['description'],
+                'details': r['payload'].get('detail'),
+                'resource_type': r['resource_type'],
+                'resource_id': r['resource_id'],
             })
         return ok({'data': events})
 

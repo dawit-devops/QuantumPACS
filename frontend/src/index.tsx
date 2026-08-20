@@ -93,6 +93,7 @@ const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist")
 const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
 const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
+const CriticalResultsList = React.lazy(() => import("./radiologist/CriticalResults"));
 const QAQueue = React.lazy(() => import("./qa/QAQueue"));
 const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
 const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
@@ -374,6 +375,17 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="PEER_REVIEW_READ">
                           <PeerReviewInbox />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/critical"
+                      element={
+                        // CR-6: dedicated critical-results surface. GET
+                        // /api/notifications/critical is REPORT_READ-gated
+                        // (notifications.py), so the route gate matches.
+                        <ClinicalRoute permission="REPORT_READ">
+                          <CriticalResultsList />
                         </ClinicalRoute>
                       }
                     />

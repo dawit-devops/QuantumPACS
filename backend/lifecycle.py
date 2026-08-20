@@ -56,6 +56,7 @@ class LifecycleState:
     mllp_task: Optional[asyncio.Task] = None
     mwl_sync_thread: Optional[threading.Thread] = None
     dcm4chee_sync_thread: Optional[threading.Thread] = None
+    escalation_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -249,6 +250,40 @@ def _stop_mllp():
         log.info('MLLP server stopped')
 
 
+# CR-8: S10-04 escalation engine background loop. Runs in a daemon thread
+# with its own event loop (same pattern as _run_dicom) so the sync period
+# never blocks the uvicorn loop. Each pass checks for unacknowledged critical
+# findings past the SLA and notifies the backup escalation role.
+def _run_critical_escalation(loop):
+    async def _loop():
+        from services.notification.escalation import CriticalEscalationEngine
+        engine = CriticalEscalationEngine()
+        interval = int(config.get('critical_escalation_interval', '60'))
+        while True:
+            try:
+                await engine.run_escalation_check()
+            except Exception:
+                log.warning('Critical escalation check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    asyncio.set_event_loop(loop)
+    loop.create_task(_loop())
+    loop.run_forever()
+
+
+def _start_critical_escalation():
+    thread = threading.Thread(
+        target=_run_critical_escalation,
+        args=(asyncio.new_event_loop(),),
+        daemon=True,
+    )
+    thread.start()
+    state = get_app_state()
+    if state:
+        state.escalation_thread = thread
+    log.info('Critical escalation engine started')
+
+
 async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
@@ -333,6 +368,7 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
 
     _start_dicom()
     await _start_mllp()
+    _start_critical_escalation()
 
     # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
     # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.

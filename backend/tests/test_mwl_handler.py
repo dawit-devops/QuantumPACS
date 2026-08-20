@@ -163,14 +163,13 @@ class TestEntryToDataset:
 
     @pytest.mark.filterwarnings('ignore:Invalid value for VR UI:UserWarning')
     def test_accepts_uuid_id(self):
-        # asyncpg returns the id column as a uuid.UUID object; pydicom's UID
-        # rejects non-str values, so _entry_to_dataset must stringify it.
-        # pydicom still warns that a UUID is not a valid DICOM UI — expected,
-        # the point of the test is that we tolerate such ids in the wild.
+        # asyncpg returns the id column as a uuid.UUID object. M-6: the
+        # UID must be valid DICOM — a hyphenated UUID string is illegal,
+        # so it is mapped through the 2.25 root (deterministic per id).
         import uuid
         uid = uuid.uuid4()
         ds = _entry_to_dataset({'id': uid})
-        assert ds.file_meta.MediaStorageSOPInstanceUID == str(uid)
+        assert ds.file_meta.MediaStorageSOPInstanceUID == '2.25.' + str(uid.int)
 
 
 class TestHandleFindAsync:
@@ -233,7 +232,7 @@ class TestHandleFindAsync:
         assert kwargs['patient_name'] == 'Smith^J?'
         assert kwargs['modality'] == 'CT'
         assert kwargs['station_ae_title'] == 'CT01'
-        assert kwargs['search'] == 'ACC001'
+        assert kwargs['accession'] == 'ACC001'
 
     @pytest.mark.asyncio
     async def test_splits_date_range_and_time_range(self):
@@ -279,14 +278,9 @@ class TestMwlPrioritySort:
     async def test_stat_entries_sort_first(self, mock_conn):
         """STAT priority entries appear before routine in search results."""
         from db.worklist import Worklist
-        # Simulate results: routine first, then STAT — after sort, STAT should be first
-        routine_row = {'patient_id': 'P001', 'requested_procedure_priority': 'R',
-                       'scheduled_date': '2026-08-20', 'scheduled_time': '09:00'}
-        stat_row = {'patient_id': 'P002', 'requested_procedure_priority': 'STAT',
-                    'scheduled_date': '2026-08-20', 'scheduled_time': '10:00'}
         # pypika orderby with priority expression — verify the query includes priority sort
         wl = Worklist(mock_conn)
-        from pypika import Query as PypikaQuery, Case, functions as fn
+        from pypika import Query as PypikaQuery, Case
         q = PypikaQuery.from_(wl.table).select(
             wl.table.star,
         ).orderby(
@@ -318,3 +312,84 @@ class TestHandlersList:
         from pynetdicom import evt
         event_types = [h[0] for h in handlers]
         assert evt.EVT_C_STORE in event_types
+
+class TestMediaStorageSopInstanceUid:
+    """M-6: MediaStorageSOPInstanceUID must be a valid DICOM UID.
+
+    The worklist entry id is a UUID; a hyphenated UUID string is not a
+    legal UID (only digits and dots, <= 64 chars). Map it through the
+    RFC 4122 2.25 root instead.
+    """
+
+    def test_uid_is_numeric_dotted_for_uuid_id(self):
+        import uuid
+        entry = {
+            'patient_id': 'P001',
+            'patient_name': 'Smith^John',
+            'accession_number': 'ACC001',
+            'id': uuid.UUID('9f7c1c3e-5b2a-4d6e-8f90-123456789abc'),
+        }
+        ds = _entry_to_dataset(entry)
+        uid = str(ds.file_meta.MediaStorageSOPInstanceUID)
+        assert uid.startswith('2.25.')
+        assert uid.replace('2.25.', '').isdigit()
+        assert len(uid) <= 64
+        assert '-' not in uid
+
+    def test_uid_is_stable_for_same_id(self):
+        import uuid
+        entry = {
+            'patient_id': 'P001',
+            'patient_name': 'Smith^John',
+            'accession_number': 'ACC001',
+            'id': uuid.UUID('9f7c1c3e-5b2a-4d6e-8f90-123456789abc'),
+        }
+        ds1 = _entry_to_dataset(entry)
+        ds2 = _entry_to_dataset(entry)
+        assert str(ds1.file_meta.MediaStorageSOPInstanceUID) == \
+            str(ds2.file_meta.MediaStorageSOPInstanceUID)
+
+class TestMwlCFindPaging:
+    """M-8: the C-FIND must page through the worklist instead of loading
+    1000 rows in one query — a monolithic fetch plus the 30s SCP timeout
+    blocks the modality on slow datasets."""
+
+    @pytest.mark.asyncio
+    async def test_pages_until_exhausted(self):
+        query_ds = Dataset()
+        query_ds.PatientID = 'P001'
+        page1 = [{'patient_id': f'P00{i}', 'modality': 'CT'}
+                 for i in range(250)]
+        page2 = [{'patient_id': 'P0250', 'modality': 'CT'}]
+
+        with patch('db.conn.get_conn'):
+            with patch('db.worklist.Worklist') as mock_wl_cls:
+                mock_wl = MagicMock()
+                mock_wl.search = AsyncMock(
+                    side_effect=[(page1, 251), (page2, 251)])
+                mock_wl_cls.return_value = mock_wl
+                results = await handle_find_async(query_ds)
+
+        assert len(results) == 251
+        assert mock_wl.search.await_count == 2
+        assert mock_wl.search.call_args_list[0].kwargs['page'] == 1
+        assert mock_wl.search.call_args_list[1].kwargs['page'] == 2
+        assert mock_wl.search.call_args_list[0].kwargs['per_page'] == 250
+
+    @pytest.mark.asyncio
+    async def test_stops_after_cap(self):
+        """Defensive cap: never page past 2000 rows per C-FIND."""
+        query_ds = Dataset()
+        query_ds.PatientID = 'P001'
+
+        with patch('db.conn.get_conn'):
+            with patch('db.worklist.Worklist') as mock_wl_cls:
+                mock_wl = MagicMock()
+                mock_wl.search = AsyncMock(
+                    return_value=(
+                        [{'patient_id': 'P001'}] * 250, 5000))
+                mock_wl_cls.return_value = mock_wl
+                results = await handle_find_async(query_ds)
+
+        assert mock_wl.search.await_count == 8
+        assert len(results) == 8 * 250

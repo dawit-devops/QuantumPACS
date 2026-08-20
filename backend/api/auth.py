@@ -157,6 +157,7 @@ class User(BaseUser):
         self.role_slug = data.get('role', '')
         self.permissions = data.get('permissions', [])
         self.tenant = data.get('tenant')
+        self.username = data.get('username', '')
 
     @property
     def is_authenticated(self):

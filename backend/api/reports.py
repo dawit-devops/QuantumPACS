@@ -21,8 +21,11 @@ from db.exams import Exams
 from db.patient import Patient
 from db.reports import Reports, ReportTemplates, PeerReviews
 from api.notify import notify_role, notify_user
-from log import request_id_var
+from log import request_id_var, get_logger
 from api.tenant_middleware import effective_tenant
+from services.results_distribution.service import ResultsDistributionEngine
+
+log = get_logger(__name__)
 
 DEFAULT_REPORT_TEMPLATES = [
     {
@@ -179,6 +182,20 @@ class ExamAssignHandler(HTTPEndpoint):
                 return validation_error(
                     'Only completed exams on the reading worklist can be assigned',
                 )
+            # S-7: the target must exist and hold the radiologist role —
+            # assignment is a claim on the reading worklist, so an arbitrary
+            # user id must not be accepted (it would vanish from every
+            # radiologist's queue and orphan the exam).
+            target = await conn.fetchrow(
+                "SELECT u.id, r.slug FROM users u "
+                "JOIN roles r ON r.id = u.role_id "
+                "WHERE u.id = $1",
+                radiologist_id,
+            )
+            if not target or target['slug'] != 'radiologist':
+                return validation_error(
+                    'Assigned user must be a radiologist',
+                )
             updated = await Exams(conn).assign_radiologist(exam_id, radiologist_id)
             await AuditLog(conn).log_event(
                 event_type='exam.radiologist_assigned',
@@ -252,17 +269,22 @@ class ExamReportHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             existing = await Reports(conn).get_by_exam(exam_id)
-            if existing and existing.get('status') == 'submitted':
-                # R13 supervision lock: a submitted report is in the
-                # attending's hands — the resident must get it returned
-                # (POST /reports/{id}/return) before editing again.
+            if existing and existing.get('status') in ('submitted', 'final'):
+                # R13 supervision lock + CR-4: a submitted report is in the
+                # attending's hands and a signed (final) report is locked.
+                # Neither may be edited through the save endpoint — the
+                # former must be returned first, the latter can only change
+                # via return-for-revision.
                 return validation_error(
-                    'Report is submitted for attending review — it must be '
-                    'returned before it can be edited',
+                    'Report is submitted or signed — it is locked and cannot '
+                    'be edited. A submitted report must be returned for '
+                    'revision first; a signed final report requires an '
+                    'amendment flow.',
                 )
             if existing:
                 report = await Reports(conn).update(
                     existing['id'], body.model_dump(),
+                    edited_by=str(request.user.id),
                 )
             else:
                 report = await Reports(conn).create(
@@ -318,21 +340,18 @@ class ExamReportSignHandler(HTTPEndpoint):
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
-            # S8-13: ORU^R01 distribution stub — log event and stamp distribution
-            await AuditLog(conn).log_event(
-                event_type='report.oru_distributed',
-                actor_id=request.user.id,
-                resource_type='report',
-                resource_id=report['id'],
-                details={
-                    'exam_id': exam_id,
-                    'accession_number': exam.get('accession_number'),
-                    'message_type': 'ORU^R01',
-                    'status': 'SENT',
-                },
-                tenant=effective_tenant(request),
-                request_id=request_id_var.get(),
-            )
+            # S8-13/CR-8: ORU^R01 distribution — real engine wired in (module import
+            # above keeps it patchable in tests). Runs after the conn block so
+            # a transmission failure never rolls back the signed report; the
+            # engine records its own SENT/FAILED row and the retry manager
+            # handles backoff.
+            try:
+                await ResultsDistributionEngine().distribute_report(report['id'])
+            except Exception:
+                log.warning(
+                    'ORU^R01 distribution failed for report %s (will retry)',
+                    report['id'], exc_info=True,
+                )
             # S8-14: Charge drop stub — placeholder ris_charges row
             from api.billing import drop_charge_stub
             await drop_charge_stub(
@@ -551,6 +570,11 @@ class ReportTemplatesHandler(HTTPEndpoint):
         async with get_conn() as conn:
             await _seed_report_templates(conn)
             from db.ris_templates import RisReportTemplates
+            # H9: list_templates reads ris_report_templates, which is never
+            # seeded by migrations — seed it here (idempotent) or a fresh
+            # database serves an empty template library while the legacy
+            # report_templates table fills up unused.
+            await RisReportTemplates(conn).seed_defaults()
             templates = await RisReportTemplates(conn).list_templates(modality)
         return ok({'data': templates})
 
@@ -577,7 +601,13 @@ class ReportVersionsHandler(HTTPEndpoint):
             from db.ris_report_versions import RisReportVersions
             rv = RisReportVersions(conn)
             if v1 and v2:
-                diff = await rv.get_version_diff(report_id, int(v1), int(v2))
+                # B-7: int() on garbage query params raised ValueError -> 500;
+                # a bad version number is a client error, not a crash.
+                try:
+                    v1n, v2n = int(v1), int(v2)
+                except ValueError:
+                    return validation_error('v1 and v2 must be integers')
+                diff = await rv.get_version_diff(report_id, v1n, v2n)
                 return ok({'data': diff})
             versions = await rv.get_history(report_id)
         return ok({'data': versions})

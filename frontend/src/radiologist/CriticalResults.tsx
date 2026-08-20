@@ -59,13 +59,37 @@ export function FlagCriticalModal({
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  // CR-7: the recipient picker resolves users for the selected role via the
+  // scoped directory (REPORT_WRITE-gated); empty list = role fallback.
+  const [recipients, setRecipients] = useState<{ id: string; username: string }[]>([]);
+  const roleWatch = Form.useWatch("recipient_role", form);
+
+  useEffect(() => {
+    if (!roleWatch) {
+      setRecipients([]);
+      return;
+    }
+    let stale = false;
+    request(`notifications/critical/recipients?role=${encodeURIComponent(roleWatch)}`)
+      .then((res: any) => {
+        if (!stale) setRecipients(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!stale) setRecipients([]);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [roleWatch]);
 
   const handleSubmit = async (values: any) => {
     setSubmitting(true);
     try {
       await request("notifications/critical", {
         method: "POST",
-        body: {
+        // CR-5: request() serializes `options.data` only — `body:` was
+        // passed through untouched and the object became "[object Object]".
+        data: {
           report_id: report?.id,
           exam_id: exam?.id,
           accession_number: exam?.accession_number || "",
@@ -74,6 +98,7 @@ export function FlagCriticalModal({
           finding_description: values.finding_description,
           recipient_role: values.recipient_role || "ed_physician",
           recipient_name: values.recipient_name || "ED Attending Physician",
+          recipient_id: values.recipient_id || undefined,
         },
       });
       message.success("Critical finding flagged & notification dispatched!");
@@ -126,6 +151,24 @@ export function FlagCriticalModal({
               { value: "ordering_physician", label: "Ordering Physician" },
               { value: "radiologist", label: "On-Call Radiologist / Escalation" },
             ]}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="recipient_id"
+          label="Specific Recipient (optional)"
+          tooltip="Pick the exact user to notify; role-based notification fires when left empty."
+        >
+          <Select
+            allowClear
+            placeholder={
+              recipients.length ? "Choose a user…" : "No users found for this role"
+            }
+            options={recipients.map((r) => ({
+              value: String(r.id),
+              label: r.username,
+            }))}
+            notFoundContent={recipients.length ? null : <span>No users found for this role</span>}
           />
         </Form.Item>
 
@@ -257,3 +300,6 @@ export function CriticalResultsList() {
     </Card>
   );
 }
+
+// Default export for the React.lazy route mount (index.tsx /critical).
+export default CriticalResultsList;

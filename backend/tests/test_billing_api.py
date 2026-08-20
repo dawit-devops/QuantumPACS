@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
@@ -351,3 +353,30 @@ class TestReconciliation:
         data = resp.json()['data']
         assert data['counted_cash'] == 100.0
         assert data['variance'] == 0.0
+
+
+class TestDropChargeStub:
+    """V-3: a report signed twice (or co-signed) must not produce duplicate
+    ris_charges rows — the charge stub is idempotent per report."""
+
+    @pytest.mark.asyncio
+    async def test_second_sign_does_not_insert_duplicate_charge(self):
+        from api.billing import drop_charge_stub
+
+        calls = []
+
+        class _RecConn:
+            async def execute(self, sql, *args):
+                calls.append((sql, args))
+
+        conn = _RecConn()
+        await drop_charge_stub(
+            conn, 'rep-1', 'exam-1', 'ACC001', 'radio-1')
+        await drop_charge_stub(
+            conn, 'rep-1', 'exam-1', 'ACC001', 'radio-1')
+
+        inserts = [sql for sql, _ in calls if 'INSERT INTO ris_charges' in sql]
+        assert len(inserts) == 2, 'both calls must still execute'
+        for sql in inserts:
+            assert 'WHERE NOT EXISTS' in sql, \
+                'INSERT must be guarded against an existing charge for the report'

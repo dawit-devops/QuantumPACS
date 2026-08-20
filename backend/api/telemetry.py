@@ -122,6 +122,14 @@ ris_hl7_message_latency_seconds = Histogram(
     'ris_hl7_message_latency_seconds', 'HL7 message processing latency',
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )
+# S6-11 / RIS-SL-22: MPPS → tracking latency (< 5s p95). Per-message
+# processing time in the MPPS consumer, labelled by event type so the
+# N-CREATE and N-SET paths are distinguishable.
+ris_mpps_latency_seconds = Histogram(
+    'ris_mpps_latency_seconds', 'MPPS message processing latency',
+    ['event_type'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
 
 
 def record_request(method, path, status_code, elapsed):

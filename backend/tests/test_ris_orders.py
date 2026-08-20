@@ -270,6 +270,49 @@ class TestOrderHistory:
         assert events[-1]['event'] == 'ORDER_STATUS_TRANSITION'
 
 
+    def test_history_exposes_structured_details(self):
+        # B-3: the timeline must surface structured detail (from/to/reason,
+        # overrode lists) — a stringified description loses the shape the
+        # order-history UI renders.
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = [
+            {'id': 3, 'created': '2026-08-20 10:00:00+00',
+             'event_type': 'APPOINTMENT_RESCHEDULED', 'actor_name': 'sched-1',
+             'log': '{"event":"APPOINTMENT_RESCHEDULED","actor":"sched-1",'
+                    '"detail":{"from":"2026-08-20 09:00:00+00",'
+                    '"to":"2026-08-20 10:00:00+00","reason":"patient request"}}',
+             'tenant': 'default'},
+            {'id': 2, 'created': '2026-08-20 09:00:00+00',
+             'event_type': 'APPOINTMENT_BOOKED', 'actor_name': 'sched-1',
+             'log': '{"event":"APPOINTMENT_BOOKED","actor":"sched-1",'
+                    '"detail":{"resource_id":"res-1",'
+                    '"start_time":"2026-08-20 09:00:00+00",'
+                    '"end_time":"2026-08-20 09:30:00+00","reason":""}}',
+             'tenant': 'default'},
+            {'id': 1, 'created': '2026-08-20 08:00:00+00',
+             'event_type': 'ORDER_CREATED', 'actor_name': 'tech-1',
+             'log': '{"event":"ORDER_CREATED","actor":"tech-1","detail":{}}',
+             'tenant': 'default'},
+        ]
+        with patch('api.ris_orders.get_conn', return_value=mock_conn):
+            resp = client.get('/ris/orders/ord-1/history')
+        assert resp.status_code == 200
+        events = resp.json()['data']
+        assert events[0]['event'] == 'ORDER_CREATED'
+        assert events[1]['details'] == {
+            'resource_id': 'res-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00',
+            'reason': '',
+        }
+        assert events[2]['details']['from'] == '2026-08-20 09:00:00+00'
+        assert events[2]['details']['reason'] == 'patient request'
+
+
+
 class TestOrderStatusTransition:
     def test_transition_requires_order_write(self):
         user = User({'id': 1, 'permissions': []})
@@ -325,3 +368,43 @@ class TestOrderStatusTransition:
         client = TestClient(_make_app(user))
         resp = client.put('/ris/orders/ord-1/status', json={'status': 'NOPE'})
         assert resp.status_code == 422
+
+
+class TestReferringMdIdentityScope:
+    """S-4: the referring-MD view (S4-05) is identity-scoped — a physician
+    caller sees only orders attributed to their own identity. The free-text
+    probe is ignored for physicians, so a logged-in MD cannot enumerate
+    another physician's orders by name."""
+
+    def _orders_client(self, user):
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = []
+        mock_conn.fetchval.return_value = 0
+        with patch('api.ris_orders.get_conn', return_value=mock_conn), \
+             patch('api.ris_orders.RisOrders') as repo_cls:
+            repo = repo_cls.return_value
+            repo.list = AsyncMock(return_value=[])
+            repo.count = AsyncMock(return_value=0)
+            client = TestClient(_make_app(user))
+            resp = client.get(
+                '/ris/orders?referring_md=Dr.+Other&search=jane')
+            return resp, repo.list
+
+    def test_physician_scope_ignores_probe_and_uses_own_identity(self):
+        resp, list_call = self._orders_client(User({
+            'id': 3, 'permissions': ['ORDER_READ'], 'role': 'physician',
+            'username': 'dr.smith',
+        }))
+        assert resp.status_code == 200
+        kw = list_call.await_args.kwargs
+        assert kw.get('referring_md') == 'dr.smith', kw
+
+    def test_staff_keeps_free_text_probe(self):
+        resp, list_call = self._orders_client(User({
+            'id': 4, 'permissions': ['ORDER_READ'], 'role': 'receptionist',
+            'username': 'clerk1',
+        }))
+        assert resp.status_code == 200
+        kw = list_call.await_args.kwargs
+        assert kw.get('referring_md') == 'Dr. Other', kw

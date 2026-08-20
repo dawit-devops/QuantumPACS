@@ -15,6 +15,7 @@ export interface TrackingEntry {
   protocol_name?: string;
   exam_status?: string;
   assigned_technologist?: string;
+  has_critical?: boolean;
 }
 
 export interface TrackingPage {

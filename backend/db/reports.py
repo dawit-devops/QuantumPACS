@@ -53,9 +53,14 @@ class Reports(Table):
     async def create(self, exam_id, data, created_by):
         await self.sync_db()
         now = datetime.now(timezone.utc)
+        # V-6: template_id / ris_order_id columns exist (ALTER above) but
+        # were silently dropped by the INSERT — the report then lost its
+        # template and order linkage on the very first save.
         q = self.insert().columns(
             'exam_id', 'status', 'findings', 'impression', 'recommendations',
-            'template_name', 'created_by', 'signed_by', 'created_at', 'updated_at',
+            'template_name', 'template_id', 'ris_order_id', 'created_by',
+            'signed_by', 'is_critical',
+            'created_at', 'updated_at',
         ).insert((
             exam_id,
             data.get('status', 'draft'),
@@ -63,8 +68,11 @@ class Reports(Table):
             data.get('impression', ''),
             data.get('recommendations', ''),
             data.get('template_name', ''),
+            data.get('template_id'),
+            data.get('ris_order_id'),
             created_by,
             data.get('signed_by', ''),
+            bool(data.get('is_critical', False)),
             now, now,
         )).returning('id')
         row = await self.fetchone(q)
@@ -89,6 +97,7 @@ class Reports(Table):
     async def update(self, report_id, data, edited_by=''):
         """Update draft fields (findings/impression/status)."""
         await self.sync_db()
+        previous = await self.get(report_id)
         fields = ['updated_at']
         values = [datetime.now(timezone.utc)]
         for k in ('status', 'findings', 'impression', 'recommendations', 'template_name', 'template_id', 'ris_order_id', 'is_critical'):
@@ -102,15 +111,24 @@ class Reports(Table):
         )
         updated = await self.get(report_id)
         if updated:
-            try:
-                from db.ris_report_versions import RisReportVersions
-                await RisReportVersions(self.conn).add_version(
-                    report_id, updated.get('findings', ''),
-                    updated.get('impression', ''), updated.get('recommendations', ''),
-                    edited_by=edited_by or updated.get('created_by', ''),
-                )
-            except Exception:
-                pass
+            # V-4: only snapshot a version when the content actually
+            # changed — an identical PUT (autosave re-fire, no edit) must
+            # not add a duplicate row to the version history.
+            content_keys = ('findings', 'impression', 'recommendations')
+            changed = any(
+                (updated.get(k) or '') != (previous or {}).get(k, '')
+                for k in content_keys
+            )
+            if changed:
+                try:
+                    from db.ris_report_versions import RisReportVersions
+                    await RisReportVersions(self.conn).add_version(
+                        report_id, updated.get('findings', ''),
+                        updated.get('impression', ''), updated.get('recommendations', ''),
+                        edited_by=edited_by or updated.get('created_by', ''),
+                    )
+                except Exception:
+                    pass
         return updated
 
     async def sign(self, report_id, signed_by):

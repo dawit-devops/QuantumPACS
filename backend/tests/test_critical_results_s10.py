@@ -5,7 +5,9 @@ background escalation SLA breach, HL7 ORU^R01 distribution engine with delivery 
 and RLS tenant isolation.
 """
 import pytest
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone, timedelta
+from starlette.testclient import TestClient
 from db.conn import get_conn, database
 from db.ris_critical_results import RisCriticalResults
 from services.notification.escalation import CriticalEscalationEngine
@@ -47,7 +49,6 @@ class TestCriticalResultsFlow:
     @pytest.mark.asyncio
     async def test_critical_escalation_engine(self):
         async with get_conn() as conn:
-            critical_db = RisCriticalResults(conn)
             # Create an overdue unacknowledged flag (20 minutes ago)
             past_time = datetime.now(timezone.utc) - timedelta(minutes=20)
             row = await conn.fetchrow("""
@@ -69,6 +70,154 @@ class TestCriticalResultsFlow:
             updated = await conn.fetchrow("SELECT status, escalated_to FROM ris_critical_results WHERE id = $1", critical_id)
             assert updated['status'] == 'escalated'
             assert updated['escalated_to'] == 'radiologist'
+
+
+class TestCriticalFlagPostValidation:
+    """S-8: the flag POST must not accept a payload with no patient
+    identity — an untargetable alert is worse than none."""
+
+    def _post(self, payload):
+        from unittest.mock import patch
+        from starlette.applications import Starlette
+        from starlette.middleware import Middleware
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.routing import Route
+        from api.auth import User
+        from api.notifications import CriticalResultsHandler
+
+        class _FakeAuth(BaseHTTPMiddleware):
+            def __init__(self, _app, user=None):
+                super().__init__(_app)
+                self._user = user or User({'id': 1, 'permissions': []})
+
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = self._user
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        user = User({'id': 1, 'permissions': ['REPORT_WRITE']})
+        test_app = Starlette(
+            routes=[Route('/critical', endpoint=CriticalResultsHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+        )
+        with patch('api.notifications.get_conn'):
+            return TestClient(test_app).post('/critical', json=payload)
+
+    def test_rejects_missing_patient_identity(self):
+        resp = self._post({'finding_description': 'Acute hemorrhage'})
+        assert resp.status_code == 400, \
+            'a flag without any patient identity must be rejected'
+
+    def test_accepts_accession_plus_patient(self):
+        with patch('api.notify.notify_role'), \
+             patch('db.ris_critical_results.RisCriticalResults') as cls:
+            fake = AsyncMock()
+            fake.create_flag = AsyncMock(return_value={'id': 'f1'})
+            cls.return_value = fake
+            resp = self._post({
+                'finding_description': 'Acute hemorrhage',
+                'accession_number': 'ACC-FLAG-01',
+                'patient_name': 'Jane Smith',
+            })
+        assert resp.status_code == 200
+
+
+class TestCriticalEventCatalog:
+    """H11: critical lifecycle events must be pref-configurable."""
+
+    def test_critical_events_in_catalog(self):
+        from db.notification_prefs import NotificationPrefs, CLINICAL_EVENT_TYPES
+        for et in ('critical.flagged', 'critical.escalated'):
+            assert et in NotificationPrefs.EVENT_CATALOG, f'{et} not in catalog'
+            assert et in CLINICAL_EVENT_TYPES, f'{et} not clinical'
+
+    def test_admin_roles_mute_critical_events_by_default(self):
+        from db.notification_prefs import NotificationPrefs
+        assert NotificationPrefs.default_enabled('super_admin', 'critical.flagged') is False
+        assert NotificationPrefs.default_enabled('tenant_admin', 'critical.escalated') is False
+        assert NotificationPrefs.default_enabled('radiologist', 'critical.flagged') is True
+
+
+class TestEscalationScoping:
+    """V-5: the escalation query must be scoped — a finding explicitly
+    assigned to a specific recipient is not in the engine's default pool,
+    and escalate() must not clobber an already-acknowledged finding."""
+
+    @pytest.mark.asyncio
+    async def test_query_skips_findings_assigned_to_specific_recipient(self):
+        async with get_conn() as conn:
+            past_time = datetime.now(timezone.utc) - timedelta(minutes=20)
+            async def _flag(acc, recipient_id):
+                return await conn.fetchrow("""
+                    INSERT INTO ris_critical_results
+                    (accession_number, patient_id, patient_name, finding_description,
+                     recipient_role, recipient_id, status, flagged_by, flagged_at,
+                     tenant_id, created_at, updated_at)
+                    VALUES ($1, 'PAT-X', 'X', 'Acute Hemorrhage',
+                            'ed_physician', $2, 'flagged', 'rad_1', $3,
+                            'default', $3, $3)
+                    RETURNING id
+                """, acc, recipient_id, past_time)
+            assigned = await _flag('ACC-ASSIGNED-01', 'ed-doc-42')
+            pool = await _flag('ACC-POOL-01', '')
+
+            overdue = await RisCriticalResults(conn).get_unacknowledged_over_minutes(15)
+            ids = [r['id'] for r in overdue]
+            assert pool['id'] in ids
+            assert assigned['id'] not in ids, \
+                'an explicitly-assigned finding must not be escalated by the generic engine'
+
+    @pytest.mark.asyncio
+    async def test_escalate_does_not_clobber_acknowledged(self):
+        async with get_conn() as conn:
+            past_time = datetime.now(timezone.utc) - timedelta(minutes=20)
+            row = await conn.fetchrow("""
+                INSERT INTO ris_critical_results
+                (accession_number, patient_id, patient_name, finding_description,
+                 recipient_role, status, flagged_by, flagged_at, tenant_id, created_at, updated_at)
+                VALUES ('ACC-ACKED-01', 'PAT-Y', 'Y', 'Acute Hemorrhage',
+                        'ed_physician', 'acknowledged', 'rad_1', $1, 'default', $1, $1)
+                RETURNING id
+            """, past_time)
+            result = await RisCriticalResults(conn).escalate(row['id'], escalated_to='radiologist')
+            assert result is None, \
+                'escalate must not overwrite an acknowledged finding'
+
+
+class TestAckGuardDb:
+    """H12: acknowledge must not overwrite escalated/cleared state."""
+
+    @pytest.mark.asyncio
+    async def test_acknowledge_requires_flagged_status(self):
+        async with get_conn() as conn:
+            critical_db = RisCriticalResults(conn)
+            flag = await critical_db.create_flag({
+                'accession_number': 'ACC-CRIT-GUARD',
+                'patient_id': 'PAT-GUARD',
+                'patient_name': 'Guard Patient',
+                'finding_description': 'Acute ischemia',
+                'recipient_id': 'ed_1',
+                'recipient_role': 'ed_physician',
+            }, flagged_by='rad_1')
+            await critical_db.escalate(flag['id'], escalated_to='radiologist')
+            ack = await critical_db.acknowledge(flag['id'], acknowledged_by='ed_1')
+            assert ack is None
+
+    @pytest.mark.asyncio
+    async def test_acknowledge_requires_flagged_status_not_acknowledged(self):
+        async with get_conn() as conn:
+            critical_db = RisCriticalResults(conn)
+            flag = await critical_db.create_flag({
+                'accession_number': 'ACC-CRIT-GUARD2',
+                'patient_id': 'PAT-GUARD2',
+                'patient_name': 'Guard Patient Two',
+                'finding_description': 'Pneumothorax',
+                'recipient_id': 'ed_2',
+                'recipient_role': 'ed_physician',
+            }, flagged_by='rad_2')
+            await critical_db.acknowledge(flag['id'], acknowledged_by='ed_2')
+            again = await critical_db.acknowledge(flag['id'], acknowledged_by='ed_2')
+            assert again is None
 
 
 class TestResultsDistributionEngine:
@@ -100,6 +249,64 @@ class TestResultsDistributionEngine:
             assert rep_check['distributed_at'] is not None
 
 
+class TestDeliveryRetry:
+    """B-6: retry must attempt a real transmission — flipping FAILED rows
+    straight back to SENT without delivering anything is a no-op that hides
+    outages."""
+
+    @pytest.mark.asyncio
+    async def test_retry_without_endpoint_keeps_failed_and_bumps_attempts(self):
+        async with get_conn() as conn:
+            # The retry query is global — clear rows other tests leave
+            # behind (TestDeliveryStatus seeds a permanent FAILED row).
+            await conn.execute(
+                "DELETE FROM ris_results_distribution WHERE accession_number LIKE 'ACC-%'")
+            row = await conn.fetchrow("""
+                INSERT INTO ris_results_distribution
+                (report_id, accession_number, status, attempts, payload)
+                VALUES (gen_random_uuid(), 'ACC-RETRY-01', 'FAILED', 2, 'MSH|')
+                RETURNING id, attempts
+            """)
+            dist_engine = ResultsDistributionEngine()
+            with patch('config.config', {'distribution_endpoint': ''}):
+                retried = await dist_engine.retry_failed_deliveries()
+            assert retried == 0, \
+                'a retry with no reachable endpoint must not fake a SENT'
+            updated = await conn.fetchrow(
+                "SELECT status, attempts FROM ris_results_distribution WHERE id = $1",
+                row['id'])
+            assert updated['status'] == 'FAILED'
+            assert updated['attempts'] == 3, \
+                'the failed attempt must still count'
+            await conn.execute(
+                "DELETE FROM ris_results_distribution WHERE accession_number LIKE 'ACC-RETRY-%'")
+
+    @pytest.mark.asyncio
+    async def test_retry_marks_sent_after_successful_delivery(self):
+        async with get_conn() as conn:
+            await conn.execute(
+                "DELETE FROM ris_results_distribution WHERE accession_number LIKE 'ACC-%'")
+            row = await conn.fetchrow("""
+                INSERT INTO ris_results_distribution
+                (report_id, accession_number, status, attempts, payload)
+                VALUES (gen_random_uuid(), 'ACC-RETRY-02', 'FAILED', 1, 'MSH|')
+                RETURNING id
+            """)
+            dist_engine = ResultsDistributionEngine()
+            with patch('config.config', {'distribution_endpoint': 'http://emr:8080/oru'}), \
+                 patch.object(dist_engine, '_deliver',
+                              new=AsyncMock(return_value=True)):
+                retried = await dist_engine.retry_failed_deliveries()
+            assert retried == 1
+            updated = await conn.fetchrow(
+                "SELECT status, attempts FROM ris_results_distribution WHERE id = $1",
+                row['id'])
+            assert updated['status'] == 'SENT'
+            assert updated['attempts'] == 2
+            await conn.execute(
+                "DELETE FROM ris_results_distribution WHERE accession_number LIKE 'ACC-RETRY-%'")
+
+
 class TestCriticalResultsRLS:
     @pytest.mark.asyncio
     async def test_critical_results_list_tenant_filtered(self):
@@ -107,3 +314,53 @@ class TestCriticalResultsRLS:
             critical_db = RisCriticalResults(conn)
             active = await critical_db.list_active()
             assert isinstance(active, list)
+
+
+class TestDeliveryStatus:
+    """S10-12: delivery-status rows expose routing metadata, never the PHI payload."""
+
+    @pytest.mark.asyncio
+    async def test_delivery_status_returns_rows_without_payload(self):
+        async with get_conn() as conn:
+            await conn.execute("DELETE FROM ris_results_distribution")
+            await conn.execute(
+                "INSERT INTO ris_results_distribution"
+                " (report_id, accession_number, status, payload)"
+                " VALUES ('11111111-1111-1111-1111-111111111111', 'ACC-DEL-01', 'SENT', 'secret-phi')"
+            )
+            await conn.execute(
+                "INSERT INTO ris_results_distribution"
+                " (report_id, accession_number, status, payload)"
+                " VALUES ('22222222-2222-2222-2222-222222222222', 'ACC-DEL-02', 'FAILED', 'secret-phi-2')"
+            )
+
+        from api.notifications import DeliveryStatusHandler
+        from starlette.applications import Starlette
+        from starlette.middleware import Middleware
+        from starlette.routing import Route
+        import httpx
+        from api.auth import User
+        from tests.test_tracking_api import _FakeAuth
+
+        app = Starlette(
+            routes=[
+                Route('/notifications/delivery-status', endpoint=DeliveryStatusHandler),
+            ],
+            middleware=[Middleware(
+                _FakeAuth,
+                user=User({'id': 1, 'permissions': ['REPORT_READ']}),
+            )],
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url='http://test'
+        ) as client:
+            resp = await client.get(
+                '/notifications/delivery-status',
+                params={'report_id': '11111111-1111-1111-1111-111111111111'},
+            )
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()['data']
+        assert len(rows) == 1
+        assert rows[0]['accession_number'] == 'ACC-DEL-01'
+        # CR-8: the ORU payload is PHI — it must not be serialized to callers.
+        assert 'payload' not in rows[0]

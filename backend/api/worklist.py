@@ -156,14 +156,9 @@ class WorklistStationAeHandler(HTTPEndpoint):
 # S6-13: Tracking Board API
 # ---------------------------------------------------------------------------
 
-# Valid status transitions for the tracking board.
-VALID_TRANSITIONS = {
-    'scheduled': {'arrived', 'cancelled'},
-    'arrived': {'in_progress', 'cancelled'},
-    'in_progress': {'completed', 'cancelled'},
-    'completed': set(),
-    'cancelled': set(),
-}
+# M-10: single source of truth for tracking transitions — the board map
+# lives once below (TRACKING_VALID_TRANSITIONS); a second copy here was a
+# drift hazard (a map duplicated twice WILL diverge).
 
 
 class TrackingHandler(HTTPEndpoint):
@@ -200,11 +195,20 @@ class TrackingHandler(HTTPEndpoint):
             params.append(priority)
             idx += 1
         if search:
-            conditions.append(
-                f'(w.patient_name ILIKE ${idx} OR w.patient_id ILIKE ${idx} '
-                f'OR w.accession_number ILIKE ${idx})'
+            # S-6: user input must not act as LIKE syntax — '100%' is a
+            # literal percent in a patient search, not a wildcard. Escape
+            # the wildcard characters and declare ESCAPE on the ILIKE.
+            escaped = (
+                search.replace('\\', '\\\\')
+                      .replace('%', '\\%')
+                      .replace('_', '\\_')
             )
-            params.append(f'%{search}%')
+            conditions.append(
+                f'(w.patient_name ILIKE ${idx} ESCAPE \'\\\' '
+                f'OR w.patient_id ILIKE ${idx} ESCAPE \'\\\' '
+                f'OR w.accession_number ILIKE ${idx} ESCAPE \'\\\')'
+            )
+            params.append(f'%{escaped}%')
             idx += 1
         if date_from:
             conditions.append(f'w.scheduled_date >= ${idx}')
@@ -220,7 +224,10 @@ class TrackingHandler(HTTPEndpoint):
         async with get_conn() as conn:
             rows = await conn.fetch(
                 f"SELECT w.*, e.status AS exam_status, e.priority AS exam_priority,"
-                f" e.assigned_technologist, e.protocol_name AS exam_protocol"
+                f" e.assigned_technologist, e.protocol_name AS exam_protocol,"
+                f" (EXISTS (SELECT 1 FROM ris_critical_results cr"
+                f"   WHERE cr.accession_number = w.accession_number"
+                f"   AND cr.status = 'flagged')) AS has_critical"
                 f" FROM worklist_entries w"
                 f" LEFT JOIN exams e ON e.accession_number = w.accession_number"
                 f" WHERE {where}"
@@ -295,17 +302,20 @@ class TrackingTimelineHandler(HTTPEndpoint):
         exam_id = request.path_params['id']
         async with get_conn() as conn:
             rows = await conn.fetch(
-                "SELECT event_type, actor_id, details, created_at"
-                " FROM audit_log"
-                " WHERE resource_type = 'worklist_entry'"
-                " AND resource_id = $1"
-                " ORDER BY created_at ASC",
+                "SELECT (l.log::json->>'event') AS event_type,"
+                " (l.log::json->>'actor') AS actor_id,"
+                " (l.log::json->>'detail') AS details,"
+                " l.created AS created_at"
+                " FROM logs l"
+                " WHERE (l.log::json->'resource'->>'type') = 'worklist_entry'"
+                " AND (l.log::json->'resource'->>'id') = $1"
+                " ORDER BY l.created ASC",
                 exam_id,
             )
         return ok({'data': [dict(r) for r in rows]})
 
 
-# Valid status transitions for the manual update guard.
+# M-10: the canonical tracking transition map (deduplicated).
 TRACKING_VALID_TRANSITIONS = {
     'scheduled': {'arrived', 'cancelled'},
     'arrived': {'in_progress', 'cancelled'},
@@ -348,12 +358,20 @@ class TrackingStatusHandler(HTTPEndpoint):
                     status=409,
                 )
 
-            now = datetime.now(timezone.utc)
-            await conn.execute(
-                "UPDATE worklist_entries SET status = $2, updated_at = $3"
-                " WHERE id = $1",
-                entry_id, new_status, now,
-            )
+            # S6-24: the guarded UPDATE is the race backstop — two concurrent
+            # PUTs that both passed the pre-check cannot both win; the loser
+            # gets a 409 instead of overwriting the winner's status.
+            from db.worklist import Worklist
+            applied = await Worklist(conn).update_status_if(
+                entry_id, current, new_status)
+            if not applied:
+                from api.response import api_error
+                return api_error(
+                    'VALIDATION',
+                    f'Entry already transitioned from {current}',
+                    status=409,
+                )
+
             await AuditLog(conn).log_event(
                 event_type='worklist.status_updated',
                 actor_id=request.user.id,

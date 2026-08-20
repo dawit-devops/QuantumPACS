@@ -8,11 +8,14 @@ against real Postgres in test_ris_appointments.py.
 """
 
 import asyncio
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
 
-from services.scheduling.engine import SchedulingConflict, SchedulingEngine
+from services.scheduling.engine import (
+    SchedulingConflict, SchedulingEngine, SchedulingNotFound,
+)
 
 
 class TestBook:
@@ -38,6 +41,7 @@ class TestBook:
             engine._lifecycle = AsyncMock()
             engine._lifecycle.transition = AsyncMock(return_value={
                 'id': 'ord-1', 'status': 'SCHEDULED'})
+            engine._audit = AsyncMock()
 
             got = await engine.book(
                 order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
@@ -126,6 +130,8 @@ class TestBookGates:
         # Ensure the mock order carries patient_id matching MRN-1
         if order and 'patient_id' not in order:
             order['patient_id'] = 'MRN-1'
+        # B-4: the success path audits APPOINTMENT_BOOKED.
+        engine._audit = AsyncMock()
         return engine
 
     def test_book_refuses_order_with_pending_prior_auth(self):
@@ -301,7 +307,10 @@ class TestWorklistLink:
             'id': 'res-1', 'name': 'CT-1', 'modality': 'CT',
             'resource_type': 'MODALITY'})
         engine._worklist = AsyncMock()
+        engine._worklist.get_by_accession = AsyncMock(return_value=None)
         engine._worklist.create = AsyncMock(return_value={'id': 'wl-1'})
+        engine._worklist.update_entry = AsyncMock()
+        engine._worklist.cancel = AsyncMock()
         engine._audit = AsyncMock()
         engine._audit.log_event = AsyncMock()
         return engine
@@ -446,7 +455,7 @@ class TestCancel:
             engine = SchedulingEngine()
             engine._appointments = AsyncMock()
             engine._appointments.get = AsyncMock(return_value=None)
-            with pytest.raises(ValueError):
+            with pytest.raises(SchedulingNotFound):
                 await engine.cancel(appointment_id='nope', reason='x')
 
         asyncio.run(run())
@@ -528,12 +537,14 @@ class TestOrderlessPatientCheck:
         engine._orders = AsyncMock()
         engine._patients = AsyncMock()
         engine._patients.get_by_mrn = AsyncMock(return_value=patient_row)
+        # B-4: the success path audits APPOINTMENT_BOOKED.
+        engine._audit = AsyncMock()
         return engine
 
     def test_orderless_book_rejects_unknown_patient(self):
         async def run():
             engine = self._engine(None)
-            with pytest.raises(ValueError) as exc:
+            with pytest.raises(SchedulingNotFound) as exc:
                 await engine.book(
                     order_id='', patient_id='MRN-GHOST', resource_id='res-1',
                     start_time='2026-08-20 09:00:00+00',
@@ -610,4 +621,376 @@ class TestCancelledSlotRelease:
                     end_time='2026-08-20 09:30:00+00')
             engine._appointments.create.assert_not_awaited()
 
+        asyncio.run(run())
+
+class TestExclusionBackstop:
+    """H2: the EXCLUDE constraint race must surface as a 409 conflict, never a 500."""
+
+    def test_book_converts_exclusion_violation_to_conflict(self):
+        async def run():
+            import asyncpg
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[])
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value={
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+            engine._appointments.create = AsyncMock(side_effect=asyncpg.exceptions.ExclusionViolationError(
+                'conflicting key value violates exclusion constraint "no_double_book"'))
+
+            from services.scheduling.engine import SchedulingConflict
+            with pytest.raises(SchedulingConflict):
+                await engine.book(
+                    order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00',
+                )
+
+        asyncio.run(run())
+
+
+class TestRescheduleCancelledSlots:
+    """H4: CANCELLED appointments do not occupy capacity — reschedule into a
+    slot held only by a cancelled row must succeed (mirror of book() F-03)."""
+
+    def _engine(self, current_appt):
+        engine = SchedulingEngine()
+        engine._appointments = AsyncMock()
+        engine._appointments.get = AsyncMock(return_value=current_appt)
+        engine._appointments.for_resource = AsyncMock(return_value=[])
+        engine._appointments.update_slot = AsyncMock(return_value={
+            **current_appt,
+            'start_time': '2026-08-20 10:00:00+00',
+            'end_time': '2026-08-20 10:30:00+00',
+        })
+        engine._appointments.delete = AsyncMock()
+        engine._schedules = AsyncMock()
+        engine._schedules.for_resource = AsyncMock(return_value=[])
+        engine._audit = AsyncMock()
+        engine._audit.log_event = AsyncMock()
+        return engine
+
+    def test_reschedule_into_cancelled_held_slot_releases_and_succeeds(self):
+        async def run():
+            engine = self._engine({
+                'id': 'appt-1', 'resource_id': 'res-1', 'order_id': 'ord-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00'})
+            engine._appointments.for_resource = AsyncMock(return_value=[
+                {'id': 'appt-2', 'resource_id': 'res-1', 'status': 'CANCELLED',
+                 'start_time': '2026-08-20 10:00:00+00',
+                 'end_time': '2026-08-20 10:30:00+00'},
+            ])
+            got = await engine.reschedule(
+                appointment_id='appt-1',
+                new_start_time='2026-08-20 10:00:00+00',
+                new_end_time='2026-08-20 10:30:00+00')
+            assert got['start_time'].endswith('10:00:00+00')
+            engine._appointments.delete.assert_awaited_once_with('appt-2')
+
+        asyncio.run(run())
+
+    def test_reschedule_still_rejects_active_conflict_beside_cancelled(self):
+        async def run():
+            engine = self._engine({
+                'id': 'appt-1', 'resource_id': 'res-1', 'order_id': 'ord-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00'})
+            engine._appointments.for_resource = AsyncMock(return_value=[
+                {'id': 'appt-2', 'resource_id': 'res-1', 'status': 'CANCELLED',
+                 'start_time': '2026-08-20 10:00:00+00',
+                 'end_time': '2026-08-20 10:30:00+00'},
+                {'id': 'appt-3', 'resource_id': 'res-1', 'status': 'SCHEDULED',
+                 'start_time': '2026-08-20 10:00:00+00',
+                 'end_time': '2026-08-20 10:30:00+00'},
+            ])
+            with pytest.raises(SchedulingConflict):
+                await engine.reschedule(
+                    appointment_id='appt-1',
+                    new_start_time='2026-08-20 10:00:00+00',
+                    new_end_time='2026-08-20 10:30:00+00')
+            engine._appointments.delete.assert_not_awaited()
+            engine._appointments.update_slot.assert_not_awaited()
+
+        asyncio.run(run())
+
+
+class TestWorklistSync:
+    """H5: worklist_entries follow the appointment lifecycle — overrides bump
+    displaced orders off the MWL and re-stamp the rebooked order's entry,
+    reschedules move the entry's date/time, cancels remove it."""
+
+    def _order(self, oid, accession):
+        return {'id': oid, 'accession_number': accession,
+                'patient_id': 'MRN-1', 'patient_name': 'Doe, Jane',
+                'patient_dob': '1980-01-01', 'referring_physician': 'Dr X',
+                'clinical_indication': 'follow-up', 'priority': 'ROUTINE',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'}
+
+    def _engine(self):
+        engine = SchedulingEngine(actor_id='sched-1')
+        engine._appointments = AsyncMock()
+        engine._appointments.create = AsyncMock(return_value={
+            'id': 'appt-1', 'order_id': 'ord-1', 'resource_id': 'res-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00', 'status': 'SCHEDULED'})
+        engine._appointments.for_resource = AsyncMock(return_value=[])
+        engine._appointments.get = AsyncMock(return_value={
+            'id': 'appt-1', 'order_id': 'ord-1', 'resource_id': 'res-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00', 'status': 'SCHEDULED'})
+        engine._appointments.update_slot = AsyncMock(return_value={
+            'id': 'appt-1', 'order_id': 'ord-1', 'resource_id': 'res-1',
+            'start_time': '2026-08-20 10:00:00+00',
+            'end_time': '2026-08-20 10:30:00+00', 'status': 'SCHEDULED'})
+        engine._appointments.update_status = AsyncMock(return_value={
+            'id': 'appt-1', 'order_id': 'ord-1', 'resource_id': 'res-1',
+            'status': 'CANCELLED'})
+        engine._appointments.delete = AsyncMock()
+        engine._schedules = AsyncMock()
+        engine._schedules.for_resource = AsyncMock(return_value=[])
+        engine._orders = AsyncMock()
+        engine._orders.get = AsyncMock(side_effect=lambda oid: {
+            'ord-1': self._order('ord-1', 'A-1001'),
+            'ord-2': self._order('ord-2', 'A-2002'),
+        }[oid])
+        engine._lifecycle = AsyncMock()
+        engine._lifecycle.transition = AsyncMock(return_value={
+            'id': 'ord-1', 'status': 'SCHEDULED'})
+        engine._resources = AsyncMock()
+        engine._resources.get = AsyncMock(return_value={
+            'id': 'res-1', 'name': 'CT-1', 'modality': 'CT',
+            'resource_type': 'MODALITY'})
+        engine._worklist = AsyncMock()
+        engine._worklist.get_by_accession = AsyncMock(return_value=None)
+        engine._worklist.create = AsyncMock(return_value={'id': 'wl-1'})
+        engine._worklist.update_entry = AsyncMock()
+        engine._worklist.cancel = AsyncMock()
+        engine._audit = AsyncMock()
+        engine._audit.log_event = AsyncMock()
+        return engine
+
+    def test_override_cancels_bumped_orders_and_restamps_own_entry(self):
+        async def run():
+            engine = self._engine()
+            engine._appointments.for_resource = AsyncMock(return_value=[
+                {'id': 'appt-2', 'order_id': 'ord-2', 'resource_id': 'res-1',
+                 'status': 'SCHEDULED',
+                 'start_time': '2026-08-20 09:00:00+00',
+                 'end_time': '2026-08-20 09:30:00+00'},
+            ])
+            engine._worklist.get_by_accession = AsyncMock(
+                side_effect=lambda acc: {'id': 'wl-1'} if acc == 'A-1001'
+                else {'id': 'wl-2'})
+            await engine.book(
+                order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00',
+                override_reason='STAT bumped')
+            engine._worklist.cancel.assert_awaited_once_with('wl-2')
+            args = engine._worklist.update_entry.await_args.args
+            assert args[0] == 'wl-1'
+            assert args[1]['scheduled_date'].isoformat() == '2026-08-20'
+            assert str(args[1]['scheduled_time']) == '09:00:00'
+            engine._worklist.create.assert_not_awaited()
+
+        asyncio.run(run())
+
+    def test_reschedule_updates_worklist_scheduled_time(self):
+        async def run():
+            engine = self._engine()
+            engine._worklist.get_by_accession = AsyncMock(
+                return_value={'id': 'wl-1'})
+            await engine.reschedule(
+                appointment_id='appt-1',
+                new_start_time='2026-08-20 10:00:00+00',
+                new_end_time='2026-08-20 10:30:00+00',
+                reason='patient request')
+            args = engine._worklist.update_entry.await_args.args
+            assert args[0] == 'wl-1'
+            assert args[1]['scheduled_date'].isoformat() == '2026-08-20'
+            assert str(args[1]['scheduled_time']) == '10:00:00'
+
+        asyncio.run(run())
+
+    def test_cancel_removes_worklist_entry(self):
+        async def run():
+            engine = self._engine()
+            engine._worklist.get_by_accession = AsyncMock(
+                return_value={'id': 'wl-1'})
+            await engine.cancel(appointment_id='appt-1', reason='cancelled')
+            engine._worklist.cancel.assert_awaited_once_with('wl-1')
+
+        asyncio.run(run())
+
+
+class TestErrorContract:
+    """S4 B-2/B-7/B-8 engine-level: missing entities are not-found
+    outcomes, malformed datetimes are validation errors — never raw
+    ValueError (which the API layer would turn into a 500)."""
+
+    def test_book_missing_order_raises_not_found(self):
+        async def run():
+            from services.scheduling.engine import SchedulingNotFound
+
+            engine = SchedulingEngine()
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value=None)
+            with pytest.raises(SchedulingNotFound):
+                await engine.book(
+                    order_id='ord-missing', patient_id='MRN-1',
+                    resource_id='res-1',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00')
+        asyncio.run(run())
+
+    def test_book_missing_resource_raises_not_found(self):
+        async def run():
+            from services.scheduling.engine import SchedulingNotFound
+
+            engine = SchedulingEngine()
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value={
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+            engine._resources = AsyncMock()
+            engine._resources.get = AsyncMock(return_value=None)
+            with pytest.raises(SchedulingNotFound):
+                await engine.book(
+                    order_id='ord-1', patient_id='MRN-1',
+                    resource_id='res-missing',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00')
+        asyncio.run(run())
+
+    def test_book_malformed_datetime_raises_validation(self):
+        async def run():
+            from services.scheduling.engine import SchedulingValidation
+
+            engine = SchedulingEngine()
+            with pytest.raises(SchedulingValidation):
+                await engine.book(
+                    order_id='', patient_id='MRN-1', resource_id='res-1',
+                    start_time='garbage', end_time='2026-08-20 09:30:00+00')
+        asyncio.run(run())
+
+    def test_reschedule_missing_appointment_raises_not_found(self):
+        async def run():
+            from services.scheduling.engine import SchedulingNotFound
+
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.get = AsyncMock(return_value=None)
+            with pytest.raises(SchedulingNotFound):
+                await engine.reschedule(
+                    appointment_id='appt-missing',
+                    new_start_time='2026-08-20 10:00:00+00',
+                    new_end_time='2026-08-20 10:30:00+00')
+        asyncio.run(run())
+
+    def test_cancel_missing_appointment_raises_not_found(self):
+        async def run():
+            from services.scheduling.engine import SchedulingNotFound
+
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.get = AsyncMock(return_value=None)
+            with pytest.raises(SchedulingNotFound):
+                await engine.cancel(appointment_id='appt-missing')
+        asyncio.run(run())
+
+
+class TestBookingAudit:
+    """B-4: every successful booking must audit an APPOINTMENT_BOOKED
+    event carrying resource/slot/reason — the order timeline renders it."""
+
+    def test_book_audits_appointment_booked_with_slot_details(self):
+        async def run():
+            from services.scheduling.engine import SchedulingEngine
+
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[])
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value={
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+            engine._appointments.create = AsyncMock(return_value={
+                'id': 'appt-1', 'status': 'SCHEDULED'})
+            engine._lifecycle = AsyncMock()
+            engine._lifecycle.transition = AsyncMock(return_value={
+                'id': 'ord-1', 'status': 'SCHEDULED'})
+            engine._audit = AsyncMock()
+            engine._audit = AsyncMock()
+
+            await engine.book(
+                order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00', reason='routing order')
+
+            calls = [c.args for c in engine._audit.log_event.await_args_list]
+            booked = [c for c in calls if c[0] == 'APPOINTMENT_BOOKED']
+            assert len(booked) == 1, f'expected 1 APPOINTMENT_BOOKED, got {len(booked)}'
+            details = booked[0][4]
+            assert details['resource_id'] == 'res-1'
+            assert details['start_time'] == str(
+                datetime.fromisoformat('2026-08-20 09:00:00+00'))
+            assert details['end_time'] == str(
+                datetime.fromisoformat('2026-08-20 09:30:00+00'))
+            assert details['reason'] == 'routing order'
+            assert details['order_id'] == 'ord-1'
+        asyncio.run(run())
+
+    def test_orderless_book_also_audits_appointment_booked(self):
+        async def run():
+            from services.scheduling.engine import SchedulingEngine
+
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[])
+            engine._appointments.create = AsyncMock(return_value={
+                'id': 'appt-1', 'status': 'SCHEDULED'})
+            engine._audit = AsyncMock()
+
+            await engine.book(
+                order_id='', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00')
+
+            calls = [c.args for c in engine._audit.log_event.await_args_list]
+            booked = [c for c in calls if c[0] == 'APPOINTMENT_BOOKED']
+            assert len(booked) == 1
+            assert booked[0][4]['order_id'] is None
+        asyncio.run(run())
+
+
+class TestPriorAuthExpired:
+    """C-7: an EXPIRED prior authorization must block booking exactly
+    like PENDING/DENIED — a lapsed auth cannot hold a slot."""
+
+    def test_book_refuses_order_with_expired_prior_auth(self):
+        async def run():
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[])
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value={
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'EXPIRED', 'status': 'ORDERED'})
+            with pytest.raises(SchedulingConflict) as exc:
+                await engine.book(
+                    order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                    start_time='2026-08-20 09:00:00+00',
+                    end_time='2026-08-20 09:30:00+00')
+            assert 'EXPIRED' in str(exc.value)
+            engine._appointments.create.assert_not_awaited()
         asyncio.run(run())

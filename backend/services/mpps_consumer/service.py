@@ -8,10 +8,13 @@ The consumer also persists every event in ris_mpps_events (S6-08) for
 audit and troubleshooting.
 """
 from datetime import datetime, timezone
+import time
 
+from api.telemetry import ris_mpps_latency_seconds
+from db.audit_log import AuditLog
 from db.conn import get_conn
-from db.ris_mpps import RisMppsEvents
 from log import get_logger
+from services.pacs_echo.service import echo_to_pacs
 
 log = get_logger(__name__)
 
@@ -31,6 +34,7 @@ class MppsConsumer:
 
         Returns True if the worklist entry was updated, False otherwise.
         """
+        started = time.monotonic()
         ds = event.identifier
         accession = str(getattr(ds, 'AccessionNumber', '') or '')
         if not accession:
@@ -54,32 +58,60 @@ class MppsConsumer:
                 return False
 
             # Update worklist status to in_progress
-            now = datetime.now(timezone.utc)
-            await conn.execute(
-                "UPDATE worklist_entries SET status = 'in_progress', "
-                "updated_at = $2, study_uid = $3 "
-                "WHERE id = $1",
-                worklist_row['id'], now, study_uid,
-            )
+            # M-3: a terminal entry must not regress — a late or repeated
+            # N-CREATE (modality retry, duplicate association) must not
+            # un-complete a performed or cancelled exam. The message is
+            # still recorded for audit.
+            terminal = worklist_row['status'] in ('performed', 'cancelled')
 
-            # Update exam status if one exists for this accession (S6-12)
-            exam_row = await conn.fetchrow(
-                "SELECT id, status FROM exams WHERE accession_number = $1",
-                accession,
-            )
-            if exam_row:
-                await conn.execute(
-                    "UPDATE exams SET status = 'in_progress', "
-                    "updated_at = $2 WHERE id = $1",
-                    exam_row['id'], now,
-                )
+            # M-2: the multi-write sequence (worklist + exam + event +
+            # audit) must be atomic — a mid-sequence failure must not
+            # leave half-applied state.
+            async with conn.transaction():
+                if not terminal:
+                    now = datetime.now(timezone.utc)
+                    await conn.execute(
+                        "UPDATE worklist_entries SET status = 'in_progress', "
+                        "updated_at = $2, study_uid = $3 "
+                        "WHERE id = $1",
+                        worklist_row['id'], now, study_uid,
+                    )
 
-            # Persist the MPPS event for audit
-            await _record_event(conn, accession, 'N_CREATE', mpps_status,
-                                study_uid, station_ae, ds)
+                    # Update exam status if one exists for this accession
+                    # (S6-12)
+                    exam_row = await conn.fetchrow(
+                        "SELECT id, status FROM exams "
+                        "WHERE accession_number = $1",
+                        accession,
+                    )
+                    if exam_row:
+                        await conn.execute(
+                            "UPDATE exams SET status = 'in_progress', "
+                            "updated_at = $2 WHERE id = $1",
+                            exam_row['id'], now,
+                        )
+
+                # Persist the MPPS event for audit
+                await _record_event(conn, accession, 'N_CREATE', mpps_status,
+                                    study_uid, station_ae, ds)
+
+                # H7: MPPS transitions must land in audit_log (resource_type
+                # 'worklist_entry') so the S6-16 tracking timeline shows the
+                # modality-reported progress, not just internal status
+                # changes.
+                await AuditLog(conn).log_event(
+                    'MPPS_N_CREATE', 'system', 'worklist_entry',
+                    worklist_row['id'],
+                    details={'accession': accession,
+                             'mpps_status': mpps_status,
+                             'study_uid': study_uid,
+                             'station_ae': station_ae})
 
             log.info('MPPS N-CREATE: accession %s → IN_PROGRESS', accession)
 
+        # S6-11 / RIS-SL-22: MPPS → tracking latency histogram.
+        ris_mpps_latency_seconds.labels(event_type='N_CREATE').observe(
+            time.monotonic() - started)
         return True
 
     async def handle_n_set(self, event) -> bool:
@@ -87,6 +119,7 @@ class MppsConsumer:
 
         Returns True if the worklist entry was updated, False otherwise.
         """
+        started = time.monotonic()
         ds = event.identifier
         accession = str(getattr(ds, 'AccessionNumber', '') or '')
         if not accession:
@@ -111,53 +144,78 @@ class MppsConsumer:
                             accession)
                 return False
 
-            now = datetime.now(timezone.utc)
-            if wl_status == 'performed':
-                await conn.execute(
-                    "UPDATE worklist_entries SET status = 'performed', "
-                    "performed_at = $2, updated_at = $3, study_uid = $4 "
-                    "WHERE id = $1",
-                    worklist_row['id'], now, now, study_uid,
-                )
-            elif wl_status == 'cancelled':
-                await conn.execute(
-                    "UPDATE worklist_entries SET status = 'cancelled', "
-                    "updated_at = $2 "
-                    "WHERE id = $1",
-                    worklist_row['id'], now,
-                )
-            else:
-                await conn.execute(
-                    "UPDATE worklist_entries SET status = $2, "
-                    "updated_at = $3 WHERE id = $1",
-                    worklist_row['id'], wl_status, now,
-                )
-
-            # Update exam status if one exists for this accession (S6-12)
-            exam_row = await conn.fetchrow(
-                "SELECT id, status FROM exams WHERE accession_number = $1",
-                accession,
-            )
-            if exam_row:
+            # M-2: the multi-write sequence (worklist + exam + event +
+            # audit) must be atomic.
+            async with conn.transaction():
+                now = datetime.now(timezone.utc)
                 if wl_status == 'performed':
                     await conn.execute(
-                        "UPDATE exams SET status = 'completed', "
-                        "updated_at = $2 WHERE id = $1",
-                        exam_row['id'], now,
+                        "UPDATE worklist_entries SET status = 'performed', "
+                        "performed_at = $2, updated_at = $3, study_uid = $4 "
+                        "WHERE id = $1",
+                        worklist_row['id'], now, now, study_uid,
                     )
                 elif wl_status == 'cancelled':
                     await conn.execute(
-                        "UPDATE exams SET status = 'cancelled', "
-                        "updated_at = $2 WHERE id = $1",
-                        exam_row['id'], now,
+                        "UPDATE worklist_entries SET status = 'cancelled', "
+                        "updated_at = $2 "
+                        "WHERE id = $1",
+                        worklist_row['id'], now,
+                    )
+                else:
+                    await conn.execute(
+                        "UPDATE worklist_entries SET status = $2, "
+                        "updated_at = $3 WHERE id = $1",
+                        worklist_row['id'], wl_status, now,
                     )
 
-            # Persist the MPPS event for audit
-            await _record_event(conn, accession, 'N_SET', mpps_status,
-                                study_uid, station_ae, ds)
+                # Update exam status if one exists for this accession
+                # (S6-12)
+                exam_row = await conn.fetchrow(
+                    "SELECT id, status FROM exams WHERE accession_number = $1",
+                    accession,
+                )
+                if exam_row:
+                    if wl_status == 'performed':
+                        await conn.execute(
+                            "UPDATE exams SET status = 'completed', "
+                            "updated_at = $2 WHERE id = $1",
+                            exam_row['id'], now,
+                        )
+                    elif wl_status == 'cancelled':
+                        await conn.execute(
+                            "UPDATE exams SET status = 'cancelled', "
+                            "updated_at = $2 WHERE id = $1",
+                            exam_row['id'], now,
+                        )
+
+                # Persist the MPPS event for audit
+                await _record_event(conn, accession, 'N_SET', mpps_status,
+                                    study_uid, station_ae, ds)
+
+                # H7: MPPS transitions must land in audit_log (resource_type
+                # 'worklist_entry') so the S6-16 tracking timeline shows the
+                # modality-reported progress, not just internal status
+                # changes.
+                await AuditLog(conn).log_event(
+                    'MPPS_N_SET', 'system', 'worklist_entry',
+                    worklist_row['id'],
+                    details={'accession': accession,
+                             'mpps_status': mpps_status,
+                             'study_uid': study_uid,
+                             'station_ae': station_ae})
 
             log.info('MPPS N-SET: accession %s → %s', accession, wl_status)
 
+        # H8 / S6-09: a completed exam probes PACS connectivity. Fired
+        # outside the connection block so a slow echo never holds a pooled
+        # connection; the stub is best-effort and never raises.
+        if wl_status == 'performed':
+            await echo_to_pacs()
+
+        # S6-11 / RIS-SL-22: MPPS → tracking latency histogram.
+        ris_mpps_latency_seconds.labels(event_type='N_SET').observe(
+            time.monotonic() - started)
         return True
 
 
@@ -169,7 +227,24 @@ def _extract_station_ae(event):
 
 
 def _extract_sps_status(ds):
-    """Extract the ScheduledProcedureStepStatus from the dataset."""
+    """Extract the MPPS status from the dataset.
+
+    CR-2: the status of a performed step lives in (0040,0252)
+    PerformedProcedureStepStatus inside the performed-step block
+    (0040,0270) Scheduled Step Attributes Sequence. The original
+    implementation read ScheduledProcedureStepStatus from the SPS
+    sequence — which modalities echo as IN_PROGRESS — so COMPLETED
+    N-SET messages never mapped to `performed`. Read by tag because
+    pydicom stores (0040,0270) under its retired keyword
+    ScheduledStepAttributesSequence, which varies by version. Fall back
+    to the SPS element only for legacy/non-conformant datasets that
+    lack a performed-step block.
+    """
+    pps = ds.get_item((0x0040, 0x0270)) if hasattr(ds, 'get_item') else None
+    if pps is not None and getattr(pps, 'VR', None) == 'SQ' and pps.value:
+        status = str(getattr(pps.value[0], 'PerformedProcedureStepStatus', '') or '')
+        if status:
+            return status
     sps_seq = getattr(ds, 'ScheduledProcedureStepSequence', None)
     if sps_seq and len(sps_seq) > 0:
         return str(getattr(sps_seq[0], 'ScheduledProcedureStepStatus', '') or '')

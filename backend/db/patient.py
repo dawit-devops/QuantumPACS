@@ -39,6 +39,11 @@ class Patient(Table):
         patient_id = await self.fetchval(q)
         return {'id': patient_id}
 
+    async def get_by_mrn(self, mrn: str):
+        """Lightweight lookup by MRN (patient_id) for scheduling engine."""
+        q = self.select('*').where(self.table.patient_id == mrn)
+        return await self.fetchone(q)
+
     async def get_extra(self, patient_id):
         q = self.select('*').where(self.table.id == patient_id)
         patient = await self.fetchone(q)

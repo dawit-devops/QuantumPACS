@@ -21,18 +21,18 @@ import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
+import {
+  EXAM_STATUS_COLORS,
+  EXAM_PRIORITY_COLORS,
+  PRIORITY_LABEL,
+} from "../common/statusColors";
 import "./TechnologistWorklist.css";
 // Status chips reuse the shared Front Desk chip styles (fd-chips/fd-chip).
 import "../frontdesk/FrontDesk.css";
 
 const Content = Layout.Content;
 
-const STATUS_COLORS: Record<string, string> = {
-  ready: "blue",
-  in_progress: "gold",
-  completed: "green",
-  cancelled: "red",
-};
+const STATUS_COLORS = EXAM_STATUS_COLORS;
 
 // technologist review P1-3: the read state of an exam the tech completed
 // (reports.status machine: draft -> preliminary -> submitted -> final).
@@ -43,17 +43,7 @@ const READ_STATE: Record<string, { label: string; color: string }> = {
   draft: { label: "In draft", color: "default" },
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  stat: "STAT",
-  urgent: "Urgent",
-  routine: "Routine",
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  stat: "red",
-  urgent: "orange",
-  routine: "default",
-};
+const PRIORITY_COLORS = EXAM_PRIORITY_COLORS;
 
 // Auto-refresh cadence per NFR-R06-06 (≤30s staleness). The exam list refetches
 // on this interval so new R04 assignments appear without a manual reload.

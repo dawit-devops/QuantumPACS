@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import signal
 import traceback
+import uuid
 from io import BytesIO
 
 from pynetdicom import AE, evt, StoragePresentationContexts
@@ -94,6 +95,29 @@ async def _handle_store_async(ds, dst, ae_title=''):
         return False
 
 
+def _submit(coro, timeout):
+    """Run a coroutine on the DICOM loop from a pynetdicom thread.
+
+    M-5: association threads can outlive the loop (shutdown race,
+    startup failure) — guard the submit so a missing/closed loop yields
+    None instead of raising RuntimeError inside the pynetdicom thread.
+    The caller maps None to the appropriate failure status.
+    """
+    if _loop is None:
+        coro.close()
+        log.error('DICOM event loop not running; dropping %s',
+                  getattr(coro, '__qualname__', type(coro).__name__))
+        return None
+    try:
+        future = asyncio.run_coroutine_threadsafe(coro, _loop)
+    except RuntimeError:
+        coro.close()
+        log.error('DICOM event loop unavailable; dropping %s',
+                  getattr(coro, '__qualname__', type(coro).__name__))
+        return None
+    return future.result(timeout=timeout)
+
+
 def handle_store(event):
     ds = event.dataset
     ds.file_meta = event.file_meta
@@ -105,11 +129,10 @@ def handle_store(event):
         log.error('DICOM save failed: %s', traceback.format_exc())
         return 0x0001
 
-    future = asyncio.run_coroutine_threadsafe(
-        _handle_store_async(ds, dst, _requestor_ae_title(event)), _loop,
-    )
     try:
-        result = future.result(timeout=60)
+        result = _submit(
+            _handle_store_async(ds, dst, _requestor_ae_title(event)), 60,
+        )
     except Exception:
         log.error('DICOM store timed out or failed: %s', traceback.format_exc())
         return 0x0001
@@ -189,15 +212,29 @@ async def handle_find_async(query_ds, ae_title=''):
             if hasattr(sps, 'Modality') and sps.Modality and 'modality' not in filters:
                 filters['modality'] = str(sps.Modality)
         if hasattr(query_ds, 'AccessionNumber') and query_ds.AccessionNumber:
-            filters['search'] = str(query_ds.AccessionNumber)
+            filters['accession'] = str(query_ds.AccessionNumber)
 
         # Worklist entries are per-tenant: a mapped AE queries its own
         # tenant's scheduled exams (CR-02).
         async with tenant_db_scope(slug, tenant_info):
             async with get_conn() as conn:
-                # search() returns (rows, total) — the tuple must be unpacked or
-                # the caller iterates a 2-tuple and crashes (seen as empty MWL).
-                entries, _ = await Worklist(conn).search(status='scheduled', per_page=1000, **filters)
+                # M-8: page the C-FIND instead of one 1000-row query — a
+                # monolithic fetch plus the 30s SCP timeout blocks the
+                # modality on slow datasets. Each page is bounded, the
+                # first page returns promptly, and the cap keeps a runaway
+                # dataset from starving the loop.
+                per_page = 250
+                entries = []
+                for page in range(1, 9):
+                    # search() returns (rows, total) — the tuple must be
+                    # unpacked or the caller iterates a 2-tuple and crashes
+                    # (seen as empty MWL).
+                    rows, _ = await Worklist(conn).search(
+                        status='scheduled', per_page=per_page, page=page,
+                        **filters)
+                    entries.extend(rows)
+                    if len(rows) < per_page:
+                        break
 
         results = []
         for entry in entries:
@@ -250,19 +287,30 @@ def _entry_to_dataset(entry):
     sps_ds.ProtocolName = entry.get('protocol_name', '') or ''
     # (0040,1002) Reason for the Requested Procedure lives inside the SPS.
     sps_ds.ReasonForTheRequestedProcedure = entry.get('reason_for_requested_procedure', '') or ''
+    # CR-1: manual tracking states (arrived/completed) are distinct from the
+    # MPPS-driven `performed` — map each to its DICOM SPS status instead of
+    # silently falling back to SCHEDULED.
     sps_ds.ScheduledProcedureStepStatus = {
         'scheduled': 'SCHEDULED',
+        'arrived': 'ARRIVED',
         'in_progress': 'STARTED',
         'performed': 'COMPLETED',
+        'completed': 'COMPLETED',
         'cancelled': 'CANCELLED',
     }.get(entry.get('status', ''), 'SCHEDULED')
     ds.ScheduledProcedureStepSequence = [sps_ds]
 
     ds.file_meta = Dataset()
     ds.file_meta.MediaStorageSOPClassUID = ModalityWorklistInformationFind
-    # The id column is a UUID — asyncpg returns a uuid.UUID object which
-    # pydicom UID() refuses ("A UID must be created from a string").
-    ds.file_meta.MediaStorageSOPInstanceUID = str(entry.get('id', '') or '')
+    # M-6: the id column is a UUID, but MediaStorageSOPInstanceUID must be
+    # a valid DICOM UID — a hyphenated UUID string is illegal (only digits
+    # and dots, <= 64 chars). Map UUIDs through the RFC 4122 2.25 root
+    # (2.25.<decimal 128-bit value>), which is the canonical DICOM mapping.
+    entry_id = entry.get('id', '') or ''
+    if isinstance(entry_id, uuid.UUID):
+        ds.file_meta.MediaStorageSOPInstanceUID = '2.25.' + str(entry_id.int)
+    else:
+        ds.file_meta.MediaStorageSOPInstanceUID = str(entry_id)
     ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
     return ds
 
@@ -301,17 +349,21 @@ def handle_find(event):
     else:
         coro = handle_find_async(query_ds, ae_title)
 
-    future = asyncio.run_coroutine_threadsafe(coro, _loop)
     try:
-        results = future.result(timeout=30)
+        results = _submit(coro, 30)
     except TenantResolutionError as e:
         # ME-05: a mapped AE whose tenant is missing must not be served the
         # default tenant's data — refuse the query loudly instead.
         log.error('C-FIND refused: %s', e)
-        return 0xA700
+        yield 0xA700, None
+        return
     except Exception:
         log.error('C-FIND timed out or failed: %s', traceback.format_exc())
-        return 0xA700
+        yield 0xA700, None
+        return
+    if results is None:
+        yield 0xA700, None
+        return
 
     for ds in results:
         yield 0xFF00, ds
@@ -382,38 +434,51 @@ def apply_association_policy(ae):
             ae.require_calling_aet = mapped_aets
 
 
+async def _run_mpps_async(fn, event):
+    """Run an MPPS consumer call inside the calling AE's tenant scope.
+
+    CR-3: N-CREATE/N-SET arrive on the DICOM association outside the HTTP
+    middleware that sets the per-request tenant scope, so — exactly like
+    C-FIND (handle_find_async) — the tenant must be resolved from the AE
+    title and the consumer run inside tenant_db_scope. Otherwise every
+    MPPS event is stamped with the `default` tenant even when the
+    modality belongs to another tenant.
+    """
+    slug, tenant_info = await _tenant_scope_for_ae(_requestor_ae_title(event))
+    async with tenant_db_scope(slug, tenant_info):
+        return await fn(event)
+
+
+def _run_mpps(handler_name, fn, event):
+    try:
+        result = _submit(_run_mpps_async(fn, event), 30)
+    except TenantResolutionError as e:
+        # ME-05: a mapped AE whose tenant is missing must not be served the
+        # default tenant's data — refuse the request loudly instead.
+        log.error('MPPS %s refused: %s', handler_name, e)
+        return 0xA700
+    except Exception:
+        log.error('MPPS %s failed: %s', handler_name, traceback.format_exc())
+        return 0x0110  # Processing failure
+    if result is None:
+        return 0x0110  # Loop unavailable — processing failure
+    if not result:
+        return 0x0112  # No such object instance (unknown accession)
+    return 0x0000  # Success
+
+
 # MPPS N-CREATE handler (S6-07)
 def handle_n_create(event):
     """MPPS N-CREATE: modality starts performing a procedure."""
     from services.mpps_consumer.service import MppsConsumer
-    future = asyncio.run_coroutine_threadsafe(
-        MppsConsumer().handle_n_create(event), _loop,
-    )
-    try:
-        result = future.result(timeout=30)
-    except Exception:
-        log.error('MPPS N-CREATE failed: %s', traceback.format_exc())
-        return 0xA700  # Out of resources
-    if not result:
-        return 0xA700
-    return 0x0000  # Success
+    return _run_mpps('N-CREATE', MppsConsumer().handle_n_create, event)
 
 
 # MPPS N-SET handler (S6-07)
 def handle_n_set(event):
     """MPPS N-SET: modality completes or cancels a procedure."""
     from services.mpps_consumer.service import MppsConsumer
-    future = asyncio.run_coroutine_threadsafe(
-        MppsConsumer().handle_n_set(event), _loop,
-    )
-    try:
-        result = future.result(timeout=30)
-    except Exception:
-        log.error('MPPS N-SET failed: %s', traceback.format_exc())
-        return 0xA700
-    if not result:
-        return 0xA700
-    return 0x0000
+    return _run_mpps('N-SET', MppsConsumer().handle_n_set, event)
 
 
 handlers = [

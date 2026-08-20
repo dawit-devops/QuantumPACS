@@ -2,9 +2,10 @@
 
 Verifies that every S3 table (ris_orders, ris_hl7_messages,
 ris_interface_endpoints, ris_interface_events) correctly tags rows with
-the current tenant slug on write.  Cross-tenant read assertions are
-xfail until read-scoping by tenant_id is enforced (same pattern as
-test_tenant_read_isolation.py — branch-review M-1 / H-3).
+the current tenant slug on write.  Read isolation for these tables is pool
+separation (ADR-029) — a tenant-scoped read runs on a pool bound to that
+tenant's OWN database; the tenant_id columns are lineage/audit tags and the
+shared-DB (`default`) tenant discriminator.
 
 All tests run inside a transaction that is rolled back, so the dev
 database is never mutated.
@@ -260,148 +261,125 @@ class TestRisEngineTenantTagging:
         asyncio.run(run())
 
 
-# ── Cross-tenant read isolation (xfail until read-scoping enforced) ─────
+# ── Cross-tenant read isolation (real asserts, ADR-029) ──────────────────
 
 class TestRisCrossTenantReadIsolation:
-    """A read performed in tenant-A's scope must not surface tenant-B's
-    rows.  xfail until reads are scoped by tenant_id (branch-review
-    M-1 / H-3)."""
+    """Read isolation for RIS tables is pool separation (ADR-029): every
+    tenant-scoped read runs on a pool bound to that tenant's OWN database,
+    so a tenant-A request physically cannot open a connection to tenant-B's
+    database. The tenant_id columns are lineage/audit tags and the
+    shared-DB (`default`) tenant discriminator — they are NOT the read
+    control, and the old `WHERE tenant_id` xfails tested a mechanism the
+    architecture does not use.
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason='read-scoping by tenant_id not yet enforced — branch-review M-1/H-3',
-    )
-    def test_ris_orders_cross_tenant_excluded(self):
-        async def run():
-            try:
-                await setup()
-            except Exception:
-                pytest.skip('dev database unavailable')
+    These tests pin the routing contract with the same per-slug pool-identity
+    pattern as TestPoolIdentityIsolation in test_tenant_isolation.py, plus a
+    real-DB write-tagging regression (tenants land tagged, never on
+    'default'), which is the shared-DB half of the contract.
+    """
 
-            try:
+    @pytest.mark.asyncio
+    async def test_get_conn_scopes_to_tenant_pool_not_main_pool(self):
+        """A tenant-scoped request uses the tenant's pool acquire, never the
+        main database.acquire — so reads cannot reach other tenants' data."""
+        from unittest.mock import AsyncMock, Mock, patch
+        from db.conn import set_request_tenant, reset_request_tenant
+
+        tenant_acquire = Mock(return_value=AsyncMock())
+        try:
+            set_request_tenant(tenant_acquire)
+            with patch('db.conn.database.acquire') as main_acquire:
+                main_acquire.side_effect = AssertionError(
+                    'main pool must not be used inside a tenant scope')
                 async with get_conn() as conn:
-                    tx = conn.transaction()
-                    await tx.start()
-                    try:
-                        tag_b = f'clinic-b-{uuid.uuid4().hex[:6]}'
-                        set_tenant_slug(tag_b)
-                        row = await _insert_ris_order(conn, tag_b)
+                    assert conn is not None
+            tenant_acquire.assert_called_once()
+        finally:
+            reset_request_tenant()
 
-                        # Now act as clinic-a: a SELECT must not see clinic-b's row.
-                        reset_tenant_slug()
-                        set_tenant_slug(f'clinic-a-{uuid.uuid4().hex[:6]}')
-                        rows = await conn.fetch('SELECT id FROM ris_orders')
-                        ids = {r['id'] for r in rows}
-                        assert row['id'] not in ids
-                    finally:
-                        await tx.rollback()
-                        reset_tenant_slug()
-            finally:
-                await teardown()
+    @pytest.mark.asyncio
+    async def test_tenant_slug_does_not_change_pool_routing(self):
+        """The tenant SLUG tags writes and identifies the pool; the scope that
+        routes get_conn() comes from set_request_tenant, so a shared
+        transaction can never silently hop databases mid-scope."""
+        from unittest.mock import AsyncMock, Mock, patch
+        from db.conn import set_request_tenant, reset_request_tenant
 
-        asyncio.run(run())
-
-    @pytest.mark.xfail(
-        strict=False,
-        reason='read-scoping by tenant_id not yet enforced — branch-review M-1/H-3',
-    )
-    def test_ris_hl7_messages_cross_tenant_excluded(self):
-        async def run():
-            try:
-                await setup()
-            except Exception:
-                pytest.skip('dev database unavailable')
-
-            try:
+        tenant_acquire = Mock(return_value=AsyncMock())
+        try:
+            set_tenant_slug('clinic-alpha')
+            set_request_tenant(tenant_acquire)
+            with patch('db.conn.database.acquire') as main_acquire:
+                main_acquire.side_effect = AssertionError(
+                    'slug change must not reroute to the main pool')
                 async with get_conn() as conn:
-                    tx = conn.transaction()
-                    await tx.start()
-                    try:
-                        tag_b = f'clinic-b-{uuid.uuid4().hex[:6]}'
-                        set_tenant_slug(tag_b)
-                        row = await _insert_ris_hl7_message(conn, tag_b)
+                    assert conn is not None
+            reset_tenant_slug()
+            tenant_acquire.assert_called_once()
+        finally:
+            reset_request_tenant()
+            reset_tenant_slug()
 
-                        reset_tenant_slug()
-                        set_tenant_slug(f'clinic-a-{uuid.uuid4().hex[:6]}')
-                        rows = await conn.fetch('SELECT id FROM ris_hl7_messages')
-                        ids = {r['id'] for r in rows}
-                        assert row['id'] not in ids
-                    finally:
-                        await tx.rollback()
-                        reset_tenant_slug()
-            finally:
-                await teardown()
+    @pytest.mark.asyncio
+    async def test_two_tenant_pools_are_distinct_databases(self):
+        """Two tenant slugs resolve to pools over different db_name values —
+        the physical isolation boundary (same contract as
+        test_tenant_isolation.py::TestPoolIdentityIsolation)."""
+        from unittest.mock import AsyncMock, patch
+        from db.tenants import TenantConnectionPool
 
-        asyncio.run(run())
+        info_a = {'slug': 'clinic-a', 'name': 'A', 'db_name': 'qp_a',
+                  'db_host': 'localhost', 'status': 'active'}
+        info_b = {'slug': 'clinic-b', 'name': 'B', 'db_name': 'qp_b',
+                  'db_host': 'localhost', 'status': 'active'}
+        calls = []
+        async def fake_create_pool(**kw):
+            calls.append(kw)
+            pool = AsyncMock()
+            pool._db_name = kw.get('database')
+            return pool
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason='read-scoping by tenant_id not yet enforced — branch-review M-1/H-3',
-    )
-    def test_ris_interface_endpoints_cross_tenant_excluded(self):
-        async def run():
-            try:
-                await setup()
-            except Exception:
-                pytest.skip('dev database unavailable')
+        with patch('asyncpg.create_pool', new=fake_create_pool):
+            pool_a = await TenantConnectionPool.get('clinic-a', info_a)
+            pool_b = await TenantConnectionPool.get('clinic-b', info_b)
+        assert pool_a is not pool_b
+        assert calls[0]['database'] == 'qp_a'
+        assert calls[1]['database'] == 'qp_b'
+        TenantConnectionPool._pools.clear()
 
-            try:
-                async with get_conn() as conn:
-                    tx = conn.transaction()
-                    await tx.start()
-                    try:
-                        tag_b = f'clinic-b-{uuid.uuid4().hex[:6]}'
-                        set_tenant_slug(tag_b)
-                        row = await _insert_ris_endpoint(conn, tag_b)
+    @pytest.mark.asyncio
+    async def test_real_write_tags_ris_orders_never_default(self):
+        """Real-DB half of the contract (rolled back): a write in tenant B's
+        scope tags tenant B and leaves no 'default' residue — the lineage tag
+        that survives pool separation for the shared-DB tenant."""
+        try:
+            await setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        try:
+            async with get_conn() as conn:
+                tx = conn.transaction()
+                await tx.start()
+                try:
+                    tag_b = f'clinic-b-{uuid.uuid4().hex[:6]}'
+                    set_tenant_slug(tag_b)
+                    row = await _insert_ris_order(conn, tag_b)
+                    stored = await conn.fetchrow(
+                        'SELECT tenant_id FROM ris_orders WHERE id = $1',
+                        row['id'],
+                    )
+                    assert stored['tenant_id'] == tag_b
+                    stray = await conn.fetchval(
+                        'SELECT count(*) FROM ris_orders WHERE id = $1 AND tenant_id = $2',
+                        row['id'], 'default',
+                    )
+                    assert stray == 0
+                finally:
+                    await tx.rollback()
+                    reset_tenant_slug()
+        finally:
+            await teardown()
 
-                        reset_tenant_slug()
-                        set_tenant_slug(f'clinic-a-{uuid.uuid4().hex[:6]}')
-                        rows = await conn.fetch('SELECT id FROM ris_interface_endpoints')
-                        ids = {r['id'] for r in rows}
-                        assert row['id'] not in ids
-                    finally:
-                        await tx.rollback()
-                        reset_tenant_slug()
-            finally:
-                await teardown()
-
-        asyncio.run(run())
-
-    @pytest.mark.xfail(
-        strict=False,
-        reason='read-scoping by tenant_id not yet enforced — branch-review M-1/H-3',
-    )
-    def test_ris_interface_events_cross_tenant_excluded(self):
-        async def run():
-            try:
-                await setup()
-            except Exception:
-                pytest.skip('dev database unavailable')
-
-            try:
-                async with get_conn() as conn:
-                    tx = conn.transaction()
-                    await tx.start()
-                    try:
-                        tag_b = f'clinic-b-{uuid.uuid4().hex[:6]}'
-                        set_tenant_slug(tag_b)
-                        row = await _insert_ris_event(conn, tag_b)
-
-                        reset_tenant_slug()
-                        set_tenant_slug(f'clinic-a-{uuid.uuid4().hex[:6]}')
-                        rows = await conn.fetch('SELECT id FROM ris_interface_events')
-                        ids = {r['id'] for r in rows}
-                        assert row['id'] not in ids
-                    finally:
-                        await tx.rollback()
-                        reset_tenant_slug()
-            finally:
-                await teardown()
-
-        asyncio.run(run())
-
-
-# ── Unique constraint per tenant (real, passing) ─────────────────────────
 
 class TestRisUniquePerTenant:
     """Accession uniqueness is per-tenant, not global — two tenants can

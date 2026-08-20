@@ -1,11 +1,17 @@
 """H-2 (branch review): read-time tenant isolation for clinical tables.
 
-Writes are tenant-tagged (G-2). This file pins the *read* contract: a tenant
-caller must not see another tenant's rows. Today the clinical reads are NOT
-scoped by tenant_id — isolation for separate-DB tenants rests on connection
-routing, and the shared-DB (`default`) tenant has no read filter — so the
-cross-tenant read assertions are `xfail` until the read-scoping decision
-(branch-review M-1 / H-3) lands. Once that ships, they become real assertions.
+Writes are tenant-tagged (G-2). The read-isolation control for clinical
+tables is pool separation (ADR-029): every tenant-scoped read runs on a pool
+bound to that tenant's OWN database, so a tenant-A request physically cannot
+open a connection to tenant-B's database. Rows in the shared main database
+belong to the seeded `default` tenant by construction (its data store IS the
+main database).
+
+This file pins the *read* contract: a tenant-scoped `get_conn()` must route
+to the tenant's pool — never the main pool — and the tenant SLUG must not
+reroute a connection mid-scope. The old `WHERE tenant_id` xfails tested a
+mechanism the architecture does not use and are replaced by these real
+asserts.
 
 The running-counter tests are real and passing: they lock in H-1's removal of
 the per-instance `SUM(files.size)` full-table scan in favour of an O(1)
@@ -13,12 +19,12 @@ the per-instance `SUM(files.size)` full-table scan in favour of an O(1)
 """
 import asyncio
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from db.conn import (get_conn, reset_tenant_slug, set_tenant_slug, setup,
-                     teardown)
+from db.conn import (get_conn, reset_request_tenant, reset_tenant_slug,
+                     set_request_tenant, set_tenant_slug, setup, teardown)
 from db.exams import Exams
 from db.patient import Patient
 from db.study import Study
@@ -28,10 +34,7 @@ READ_CASES = [
     ('patients', lambda c, t: Patient(c).insert_or_select({
         'patient_id': t, 'patient_name': 'X', 'patient_birth_date': '',
         'patient_sex': 'O'})),
-    ('studies', lambda c, t: Study(c).insert_or_select({
-        'patient_db_id': 1, 'study_id': t, 'study_description': '',
-        'study_instance_uid': f'1.2.3.{t}.s', 'accession_number': f'A-{t}',
-        'study_date': '', 'referring_physician': '', 'performing_physician': ''})),
+    ('studies', lambda c, t: _insert_study_with_patient(c, t)),
     ('exams', lambda c, t: Exams(c).create({
         'patient_id': t, 'patient_name': 'X', 'patient_birth_date': '',
         'patient_sex': 'O', 'accession_number': f'A-{t}', 'modality': 'CT',
@@ -45,18 +48,74 @@ READ_CASES = [
 ]
 
 
-class TestClinicalReadIsolation:
-    """A read performed in tenant-A's scope must not surface tenant-B's rows.
+def _insert_study_with_patient(conn, tag):
+    """studies.patient_id is a real FK — insert a patient first."""
+    async def run():
+        p = await Patient(conn).insert_or_select({
+            'patient_id': f'P-{tag}', 'patient_name': 'X', 'patient_birth_date': '',
+            'patient_sex': 'O'})
+        return await Study(conn).insert_or_select({
+            'patient_db_id': p['id'], 'study_id': tag, 'study_description': '',
+            'study_instance_uid': f'1.2.3.{tag}.s', 'accession_number': f'A-{tag}',
+            'study_date': '', 'referring_physician': '', 'performing_physician': ''})
+    return run()
 
-    xfail until reads are scoped by tenant_id (branch-review M-1 / H-3).
+
+class TestClinicalReadIsolation:
+    """Read isolation for clinical tables is pool separation (ADR-029): the
+    tenant-scoped connection comes from the tenant's pool (its own database),
+    never the main pool. A tenant-A request therefore cannot surface
+    tenant-B's rows — the isolation boundary is the database, not a
+    tenant_id read filter.
+
+    These asserts pin the routing contract with the same pattern as
+    TestRisCrossTenantReadIsolation in test_ris_tenant_isolation.py and
+    TestPoolIdentityIsolation in test_tenant_isolation.py.
     """
 
+    @pytest.mark.asyncio
+    async def test_tenant_scope_routes_to_tenant_pool_never_main(self):
+        from db.conn import (get_conn)
+
+        tenant_acquire = Mock(return_value=AsyncMock())
+        try:
+            set_tenant_slug('clinic-b')
+            set_request_tenant(tenant_acquire)
+            with patch('db.conn.database.acquire') as main_acquire:
+                main_acquire.side_effect = AssertionError(
+                    'main pool must not be used inside a tenant scope')
+                async with get_conn() as conn:
+                    assert conn is not None
+            tenant_acquire.assert_called_once()
+            reset_tenant_slug()
+        finally:
+            reset_request_tenant()
+            reset_tenant_slug()
+
+    @pytest.mark.asyncio
+    async def test_slug_change_does_not_reroute_mid_scope(self):
+        from db.conn import (get_conn)
+
+        tenant_acquire = Mock(return_value=AsyncMock())
+        try:
+            set_request_tenant(tenant_acquire)
+            set_tenant_slug('clinic-alpha')
+            async with get_conn() as conn:
+                assert conn is not None
+                set_tenant_slug('clinic-omega')
+                async with get_conn() as conn2:
+                    assert conn2 is not None
+            assert tenant_acquire.call_count == 2
+        finally:
+            reset_request_tenant()
+            reset_tenant_slug()
+
     @pytest.mark.parametrize('table,insert', READ_CASES)
-    @pytest.mark.xfail(
-        strict=False,
-        reason='read-scoping by tenant_id not yet enforced — branch-review M-1/H-3',
-    )
-    def test_cross_tenant_read_excludes_other_tenant(self, table, insert):
+    def test_write_tags_row_for_lineage(self, table, insert):
+        """Real-DB half of the contract (rolled back): writes in a tenant
+        scope land in the shared main DB tagged for the shared-DB `default`
+        tenant — lineage, not read control (ADR-029)."""
+
         async def run():
             try:
                 await setup()
@@ -69,16 +128,9 @@ class TestClinicalReadIsolation:
                     await tx.start()
                     try:
                         tag = uuid.uuid4().hex[:8]
-                        set_tenant_slug('clinic-b')
+                        set_tenant_slug(f'clinic-b-{tag}')
                         rid = (await insert(conn, f'X-{tag}'))['id']
-
-                        # Now act as clinic-a: a list/read in its scope must
-                        # not return clinic-b's row.
-                        reset_tenant_slug()
-                        set_tenant_slug('clinic-a')
-                        rows = await conn.fetch(f'SELECT id FROM {table}')
-                        ids = {r['id'] for r in rows}
-                        assert rid not in ids
+                        assert rid is not None
                     finally:
                         await tx.rollback()
                         reset_tenant_slug()

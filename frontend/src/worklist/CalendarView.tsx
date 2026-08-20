@@ -1,13 +1,10 @@
 import React from "react";
 import { Tag } from "antd";
 import type { WorklistEntry } from "../api/worklist";
+import { WORKLIST_CALENDAR_STATUS_COLORS } from "../common/statusColors";
 import "./Worklist.css";
 
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: "blue",
-  performed: "green",
-  cancelled: "red",
-};
+const STATUS_COLORS = WORKLIST_CALENDAR_STATUS_COLORS;
 
 // Groups entries by scheduled date for the calendar view. Extracted from the
 // Worklist monolith (Q-6) so the table/calendar toggle stays a pure presentational

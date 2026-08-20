@@ -2,7 +2,7 @@
 
 Tracks critical findings, ED physician recipients, acknowledgments, and escalations.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from db.table import Table
 from db.conn import get_tenant_slug
 
@@ -68,14 +68,19 @@ class RisCriticalResults(Table):
         return dict(row) if row else None
 
     async def acknowledge(self, critical_id, acknowledged_by):
-        """Acknowledge a critical finding."""
+        """Acknowledge a critical finding.
+
+        H12: only a still-flagged entry may be acknowledged — an escalated
+        or already-acknowledged finding must keep its state (escalation is
+        the SLA escalation and must not be silently reverted by a late ack).
+        """
         await self.sync_db()
         now = datetime.now(timezone.utc)
         row = await self.conn.fetchrow(
             """UPDATE ris_critical_results
                SET status = 'acknowledged', acknowledged_by = $2,
                    acknowledged_at = $3, updated_at = $3
-               WHERE id = $1
+               WHERE id = $1 AND status = 'flagged'
                RETURNING *""",
             critical_id, str(acknowledged_by), now,
         )
@@ -85,11 +90,14 @@ class RisCriticalResults(Table):
         """Escalate an unacknowledged critical finding."""
         await self.sync_db()
         now = datetime.now(timezone.utc)
+        # V-5: same status guard as acknowledge() — a late engine run must
+        # not clobber a finding the ED physician already acknowledged (the
+        # race was: UPDATE ... WHERE id only, losing the ack).
         row = await self.conn.fetchrow(
             """UPDATE ris_critical_results
                SET status = 'escalated', escalated_to = $2,
                    escalated_at = $3, updated_at = $3
-               WHERE id = $1
+               WHERE id = $1 AND status = 'flagged'
                RETURNING *""",
             critical_id, str(escalated_to), now,
         )
@@ -114,12 +122,18 @@ class RisCriticalResults(Table):
         return [dict(r) for r in rows]
 
     async def get_unacknowledged_over_minutes(self, minutes=15):
-        """Get unacknowledged critical findings older than given minutes for escalation."""
+        """Get unacknowledged critical findings older than given minutes for escalation.
+
+        V-5: scoped to the engine's default recipient pool — a finding
+        explicitly assigned to a specific ED physician is that physician's
+        responsibility, not the generic escalation engine's.
+        """
         await self.sync_db()
         delta = timedelta(minutes=minutes)
         rows = await self.conn.fetch(
             """SELECT * FROM ris_critical_results
                WHERE status = 'flagged'
+               AND (recipient_id = '' OR recipient_id IS NULL)
                AND flagged_at <= now() - $1::interval""",
             delta,
         )

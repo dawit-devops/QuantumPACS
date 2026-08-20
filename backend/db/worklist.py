@@ -10,6 +10,20 @@ def _mwl_like(value):
     return value.replace('%', '').replace('_', '').replace('*', '%').replace('?', '_')
 
 
+def _mwl_single(value):
+    """Single-value / wildcard pattern for non-name attributes.
+
+    PS3.4 C.2.2.2: '*' and '?' are the only DICOM wildcards; a query value
+    containing neither is a single-value match (exact). Literal '%'/'_'
+    must never act as LIKE syntax, so a value like '100%' matches the
+    literal '100' — stripping prevents pattern injection.
+    """
+    value = value.replace('%', '').replace('_', '').strip()
+    if '*' not in value and '?' not in value:
+        return value
+    return value.replace('*', '%').replace('?', '_')
+
+
 # S6-02: STAT entries must sort first in MWL results.
 # Priority codes from HL7 OBR-27.7: S/STAT, A/ASAP, U/URGENT, R/Routine.
 PRIORITY_SORT_ORDER = {
@@ -154,8 +168,8 @@ class Worklist(Table):
                      date_from=None, date_to=None,
                      time_from=None, time_to=None, search=None, patient_id=None,
                      patient_name=None, requested_procedure_id=None,
-                     page=1, per_page=20):
-        from pypika import Order, Query as PypikaQuery, functions as fn
+                     accession=None, page=1, per_page=20):
+        from pypika import Query as PypikaQuery, functions as fn
 
         conditions = []
         if status:
@@ -173,7 +187,14 @@ class Worklist(Table):
         if time_to:
             conditions.append(self.table.scheduled_time <= time_to)
         if patient_id:
-            conditions.append(self.table.patient_id.ilike(_mwl_like(patient_id)))
+            conditions.append(
+                self.table.patient_id.ilike(_mwl_single(patient_id)))
+        if accession:
+            # M-7: DICOM C-FIND accession matching is single-value (exact)
+            # unless '*'/'?' wildcards are present — unlike the REST `search`
+            # free-text contains filter.
+            conditions.append(
+                self.table.accession_number.ilike(_mwl_single(accession)))
         if patient_name:
             # DICOM MWL matching treats a bare name as a leading wildcard.
             name_pattern = _mwl_like(patient_name.strip())
@@ -261,6 +282,27 @@ class Worklist(Table):
         )
         row = await self.fetchone(q)
         return dict(row) if row else None
+
+    async def update_status_if(self, entry_id, from_status, to_status):
+        """Atomic guarded status transition (S6-24): the UPDATE only applies
+        when the row still holds from_status, so concurrent tracking updates
+        cannot clobber each other — a stale reader loses the race instead of
+        regressing the status. Returns True when the transition applied.
+        The handler's pre-check stays for a friendly 409; this guard is the
+        authoritative race backstop."""
+        now = datetime.now(timezone.utc)
+        result = await self.exec(
+            self.update().where(
+                self.table.id == entry_id,
+            ).where(
+                self.table.status == from_status,
+            ).set(
+                self.table.status, to_status,
+            ).set(
+                self.table.updated_at, now,
+            ),
+        )
+        return result == 'UPDATE 1'
 
     async def cancel(self, entry_id):
         now = datetime.now(timezone.utc)

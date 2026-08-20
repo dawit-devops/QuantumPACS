@@ -27,6 +27,7 @@ import {
   AuditOutlined,
   HomeOutlined,
   WarningOutlined,
+  AlertOutlined,
   CheckCircleOutlined,
   IdcardOutlined,
   SolutionOutlined,
@@ -73,6 +74,7 @@ function getKey(loc: string) {
   }
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
   if (parts[0] === "reading") return parts[1] === "home" ? "resident-home" : "reading-worklist";
+  if (parts[0] === "critical") return "critical-results";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",
@@ -165,6 +167,16 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Peer Review",
         icon: <AuditOutlined />,
         permissions: ["PEER_REVIEW_READ"],
+      },
+      {
+        // CR-6: critical-results monitoring surface (S10). GET
+        // /api/notifications/critical is REPORT_READ-gated, matching the
+        // route gate; flagging inside the console needs REPORT_WRITE.
+        key: "critical-results",
+        path: "/critical",
+        label: "Critical Results",
+        icon: <AlertOutlined />,
+        permissions: ["REPORT_READ"],
       },
     ],
   },

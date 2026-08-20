@@ -6,13 +6,16 @@ class SaveReportRequest(BaseModel):
     impression: str = Field('', description="Impression/conclusion text")
     recommendations: str = Field('', description="Recommendations (optional)")
     template_name: str = Field('', description="Template that seeded the draft")
-    status: str = Field('draft', description="draft/preliminary/final")
+    status: str = Field('draft', description="draft/preliminary (never final)")
 
     @field_validator('status')
     @classmethod
     def _valid_status(cls, v):
-        if v not in ('draft', 'preliminary', 'final'):
-            raise ValueError('status must be draft/preliminary/final')
+        # CR-4: `final` is reachable only through the sign endpoint
+        # (REPORT_SIGN). Accepting it here would let a writer with only
+        # REPORT_WRITE flip a report to final, bypassing the sign gate.
+        if v not in ('draft', 'preliminary'):
+            raise ValueError('status must be draft or preliminary (final requires signing)')
         return v
 
 

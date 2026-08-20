@@ -181,3 +181,43 @@ class TestRisAppointmentsRepo:
                 await teardown()
 
         asyncio.run(run())
+
+class TestOrderFkBackstop(TestRisAppointmentsRepo):
+    """C-4: ris_appointments.order_id must reference a real ris_orders row —
+    the migration-076 FK makes dangling references impossible even if the
+    engine's pre-check is bypassed."""
+
+    def test_insert_with_unknown_order_id_fails_fk(self):
+        async def run():
+            from asyncpg.exceptions import ForeignKeyViolationError
+
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = f'fk-{uuid.uuid4().hex[:6]}'
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        set_tenant_slug(tag)
+                        await self._schema(conn)
+                        resource = await self._resource(conn, tag)
+                        with pytest.raises(ForeignKeyViolationError):
+                            await conn.fetchrow(
+                                'INSERT INTO ris_appointments '
+                                '(tenant_id, order_id, resource_id, patient_id,'
+                                ' start_time, end_time) '
+                                "VALUES ($1, '00000000-0000-0000-0000-000000000000',"
+                                " $2, 'MRN-1', '2026-08-20 09:00+00', "
+                                "'2026-08-20 09:30+00')",
+                                tag, resource['id'])
+                    finally:
+                        await tx.rollback()
+            finally:
+                reset_tenant_slug()
+                await teardown()
+
+        asyncio.run(run())

@@ -80,18 +80,32 @@ def _audit_ok():
 @contextmanager
 def _conn(fetchrow=None, fetch=None, fetchval=None, execute=None):
     conn = AsyncMock()
-    if fetchrow is not None:
-        conn.fetchrow = fetchrow
+    # Sync callables (e.g. plain lambdas) must be awaited by the handler —
+    # wrap them so `await conn.fetchrow(...)` works for callers that query
+    # the connection directly.
+    conn.fetchrow = AsyncMock(side_effect=fetchrow) if fetchrow is not None else conn.fetchrow
     if fetch is not None:
-        conn.fetch = fetch
+        conn.fetch = AsyncMock(side_effect=fetch) if not isinstance(fetch, AsyncMock) else fetch
     if fetchval is not None:
-        conn.fetchval = fetchval
+        conn.fetchval = AsyncMock(side_effect=fetchval) if not isinstance(fetchval, AsyncMock) else fetchval
     if execute is not None:
         conn.execute = execute
     conn.__aenter__ = AsyncMock(return_value=conn)
     conn.__aexit__ = AsyncMock(return_value=False)
     with patch('api.reports.get_conn', return_value=conn):
         yield conn
+
+
+def _role_row(uid='user-77', slug='radiologist'):
+    return {'id': uid, 'slug': slug}
+
+
+def _assign_fetchrow(q, *a):
+    # S-7 role check queries the users table; every other fetchrow call
+    # in the assign flow is the exam lookup.
+    if 'FROM users' in q:
+        return _role_row()
+    return _exam_row(status='completed')
 
 
 def _exam_row(exam_id='exam-1', status='completed', priority='stat'):
@@ -254,7 +268,9 @@ class TestExamAssign:
     def test_assign_defaults_to_requesting_user(self):
         """An empty radiologist_id assigns the exam to the requesting user."""
         client = TestClient(_make_app(RAD))
-        async def fake_fetchrow(q, *a):
+        def fake_fetchrow(q, *a):
+            if 'FROM users' in q:
+                return _role_row(uid='50')
             return _exam_row(exam_id='exam-1', status='completed')
         with patch('api.reports.Exams') as exams_cls, _conn(
                 fetchrow=fake_fetchrow), _audit_ok():
@@ -272,7 +288,7 @@ class TestExamAssign:
     def test_assign_explicit_radiologist(self):
         client = TestClient(_make_app(RAD))
         with patch('api.reports.Exams') as exams_cls, _conn(
-                fetchrow=lambda q, *a: _exam_row(status='completed')), _audit_ok():
+                fetchrow=_assign_fetchrow), _audit_ok():
             exams = AsyncMock()
             exams.get = AsyncMock(return_value=_exam_row(status='completed'))
             exams.assign_radiologist = AsyncMock(return_value=_exam_row())
@@ -298,6 +314,40 @@ class TestExamAssign:
                 return_value=_exam_row(status='in_progress'))
             resp = client.post('/reports/reading-list/exam-1/assign', json={})
         assert resp.status_code == 400
+
+
+    def test_assign_rejects_non_radiologist_user(self):
+        """S-7: assignment must not accept an arbitrary user id — the
+        target must exist and hold the radiologist role."""
+        client = TestClient(_make_app(RAD))
+        def fake_fetchrow(q, *a):
+            if 'FROM users' in q:
+                return _role_row(uid='user-99', slug='technician')
+            return _exam_row(status='completed')
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=fake_fetchrow), _audit_ok():
+            exams_cls.return_value.get = AsyncMock(
+                return_value=_exam_row(status='completed'))
+            resp = client.post('/reports/reading-list/exam-1/assign',
+                               json={'radiologist_id': 'user-99'})
+        assert resp.status_code == 400
+
+    def test_assign_accepts_radiologist_user(self):
+        client = TestClient(_make_app(RAD))
+        def _fetchrow(q, *a):
+            if 'FROM users' in q:
+                return {'id': 'user-77', 'slug': 'radiologist'}
+            return _exam_row(status='completed')
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=_fetchrow), _audit_ok():
+            exams = AsyncMock()
+            exams.get = AsyncMock(return_value=_exam_row(status='completed'))
+            exams.assign_radiologist = AsyncMock(return_value=_exam_row())
+            exams_cls.return_value = exams
+            resp = client.post('/reports/reading-list/exam-1/assign',
+                               json={'radiologist_id': 'user-77'})
+        assert resp.status_code == 200
+        assert exams.assign_radiologist.await_args.args == ('exam-1', 'user-77')
 
 
 class TestExamReport:
@@ -360,11 +410,71 @@ class TestExamReport:
             })
         assert resp.status_code == 200
         assert resp.json()['data']['status'] == 'preliminary'
+        # H10 / V-1: edits must be attributed to the editor, not the creator.
+        _, kwargs = mock_reports.update.call_args
+        assert kwargs.get('edited_by') == str(RAD.id)
 
     def test_put_requires_report_write(self):
         client = TestClient(_make_app(READ_ONLY))
         resp = client.put('/reports/exam-1', json={'findings': 'x'})
         assert resp.status_code == 403
+
+    def test_put_rejects_final_report(self):
+        """CR-4: a signed (final) report is locked — no edits, no status
+        flip back to preliminary via the save endpoint."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), \
+             patch('api.reports.Reports') as mock_reports_cls:
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = _report_row(status='final')
+            mock_reports_cls.return_value = mock_reports
+            resp = client.put('/reports/exam-1', json={'impression': 'Edited'})
+        assert resp.status_code == 400
+        assert 'locked' in resp.json()['error']['message']
+
+    def test_put_rejects_final_status_in_payload(self):
+        """CR-4: the save schema must not accept `final` — final is only
+        reachable through the sign endpoint (REPORT_SIGN permission)."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.Reports') as mock_reports_cls:
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = None
+            mock_reports_cls.return_value = mock_reports
+            resp = client.put('/reports/exam-1', json={
+                'findings': 'Findings text',
+                'impression': 'Normal',
+                'status': 'final',
+            })
+        assert resp.status_code == 422 or resp.status_code == 400
+        assert 'status' in str(resp.json())
+
+    def test_put_rejects_preliminary_edit_of_final(self):
+        """CR-4: reading console autosave sends preliminary — must 400."""
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return None
+        with _conn(fetchrow=fake_fetchrow), \
+             patch('api.reports.Reports') as mock_reports_cls:
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = _report_row(status='final')
+            mock_reports_cls.return_value = mock_reports
+            resp = client.put('/reports/exam-1', json={
+                'findings': 'Edited findings',
+                'status': 'preliminary',
+            })
+        assert resp.status_code == 400
+        assert 'locked' in resp.json()['error']['message']
 
     def test_put_rejects_submitted_report(self):
         """R13 supervision lock: once submitted, a report is in the
@@ -381,8 +491,7 @@ class TestExamReport:
             mock_reports_cls.return_value = mock_reports
             resp = client.put('/reports/exam-1', json={'impression': 'Normal'})
         assert resp.status_code == 400
-        assert 'submitted for attending review' in \
-            resp.json()['error']['message']
+        assert 'locked' in resp.json()['error']['message']
 
 
 class TestExamReportSign:
@@ -415,6 +524,32 @@ class TestExamReportSign:
         assert resp.status_code == 200
         assert resp.json()['data']['status'] == 'final'
         assert notify.await_count == 1
+
+    def test_sign_invokes_results_distribution_engine(self):
+        # CR-8: the sign path must call the real ResultsDistributionEngine
+        # (replacing the S8-13 audit-only stub). Patch the engine class and
+        # assert distribute_report is awaited on a successful sign.
+        client = TestClient(_make_app(RAD))
+        signed = _report_row(impression='Normal', status='final', signed_by='50')
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return _report_row(impression='Normal')
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.Reports') as mock_reports_cls, \
+             patch('api.reports.notify_role', new_callable=AsyncMock), \
+             patch('api.reports.notify_user', new_callable=AsyncMock), \
+             patch('api.reports.ResultsDistributionEngine') as mock_engine_cls:
+            mock_engine = AsyncMock()
+            mock_engine.distribute_report = AsyncMock()
+            mock_engine_cls.return_value = mock_engine
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = _report_row(impression='Normal')
+            mock_reports.sign.return_value = signed
+            mock_reports_cls.return_value = mock_reports
+            resp = client.post('/reports/exam-1/sign', json={'confirm': True})
+        assert resp.status_code == 200
+        mock_engine.distribute_report.assert_awaited_once_with('rep-1')
 
     def test_sign_requires_report_sign_permission(self):
         client = TestClient(_make_app(READ_ONLY))
@@ -678,9 +813,16 @@ class TestReportTemplates:
         async def fake_fetch(q, *a):
             return [{'name': 'CT Head — Routine', 'modality': 'CT'}]
         with _conn(fetchval=fake_fetchval, fetch=fake_fetch, execute=AsyncMock()):
-            resp = client.get('/reports/templates')
+            # H9: the handler must also seed ris_report_templates — the
+            # table list_templates actually reads — not just the legacy
+            # report_templates table.
+            seed_defaults = AsyncMock()
+            with patch('db.ris_templates.RisReportTemplates.seed_defaults',
+                       seed_defaults):
+                resp = client.get('/reports/templates')
         assert resp.status_code == 200
         assert resp.json()['data'][0]['name'] == 'CT Head — Routine'
+        seed_defaults.assert_awaited_once()
 
 
 class TestPeerReviews:

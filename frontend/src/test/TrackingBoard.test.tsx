@@ -180,4 +180,22 @@ describe("TrackingBoard", () => {
       expect(rows.length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  it("shows a critical badge for flagged results (S6-21)", async () => {
+    // ex-1 has a critical result pending; ex-2 does not.
+    const withCritical = mockTrackingData.map((r, i) => ({
+      ...r,
+      has_critical: i === 0,
+    }));
+    mockListTracking.mockResolvedValue({
+      data: withCritical,
+      total: 2,
+      page: 1,
+      per_page: 20,
+    });
+    renderBoard();
+    await waitFor(() => {
+      expect(screen.getByText("CRITICAL")).toBeInTheDocument();
+    });
+  });
 });

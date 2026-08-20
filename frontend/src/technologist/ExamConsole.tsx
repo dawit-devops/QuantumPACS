@@ -36,22 +36,14 @@ import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
 import SimulatedPreview from "./SimulatedPreview";
 import ExamViewport from "./ExamViewport";
+import { EXAM_STATUS_COLORS, EXAM_PRIORITY_COLORS } from "../common/statusColors";
 import "./ExamConsole.css";
 
 const Content = Layout.Content;
 
-const PRIORITY_COLORS: Record<string, string> = {
-  stat: "red",
-  urgent: "orange",
-  routine: "default",
-};
+const STATUS_COLORS = EXAM_STATUS_COLORS;
 
-const STATUS_COLORS: Record<string, string> = {
-  ready: "blue",
-  in_progress: "gold",
-  completed: "green",
-  cancelled: "red",
-};
+const PRIORITY_COLORS = EXAM_PRIORITY_COLORS;
 
 // Modality-specific acquisition workflows (FR-R06-10). These drive the
 // sequence list shown in the acquisition panel.

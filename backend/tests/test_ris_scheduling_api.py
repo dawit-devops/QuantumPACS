@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 
 from api.auth import User
 from api.validate import validation_exception_handler, _ValidationException
-from services.scheduling.engine import SchedulingConflict
+from services.scheduling.engine import SchedulingConflict, SchedulingNotFound
 
 
 def _http_exception(request, exc):
@@ -348,3 +348,164 @@ class TestRequestHardening:
             })
         assert resp.status_code == 409
         assert engine.book.await_args.kwargs['override_reason'] == ''
+
+class TestAuditActorAttribution:
+    """S4 (H1): audit events must carry the real user, not 'system'."""
+
+    def _app(self, user):
+        return _make_app(user=user)
+
+    def test_book_passes_actor_id(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.book = AsyncMock(return_value={'id': 'appt-1', 'status': 'SCHEDULED'})
+            engine_cls.return_value = engine
+            client = TestClient(self._app(User({
+                'id': 42, 'permissions': ['SCHEDULE_WRITE'],
+            })))
+            resp = client.post('/ris/appointments', json={
+                'order_id': 'ord-1', 'resource_id': 'res-1',
+                'patient_id': 'MRN-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00'})
+        assert resp.status_code == 201
+        assert engine_cls.call_args.kwargs['actor_id'] == 42
+
+    def test_reschedule_passes_actor_id(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.reschedule = AsyncMock(return_value={'id': 'appt-1'})
+            engine_cls.return_value = engine
+            client = TestClient(self._app(User({
+                'id': 42, 'permissions': ['SCHEDULE_WRITE'],
+            })))
+            resp = client.post('/ris/appointments/appt-1/reschedule', json={
+                'new_start_time': '2026-08-20 10:00:00+00',
+                'new_end_time': '2026-08-20 10:30:00+00',
+                'reason': 'patient request'})
+        assert resp.status_code == 200
+        assert engine_cls.call_args.kwargs['actor_id'] == 42
+
+    def test_cancel_passes_actor_id(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.cancel = AsyncMock(return_value={'id': 'appt-1', 'status': 'CANCELLED'})
+            engine_cls.return_value = engine
+            client = TestClient(self._app(User({
+                'id': 42, 'permissions': ['SCHEDULE_WRITE'],
+            })))
+            resp = client.post('/ris/appointments/appt-1/cancel', json={
+                'reason': 'no-show'})
+        assert resp.status_code == 200
+        assert engine_cls.call_args.kwargs['actor_id'] == 42
+
+
+class TestErrorContract:
+    """S4 B-2/B-7/B-8: booking/reschedule/cancel must surface clean 4xx
+    outcomes instead of 500s when inputs are malformed or reference
+    missing entities — the calendar cannot recover from a server fault."""
+
+    def _client(self):
+        return TestClient(_make_app(User({
+            'id': 42, 'permissions': ['SCHEDULE_WRITE'],
+        })))
+
+    def test_book_rejects_malformed_datetime(self):
+        # B-8: 'garbage' must fail at the schema boundary (422), never
+        # reach the engine.
+        client = self._client()
+        resp = client.post('/ris/appointments', json={
+            'order_id': 'ord-1', 'resource_id': 'res-1',
+            'patient_id': 'MRN-1',
+            'start_time': 'garbage', 'end_time': '2026-08-20 09:30:00+00'})
+        assert resp.status_code == 422
+
+    def test_book_rejects_empty_resource_id(self):
+        # B-2: empty resource_id is unusable — 422 at the boundary.
+        client = self._client()
+        resp = client.post('/ris/appointments', json={
+            'order_id': 'ord-1', 'resource_id': '',
+            'patient_id': 'MRN-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00'})
+        assert resp.status_code == 422
+
+    def test_book_returns_404_when_order_missing(self):
+        # B-7: a missing order is a not-found outcome, not a fault.
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.book = AsyncMock(side_effect=SchedulingNotFound(
+                'Order x not found for scheduling'))
+            engine_cls.return_value = engine
+            client = self._client()
+            resp = client.post('/ris/appointments', json={
+                'order_id': 'x', 'resource_id': 'res-1',
+                'patient_id': 'MRN-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00'})
+        assert resp.status_code == 404
+
+    def test_book_returns_404_when_resource_missing(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.book = AsyncMock(side_effect=SchedulingNotFound(
+                'Resource y not found'))
+            engine_cls.return_value = engine
+            client = self._client()
+            resp = client.post('/ris/appointments', json={
+                'order_id': '', 'resource_id': 'y',
+                'patient_id': 'MRN-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00'})
+        assert resp.status_code == 404
+
+    def test_reschedule_returns_404_when_appointment_missing(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.reschedule = AsyncMock(side_effect=SchedulingNotFound(
+                'Appointment z not found'))
+            engine_cls.return_value = engine
+            client = self._client()
+            resp = client.post('/ris/appointments/z/reschedule', json={
+                'new_start_time': '2026-08-20 10:00:00+00',
+                'new_end_time': '2026-08-20 10:30:00+00',
+                'reason': 'pt request'})
+        assert resp.status_code == 404
+
+    def test_cancel_returns_404_when_appointment_missing(self):
+        with patch('api.scheduling.SchedulingEngine') as engine_cls:
+            engine = AsyncMock()
+            engine.cancel = AsyncMock(side_effect=SchedulingNotFound(
+                'Appointment z not found'))
+            engine_cls.return_value = engine
+            client = self._client()
+            resp = client.post('/ris/appointments/z/cancel', json={
+                'reason': 'no-show'})
+        assert resp.status_code == 404
+
+
+class TestClinicDayWindow:
+    """B-10: the appointments day listing must interpret the requested
+    date in the clinic's configured timezone — a UTC-only window shows
+    a UTC+8 clinic its slots on the wrong calendar day."""
+
+    def test_list_appointments_uses_clinic_timezone_bounds(self):
+        from unittest.mock import patch as _patch
+
+        with _patch('api.scheduling._config') as cfg:
+            cfg.get.return_value = 'Asia/Tokyo'
+            user = User({'id': 1, 'permissions': ['SCHEDULE_READ']})
+            client = TestClient(_make_app(user))
+            mock_conn = AsyncMock()
+            mock_conn.__aenter__.return_value = mock_conn
+            mock_conn.fetch.return_value = []
+            with _patch('api.scheduling.get_conn', return_value=mock_conn):
+                resp = client.get(
+                    '/ris/appointments?date=2026-08-20&resource_id=res-1')
+        assert resp.status_code == 200
+        sql = str(mock_conn.fetch.call_args.args[0])
+        # The day bounds must be tz-aware in the clinic zone (+09:00) —
+        # a naive UTC window would render 'T00:00:00+00:00' and shift the
+        # clinic's calendar day.
+        assert "'2026-08-20T00:00:00+09:00'" in sql, sql
+        assert "'2026-08-21T00:00:00+09:00'" in sql, sql

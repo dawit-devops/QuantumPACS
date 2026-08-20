@@ -24,6 +24,7 @@ import {
 import withSidebar from "../common/base";
 import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
+import { REPORT_STATUS_COLORS, REPORT_STATUS_LABEL } from "../common/statusColors";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate, useParams } from "react-router";
 
@@ -32,19 +33,6 @@ const Content = Layout.Content;
 
 // Care-coordinator review (P2-1): report status labels + colors mirror the
 // reading worklist conventions.
-const REPORT_STATUS_COLORS: Record<string, string> = {
-  draft: "gold",
-  preliminary: "purple",
-  submitted: "cyan",
-  final: "green",
-};
-
-const REPORT_STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  preliminary: "Preliminary",
-  submitted: "In review",
-  final: "Final",
-};
 
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");

@@ -5,7 +5,6 @@ injects OBX critical result indicators, handles distribution to EMR endpoints,
 and manages exponential backoff retries on transmission failure.
 """
 from datetime import datetime, timezone
-import json
 
 from db.conn import get_conn
 from log import get_logger
@@ -76,8 +75,34 @@ class ResultsDistributionEngine:
             log.info("ORU^R01 report %s distributed successfully to EMR", report_id)
             return dict(row)
 
+    async def _deliver(self, payload: str, target_url: str) -> bool:
+        """Transmit the ORU^R01 payload to the EMR endpoint.
+
+        B-6: the retry loop must attempt a real transmission. A short
+        timeout keeps a dead endpoint from blocking the retry manager.
+        """
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                target_url, data=payload.encode('utf-8'), method='POST',
+                headers={'Content-Type': 'text/plain; charset=utf-8'},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status < 400
+        except Exception:
+            log.warning('ORU delivery to %s failed', target_url, exc_info=True)
+            return False
+
     async def retry_failed_deliveries(self) -> int:
-        """Retry pending/failed ORU deliveries."""
+        """Retry pending/failed ORU deliveries with real transmission.
+
+        B-6: previously this flipped FAILED rows straight back to SENT
+        without delivering anything — a no-op that hid outages. Now a
+        row only becomes SENT when _deliver() succeeds; failed attempts
+        bump the counter and stay FAILED for the next backoff run.
+        """
+        from config import config as _config
+        endpoint = _config.get('distribution_endpoint', '')
         async with get_conn() as conn:
             rows = await conn.fetch(
                 "SELECT * FROM ris_results_distribution WHERE status = 'FAILED' AND attempts < 5"
@@ -85,10 +110,28 @@ class ResultsDistributionEngine:
             retried = 0
             for r in rows:
                 now = datetime.now(timezone.utc)
-                await conn.execute("""
-                    UPDATE ris_results_distribution
-                    SET status = 'SENT', attempts = attempts + 1, delivered_at = $2
-                    WHERE id = $1
-                """, r['id'], now)
-                retried += 1
+                if not endpoint:
+                    # No EMR endpoint configured — record the failed
+                    # attempt honestly instead of faking success.
+                    await conn.execute("""
+                        UPDATE ris_results_distribution
+                        SET attempts = attempts + 1
+                        WHERE id = $1
+                    """, r['id'])
+                    continue
+                delivered = await self._deliver(r.get('payload') or '', endpoint)
+                if delivered:
+                    await conn.execute("""
+                        UPDATE ris_results_distribution
+                        SET status = 'SENT', attempts = attempts + 1, delivered_at = $2
+                        WHERE id = $1
+                    """, r['id'], now)
+                    retried += 1
+                    log.info("ORU^R01 delivery %s retried successfully", r['id'])
+                else:
+                    await conn.execute("""
+                        UPDATE ris_results_distribution
+                        SET attempts = attempts + 1
+                        WHERE id = $1
+                    """, r['id'])
             return retried

@@ -26,6 +26,7 @@ import {
   SaveOutlined,
   DashboardOutlined,
   RollbackOutlined,
+  AlertOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -115,6 +116,14 @@ function ReadingConsole() {
   const [feedback, setFeedback] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // CR-6: "Flag Critical" opens the S10 critical-results modal for the
+  // exam currently loaded in the console.
+  const [criticalOpen, setCriticalOpen] = useState(false);
+  const [FlagCriticalModal, setFlagCriticalModal] = useState<React.ComponentType<any> | null>(null);
+  useEffect(() => {
+    if (!criticalOpen) return;
+    import("./CriticalResults").then((m) => setFlagCriticalModal(() => m.FlagCriticalModal));
+  }, [criticalOpen]);
 
   // The same filtered queue the worklist shows, fetched so Sign & Next can
   // jump straight to the next unread exam instead of round-tripping through
@@ -203,7 +212,10 @@ function ReadingConsole() {
             recommendations,
             template_name: templateName,
             status:
-              explicitStatus ?? (status === "final" ? "preliminary" : status),
+              // CR-4: the backend rejects `final` and locks signed reports —
+              // autosave only ever sends draft/preliminary, never a flip from
+              // final (which previously 400'd and triggered retry loops).
+              explicitStatus ?? (status === "final" ? "draft" : status),
           },
         });
         setSavedAt(new Date());
@@ -238,7 +250,8 @@ function ReadingConsole() {
     // Autosave loop: flush the local draft on an interval (FR-R12-09 /
     // NFR-R12-10).
     saveTimer.current = setInterval(() => {
-      if (dirtyRef.current && statusRef.current !== "submitted") {
+      if (dirtyRef.current && statusRef.current !== "submitted"
+          && statusRef.current !== "final") {
         saveDraftRef.current();
       }
     }, AUTOSAVE_MS);
@@ -649,8 +662,27 @@ function ReadingConsole() {
                 Sign Report
               </Button>
             )}
+            {canWrite && report && (
+              <Button
+                danger
+                icon={<AlertOutlined />}
+                onClick={() => setCriticalOpen(true)}
+              >
+                Flag Critical
+              </Button>
+            )}
           </Space>
         </header>
+      )}
+
+      {FlagCriticalModal && (
+        <FlagCriticalModal
+          visible={criticalOpen}
+          exam={exam}
+          report={report}
+          onClose={() => setCriticalOpen(false)}
+          onSuccess={() => {}}
+        />
       )}
 
       {loading && !exam ? (

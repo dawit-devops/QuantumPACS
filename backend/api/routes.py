@@ -14,6 +14,7 @@ from api.notifications import (
     NotificationsHandler, NotificationHandler, NotificationsReadAllHandler,
     NotificationsUnreadCountHandler, NotificationPreferencesHandler,
     CriticalResultsHandler, CriticalResultAckHandler, DeliveryStatusHandler,
+    CriticalRecipientsHandler,
 )
 from api.admin import (
     AdminStatusHandler, AdminMaintenanceHandler, AdminConfigHandler,
@@ -58,6 +59,7 @@ from api.hl7_admin import (
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
+from api.mpps_events import MppsEventsHandler
 from api.worklist import (
     WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler,
     TrackingHandler, TrackingKpiHandler, TrackingTimelineHandler,
@@ -206,6 +208,7 @@ _V1_ROUTES = [
     v2(Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler)),
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
     v2(Route('/notifications/critical', endpoint=CriticalResultsHandler)),
+    v2(Route('/notifications/critical/recipients', endpoint=CriticalRecipientsHandler)),
     v2(Route('/notifications/critical/{id}/ack', endpoint=CriticalResultAckHandler)),
     v2(Route('/notifications/delivery-status', endpoint=DeliveryStatusHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
@@ -259,6 +262,7 @@ _V1_ROUTES = [
     v2(Route('/hl7/admin/metrics', endpoint=Hl7MetricsHandler)),
     v2(Route('/hl7/admin/config', endpoint=Hl7ConfigHandler)),
     v2(Route('/hl7/admin/status', endpoint=Hl7StatusHandler)),
+    v2(Route('/mpps/events', endpoint=MppsEventsHandler)),
     v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
     v2(Route('/worklist', endpoint=WorklistHandler)),
     v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
