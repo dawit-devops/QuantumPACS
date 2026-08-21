@@ -130,6 +130,16 @@ ris_mpps_latency_seconds = Histogram(
     ['event_type'],
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )
+# S11-14 / spec §10.4: charge-capture rate. The latency histogram drives the
+# sign-to-charge drop SLO; the gauge feeds the RISUnbilledAging alert
+# (unbilled count > 0 for 5d).
+ris_charge_drop_latency_seconds = Histogram(
+    'ris_charge_drop_latency_seconds', 'Time from sign to charge drop',
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+)
+ris_unbilled_count = Gauge(
+    'ris_unbilled_count', 'Number of unbilled (PENDING) charges',
+)
 
 
 def record_request(method, path, status_code, elapsed):

@@ -352,12 +352,29 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'ORU^R01 distribution failed for report %s (will retry)',
                     report['id'], exc_info=True,
                 )
-            # S8-14: Charge drop stub — placeholder ris_charges row
-            from api.billing import drop_charge_stub
-            await drop_charge_stub(
-                conn, report['id'], exam_id,
-                exam.get('accession_number', ''), request.user.id
-            )
+            # S11-03: Real auto charge drop — CPT/ICD-10 suggested from the
+            # procedure description + clinical indication (replaces the S8-14
+            # stub). A transmission/DB failure must never block the signed
+            # report, so the charge drop is best-effort like distribution.
+            try:
+                from db.ris_charges import drop_charge
+                await drop_charge(
+                    conn,
+                    report_id=report['id'],
+                    exam_id=exam_id,
+                    accession_number=exam.get('accession_number', ''),
+                    patient_id=exam.get('patient_id', ''),
+                    patient_name=exam.get('patient_name', ''),
+                    procedure_desc=exam.get('requested_procedure_desc', ''),
+                    indication=report.get('clinical_indication', '') or '',
+                    radiologist_id=str(request.user.id),
+                    tenant_id=effective_tenant(request),
+                )
+            except Exception:
+                log.warning(
+                    'charge drop failed for report %s (billing queue will not show it)',
+                    report['id'], exc_info=True,
+                )
             # Notify QA that a report is final and ready for any scheduled
             # peer review (R05 consumes signed reports for quality sampling).
             await notify_role(

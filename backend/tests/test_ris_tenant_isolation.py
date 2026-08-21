@@ -68,6 +68,35 @@ async def _insert_ris_event(conn, tag, endpoint_id=None):
     )
 
 
+async def _insert_ris_charge(conn, tag):
+    """Insert a minimal ris_charges row and return it (S11-15).
+
+    report_id/exam_id are NULL so the FK constraints are satisfied without
+    fabricating a reports/exams row — the isolation contract only cares
+    about the tenant_id tag on write.
+    """
+    return await conn.fetchrow(
+        'INSERT INTO ris_charges '
+        '(tenant_id, report_id, exam_id, accession_number, patient_id,'
+        ' cpt_code, charge_amount, status) '
+        'VALUES ($1, NULL, NULL, $2, $3, $4, 0,'
+        " 'PENDING') RETURNING *",
+        tag, f'ACC-{tag}', f'P-{tag}', '71250',
+    )
+
+
+async def _insert_ris_claim(conn, tag, charge_id=None):
+    """Insert a minimal ris_claims row and return it (S11-15)."""
+    if charge_id is None:
+        charge_id = (await _insert_ris_charge(conn, tag))['id']
+    return await conn.fetchrow(
+        'INSERT INTO ris_claims '
+        '(tenant_id, charge_id, claim_number, status) '
+        'VALUES ($1, $2, $3, $4) RETURNING *',
+        tag, charge_id, f'CLM-{tag}', 'DRAFT',
+    )
+
+
 # ── Write-scoping tests (real, passing) ──────────────────────────────────
 
 class TestRisWriteTenantTagging:
@@ -162,6 +191,56 @@ class TestRisWriteTenantTagging:
                         tag = f'test-d-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_event(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_charges_tenant_tagged(self):
+        # S11-15: charge rows carry the tenant tag on write, same isolation
+        # convention as ris_orders (per-tenant pool separation, ADR-029).
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-e-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_charge(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_claims_tenant_tagged(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-f-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_claim(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()

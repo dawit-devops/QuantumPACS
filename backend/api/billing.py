@@ -37,20 +37,14 @@ _BALANCE_EPSILON = 0.005
 
 
 async def drop_charge_stub(conn, report_id, exam_id, accession_number, radiologist_id):
-    """S8-14 charge drop stub — creates placeholder charge record."""
+    """S8-14 charge drop stub — creates placeholder charge record.
+
+    S11: the ris_charges schema now comes from migration 077 (no runtime
+    CREATE TABLE); this stub still inserts a placeholder PENDING row and
+    stays idempotent per report until S11-03 replaces it with the full
+    auto-charge-drop (CPT/ICD-10 from CodingService).
+    """
     try:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS ris_charges (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                report_id UUID,
-                exam_id UUID,
-                accession_number TEXT,
-                status TEXT DEFAULT 'pending',
-                amount NUMERIC(12, 2) DEFAULT 0.00,
-                created_by TEXT,
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
-        """)
         # V-3: idempotent — a report signed twice (or co-signed) must not
         # insert a second charge row. The NOT EXISTS guard makes the
         # INSERT a no-op for an already-charged report instead of relying
@@ -796,3 +790,165 @@ async def _expected_totals(conn, shift_date, cashier_id=None):
         if row['method'] in expected:
             expected[row['method']] = money(row['total'])
     return expected
+
+
+# =========================================================================
+# RIS Billing Capture (Sprint S11 — E-RIS-11)
+# Handlers: CPT suggestions, billing queue, charge drop, unbilled aging,
+# 837 export stub (claim submit), 835 import stub (denial rework).
+# =========================================================================
+
+class RisCptSuggestionsHandler(HTTPEndpoint):
+    """S11-06: GET /ris/billing/cpt-suggestions?procedure=CT CHEST"""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        procedure = request.query_params.get('procedure', '').strip()
+        if not procedure:
+            return validation_error('procedure parameter is required')
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_coding import CodingService
+            await CodingService(conn).seed_defaults(tenant)
+            suggestion = await CodingService(conn).get_suggestions(procedure, tenant)
+        return ok({'data': [suggestion] if suggestion else []})
+
+
+class RisBillingQueueHandler(HTTPEndpoint):
+    """S11-04: GET /ris/billing/queue — signed-but-unbilled charges."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        try:
+            page = max(1, int(request.query_params.get('page', '1')))
+            per_page = min(200, max(1, int(request.query_params.get('per_page', '20'))))
+        except (TypeError, ValueError):
+            return validation_error('Invalid pagination parameters')
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            charges = await RisCharges(conn).list_pending(tenant, per_page, (page - 1) * per_page)
+            total = await RisCharges(conn).count_pending(tenant)
+        return ok({'data': charges, 'total': total or 0, 'page': page, 'per_page': per_page})
+
+
+class RisChargeDropHandler(HTTPEndpoint):
+    """S11-05: POST /ris/billing/charges/{id}/drop -> BILLED + audit."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        charge_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            charge = await RisCharges(conn).get(charge_id, tenant)
+            if not charge:
+                return not_found('Charge not found')
+            if charge['status'] != 'PENDING':
+                return validation_error('Charge is not PENDING')
+            row = await RisCharges(conn).mark_billed(charge_id, tenant)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.charge_dropped',
+                resource_id=charge_id,
+                resource_type='ris_charges',
+                actor_id=request.user.id,
+                tenant=tenant,
+            )
+        # S11-14: capture-rate instrumentation — time from sign (created_at)
+        # to confirm, plus the unbilled count after this drop.
+        from datetime import datetime, timezone
+        from api import telemetry
+        created = charge.get('created_at')
+        if created:
+            age = (datetime.now(timezone.utc) - created).total_seconds()
+            telemetry.ris_charge_drop_latency_seconds.observe(max(age, 0))
+        telemetry.ris_unbilled_count.set(float(await _unbilled_count(tenant)))
+        return ok({'id': charge_id, 'status': row['status'] if row else 'BILLED'})
+
+
+async def _unbilled_count(tenant):
+    """Current PENDING charge count for the tenant (feeds ris_unbilled_count)."""
+    async with get_conn() as conn:
+        from db.ris_charges import RisCharges
+        return await RisCharges(conn).count_pending(tenant)
+
+
+class RisUnbilledHandler(HTTPEndpoint):
+    """S11-07: GET /ris/billing/unbilled — aging report."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            groups, total = await RisCharges(conn).aging_groups(tenant)
+        return ok({
+            'groups': [dict(r) for r in groups],
+            'total_unbilled': total,
+        })
+
+
+class RisClaimSubmitHandler(HTTPEndpoint):
+    """S11-09: POST /ris/billing/claims/{id}/submit — 837 export stub."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        charge_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges, RisClaims
+            charge = await RisCharges(conn).get(charge_id, tenant)
+            if not charge:
+                return not_found('Charge not found')
+            import random
+            claim_number = f'CLM-{random.randint(100000, 999999)}'
+            result = await RisClaims(conn).submit(
+                charge_id, claim_number, tenant_id=tenant)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.claim_submitted',
+                resource_id=charge_id,
+                resource_type='ris_claims',
+                actor_id=request.user.id,
+                tenant=tenant,
+            )
+        return ok({'id': result['id'], 'claim_number': claim_number, 'status': result['status']})
+
+
+class RisDenialImportHandler(HTTPEndpoint):
+    """S11-10: POST /ris/billing/denials/{id}/rework — 835 import stub."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        claim_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            claim = await RisClaims(conn).get(claim_id, tenant)
+            if not claim:
+                return not_found('Claim not found')
+            result = await RisClaims(conn).record_denial(
+                claim_id, rejection_code='DEN-001',
+                rejection_reason='Denial stub (835 import)',
+                tenant_id=tenant)
+        return ok({'id': claim_id, 'status': result['status'] if result else 'DENIED'})
+
+
+class RisReconciliationHandler(HTTPEndpoint):
+    """S11-13: GET /ris/billing/reconciliation — signed vs charged."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            stats = await RisCharges(conn).reconciliation(tenant)
+        signed = stats.get('signed') or 0
+        charged = stats.get('charged') or 0
+        rate = round(charged / signed * 100, 1) if signed else 100.0
+        return ok({
+            'signed_reports': signed,
+            'charged_reports': charged,
+            'capture_rate_pct': rate,
+        })

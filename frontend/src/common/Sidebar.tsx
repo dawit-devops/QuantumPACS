@@ -1,6 +1,7 @@
 import {
   MenuOutlined,
   FileSearchOutlined,
+  AccountBookOutlined,
   UserOutlined,
   LockOutlined,
   DatabaseOutlined,
@@ -292,6 +293,29 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Orders",
         icon: <ScheduleOutlined />,
         permissions: ["ORDER_READ"],
+      },
+    ],
+  },
+  {
+    // S11: billing capture — coder confirms CPT suggestions, drops the
+    // charge, and monitors unbilled aging. Both surfaces gate on BILLING_READ.
+    key: "billing",
+    title: "Billing",
+    icon: <AccountBookOutlined />,
+    items: [
+      {
+        key: "billing-queue",
+        path: "/billing/queue",
+        label: "Billing Queue",
+        icon: <AccountBookOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        key: "billing-unbilled",
+        path: "/billing/unbilled",
+        label: "Unbilled Aging",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
       },
     ],
   },

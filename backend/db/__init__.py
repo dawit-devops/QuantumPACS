@@ -63,6 +63,9 @@ def register_tables():
         ('db.qa', 'CorrectiveActions'),
         ('db.qa', 'IncidentsQA'),
         ('db.qa', 'ProtocolsQA'),
+        ('db.ris_coding', 'CodingService'),
+        ('db.ris_charges', 'RisCharges'),
+        ('db.ris_charges', 'RisClaims'),
     ]
     for mod_path, cls_name in _classes:
         mod = importlib.import_module(mod_path)

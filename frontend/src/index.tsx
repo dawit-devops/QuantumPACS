@@ -99,6 +99,8 @@ const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
 const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
 const Incidents = React.lazy(() => import("./qa/Incidents"));
 const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
+const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
+const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -386,6 +388,22 @@ function ThemedApp() {
                         // (notifications.py), so the route gate matches.
                         <ClinicalRoute permission="REPORT_READ">
                           <CriticalResultsList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/queue"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <BillingQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/unbilled"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <UnbilledAging />
                         </ClinicalRoute>
                       }
                     />

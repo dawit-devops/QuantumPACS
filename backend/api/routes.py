@@ -91,6 +91,9 @@ from api.billing import (
     BillingPaymentsHandler, BillingReceiptHandler, BillingClaimsHandler,
     BillingClaimHandler, BillingRefundsHandler, BillingRefundHandler,
     BillingQuotesHandler, BillingPaymentPlansHandler, BillingReconciliationHandler,
+    RisCptSuggestionsHandler, RisBillingQueueHandler, RisChargeDropHandler,
+    RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
+    RisReconciliationHandler,
 )
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
@@ -271,6 +274,14 @@ _V1_ROUTES = [
     v2(Route('/ris/tracking/kpi', endpoint=TrackingKpiHandler)),
     v2(Route('/ris/tracking/{id}/timeline', endpoint=TrackingTimelineHandler)),
     v2(Route('/ris/tracking/{id}/status', endpoint=TrackingStatusHandler)),
+    # S11: Billing capture — queue, charge drop, aging, 837/835 stubs.
+    v2(Route('/ris/billing/cpt-suggestions', endpoint=RisCptSuggestionsHandler)),
+    v2(Route('/ris/billing/queue', endpoint=RisBillingQueueHandler)),
+    v2(Route('/ris/billing/charges/{id}/drop', endpoint=RisChargeDropHandler, methods=['POST'])),
+    v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
+    v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),
