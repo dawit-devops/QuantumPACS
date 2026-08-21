@@ -288,3 +288,93 @@ class TestRemindersApi:
             resp = client.get('/ris/reminders/log')
         assert resp.status_code == 200
         assert resp.json()['total'] == 1
+
+
+# ---------------------------------------------------------------------------
+# R2-01-13 — failure monitor alerts
+# ---------------------------------------------------------------------------
+
+class TestReminderFailureMonitor:
+    """FAILED deliveries in the window alert ops (<= 5-min SLA)."""
+
+    @pytest.mark.asyncio
+    async def test_check_notifies_on_failed(self):
+        from services.reminders.service import ReminderFailureMonitor
+
+        conn = _Conn()
+        conn.set_fetch([{'id': 'm1', 'channel': 'sms', 'recipient': '555',
+                         'attempts': 2, 'event_type': 'reminder.appointment'}])
+        monitor = ReminderFailureMonitor(window_minutes=5)
+
+        with patch('services.reminders.service.get_conn', return_value=conn), \
+             patch('api.notify.notify_role') as mock_nr:
+            n = await monitor.check('default')
+
+        assert n == 1
+        mock_nr.assert_awaited_once()
+        args = mock_nr.call_args
+        assert args[0][2] == 'reminder.delivery'
+
+
+# ---------------------------------------------------------------------------
+# R2-02 E2E — config -> send -> log (real DB)
+# ---------------------------------------------------------------------------
+
+class TestReminderE2E:
+    """Real-DB roundtrip: configure a reminder event, send it, verify the
+    delivery lands in ris_message_log as SENT with a provider receipt."""
+
+    def test_config_send_log_roundtrip(self):
+        import asyncio as _asyncio
+        import uuid as _uuid
+
+        async def run():
+            from db.conn import (
+                get_conn,
+                reset_tenant_slug,
+                set_tenant_slug,
+                setup,
+                teardown,
+            )
+            from db.ris_message_log import ReminderConfig
+            from services.reminders.service import ReminderService
+
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = f'r2-{_uuid.uuid4().hex[:8]}'
+            try:
+                set_tenant_slug(tag)
+                async with get_conn() as conn:
+                    # Configure the appointment reminder event (active).
+                    await ReminderConfig(conn).upsert(
+                        event_type='reminder.appointment',
+                        channel='email', template='Appt at {time}',
+                        lead_time_hours=24, active=True, tenant_id=tag,
+                    )
+                # Send via the service (its own pool connection).
+                result = await ReminderService().send(
+                    event_type='reminder.appointment',
+                    recipient='p@example.com', channel='email',
+                    subject='Appt', body='Your exam is tomorrow',
+                    tenant_id=tag,
+                )
+                assert result['status'] == 'SENT'
+
+                async with get_conn() as conn:
+                    row = await conn.fetchrow(
+                        'SELECT status, channel, provider_receipt'
+                        ' FROM ris_message_log WHERE id = $1',
+                        result['id'],
+                    )
+                    assert row is not None
+                    assert row['status'] == 'SENT'
+                    assert row['channel'] == 'email'
+                    assert row['provider_receipt'], 'provider receipt recorded'
+            finally:
+                reset_tenant_slug()
+                await teardown()
+
+        _asyncio.run(run())

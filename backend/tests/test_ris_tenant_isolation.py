@@ -141,6 +141,26 @@ async def _insert_ris_prior_auth(conn, tag, order_id=None):
     )
 
 
+async def _insert_message_log(conn, tag):
+    """Insert a minimal ris_message_log row (R2-02)."""
+    return await conn.fetchrow(
+        'INSERT INTO ris_message_log '
+        '(tenant_id, channel, recipient, event_type, status) '
+        'VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        tag, 'email', f'p-{tag}@example.com', 'reminder.appointment', 'SENT',
+    )
+
+
+async def _insert_reminder_config(conn, tag):
+    """Insert a minimal ris_reminder_config row (R2-02)."""
+    return await conn.fetchrow(
+        'INSERT INTO ris_reminder_config '
+        '(tenant_id, event_type, channel, lead_time_hours, active) '
+        'VALUES ($1, $2, $3, $4, true) RETURNING *',
+        tag, 'reminder.appointment', 'email', 24,
+    )
+
+
 async def _insert_ris_resource_schedule(conn, tag, resource_id=None):
     """Insert a minimal ris_resource_schedules row (S12-08)."""
     from datetime import time as dtime
@@ -426,6 +446,56 @@ class TestRisWriteTenantTagging:
                         tag = f'test-k-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_prior_auth(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_message_log_tenant_tagged(self):
+        # R2-02: delivery records carry the tenant tag so one tenant's
+        # reminder receipts never leak to another.
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-l-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_message_log(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_reminder_config_tenant_tagged(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-m-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_reminder_config(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()

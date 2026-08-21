@@ -58,6 +58,7 @@ class LifecycleState:
     dcm4chee_sync_thread: Optional[threading.Thread] = None
     escalation_thread: Optional[threading.Thread] = None
     prior_auth_thread: Optional[threading.Thread] = None
+    reminder_failure_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -342,6 +343,45 @@ def _start_prior_auth_alert():
     log.info('Prior-auth alert engine started')
 
 
+# R2-01-13: reminder delivery failure monitor (<= 5-min alerting). Same
+# main-loop scheduling pattern so the worker touches the asyncpg pool safely.
+def _run_reminder_failure_monitor(loop):
+    async def _loop():
+        from services.reminders.service import ReminderFailureMonitor
+        monitor = ReminderFailureMonitor()
+        interval = int(config.get('reminder_failure_interval', '300'))
+        while True:
+            try:
+                await monitor.check()
+            except Exception:
+                log.warning('Reminder failure monitor check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_reminder_failure_monitor():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_reminder_failure_monitor,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.reminder_failure_thread = thread
+    log.info('Reminder failure monitor started')
+
+
 async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
@@ -428,6 +468,7 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
     await _start_mllp()
     _start_critical_escalation()
     _start_prior_auth_alert()
+    _start_reminder_failure_monitor()
 
     # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
     # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.

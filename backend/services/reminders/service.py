@@ -136,3 +136,30 @@ class ReminderService:
         """FAILED deliveries in the window (R2-01-13 alert input)."""
         async with get_conn() as conn:
             return await MessageLog(conn).failed_since(minutes, tenant_id)
+
+
+class ReminderFailureMonitor:
+    """R2-01-13: alerts ops when reminder deliveries fail within the window.
+
+    A background loop calls check() every few minutes; any FAILED delivery
+    in the last 5 minutes triggers a notify_role alert (system.alert-style)
+    so a dead provider channel is surfaced promptly (<= 5-min SLA).
+    """
+
+    def __init__(self, window_minutes=5):
+        self.window_minutes = int(window_minutes or 5)
+
+    async def check(self, tenant_id='default'):
+        async with get_conn() as conn:
+            from db.ris_message_log import MessageLog
+            failed = await MessageLog(conn).failed_since(self.window_minutes, tenant_id)
+            from api.notify import notify_role
+            for row in failed:
+                await notify_role(
+                    conn, 'pacs_admin', 'reminder.delivery',
+                    'Reminder delivery failed',
+                    f'{row.get("channel")} to {row.get("recipient")} failed '
+                    f'({row.get("attempts")} attempts) for {row.get("event_type")}.',
+                    '/reminders',
+                )
+        return len(failed)
