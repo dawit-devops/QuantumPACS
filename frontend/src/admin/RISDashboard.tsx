@@ -100,6 +100,7 @@ function RISDashboard() {
       </div>
 
       {kpi && (
+        <>
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={6}>
             <Statistic title="Today's Volume" value={kpi.volume} />
@@ -126,6 +127,35 @@ function RISDashboard() {
           </Col>
           <Col span={6}>
             <Statistic
+              title="Prior-Auth Approval"
+              value={((kpi.prior_auth?.approval_rate ?? 0) * 100).toFixed(1)}
+              suffix="%"
+              valueStyle={{
+                color:
+                  (kpi.prior_auth?.approval_rate ?? 0) < 0.95
+                    ? "#fa8c16"
+                    : undefined,
+              }}
+            />
+          </Col>
+        </Row>
+        {kpi.prior_auth && (
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            {["APPROVED", "PENDING", "DENIED", "EXPIRED"].map((st) => (
+              <Col span={6} key={st}>
+                <Statistic
+                  title={`Prior-Auth ${st}`}
+                  value={
+                    kpi.prior_auth?.mix?.find((m) => m.status === st)?.n ?? 0
+                  }
+                />
+              </Col>
+            ))}
+          </Row>
+        )}
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col span={6}>
+            <Statistic
               title="STAT p95 TAT"
               value={fmtDuration(
                 kpi.tat_by_priority?.find((t) => t.priority === "stat")
@@ -134,6 +164,7 @@ function RISDashboard() {
             />
           </Col>
         </Row>
+        </>
       )}
 
       <PageState

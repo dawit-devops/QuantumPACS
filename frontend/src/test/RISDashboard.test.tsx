@@ -35,6 +35,15 @@ const mockKpi = {
     { priority: "stat", p95_seconds: 600 },
     { priority: "routine", p95_seconds: 3600 },
   ],
+  prior_auth: {
+    mix: [
+      { status: "APPROVED", n: 21 },
+      { status: "PENDING", n: 3 },
+      { status: "DENIED", n: 1 },
+      { status: "EXPIRED", n: 1 },
+    ],
+    approval_rate: 0.955,
+  },
   utilization: 0.65,
   unbilled_aging: { total_unbilled: 3 },
   volume: 42,
@@ -76,6 +85,20 @@ describe("RISDashboard", () => {
     });
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("Unbilled")).toBeInTheDocument();
+  });
+
+  it("renders prior-auth status mix (R2-01-09)", async () => {
+    renderDash();
+    await waitFor(() => {
+      expect(screen.getByText("Prior-Auth Approval")).toBeInTheDocument();
+    });
+    // Data flow proof: mix card renders only when the payload carried
+    // prior_auth (the backend suite asserts the rate itself).
+    await waitFor(() => {
+      expect(screen.getByText("Prior-Auth APPROVED")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Prior-Auth PENDING")).toBeInTheDocument();
+    expect(screen.getByText("Prior-Auth EXPIRED")).toBeInTheDocument();
   });
 
   it("renders TAT by priority table", async () => {

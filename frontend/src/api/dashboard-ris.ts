@@ -16,8 +16,17 @@ export interface DrillDownRow {
   tat_seconds: number;
 }
 
+export interface PriorAuthMixRow {
+  status: string;
+  n: number;
+}
+
 export interface RisDashboardKpi {
   tat_by_priority: TatByPriority[];
+  prior_auth?: {
+    mix: PriorAuthMixRow[];
+    approval_rate: number;
+  };
   utilization: number;
   unbilled_aging: UnbilledAging;
   volume: number;

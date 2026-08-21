@@ -139,3 +139,49 @@ class TestRisDashboardKpiApi:
         assert resp.status_code == 200
         body = resp.json()
         assert body['drill_down'][0]['accession_number'] == 'ACC-1'
+
+class TestPriorAuthDashboardMix:
+    """R2-01-09/15: status mix + approval rate on the manager dashboard."""
+
+    def test_kpi_includes_prior_auth_mix(self, conn):
+        conn.set_fetch([
+            {'priority': 'stat', 'p95_seconds': 600.0},
+        ])
+
+        async def _fetchval(sql, *args):
+            if 'ris_appointments' in sql:
+                return 0.5
+            if 'worklist_entries' in sql:
+                return 7
+            if ('ris_prior_auth_requests' in sql
+                    and 'FILTER' in sql):
+                return 0.955
+            return 0
+
+        conn.fetchval = _fetchval
+        # second fetch call = prior-auth mix rows
+        mix = [
+            {'status': 'APPROVED', 'n': 21},
+            {'status': 'PENDING', 'n': 3},
+            {'status': 'DENIED', 'n': 1},
+            {'status': 'EXPIRED', 'n': 1},
+        ]
+        calls = {'n': 0}
+
+        async def _fetch(sql, *args):
+            calls['n'] += 1
+            if 'ris_prior_auth_requests' in sql and 'GROUP BY' in sql:
+                return mix
+            return [{'priority': 'stat', 'p95_seconds': 600.0}]
+
+        conn.fetch = _fetch
+        conn.set_fetchrow({'total_unbilled': 2})
+
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.REPORT_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/dashboard/kpi')
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body['prior_auth']['mix'] == mix
+        assert body['prior_auth']['approval_rate'] == 0.955

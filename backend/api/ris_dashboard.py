@@ -64,6 +64,25 @@ class RisDashboardKpiHandler(HTTPEndpoint):
                 "   AND scheduled_date = current_date",
                 tenant,
             )
+            # R2-01-09/15: authorization health — status mix for the card
+            # and the RVG-1 approval-rate signal (>= 95% authorized
+            # pre-scan) computed over decided requests.
+            mix_rows = await conn.fetch(
+                "SELECT status, count(*) AS n"
+                " FROM ris_prior_auth_requests"
+                " WHERE tenant_id = $1"
+                " GROUP BY status ORDER BY status",
+                tenant,
+            )
+            approval_rate = await conn.fetchval(
+                "SELECT CASE WHEN count(*) = 0 THEN 0"
+                "       ELSE round((count(*) FILTER (WHERE status"
+                "         = 'APPROVED'))::numeric / count(*), 3)::float END"
+                " FROM ris_prior_auth_requests"
+                " WHERE tenant_id = $1"
+                "   AND status IN ('APPROVED', 'DENIED', 'EXPIRED')",
+                tenant,
+            )
             drill_rows = []
             if drill_down:
                 drill_rows = await conn.fetch(
@@ -82,6 +101,10 @@ class RisDashboardKpiHandler(HTTPEndpoint):
 
         return ok({
             'tat_by_priority': [dict(r) for r in tat_rows],
+            'prior_auth': {
+                'mix': [dict(r) for r in mix_rows],
+                'approval_rate': float(approval_rate or 0),
+            },
             'utilization': float(utilization or 0),
             'unbilled_aging': {
                 'total_unbilled': (unbilled or {}).get('total_unbilled') or 0,
