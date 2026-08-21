@@ -335,15 +335,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
         adminOnly: true,
       },
-      {
+{
         // S12-35: department-manager dashboard — TAT, utilization, unbilled
-        // aging, volume. REPORT_READ matches the route gate (radiologist and
-        // manager roles both carry it); shown in Admin alongside Dashboard.
+        // aging, volume. REPORT_READ matches the route gate; adminOnly keeps
+        // the Admin section from leaking to clinical roles (radiologist etc.)
+        // who have REPORT_READ but are not admin-scoped.
         key: "ris-dashboard",
         path: "/admin/ris-dashboard",
         label: "RIS Dashboard",
         icon: <FundOutlined />,
         permissions: ["REPORT_READ"],
+        adminOnly: true,
       },
       {
         key: "replicas",

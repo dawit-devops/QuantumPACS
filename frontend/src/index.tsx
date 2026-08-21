@@ -216,9 +216,9 @@ function ThemedApp() {
                     <Route
                       path="/admin/ris-dashboard"
                       element={
-                        <PermissionRoute permission="REPORT_READ">
+                        <AdminConsoleRoute permission="REPORT_READ">
                           <RisDashboard />
-                        </PermissionRoute>
+                        </AdminConsoleRoute>
                       }
                     />
                     <Route
