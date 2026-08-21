@@ -1,0 +1,9 @@
+.ris-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.ris-dash-header h2 {
+  margin: 0;
+}

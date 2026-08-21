@@ -117,6 +117,7 @@ const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
 const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
 const InterfaceDashboard = React.lazy(() => import("./admin/InterfaceDashboard"));
+const RisDashboard = React.lazy(() => import("./admin/RISDashboard"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 
 function NavigatorSetter() {
@@ -209,6 +210,14 @@ function ThemedApp() {
                       element={
                         <PermissionRoute permission="HL7_READ">
                           <InterfaceDashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/ris-dashboard"
+                      element={
+                        <PermissionRoute permission="REPORT_READ">
+                          <RisDashboard />
                         </PermissionRoute>
                       }
                     />

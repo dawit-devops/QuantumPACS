@@ -336,6 +336,16 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         adminOnly: true,
       },
       {
+        // S12-35: department-manager dashboard — TAT, utilization, unbilled
+        // aging, volume. REPORT_READ matches the route gate (radiologist and
+        // manager roles both carry it); shown in Admin alongside Dashboard.
+        key: "ris-dashboard",
+        path: "/admin/ris-dashboard",
+        label: "RIS Dashboard",
+        icon: <FundOutlined />,
+        permissions: ["REPORT_READ"],
+      },
+      {
         key: "replicas",
         path: "/replicas",
         label: "Replicas",
