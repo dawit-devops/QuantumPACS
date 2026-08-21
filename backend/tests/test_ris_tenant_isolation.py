@@ -178,6 +178,25 @@ async def _insert_ris_resource_schedule(conn, tag, resource_id=None):
     )
 
 
+async def _insert_ris_appointment(conn, tag):
+    """Insert a minimal ris_appointments row (S4-21)."""
+    from datetime import datetime, timedelta, timezone as tz
+    order_id = (await _insert_ris_order(conn, tag))['id']
+    resource_id = (await conn.fetchrow(
+        'INSERT INTO ris_resources (tenant_id, name, resource_type) '
+        'VALUES ($1, $2, $3) RETURNING id',
+        tag, f'APPT-RES-{tag}', 'ROOM',
+    ))['id']
+    start = datetime.now(tz.utc).replace(microsecond=0)
+    return await conn.fetchrow(
+        'INSERT INTO ris_appointments '
+        '(tenant_id, order_id, resource_id, patient_id, start_time, end_time) '
+        'VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        tag, order_id, resource_id, f'P-{tag}',
+        start, start + timedelta(minutes=30),
+    )
+
+
 # ── Write-scoping tests (real, passing) ──────────────────────────────────
 
 class TestRisWriteTenantTagging:
@@ -420,6 +439,31 @@ class TestRisWriteTenantTagging:
                         tag = f'test-j-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_resource_schedule(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_appointments_tenant_tagged(self):
+        """S4-21: bookings carry the tenant tag like every sibling table."""
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-j-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_appointment(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()
