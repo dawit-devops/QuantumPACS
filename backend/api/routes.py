@@ -101,6 +101,11 @@ from api.prior_auth import (
     PriorAuthDecisionHandler,
     PriorAuthExpireHandler,
 )
+from api.reminders import (
+    ReminderSendHandler,
+    ReminderLogHandler,
+    ReminderConfigHandler,
+)
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
     MaintenanceScheduleItemHandler, QCRecordsHandler, DowntimeEventsHandler,
@@ -294,6 +299,10 @@ _V1_ROUTES = [
     v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
     v2(Route('/ris/prior-auth/expire', endpoint=PriorAuthExpireHandler, methods=['POST'])),
     v2(Route('/ris/prior-auth/{id}/decision', endpoint=PriorAuthDecisionHandler, methods=['POST'])),
+    # R2-02: Reminders — dispatch, audit log, per-event config (E-RIS2-02).
+    v2(Route('/ris/reminders/send', endpoint=ReminderSendHandler, methods=['POST'])),
+    v2(Route('/ris/reminders/log', endpoint=ReminderLogHandler)),
+    v2(Route('/ris/reminders/config', endpoint=ReminderConfigHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),

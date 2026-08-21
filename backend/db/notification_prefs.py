@@ -49,6 +49,11 @@ class NotificationPrefs:
         # these, and the preference page must be able to toggle them (H11).
         'critical.flagged',
         'critical.escalated',
+        # R2-02: patient/operational reminders — outbound SMS/email/phone.
+        # Opt-out is honored per event_type via this same table (R2-01-12).
+        'reminder.appointment',
+        'reminder.prior_auth',
+        'reminder.delivery',
     })
     def __init__(self, conn=None):
         self.conn = conn
