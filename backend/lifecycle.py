@@ -57,6 +57,7 @@ class LifecycleState:
     mwl_sync_thread: Optional[threading.Thread] = None
     dcm4chee_sync_thread: Optional[threading.Thread] = None
     escalation_thread: Optional[threading.Thread] = None
+    prior_auth_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -302,6 +303,45 @@ def _start_critical_escalation():
     log.info('Critical escalation engine started')
 
 
+# R2-01-07: prior-auth expiry alerts. Same main-loop scheduling pattern as
+# the escalation engine — the alert/expiry worker touches the asyncpg pool.
+def _run_prior_auth_alert(loop):
+    async def _loop():
+        from services.prior_auth_alert.service import PriorAuthAlertEngine
+        engine = PriorAuthAlertEngine()
+        interval = int(config.get('prior_auth_alert_interval', '3600'))
+        while True:
+            try:
+                await engine.run_alert_check()
+            except Exception:
+                log.warning('Prior-auth alert check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_prior_auth_alert():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_prior_auth_alert,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.prior_auth_thread = thread
+    log.info('Prior-auth alert engine started')
+
+
 async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
@@ -387,6 +427,7 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
     _start_dicom()
     await _start_mllp()
     _start_critical_escalation()
+    _start_prior_auth_alert()
 
     # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
     # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.

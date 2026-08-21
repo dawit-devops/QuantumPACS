@@ -273,3 +273,59 @@ class TestPriorAuthApi:
         body = resp.json()
         assert body['total'] == 1
         assert body['data'][0]['status'] == 'APPROVED'
+
+
+# ---------------------------------------------------------------------------
+# R2-01-07 — expiry alert + overdue sweep
+# ---------------------------------------------------------------------------
+
+class TestPriorAuthAlertEngine:
+    """Expiring-soon approvals notify billing; overdue approvals expire."""
+
+    @pytest.mark.asyncio
+    async def test_run_alert_check_notifies_and_expires(self):
+        from services.prior_auth_alert.service import PriorAuthAlertEngine
+
+        expiring = [{'id': 'pa-1', 'order_id': 'ord-1',
+                     'expiry_date': '2026-08-28', 'payer_name': 'Medicare'}]
+        expired = [{'id': 'pa-2', 'order_id': 'ord-2'}]
+
+        notified = []
+
+        async def _fake_notify(self, conn, row):
+            notified.append(row)
+
+        conn = _Conn()
+        engine = PriorAuthAlertEngine(alert_days=7)
+
+        with patch('services.prior_auth_alert.service.get_conn',
+                   return_value=conn), \
+             patch.object(PriorAuthAlertEngine, '_notify',
+                          new=_fake_notify):
+            # list_expiring_soon -> expiring; expire_overdue -> expired rows
+            async def _fetch(sql, *args):
+                if 'FROM ris_prior_auth_requests' in sql and 'expiry_date' in sql:
+                    return expiring
+                return expired
+            conn.fetch = _fetch
+
+            result = await engine.run_alert_check('default')
+
+        assert result['expired'] == 1
+        assert len(notified) == 1, 'each expiring request must notify'
+        assert notified[0]['order_id'] == 'ord-1'
+
+    @pytest.mark.asyncio
+    async def test_alert_engine_notify_uses_notify_role(self):
+        from services.prior_auth_alert.service import PriorAuthAlertEngine
+
+        conn = _Conn()
+        engine = PriorAuthAlertEngine(alert_days=7)
+        row = {'id': 'pa-1', 'order_id': 'ord-1', 'expiry_date': '2026-08-28',
+               'payer_name': 'Medicare'}
+        with patch('api.notify.notify_role') as mock_nr:
+            await engine._notify(conn, row)
+        mock_nr.assert_awaited_once()
+        args = mock_nr.call_args
+        assert args[0][2] == 'prior_auth.expiring'
+        assert 'expires 2026-08-28' in args[0][4]
