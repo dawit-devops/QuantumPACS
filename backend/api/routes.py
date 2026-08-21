@@ -95,6 +95,7 @@ from api.billing import (
     RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
     RisReconciliationHandler,
 )
+from api.ris_dashboard import RisDashboardKpiHandler
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
     MaintenanceScheduleItemHandler, QCRecordsHandler, DowntimeEventsHandler,
@@ -282,6 +283,8 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
     v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
+    # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
+    v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),
