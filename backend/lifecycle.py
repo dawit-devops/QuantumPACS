@@ -266,15 +266,33 @@ def _run_critical_escalation(loop):
                 log.warning('Critical escalation check failed', exc_info=True)
             await asyncio.sleep(interval)
 
-    asyncio.set_event_loop(loop)
-    loop.create_task(_loop())
-    loop.run_forever()
+    if loop is not None and loop.is_running():
+        # The engine uses get_conn() which binds to the asyncpg pool / redis
+        # clients on the MAIN loop (uvicorn's loop).  Scheduling the coroutine
+        # via run_coroutine_threadsafe places it on the same loop that owns
+        # those clients, avoiding the "Future attached to a different loop"
+        # RuntimeError that the previous new_event_loop + run_forever pattern
+        # produced every 60s in the backend logs (mirror _run_dicom).
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
 
 
 def _start_critical_escalation():
+    state = get_app_state()
+    try:
+        # Hand the uvicorn main loop to the escalation thread so the engine's
+        # get_conn() runs on the loop that owns the asyncpg pool / redis /
+        # ES clients (mirror _start_dicom). A new_event_loop would raise
+        # "Future attached to a different loop" on every check.
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
     thread = threading.Thread(
         target=_run_critical_escalation,
-        args=(asyncio.new_event_loop(),),
+        args=(main_loop,),
         daemon=True,
     )
     thread.start()
