@@ -21,8 +21,8 @@ from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
 
 
-class PriorAuthListHandler(HTTPEndpoint):
-    """R2-01-02: GET /ris/prior-auth?status=APPROVED&expiring_soon=1"""
+class PriorAuthHandler(HTTPEndpoint):
+    """R2-01-02: GET /ris/prior-auth (list) and POST /ris/prior-auth (submit)."""
 
     @requires_permission(Permission.PRIOR_AUTH_READ)
     async def get(self, request):
@@ -41,10 +41,6 @@ class PriorAuthListHandler(HTTPEndpoint):
                 return ok({'data': [dict(r) for r in rows], 'total': len(rows)})
             rows, total = await PriorAuth(conn).list(tenant, status=status)
         return ok({'data': rows, 'total': total})
-
-
-class PriorAuthSubmitHandler(HTTPEndpoint):
-    """R2-01-02: POST /ris/prior-auth — open a REQUIRED request."""
 
     @requires_permission(Permission.PRIOR_AUTH_WRITE)
     async def post(self, request):

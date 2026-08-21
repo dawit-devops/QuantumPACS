@@ -192,31 +192,29 @@ class TestPriorAuthApi:
 
     def _handlers(self):
         from api.prior_auth import (
-            PriorAuthListHandler,
-            PriorAuthSubmitHandler,
+            PriorAuthHandler,
             PriorAuthDecisionHandler,
         )
         return [
-            ('/ris/prior-auth', PriorAuthListHandler, ['GET']),
-            ('/ris/prior-auth', PriorAuthSubmitHandler, ['POST']),
+            ('/ris/prior-auth', PriorAuthHandler, ['GET', 'POST']),
             ('/ris/prior-auth/{id}/decision', PriorAuthDecisionHandler, ['POST']),
         ]
 
     def test_submit_requires_prior_auth_write(self, conn):
-        from api.prior_auth import PriorAuthSubmitHandler
+        from api.prior_auth import PriorAuthHandler
         client = TestClient(_make_app(
             _user(),
-            [('/ris/prior-auth', PriorAuthSubmitHandler, ['POST'])],
+            [('/ris/prior-auth', PriorAuthHandler, ['GET', 'POST'])],
         ))
         with patch('api.prior_auth.get_conn', return_value=conn):
             resp = client.post('/ris/prior-auth', json={'order_id': 'ord-1'})
         assert resp.status_code == 403
 
     def test_submit_creates_request(self, conn):
-        from api.prior_auth import PriorAuthSubmitHandler
+        from api.prior_auth import PriorAuthHandler
         client = TestClient(_make_app(
             _user(Permission.PRIOR_AUTH_WRITE),
-            [('/ris/prior-auth', PriorAuthSubmitHandler, ['POST'])],
+            [('/ris/prior-auth', PriorAuthHandler, ['GET', 'POST'])],
         ))
         with patch('api.prior_auth.get_conn', return_value=conn):
             resp = client.post('/ris/prior-auth', json={
@@ -259,13 +257,13 @@ class TestPriorAuthApi:
         assert resp.status_code == 422
 
     def test_list_returns_requests(self, conn):
-        from api.prior_auth import PriorAuthListHandler
+        from api.prior_auth import PriorAuthHandler
         conn.set_fetch([{'id': 'pa-1', 'order_id': 'ord-1',
                          'status': 'APPROVED', 'expiry_date': '2026-09-21'}])
         conn.set_fetchval(1)
         client = TestClient(_make_app(
             _user(Permission.PRIOR_AUTH_READ),
-            [('/ris/prior-auth', PriorAuthListHandler, ['GET'])],
+            [('/ris/prior-auth', PriorAuthHandler, ['GET', 'POST'])],
         ))
         with patch('api.prior_auth.get_conn', return_value=conn):
             resp = client.get('/ris/prior-auth')

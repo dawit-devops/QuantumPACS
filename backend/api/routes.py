@@ -97,8 +97,7 @@ from api.billing import (
 )
 from api.ris_dashboard import RisDashboardKpiHandler
 from api.prior_auth import (
-    PriorAuthListHandler,
-    PriorAuthSubmitHandler,
+    PriorAuthHandler,
     PriorAuthDecisionHandler,
     PriorAuthExpireHandler,
 )
@@ -292,8 +291,7 @@ _V1_ROUTES = [
     # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
     v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
     # R2-01: Prior authorization — request lifecycle + payer decisions.
-    v2(Route('/ris/prior-auth', endpoint=PriorAuthListHandler)),
-    v2(Route('/ris/prior-auth', endpoint=PriorAuthSubmitHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
     v2(Route('/ris/prior-auth/expire', endpoint=PriorAuthExpireHandler, methods=['POST'])),
     v2(Route('/ris/prior-auth/{id}/decision', endpoint=PriorAuthDecisionHandler, methods=['POST'])),
     v2(Route('/exams', endpoint=ExamsHandler)),
