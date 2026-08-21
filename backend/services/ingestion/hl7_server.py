@@ -346,7 +346,7 @@ async def _upsert_patient(data: dict) -> bool:
 async def _deactivate_patient(data: dict) -> bool:
     try:
         async with get_conn() as conn:
-            q = "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1"
+            q = "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(false)) WHERE patient_id = $1"
             await conn.execute(q, data['patient_id'])
         return True
     except Exception:
@@ -366,11 +366,14 @@ async def _merge_patients(surviving_id: str, parsed: dict, merged_id: str) -> bo
                 'patient_sex': parsed.get('sex', ''),
             })
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{merged_into}', '\"' || $1::text || '\"') WHERE patient_id = $2",
+                # to_jsonb() gives an explicit jsonb argument — a $n::text
+                # expression will not implicitly cast (jsonb_set has no
+                # (jsonb, text[], text) overload).
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{merged_into}', to_jsonb($1::text)) WHERE patient_id = $2",
                 surviving_id, merged_id,
             )
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1",
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(false)) WHERE patient_id = $1",
                 merged_id,
             )
         return True
@@ -395,7 +398,7 @@ async def _unmerge_patients(surviving_id: str, parsed: dict, merged_id: str) -> 
                 merged_id,
             )
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"true\"') WHERE patient_id = $1",
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(true)) WHERE patient_id = $1",
                 merged_id,
             )
         return True

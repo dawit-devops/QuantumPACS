@@ -173,3 +173,86 @@ class TestRisHl7WireE2E:
         )
         assert after['status'] == 'FAILED'
         assert after['retry_count'] == 1
+
+def _adt_a04(control_id: str, patient_id: str, name: str = 'E2E^Register') -> str:
+    return (
+        f'MSH|^~\\&|HIS|HIS_FACILITY|QUANTUMPACS||202608210900||ADT^A04|'
+        f'{control_id}|P|2.5\r'
+        f'PID|1||{patient_id}||{name}||19850412|M\r'
+    )
+
+
+def _adt_a40(control_id: str, surviving_id: str, merged_id: str) -> str:
+    return (
+        f'MSH|^~\\&|HIS|HIS_FACILITY|QUANTUMPACS||202608210930||ADT^A40|'
+        f'{control_id}|P|2.5\r'
+        f'PID|1||{surviving_id}||E2E^Surviving||19850412|M\r'
+        f'MRG|{merged_id}\r'
+    )
+
+
+@pytest.mark.asyncio(loop_scope='module')
+class TestAdtRegistrationE2E:
+    """S3-19 — registration flow over the wire: A04 creates/updates the
+    patient, A40 merge propagates to MPI state (merged_into + inactive),
+    and both land as PROCESSED interface messages."""
+
+    async def test_a04_registers_patient(self, live_mllp, live_db):
+        host, port = live_mllp
+        control_id = uuid.uuid4().hex[:8].upper()
+        patient_id = f'E2EA04{uuid.uuid4().hex[:8].upper()}'
+
+        resp = await _send(host, port, _mllp(_adt_a04(control_id, patient_id)))
+        assert b'ACK' in resp, resp
+
+        msg = await live_db.fetchrow(
+            'SELECT message_type, status FROM ris_hl7_messages '
+            'WHERE control_id = $1',
+            control_id,
+        )
+        assert msg is not None
+        assert msg['message_type'] == 'ADT'
+        assert msg['status'] == 'PROCESSED'
+
+        patient = await live_db.fetchrow(
+            'SELECT patient_id FROM patients WHERE patient_id = $1',
+            patient_id,
+        )
+        assert patient is not None, 'A04 must register the patient'
+
+    async def test_a40_merge_propagates_to_mpi(self, live_mllp, live_db):
+        host, port = live_mllp
+        control_id = uuid.uuid4().hex[:8].upper()
+        suffix = uuid.uuid4().hex[:8].upper()
+        surviving_id = f'E2EA40S{suffix}'
+        merged_id = f'E2EA40M{suffix}'
+
+        # Both legs must exist before the merge: register the loser first.
+        await _send(host, port, _mllp(_adt_a04(f'{control_id}A', merged_id)))
+        await _send(host, port, _mllp(_adt_a04(f'{control_id}B', surviving_id)))
+        resp = await _send(host, port, _mllp(_adt_a40(control_id, surviving_id,
+                                                      merged_id)))
+        assert b'ACK' in resp, resp
+
+        msg = await live_db.fetchrow(
+            'SELECT status FROM ris_hl7_messages WHERE control_id = $1',
+            control_id,
+        )
+        assert msg is not None and msg['status'] == 'PROCESSED'
+
+        survivor = await live_db.fetchrow(
+            "SELECT meta->>'active' AS active FROM patients "
+            'WHERE patient_id = $1',
+            surviving_id,
+        )
+        assert survivor is not None
+
+        loser = await live_db.fetchrow(
+            "SELECT meta->>'merged_into' AS merged_into, "
+            "meta->>'active' AS active FROM patients "
+            'WHERE patient_id = $1',
+            merged_id,
+        )
+        assert loser is not None, 'merge target must exist'
+        assert loser['merged_into'] == surviving_id
+        assert loser['active'] == 'false', 'merged leg must be deactivated'
