@@ -28,23 +28,25 @@ vi.mock("../auth/AuthContext", async (importOriginal) => {
   };
 });
 
-import { listPriorAuth } from "../api/prior-auth";
+import { listPriorAuth, type PriorAuthRequest } from "../api/prior-auth";
 const mockList = vi.mocked(listPriorAuth);
 
-const mockData = [
+const mockData: PriorAuthRequest[] = [
   {
     id: "pa-1",
     order_id: "ord-1",
     procedure_code: "CT CHEST",
+    payer_id: "PAY-1",
     payer_name: "Medicare",
     status: "PENDING",
     auth_number: "",
-    expiry_date: null,
+    expiry_date: undefined,
   },
   {
     id: "pa-2",
     order_id: "ord-2",
     procedure_code: "MRI BRAIN",
+    payer_id: "PAY-2",
     payer_name: "Blue Cross",
     status: "APPROVED",
     auth_number: "AUTH-123",
