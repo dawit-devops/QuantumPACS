@@ -197,6 +197,16 @@ async def _insert_ris_appointment(conn, tag):
     )
 
 
+async def _insert_ris_critical_result(conn, tag):
+    """Insert a minimal ris_critical_results row (S10-15)."""
+    return await conn.fetchrow(
+        'INSERT INTO ris_critical_results '
+        '(accession_number, patient_id, finding_description, tenant_id) '
+        "VALUES ($1, $2, $3, $4) RETURNING *",
+        f'ACC-{tag}', f'P-{tag}', 'Tension pneumothorax', tag,
+    )
+
+
 # ── Write-scoping tests (real, passing) ──────────────────────────────────
 
 class TestRisWriteTenantTagging:
@@ -464,6 +474,31 @@ class TestRisWriteTenantTagging:
                         tag = f'test-j-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_appointment(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_critical_results_tenant_tagged(self):
+        """S10-15: critical flags are tenant-scoped like every sibling."""
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-j-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_critical_result(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()
