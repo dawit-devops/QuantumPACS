@@ -97,6 +97,55 @@ async def _insert_ris_claim(conn, tag, charge_id=None):
     )
 
 
+async def _insert_coding_map(conn, tag):
+    """Insert a minimal ris_coding_map row (S12-08)."""
+    return await conn.fetchrow(
+        'INSERT INTO ris_coding_map '
+        '(tenant_id, procedure_code, procedure_desc, cpt_code, active) '
+        'VALUES ($1, $2, $3, $4, true) RETURNING *',
+        tag, f'PROC-{tag}', f'Desc {tag}', '71250',
+    )
+
+
+async def _insert_mpps_event(conn, tag):
+    """Insert a minimal ris_mpps_events row (S12-08)."""
+    return await conn.fetchrow(
+        'INSERT INTO ris_mpps_events '
+        '(tenant_id, accession_number, event_type, mpps_status, raw_message) '
+        'VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING *',
+        tag, f'ACC-{tag}', 'N_CREATE', 'IN_PROGRESS', '{}',
+    )
+
+
+async def _insert_ris_order_procedure(conn, tag, order_id=None):
+    """Insert a minimal ris_order_procedures row (S12-08)."""
+    if order_id is None:
+        order_id = (await _insert_ris_order(conn, tag))['id']
+    return await conn.fetchrow(
+        'INSERT INTO ris_order_procedures '
+        '(tenant_id, order_id, procedure_code, procedure_name, modality, body_part) '
+        'VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        tag, order_id, f'PROC-{tag}', f'Proc {tag}', 'CT', 'CHEST',
+    )
+
+
+async def _insert_ris_resource_schedule(conn, tag, resource_id=None):
+    """Insert a minimal ris_resource_schedules row (S12-08)."""
+    from datetime import time as dtime
+    if resource_id is None:
+        resource_id = (await conn.fetchrow(
+            'INSERT INTO ris_resources (tenant_id, name, resource_type) '
+            'VALUES ($1, $2, $3) RETURNING id',
+            tag, f'RES-{tag}', 'MODALITY',
+        ))['id']
+    return await conn.fetchrow(
+        'INSERT INTO ris_resource_schedules '
+        '(tenant_id, resource_id, day_of_week, start_time, end_time) '
+        'VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        tag, resource_id, 1, dtime(8, 0), dtime(17, 0),
+    )
+
+
 # ── Write-scoping tests (real, passing) ──────────────────────────────────
 
 class TestRisWriteTenantTagging:
@@ -241,6 +290,104 @@ class TestRisWriteTenantTagging:
                         tag = f'test-f-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_claim(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_coding_map_tenant_tagged(self):
+        # S12-08: full RLS regression — the coding map must carry the tenant
+        # tag so one tenant's CPT suggestions never leak to another.
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-g-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_coding_map(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_mpps_events_tenant_tagged(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-h-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_mpps_event(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_order_procedures_tenant_tagged(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-i-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_order_procedure(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_resource_schedules_tenant_tagged(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-j-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_resource_schedule(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()

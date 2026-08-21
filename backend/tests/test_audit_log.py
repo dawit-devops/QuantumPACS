@@ -373,3 +373,69 @@ class TestAuditHooks:
             mock_audit_instance.log_event.assert_awaited_once()
             call_kwargs = mock_audit_instance.log_event.call_args.kwargs
             assert call_kwargs['event_type'] == 'role.deleted'
+
+
+class TestRisBillingAuditCompleteness:
+    """S12-11: every RIS write event must be audited — charge drop and claim
+    submit both log to audit_log, not just mutate the table."""
+
+    @pytest.mark.asyncio
+    async def test_charge_drop_writes_audit_event(self):
+        from starlette.applications import Starlette
+        from starlette.middleware import Middleware
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        from api.auth import User
+        from api.billing import RisChargeDropHandler
+
+        audit_events = []
+
+        class _FakeAudit:
+            def __init__(self, conn):
+                pass
+
+            async def log_event(self, **kwargs):
+                audit_events.append(kwargs)
+
+        class _FakeAuth(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = User(
+                    {'id': 1, 'permissions': ['BILLING_WRITE'], 'tenant': 'default'})
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        class _FakeConn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                return False
+
+            async def execute(self, sql, *args):
+                return 'OK'
+
+            async def fetchrow(self, sql, *args):
+                if 'UPDATE ris_charges' in sql:
+                    return {'id': 'chg-1', 'status': 'BILLED'}
+                return {'id': 'chg-1', 'status': 'PENDING', 'created_at': None}
+
+        app = Starlette(
+            routes=[Route('/ris/billing/charges/{id}/drop',
+                          endpoint=RisChargeDropHandler, methods=['POST'])],
+            middleware=[Middleware(_FakeAuth)],
+        )
+        client = TestClient(app)
+
+        with patch('api.billing.get_conn', return_value=_FakeConn()), \
+             patch('db.audit_log.AuditLog', _FakeAudit), \
+             patch('api.billing.effective_tenant', return_value='default'), \
+             patch('api.billing._unbilled_count', return_value=0):
+            resp = client.post('/ris/billing/charges/chg-1/drop')
+
+        assert resp.status_code == 200, resp.text
+        assert audit_events, 'charge drop must write an audit event'
+        assert audit_events[0]['event_type'] == 'billing.charge_dropped'
+        assert audit_events[0]['resource_id'] == 'chg-1'
+        assert audit_events[0]['resource_type'] == 'ris_charges'
