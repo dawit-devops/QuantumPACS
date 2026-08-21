@@ -147,6 +147,11 @@ ris_report_tat_seconds = Histogram(
     ['priority'],
     buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 180.0, 600.0, 1800.0, 3600.0, 10800.0),
 )
+# R2-01-15: prior-auth instrumentation — expiring-soon requests and the
+# approval count feed the manager dashboard / alerting.
+ris_prior_auth_expiring = Gauge(
+    'ris_prior_auth_expiring', 'Number of prior auths expiring within the alert window',
+)
 
 
 def record_request(method, path, status_code, elapsed):

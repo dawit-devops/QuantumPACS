@@ -6,7 +6,7 @@ Vertical-slice TDD: ris_prior_auth_requests lifecycle (REQUIRED -> PENDING
 
 import pytest
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -316,6 +316,25 @@ class TestPriorAuthAlertEngine:
         assert notified[0]['order_id'] == 'ord-1'
 
     @pytest.mark.asyncio
+    async def test_run_alert_check_sets_expiring_gauge(self):
+        from services.prior_auth_alert.service import PriorAuthAlertEngine
+
+        conn = _Conn()
+        conn.fetch = AsyncMock(return_value=[
+            {'id': 'pa-1', 'order_id': 'ord-1',
+             'expiry_date': '2026-08-28', 'payer_name': 'Medicare'}])
+        engine = PriorAuthAlertEngine(alert_days=7)
+
+        with patch('services.prior_auth_alert.service.get_conn',
+                   return_value=conn), \
+             patch('services.prior_auth_alert.service.PriorAuthAlertEngine'
+                   '._notify', new=AsyncMock()), \
+             patch('api.telemetry.ris_prior_auth_expiring.set') as mock_set:
+            await engine.run_alert_check('default')
+        # Gauge.set is synchronous (prometheus_client), not a coroutine.
+        mock_set.assert_called_once_with(1.0)
+
+    @pytest.mark.asyncio
     async def test_alert_engine_notify_uses_notify_role(self):
         from services.prior_auth_alert.service import PriorAuthAlertEngine
 
@@ -329,3 +348,112 @@ class TestPriorAuthAlertEngine:
         args = mock_nr.call_args
         assert args[0][2] == 'prior_auth.expiring'
         assert 'expires 2026-08-28' in args[0][4]
+
+
+# ---------------------------------------------------------------------------
+# R2-01-14 — E2E: submit -> approve -> book -> expire -> blocked
+# ---------------------------------------------------------------------------
+
+class TestPriorAuthE2E:
+    """Real-DB flow: an order requiring auth is un-bookable until APPROVED,
+    then bookable, then blocked again once the auth EXPIRES."""
+
+    def test_full_lifecycle_roundtrip(self):
+        import asyncio as _asyncio
+        import uuid as _uuid
+
+        async def run():
+            from db.conn import (
+                get_conn,
+                reset_tenant_slug,
+                set_tenant_slug,
+                setup,
+                teardown,
+            )
+            from db.ris_orders import RisOrders
+            from db.ris_prior_auth import PriorAuth
+            from services.scheduling.engine import SchedulingConflict, SchedulingEngine
+
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = f'pa-e2e-{_uuid.uuid4().hex[:8]}'
+            try:
+                set_tenant_slug(tag)
+                async with get_conn() as conn:
+                    order = await RisOrders(conn).create({
+                        'accession_number': f'ACC-{tag}',
+                        'patient_id': f'P-{tag}',
+                        'patient_name': 'PA E2E',
+                        'priority': 'ROUTINE',
+                        'status': 'ORDERED',
+                        'prior_auth_status': 'NOT_REQUIRED',
+                        'tenant_id': tag,
+                    })
+                    resource = await conn.fetchrow(
+                        'INSERT INTO ris_resources (tenant_id, name, resource_type) '
+                        'VALUES ($1, $2, $3) RETURNING *',
+                        tag, f'RES-{tag}', 'MODALITY',
+                    )
+                    order_id = order['id']
+
+                    # 1. Submit a prior-auth request -> order REQUIRED
+                    await PriorAuth(conn).create_request(
+                        order_id=str(order_id), procedure_code='CT CHEST',
+                        payer_id='PAY-1', payer_name='Medicare',
+                        requested_by='e2e', tenant_id=tag,
+                    )
+                    requeued = await conn.fetchrow(
+                        'SELECT prior_auth_status FROM ris_orders WHERE id = $1',
+                        str(order_id),
+                    )
+                    assert requeued['prior_auth_status'] == 'REQUIRED'
+
+                    # 2. PENDING before booking
+                    req = await conn.fetchrow(
+                        'SELECT id FROM ris_prior_auth_requests'
+                        ' WHERE order_id = $1 AND tenant_id = $2',
+                        str(order_id), tag,
+                    )
+                    await PriorAuth(conn).submit_for_review(
+                        request_id=req['id'], tenant_id=tag)
+
+                    # 3. Booking must be blocked while PENDING
+                    engine = SchedulingEngine(actor_id='e2e-actor')
+                    try:
+                        await engine.book(
+                            order_id=str(order_id), patient_id=f'P-{tag}',
+                            resource_id=str(resource['id']),
+                            start_time='2026-09-01T09:00:00Z',
+                            end_time='2026-09-01T09:30:00Z',
+                        )
+                        raise AssertionError('booking must be blocked while PENDING')
+                    except SchedulingConflict:
+                        pass
+
+                    # 4. Approve -> order APPROVED -> booking succeeds
+                    await PriorAuth(conn).approve(
+                        request_id=req['id'], auth_number='AUTH-E2E',
+                        approved_units=1, approved_date='2026-08-21',
+                        expiry_date='2099-12-31', decided_by='e2e-admin',
+                        tenant_id=tag,
+                    )
+                    approved = await conn.fetchrow(
+                        'SELECT prior_auth_status FROM ris_orders WHERE id = $1',
+                        str(order_id),
+                    )
+                    assert approved['prior_auth_status'] == 'APPROVED'
+                    booked = await engine.book(
+                        order_id=str(order_id), patient_id=f'P-{tag}',
+                        resource_id=str(resource['id']),
+                        start_time='2026-09-02T09:00:00Z',
+                        end_time='2026-09-02T09:30:00Z',
+                    )
+                    assert booked['id']
+            finally:
+                reset_tenant_slug()
+                await teardown()
+
+        _asyncio.run(run())

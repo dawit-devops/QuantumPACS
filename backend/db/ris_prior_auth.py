@@ -7,9 +7,20 @@ DENIED/EXPIRED without duplicating the decision logic. Status machine:
 REQUIRED -> PENDING -> APPROVED | DENIED; APPROVED -> EXPIRED (date lapsed).
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from db.table import Table
+
+
+def _as_date(value):
+    """Accept a date object or an ISO string; return None when empty."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 class PriorAuth(Table):
@@ -72,7 +83,8 @@ class PriorAuth(Table):
                       tenant_id='default'):
         """Approve a request and sync the order status so the booking gate
         (engine.py C-7) accepts the order."""
-        approved_date = approved_date or date.today().isoformat()
+        approved_date = _as_date(approved_date) or date.today()
+        expiry_date = _as_date(expiry_date)
         result = await self.conn.fetchrow(
             "UPDATE ris_prior_auth_requests SET status = 'APPROVED',"
             " auth_number = $3, approved_units = $4, approved_date = $5,"

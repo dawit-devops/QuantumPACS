@@ -129,6 +129,18 @@ async def _insert_ris_order_procedure(conn, tag, order_id=None):
     )
 
 
+async def _insert_ris_prior_auth(conn, tag, order_id=None):
+    """Insert a minimal ris_prior_auth_requests row (R2-01)."""
+    if order_id is None:
+        order_id = (await _insert_ris_order(conn, tag))['id']
+    return await conn.fetchrow(
+        'INSERT INTO ris_prior_auth_requests '
+        '(tenant_id, order_id, procedure_code, payer_name, status) '
+        'VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        tag, order_id, 'CT CHEST', f'Payer {tag}', 'REQUIRED',
+    )
+
+
 async def _insert_ris_resource_schedule(conn, tag, resource_id=None):
     """Insert a minimal ris_resource_schedules row (S12-08)."""
     from datetime import time as dtime
@@ -388,6 +400,32 @@ class TestRisWriteTenantTagging:
                         tag = f'test-j-{uuid.uuid4().hex[:6]}'
                         set_tenant_slug(tag)
                         row = await _insert_ris_resource_schedule(conn, tag)
+                        assert row['tenant_id'] == tag
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+    def test_ris_prior_auth_tenant_tagged(self):
+        # R2-01: prior-auth requests carry the tenant tag so one tenant's
+        # payer decisions never surface for another tenant's orders.
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        tag = f'test-k-{uuid.uuid4().hex[:6]}'
+                        set_tenant_slug(tag)
+                        row = await _insert_ris_prior_auth(conn, tag)
                         assert row['tenant_id'] == tag
                     finally:
                         await tx.rollback()
