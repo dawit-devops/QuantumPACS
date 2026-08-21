@@ -66,6 +66,7 @@ def register_tables():
         ('db.ris_coding', 'CodingService'),
         ('db.ris_charges', 'RisCharges'),
         ('db.ris_charges', 'RisClaims'),
+        ('db.ris_prior_auth', 'PriorAuth'),
     ]
     for mod_path, cls_name in _classes:
         mod = importlib.import_module(mod_path)

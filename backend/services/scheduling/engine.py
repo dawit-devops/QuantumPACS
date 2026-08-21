@@ -119,15 +119,22 @@ class SchedulingEngine:
                     raise SchedulingConflict(
                         'order.patient_id and booking patient_id must match')
 
-                # Prior-authorization gate (S4-10 stub): orders that need auth
-                # cannot be booked until APPROVED — visible in the booking form
-                # as a warning (RIS-UI-14/15) instead of a silent block.
+                # Prior-authorization gate (R2-01-05): orders that need auth
+                # cannot be booked until APPROVED. An override_reason audited
+                # bypass exists for expedited cases (e.g. verbal payer approval,
+                # patient prepaid, emergency).
                 # C-7: EXPIRED auth is as un-bookable as PENDING/DENIED —
                 # the prior auth lapsed, so the slot must not be taken.
                 pa = order.get('prior_auth_status', 'NOT_REQUIRED')
                 if pa in ('REQUIRED', 'PENDING', 'DENIED', 'EXPIRED'):
-                    raise SchedulingConflict(
-                        f'Order {order_id} requires prior authorization ({pa})')
+                    if override_reason:
+                        await self._audit_log(conn).log_event(
+                            'PRIOR_AUTH_OVERRIDE', self.actor_id,
+                            'ris_orders', order_id,
+                            details={'reason': override_reason, 'prior_auth_status': pa})
+                    else:
+                        raise SchedulingConflict(
+                            f'Order {order_id} requires prior authorization ({pa})')
 
                 # Contraindication gate: injectable checker; default off.
                 if self._contraindication_check is not None:

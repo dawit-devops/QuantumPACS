@@ -174,6 +174,30 @@ class TestBookGates:
 
         asyncio.run(run())
 
+    def test_book_override_reason_bypasses_prior_auth_gate(self):
+        """R2-01-05: override_reason must bypass the prior-auth gate and
+        audit the override so the payer team can follow up."""
+        async def run():
+            engine = self._engine({
+                'id': 'ord-1', 'prior_auth_status': 'PENDING', 'status': 'ORDERED'})
+            got = await engine.book(
+                order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00',
+                override_reason='verbal approval from payer',
+            )
+            assert got['id'] == 'appt-1', \
+                'override with reason must bypass prior-auth gate'
+            engine._appointments.create.assert_awaited_once()
+            # The override must be audited so the payer team can follow up.
+            override_events = [
+                c for c in engine._audit.log_event.call_args_list
+                if 'PRIOR_AUTH_OVERRIDE' in str(c)]
+            assert override_events, \
+                'override must audit PRIOR_AUTH_OVERRIDE event'
+
+        asyncio.run(run())
+
     def test_book_refuses_when_contraindication_check_finds_reasons(self):
         async def run():
             engine = self._engine({
