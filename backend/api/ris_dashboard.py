@@ -43,9 +43,10 @@ class RisDashboardKpiHandler(HTTPEndpoint):
             )
             utilization = await conn.fetchval(
                 "SELECT CASE WHEN count(*) = 0 THEN 0"
-                "       ELSE round(count(*) FILTER (WHERE status IN"
-                "         ('ARRIVED','IN_PROGRESS','COMPLETED'))"
-                "         / count(*)::float, 2) END"
+                "       ELSE round("
+                "         (count(*) FILTER (WHERE status IN"
+                "           ('ARRIVED','IN_PROGRESS','COMPLETED')))::numeric"
+                "         / count(*), 2)::float END"
                 " FROM ris_appointments"
                 " WHERE tenant_id = $1"
                 "   AND start_time >= now() - interval '7 days'",
