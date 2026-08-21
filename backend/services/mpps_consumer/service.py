@@ -258,9 +258,12 @@ async def _record_event(conn, accession, event_type, mpps_status,
     from db.conn import get_tenant_slug
     now = datetime.now(timezone.utc)
     # Serialize a minimal representation of the DICOM dataset
+    # Conformance: key by keyword ('AccessionNumber'), not tag string
+    # ('(0008,0050)'), so audit rows are inspectable/greppable.
     raw = {}
     try:
-        raw = {str(k): str(v) for k, v in ds.items() if k.is_private is False}
+        raw = {elem.keyword or str(elem.tag): str(elem.value)
+               for elem in ds if not elem.tag.is_private}
     except Exception:
         raw = {'error': 'failed to serialize dataset'}
     await conn.execute(

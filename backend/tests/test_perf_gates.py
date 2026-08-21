@@ -317,3 +317,81 @@ class TestHl7Throughput:
             assert len(processed) == 100
 
         asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# S6-25 — MPPS -> tracking latency p95 gate (RIS-SL-22)
+# ---------------------------------------------------------------------------
+
+class TestMppsLatencyGate:
+    """S6-25: N-CREATE/N-SET processing must stay under the 5s soft bound
+    at p95 — the histogram (S6-11) observes it in prod; this gate keeps it
+    honest in CI."""
+
+    def test_mpps_processing_p95_under_5s(self):
+        import asyncio
+        import time as _time
+        from unittest.mock import AsyncMock, patch
+
+        from pydicom.dataset import Dataset
+
+        from services.mpps_consumer.service import MppsConsumer
+
+        class _FakeTx:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                return False
+
+        class _FakeConn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                return False
+
+            async def fetchrow(self, sql, *a):
+                if 'FROM exams' in sql:
+                    return None
+                return {'id': 'wl-1', 'accession_number': 'ACC-P',
+                        'status': 'scheduled'}
+
+            async def execute(self, sql, *a):
+                return None
+
+            def transaction(self):
+                return _FakeTx()
+
+        def _event(i):
+            ds = Dataset()
+            ds.AccessionNumber = f'ACC-{i}'
+            ds.StudyInstanceUID = '1.2.3.4'
+            ds.ScheduledProcedureStepSequence = [Dataset()]
+            return type('E', (), {'identifier': ds})()
+
+        async def run_wave():
+            from unittest.mock import MagicMock
+            audit = MagicMock()
+            audit.return_value.log_event = AsyncMock()
+            durations = []
+            for i in range(50):
+                consumer = MppsConsumer()
+                started = _time.perf_counter()
+                with patch('services.mpps_consumer.service.get_conn',
+                           return_value=_FakeConn()), \
+                     patch('db.conn.get_tenant_slug', return_value='default'), \
+                     patch('services.mpps_consumer.service._record_event',
+                           AsyncMock(return_value=None)), \
+                     patch('services.mpps_consumer.service.AuditLog', audit):
+                    await consumer.handle_n_create(_event(i))
+                durations.append(_time.perf_counter() - started)
+            assert audit.return_value.log_event.await_count == 50
+            durations.sort()
+            p95 = durations[int(len(durations) * 0.95) - 1]
+            return p95, durations[-1]
+
+        p95, worst = asyncio.run(run_wave())
+        assert p95 < SOFT_CFIND_P95, (
+            f'MPPS N-CREATE p95 {p95:.3f}s exceeded {SOFT_CFIND_P95}s '
+            f'(worst {worst:.3f}s)')
