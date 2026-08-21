@@ -62,6 +62,13 @@ class RisAppointments(Table):
         q = self.query().select('*').where(self.table.id == appointment_id)
         return await self.fetchone(q)
 
+    async def list_for_order(self, order_id):
+        """All appointments for an order, chronological (S4-02 detail view)."""
+        q = (self.query().select('*')
+             .where(self.table.order_id == order_id)
+             .orderby(self.table.start_time))
+        return await self.fetch(q)
+
     async def for_resource(self, resource_id, day_start, day_end):
         q = self.query().select('*').where(
             (self.table.resource_id == resource_id)

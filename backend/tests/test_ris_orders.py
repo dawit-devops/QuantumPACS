@@ -191,6 +191,45 @@ class TestOrderDetail:
         assert data['order']['id'] == 'ord-1'
         assert data['procedures'][0]['procedure_code'] == 'CTCHEST'
 
+    def test_detail_includes_appointments(self):
+        """S4-02: the detail payload carries the order's appointments so the
+        coordinator sees scheduling state without a second round-trip."""
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = _order_row()
+
+        appt = {
+            'id': 'appt-1', 'order_id': 'ord-1', 'tenant_id': 'default',
+            'resource_id': 'res-1', 'status': 'BOOKED',
+            'start_time': None, 'end_time': None,
+        }
+        # First fetch -> procedures, second fetch -> appointments.
+        mock_conn.fetch.side_effect = [[_procedure_row()], [appt]]
+        with patch('api.ris_orders.get_conn', return_value=mock_conn), \
+             patch('api.ris_orders.RisAppointments') as _MockAppts:
+            instance = _MockAppts.return_value
+            instance.list_for_order = AsyncMock(return_value=[appt])
+            resp = client.get('/ris/orders/ord-1')
+        assert resp.status_code == 200, resp.text
+        data = resp.json()['data']
+        assert data['appointments'][0]['id'] == 'appt-1'
+        instance.list_for_order.assert_awaited_once_with('ord-1')
+
+    def test_detail_appointments_empty_when_none(self):
+        """An unscheduled order still returns an (empty) appointments list."""
+        user = User({'id': 1, 'permissions': ['ORDER_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = _order_row()
+        mock_conn.fetch.return_value = []
+        with patch('api.ris_orders.get_conn', return_value=mock_conn):
+            resp = client.get('/ris/orders/ord-1')
+        assert resp.status_code == 200
+        assert resp.json()['data']['appointments'] == []
+
 
 class TestOrderSearch:
     def test_list_returns_pagination_metadata(self):

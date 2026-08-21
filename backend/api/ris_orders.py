@@ -16,6 +16,7 @@ from api.validate import parse_body
 from api.schemas.ris_orders import CreateOrderRequest, OrderStatusUpdateRequest
 from db.audit_log import AuditLog
 from db.conn import get_conn
+from db.ris_appointments import RisAppointments
 from db.ris_orders import RisOrders, RisOrderProcedures
 from services.order_lifecycle.service import OrderLifecycleService, InvalidTransitionError
 
@@ -113,9 +114,13 @@ class RisOrderHandler(HTTPEndpoint):
             if not order:
                 return not_found('Order not found')
             procs = await RisOrderProcedures(conn).list_for_order(order_id)
+            # S4-02: scheduling state ships with the detail payload so the
+            # coordinator sees the full picture without a second round-trip.
+            appts = await RisAppointments(conn).list_for_order(order_id)
         return ok({'data': {
             'order': _row_dict(order),
             'procedures': [_row_dict(p) for p in procs],
+            'appointments': [_row_dict(a) for a in appts],
         }})
 
 
