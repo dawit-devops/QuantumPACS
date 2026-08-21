@@ -518,3 +518,71 @@ class TestHealthProbeSanitization:
         assert result['status'] == 'degraded'
         assert result['message'] == 'Token blocklist fail-open active (redis unreachable)'
         assert '10.1.2.3' not in str(result)
+
+
+class TestRisReportTatMetric:
+    """S12-33: ris_report_tat_seconds histogram exists and the sign handler
+    observes it labelled by exam priority."""
+
+    def test_metric_registered_in_scrape(self):
+        from prometheus_client import generate_latest
+        body = generate_latest().decode()
+        assert '# TYPE ris_report_tat_seconds histogram' in body
+        assert '# TYPE ris_unbilled_count gauge' in body
+
+    def test_sign_handler_observes_tat(self):
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import AsyncMock, patch
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from starlette.testclient import TestClient
+
+        from api.auth import User
+        from api.telemetry import ris_report_tat_seconds
+
+        class _AuthMW(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = User({
+                    'id': 1, 'permissions': ['REPORT_SIGN'],
+                    'tenant': 'default',
+                })
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        from api.reports import ExamReportSignHandler
+
+        app = Starlette(
+            routes=[Route('/exams/{exam_id}/sign', endpoint=ExamReportSignHandler, methods=['POST'])],
+            middleware=[Middleware(_AuthMW)],
+        )
+        client = TestClient(app)
+
+        # Reset so the assertion is deterministic.
+        ris_report_tat_seconds.clear()
+
+        completed = datetime.now(timezone.utc) - timedelta(minutes=30)
+        exam = {
+            'id': 'exam-1', 'accession_number': 'ACC-TAT-1',
+            'priority': 'stat', 'completed_at': completed,
+            'patient_id': 'P1', 'patient_name': 'A',
+        }
+        report = {
+            'id': 'rep-1', 'status': 'final', 'impression': 'x',
+            'created_at': completed,
+        }
+
+        conn = AsyncMock()
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=None)
+        conn.fetchrow = AsyncMock(side_effect=[exam, report, report])
+
+        with patch('api.reports.get_conn', return_value=conn), \
+             patch('api.reports.ResultsDistributionEngine') as _engine, \
+             patch('api.reports.notify_role') as _notify:
+            resp = client.post('/exams/exam-1/sign', json={'confirm': True})
+        assert resp.status_code == 200, resp.text
+
+        from prometheus_client import generate_latest
+        body = generate_latest().decode()
+        assert 'ris_report_tat_seconds_bucket{le="+Inf",priority="stat"}' in body
+        assert 'ris_report_tat_seconds_sum{priority="stat"}' in body

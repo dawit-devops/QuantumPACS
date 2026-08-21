@@ -140,6 +140,13 @@ ris_charge_drop_latency_seconds = Histogram(
 ris_unbilled_count = Gauge(
     'ris_unbilled_count', 'Number of unbilled (PENDING) charges',
 )
+# S12-33 / RIS-SL-30/31/32: report turnaround time (exam completed -> signed),
+# labelled by priority so the manager dashboard can show STAT vs routine TAT.
+ris_report_tat_seconds = Histogram(
+    'ris_report_tat_seconds', 'Report turnaround time from exam completion to sign',
+    ['priority'],
+    buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 180.0, 600.0, 1800.0, 3600.0, 10800.0),
+)
 
 
 def record_request(method, path, status_code, elapsed):

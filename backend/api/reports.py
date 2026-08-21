@@ -328,6 +328,23 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'Impression is required before the report can be signed',
                 )
             report = await Reports(conn).sign(report['id'], str(request.user.id))
+            # S12-33: TAT metric — from exam completion to sign, labelled by
+            # exam priority so the manager dashboard distinguishes STAT from
+            # routine turnarounds. A missing completed_at falls back to the
+            # report's creation time; must never block or fail the sign.
+            try:
+                from datetime import datetime, timezone
+                from api import telemetry
+                signed_at = datetime.now(timezone.utc)
+                start_marker = exam.get('completed_at') or report.get('created_at')
+                if start_marker:
+                    tat = (signed_at - start_marker).total_seconds()
+                    priority = exam.get('priority') or 'routine'
+                    telemetry.ris_report_tat_seconds.labels(
+                        priority=priority).observe(max(tat, 0))
+            except Exception:
+                log.warning('report TAT metric failed for %s', report['id'],
+                            exc_info=True)
             await AuditLog(conn).log_event(
                 event_type='report.signed',
                 actor_id=request.user.id,
