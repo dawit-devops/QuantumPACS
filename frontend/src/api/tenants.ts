@@ -35,6 +35,10 @@ export interface CreateTenantResponse {
 export interface TenantUsageRow {
   date: string;
   api_calls: number;
+  /** RIS activity that bypasses HTTP metering (S2-02): MWL C-FINDs and
+   * delivered bell notifications. Absent on older backends. */
+  mwl_queries?: number;
+  notifications?: number;
 }
 
 export interface TenantHealth {

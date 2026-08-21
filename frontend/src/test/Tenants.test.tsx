@@ -81,8 +81,8 @@ describe("Tenants", () => {
     mockDeleteTenant.mockResolvedValue(undefined);
     mockGetTenantHealth.mockResolvedValue({ main: { status: "ok" } });
     mockGetTenantUsage.mockResolvedValue([
-      { date: "2026-07-01", api_calls: 120 },
-      { date: "2026-07-02", api_calls: 98 },
+      { date: "2026-07-01", api_calls: 120, mwl_queries: 7, notifications: 3 },
+      { date: "2026-07-02", api_calls: 98, mwl_queries: 2, notifications: 5 },
     ]);
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
@@ -214,5 +214,25 @@ describe("Tenants", () => {
     });
     expect(mockGetTenantUsage).toHaveBeenCalledWith("1");
     expect(screen.getByText("2026-07-01")).toBeInTheDocument();
+  });
+
+  it("shows RIS activity columns in usage drawer", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Tenants />);
+    await waitForCards();
+
+    await user.click(screen.getAllByText("Usage")[0]);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("columnheader", { name: /mwl queries/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("columnheader", { name: /^notifications/i }),
+    ).toBeInTheDocument();
+    // Per-day RIS counters render next to api_calls.
+    expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 });

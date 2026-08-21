@@ -182,6 +182,15 @@ async def handle_find_async(query_ds, ae_title=''):
         slug, tenant_info = await _tenant_scope_for_ae(ae_title)
     except TenantResolutionError:
         raise
+    # S2-02 refined: C-FINDs arrive over pynetdicom, not HTTP, so
+    # TenantMiddleware never sees them — meter here against the resolved
+    # tenant instead of relying on the shared api_calls counter.
+    if slug:
+        try:
+            from db.metering import record_mwl_query
+            await record_mwl_query(slug)
+        except Exception:
+            pass
     try:
         from db.conn import get_conn
         from db.worklist import Worklist

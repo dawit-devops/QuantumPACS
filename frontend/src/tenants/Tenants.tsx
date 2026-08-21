@@ -689,6 +689,18 @@ function Tenants() {
           columns={[
             { title: "Date", dataIndex: "date" },
             { title: "API calls", dataIndex: "api_calls", align: "right" },
+            {
+              title: "MWL queries",
+              dataIndex: "mwl_queries",
+              align: "right",
+              render: (v?: number) => v ?? 0,
+            },
+            {
+              title: "Notifications",
+              dataIndex: "notifications",
+              align: "right",
+              render: (v?: number) => v ?? 0,
+            },
           ]}
           locale={{ emptyText: "No usage data for this tenant" }}
         />

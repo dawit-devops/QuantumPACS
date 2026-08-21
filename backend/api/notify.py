@@ -36,9 +36,12 @@ async def notify_role(conn, role_slug, event_type, title, body, link):
     explicit = {int(r['user_id']): bool(r['enabled']) for r in pref_rows}
     default = NotificationPrefs.default_enabled(role_slug, event_type)
     n = Notifications(conn)
+    delivered = 0
     for uid in ids:
         if explicit.get(int(uid), default):
             await n.create(uid, event_type, title, body, link)
+            delivered += 1
+    await _meter_notifications(delivered)
 
 
 async def notify_user(conn, user_id, event_type, title, body, link, role_slug=None):
@@ -58,6 +61,24 @@ async def notify_user(conn, user_id, event_type, title, body, link, role_slug=No
     ):
         return
     await Notifications(conn).create(row['id'], event_type, title, body, link)
+    await _meter_notifications(1)
+
+
+async def _meter_notifications(count):
+    """S2-02 refined: count delivered notifications on the tenant usage
+    table. Best-effort — record_notifications itself never raises, and any
+    wiring failure is swallowed so metering can never break delivery."""
+    if not count:
+        return
+    try:
+        from db.conn import get_tenant_slug
+        from db.metering import record_notifications
+        slug = get_tenant_slug()
+        if not slug:
+            return
+        await record_notifications(slug, count)
+    except Exception:
+        pass
 
 
 async def notify_patient_scoped(conn, patient_id, event_type, title, body, link):

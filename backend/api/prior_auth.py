@@ -104,7 +104,9 @@ class PriorAuthDecisionHandler(HTTPEndpoint):
                 final = 'DENIED'
             from db.audit_log import AuditLog
             await AuditLog(conn).log_event(
-                event_type=f'prior_auth.{final.lower()}d',
+                # final is already 'APPROVED'/'DENIED' — lowercasing yields
+                # the canonical event suffix directly (approved/denied).
+                event_type=f'prior_auth.{final.lower()}',
                 actor_id=request.user.id,
                 resource_type='ris_prior_auth_requests',
                 resource_id=request_id,
