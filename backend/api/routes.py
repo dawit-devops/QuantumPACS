@@ -93,6 +93,7 @@ from api.billing import (
     BillingQuotesHandler, BillingPaymentPlansHandler, BillingReconciliationHandler,
     RisCptSuggestionsHandler, RisBillingQueueHandler, RisChargeDropHandler,
     RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
+    RisDenialQueueHandler, RisClaimResubmitHandler, RisClaimHistoryHandler,
     RisReconciliationHandler,
 )
 from api.ris_dashboard import RisDashboardKpiHandler
@@ -292,6 +293,10 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/denials', endpoint=RisDenialQueueHandler)),
+    v2(Route('/ris/billing/denials/import', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/{id}/resubmit', endpoint=RisClaimResubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/{id}/history', endpoint=RisClaimHistoryHandler)),
     v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
     # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
     v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),

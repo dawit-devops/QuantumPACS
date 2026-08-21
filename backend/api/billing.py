@@ -15,6 +15,18 @@ from starlette.endpoints import HTTPEndpoint
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok, created, not_found, validation_error
+
+
+def _json_row(row):
+    """asyncpg Row -> JSON-safe dict (UUID/datetime -> str)."""
+    from datetime import date, datetime, time
+    from uuid import UUID
+    d = dict(row)
+    for k, v in d.items():
+        if isinstance(v, (date, datetime, time, UUID)):
+            d[k] = str(v)
+    return d
+
 from api.validate import parse_body
 from api.schemas.billing import (
     PricingItemRequest, CreateInvoiceRequest, PaymentRequest,
@@ -916,23 +928,104 @@ class RisClaimSubmitHandler(HTTPEndpoint):
         return ok({'id': result['id'], 'claim_number': claim_number, 'status': result['status']})
 
 
+class RisDenialQueueHandler(HTTPEndpoint):
+    """R2-02-01: GET /ris/billing/denials — the coder's rework queue."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rows = await RisClaims(conn).list_rework(tenant)
+        return ok({'data': [_json_row(r) for r in rows]})
+
+
 class RisDenialImportHandler(HTTPEndpoint):
-    """S11-10: POST /ris/billing/denials/{id}/rework — 835 import stub."""
+    """R2-02-01: POST /ris/billing/denials/import — 835-style intake.
+
+    Parses the payer's reason code instead of stamping a fixed DEN-001,
+    and appends a history event so the rework trail starts at intake.
+    The legacy /denials/{id}/rework route delegates here.
+    """
 
     @requires_permission(Permission.BILLING_WRITE)
     async def post(self, request):
-        claim_id = request.path_params['id']
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
         tenant = effective_tenant(request) or 'default'
+        claim_id = str(payload.get('claim_id')
+                       or request.path_params.get('id') or '')
+        if not claim_id:
+            return api_error('VALIDATION', 'claim_id required', status=422)
+        from db.ris_charges import parse_denial
+        parsed = parse_denial(payload)
         async with get_conn() as conn:
             from db.ris_charges import RisClaims
             claim = await RisClaims(conn).get(claim_id, tenant)
             if not claim:
                 return not_found('Claim not found')
-            result = await RisClaims(conn).record_denial(
-                claim_id, rejection_code='DEN-001',
-                rejection_reason='Denial stub (835 import)',
+            result = await RisClaims(conn).record_denial_with_event(
+                claim_id, parsed['code'], parsed['reason'], tenant_id=tenant)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.denial_recorded',
+                resource_id=claim_id,
+                resource_type='ris_claims',
+                actor_id=getattr(request.user, 'id', ''),
+                details={'code': parsed['code']},
+                tenant=tenant,
+            )
+        return ok({'id': claim_id,
+                   'status': result['status'] if result else 'DENIED',
+                   'code': parsed['code']})
+
+
+class RisClaimResubmitHandler(HTTPEndpoint):
+    """R2-02-03: POST /ris/billing/claims/{id}/resubmit — correction +
+    resubmission with an attributable history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        claim_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        note = str(body.get('note') or '')
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            result = await RisClaims(conn).correct_and_resubmit(
+                claim_id, note=note,
+                actor=str(getattr(request.user, 'id', '')),
                 tenant_id=tenant)
-        return ok({'id': claim_id, 'status': result['status'] if result else 'DENIED'})
+            if not result:
+                return not_found('Claim not found')
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.claim_resubmitted',
+                resource_id=claim_id,
+                resource_type='ris_claims',
+                actor_id=getattr(request.user, 'id', ''),
+                details={'note': note[:200]},
+                tenant=tenant,
+            )
+        return ok({'id': claim_id, 'status': result['status']})
+
+
+class RisClaimHistoryHandler(HTTPEndpoint):
+    """R2-02-03: GET /ris/billing/claims/{id}/history — full rework trail."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        claim_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rows = await RisClaims(conn).get_history(claim_id, tenant)
+        return ok({'data': [_json_row(r) for r in rows]})
 
 
 class RisReconciliationHandler(HTTPEndpoint):

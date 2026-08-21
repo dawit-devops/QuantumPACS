@@ -67,3 +67,45 @@ export const reworkDenial = (
   id: string,
 ): Promise<{ id: string; status: string }> =>
   request(`ris/billing/denials/${id}/rework`, { method: "POST" });
+// ---------------------------------------------------------------------------
+// R2-S3/S4 — denial rework chain
+// ---------------------------------------------------------------------------
+
+export interface DenialReworkRow {
+  id: string;
+  claim_number?: string;
+  payer_name?: string;
+  status: string;
+  rejection_code?: string;
+  rejection_reason?: string;
+  correction_count: number;
+  prior_auth_number?: string;
+  patient_name?: string;
+  accession_number?: string;
+  cpt_code?: string;
+  charge_amount?: number;
+}
+
+export interface ClaimEvent {
+  id?: string;
+  event_type: string;
+  note?: string;
+  actor?: string;
+  created_at?: string;
+}
+
+export const listDenialRework = (): Promise<DenialReworkRow[]> =>
+  request<{ data: DenialReworkRow[] }>("ris/billing/denials").then(
+    (res) => res.data ?? [],
+  );
+
+export const resubmitClaim = (
+  id: string,
+  body: { note: string },
+): Promise<{ id: string; status: string }> =>
+  request(`ris/billing/claims/${id}/resubmit`, { method: "POST", data: body });
+
+export const getClaimHistory = (id: string): Promise<ClaimEvent[]> =>
+  request<{ data: ClaimEvent[] }>(`ris/billing/claims/${id}/history`).then(
+    (res) => res.data ?? [],
+  );

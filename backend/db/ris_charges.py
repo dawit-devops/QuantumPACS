@@ -188,15 +188,20 @@ class RisClaims(Table):
         """)
 
     async def submit(self, charge_id, claim_number, payer_id='', payer_name='',
-                     tenant_id='default'):
-        """837 export stub (S11-09): create a SUBMITTED claim for a charge."""
+                     tenant_id='default', prior_auth_number=''):
+        """837 export stub (S11-09): create a SUBMITTED claim for a charge.
+
+        R2-01-08: the prior-auth number rides the claim line so payers and
+        the rework queue see authorization state without a join to orders.
+        """
         return await self.conn.fetchrow("""
         INSERT INTO ris_claims
             (tenant_id, charge_id, claim_number, payer_id, payer_name,
-             status, submitted_at)
-        VALUES ($1, $2, $3, $4, $5, 'SUBMITTED', now())
+             status, submitted_at, prior_auth_number)
+        VALUES ($1, $2, $3, $4, $5, 'SUBMITTED', now(), $6)
         RETURNING id, status
-        """, tenant_id, charge_id, claim_number, payer_id, payer_name)
+        """, tenant_id, charge_id, claim_number, payer_id, payer_name,
+            prior_auth_number)
 
     async def record_denial(self, claim_id, rejection_code='', rejection_reason='',
                             tenant_id='default'):
@@ -209,11 +214,108 @@ class RisClaims(Table):
         RETURNING id, status
         """, claim_id, tenant_id, rejection_code, rejection_reason)
 
+    async def record_denial_with_event(self, claim_id, code, reason,
+                                       tenant_id='default'):
+        """R2-02-01: real denial intake — mark DENIED and append history."""
+        await self.conn.execute(
+            "INSERT INTO ris_claim_events "
+            "(tenant_id, claim_id, event_type, note) "
+            "VALUES ($1, $2, 'DENIED', $3)",
+            tenant_id, claim_id, f'{code}: {reason}'[:500],
+        )
+        return await self.record_denial(
+            claim_id, rejection_code=code, rejection_reason=reason,
+            tenant_id=tenant_id)
+
+    async def list_rework(self, tenant_id='default', limit=200):
+        """R2-02-01: denied claims joined to their charges for the rework
+        queue — billers need patient/CPT/payer context to correct."""
+        return await self.conn.fetch("""
+        SELECT c.id, c.claim_number, c.payer_name, c.status,
+               c.rejection_code, c.rejection_reason,
+               c.correction_count, c.prior_auth_number,
+               ch.patient_name, ch.accession_number, ch.cpt_code,
+               ch.charge_amount
+        FROM ris_claims c
+        JOIN ris_charges ch ON ch.id = c.charge_id
+        WHERE c.tenant_id = $1 AND c.status IN ('DENIED', 'RESUBMITTED')
+        ORDER BY c.updated_at DESC
+        LIMIT $2
+        """, tenant_id, max(limit, 1))
+
+    async def correct_and_resubmit(self, claim_id, note='', actor='',
+                                   tenant_id='default'):
+        """R2-02-03: apply a coder's correction and push the claim back
+        into the submission cycle. History is appended first so a crash
+        between the two writes still records the correction attempt."""
+        row = await self.conn.fetchrow(
+            "SELECT id FROM ris_claims WHERE id = $1 AND tenant_id = $2",
+            claim_id, tenant_id,
+        )
+        if not row:
+            return None
+        await self.conn.execute(
+            "INSERT INTO ris_claim_events "
+            "(tenant_id, claim_id, event_type, note, actor) "
+            "VALUES ($1, $2, 'CORRECTION', $3, $4)",
+            tenant_id, claim_id, note, actor,
+        )
+        return await self.conn.fetchrow(
+            """
+            UPDATE ris_claims
+            SET status = 'SUBMITTED',
+                correction_count = correction_count + 1,
+                resubmitted_at = now(),
+                rework_note = $3,
+                updated_at = now()
+            WHERE id = $1 AND tenant_id = $2
+            RETURNING id, status
+            """,
+            claim_id, tenant_id, note,
+        )
+
+    async def get_history(self, claim_id, tenant_id='default'):
+        """Full rework history for one claim, newest first (R2-02-03)."""
+        return await self.conn.fetch(
+            "SELECT * FROM ris_claim_events "
+            "WHERE claim_id = $1 AND tenant_id = $2 "
+            "ORDER BY created_at DESC",
+            claim_id, tenant_id,
+        )
+
     async def get(self, claim_id, tenant_id='default'):
         return await self.conn.fetchrow(
             "SELECT * FROM ris_claims WHERE id = $1 AND tenant_id = $2",
             claim_id, tenant_id,
         )
+
+
+# 835-ish reason codes seen in the wild; unknown payloads keep their raw
+# text under OTHER so nothing is silently dropped (0 silent failures).
+_KNOWN_DENIAL_CODES = {
+    'CO-16', 'CO-97', 'CO-50', 'PR-204', 'CO-29', 'PR-1', 'CO-18',
+}
+
+
+def parse_denial(payload):
+    """Normalize an 835-style denial payload to {code, reason}.
+
+    Accepts flat {code, reason} or X12-flavored keys; unknown shapes map
+    to code OTHER with the serialized payload preserved as the reason.
+    """
+    code = str(payload.get('code')
+               or payload.get('claim_adjustment_reason_code') or '').strip()
+    reason = str(payload.get('reason')
+                 or payload.get('reason_text') or '').strip()
+    if not code:
+        import json as _json
+        return {'code': 'OTHER',
+                'reason': _json.dumps(payload, default=str)[:500]}
+    if code not in _KNOWN_DENIAL_CODES:
+        code = code if code.startswith(('CO-', 'PR-', 'OA-')) else 'OTHER'
+    if not reason:
+        reason = f'Denial {code}'
+    return {'code': code, 'reason': reason}
 
 
 async def drop_charge(conn, *, report_id, exam_id, accession_number,

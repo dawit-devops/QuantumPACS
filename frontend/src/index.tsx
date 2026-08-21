@@ -102,6 +102,7 @@ const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
 const Incidents = React.lazy(() => import("./qa/Incidents"));
 const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
+const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
@@ -427,6 +428,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="BILLING_READ">
                           <BillingQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/denials"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <DenialRework />
                         </ClinicalRoute>
                       }
                     />
