@@ -83,6 +83,7 @@ const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
 const ResourceManager = React.lazy(() => import("./schedule/ResourceManager"));
 const CalendarView = React.lazy(() => import("./schedule/CalendarView"));
 const Orders = React.lazy(() => import("./coordinator/Orders"));
+const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
@@ -354,6 +355,17 @@ function ThemedApp() {
                         // (status updates) will require ORDER_WRITE when shipped.
                         <ClinicalRoute permission="ORDER_READ">
                           <Orders />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/prior-auth"
+                      element={
+                        // R2-01: prior authorization management. PRIOR_AUTH_READ
+                        // gates the list; submit/decide are PRIOR_AUTH_WRITE
+                        // actions surfaced inline (the API enforces them).
+                        <ClinicalRoute permission="PRIOR_AUTH_READ">
+                          <PriorAuthPanel />
                         </ClinicalRoute>
                       }
                     />

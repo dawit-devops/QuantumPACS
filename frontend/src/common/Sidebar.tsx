@@ -294,6 +294,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <ScheduleOutlined />,
         permissions: ["ORDER_READ"],
       },
+      {
+        // R2-01: prior-authorization management. PRIOR_AUTH_READ matches the
+        // route gate; payer-team roles and schedulers both carry it.
+        key: "prior-auth",
+        path: "/prior-auth",
+        label: "Prior Auth",
+        icon: <SafetyCertificateOutlined />,
+        permissions: ["PRIOR_AUTH_READ"],
+      },
     ],
   },
   {
