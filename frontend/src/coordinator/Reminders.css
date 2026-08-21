@@ -1,0 +1,9 @@
+.reminders-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.reminders-header h2 {
+  margin: 0;
+}

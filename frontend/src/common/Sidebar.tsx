@@ -303,6 +303,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <SafetyCertificateOutlined />,
         permissions: ["PRIOR_AUTH_READ"],
       },
+      {
+        // R2-02: reminders — config, delivery audit log, manual send.
+        key: "reminders",
+        path: "/reminders",
+        label: "Reminders",
+        icon: <MessageOutlined />,
+        permissions: ["PRIOR_AUTH_READ"],
+      },
     ],
   },
   {
