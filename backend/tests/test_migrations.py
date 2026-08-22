@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from api.permissions import (
     MATRIX_A_BILL,
     MATRIX_A_RECEPT,
@@ -288,3 +290,105 @@ class TestMppsEventsMigration:
         assert 'ix_ris_mpps_created' in content
         # Tenant scope — RLS
         assert 'ix_ris_mpps_tenant' in content
+
+
+class TestVoidLegacyStubChargesMigration:
+    """Migration 086 / A1b (GAP_AUDIT_TDD_PIPELINE.md): migration 077
+    preserved ~17 coding-less S8-14 stub charges as PENDING rows. With the
+    stub writer removed (A1), those rows are dead weight in the billing
+    queue and poison the unbilled-aging gauges. 086 flips the legacy
+    signature (no CPT, $0, PENDING) to VOID; enriched charges stay."""
+
+    LEGACY_ROW = dict(cpt_code='', charge_amount=0)
+
+    def test_migration_086_exists_and_revises_085(self):
+        module = _import_migration('086')
+        assert module.down_revision == '085'
+
+    def test_migration_086_exposes_sql_constants(self):
+        """VOID/RESTORE SQL live as module constants so tests can exercise
+        the exact statements the migration runs."""
+        module = _import_migration('086')
+        assert 'VOID' in module.VOID_SQL
+        assert 'PENDING' in module.VOID_SQL
+        assert module.RESTORE_SQL.strip().upper().startswith('UPDATE')
+
+    def test_migration_086_predicate_is_conservative(self):
+        """Only the legacy stub signature may flip: no CPT, $0 amount,
+        still PENDING. Anything a coder/biller touched is untouchable."""
+        module = _import_migration('086')
+        sql = module.VOID_SQL.upper()
+        assert 'CPT_CODE' in sql and ("''" in sql or 'IS NULL' in sql)
+        assert 'CHARGE_AMOUNT = 0' in sql.replace('0.00', '0')
+        assert 'STATUS' in sql and "'PENDING'" in sql
+
+    def test_migration_086_downgrade_restores(self):
+        content = _migration('086').read_text()
+        assert 'def downgrade()' in content
+
+    @pytest.mark.asyncio
+    async def test_void_flips_only_legacy_signature_rows(self):
+        import uuid
+        import db.conn as database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        module = _import_migration('086')
+        tag = uuid.uuid4().hex[:6]
+        from db.conn import get_conn
+        try:
+            async with get_conn() as conn:
+                ids = []
+                for shape in ('legacy', 'enriched'):
+                    kwargs = (
+                        dict(patient_id=f'P-{tag}', patient_name='Legacy Stub')
+                        if shape == 'legacy' else
+                        dict(patient_id=f'P-{tag}', patient_name='Real Charge',
+                             cpt_code='70450', cpt_description='CT head',
+                             icd10_code='R51', charge_amount=250)
+                    )
+                    row = await conn.fetchrow(
+                        "INSERT INTO ris_charges (tenant_id, accession_number,"
+                        " patient_id, patient_name,"
+                        " cpt_code, cpt_description, icd10_code, charge_amount,"
+                        " status, created_by)"
+                        " VALUES ($1, $2, $3, $4, $5, $6, $7, $8,"
+                        " 'PENDING', 'rad-1')"
+                        " RETURNING id",
+                        f't-{tag}', f'ACC-086-{shape}-{tag}',
+                        kwargs['patient_id'], kwargs['patient_name'],
+                        kwargs.get('cpt_code', ''),
+                        kwargs.get('cpt_description', ''),
+                        kwargs.get('icd10_code', ''),
+                        kwargs.get('charge_amount', 0),
+                    )
+                    ids.append((row['id'], shape))
+
+                await conn.execute(module.VOID_SQL)
+                await conn.execute(module.VOID_SQL)  # idempotent re-run
+
+                statuses = {
+                    shape: await conn.fetchval(
+                        'SELECT status FROM ris_charges WHERE id = $1', cid)
+                    for cid, shape in ids
+                }
+                assert statuses['legacy'] == 'VOID'
+                assert statuses['enriched'] == 'PENDING'
+
+                # Unbilled-aging partial index must no longer see the VOID row
+                pending = await conn.fetch(
+                    "SELECT id FROM ris_charges WHERE tenant_id = $1"
+                    " AND status = 'PENDING'", f't-{tag}')
+                assert [r['id'] for r in pending] == [
+                    cid for cid, shape in ids if shape == 'enriched']
+        finally:
+            try:
+                async with get_conn() as conn:
+                    await conn.execute(
+                        "DELETE FROM ris_charges WHERE tenant_id = $1"
+                        " AND accession_number LIKE 'ACC-086-%'",
+                        f't-{tag}')
+                await database.close()
+            except Exception:
+                pass

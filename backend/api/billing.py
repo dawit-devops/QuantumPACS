@@ -54,31 +54,6 @@ REFUND_THRESHOLD = 500.00
 _BALANCE_EPSILON = 0.005
 
 
-async def drop_charge_stub(conn, report_id, exam_id, accession_number, radiologist_id):
-    """S8-14 charge drop stub — creates placeholder charge record.
-
-    S11: the ris_charges schema now comes from migration 077 (no runtime
-    CREATE TABLE); this stub still inserts a placeholder PENDING row and
-    stays idempotent per report until S11-03 replaces it with the full
-    auto-charge-drop (CPT/ICD-10 from CodingService).
-    """
-    try:
-        # V-3: idempotent — a report signed twice (or co-signed) must not
-        # insert a second charge row. The NOT EXISTS guard makes the
-        # INSERT a no-op for an already-charged report instead of relying
-        # on a unique constraint the inline schema never declared.
-        await conn.execute("""
-            INSERT INTO ris_charges (report_id, exam_id, accession_number, created_by)
-            SELECT $1, $2, $3, $4
-            WHERE NOT EXISTS (
-                SELECT 1 FROM ris_charges WHERE report_id = $1
-            )
-        """, str(report_id), str(exam_id), str(accession_number), str(radiologist_id))
-    except Exception:
-        pass
-
-
-
 def _now():
     return datetime.now(timezone.utc)
 

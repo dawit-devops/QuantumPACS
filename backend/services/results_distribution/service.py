@@ -35,7 +35,15 @@ class ResultsDistributionEngine:
         return "\r".join([msh, pid, obr, obx_findings, obx_impression])
 
     async def distribute_report(self, report_id, target_url=None) -> dict:
-        """Distribute signed report to EMR endpoint with retry support."""
+        """Distribute signed report to EMR endpoint with retry support.
+
+        A2: status is EARNED, not declared. SENT requires a successful
+        _deliver() transmission; a failed transport or a missing EMR route
+        records FAILED so the lifecycle retry worker drains it once routing
+        exists (0 silent failures — S10-10).
+        """
+        from config import config as _config
+
         async with get_conn() as conn:
             report = await conn.fetchrow("SELECT * FROM reports WHERE id = $1", report_id)
             if not report:
@@ -49,30 +57,32 @@ class ResultsDistributionEngine:
             payload = self.build_oru_payload(dict(report), dict(exam), is_critical=is_critical)
             now = datetime.now(timezone.utc)
 
-            # Record distribution attempt in database
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS ris_results_distribution (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    report_id UUID NOT NULL,
-                    accession_number TEXT,
-                    status TEXT NOT NULL DEFAULT 'SENT',
-                    attempts INT DEFAULT 1,
-                    payload TEXT,
-                    delivered_at TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ DEFAULT now()
-                )
-            """)
+            # Table schema is migration-managed (074); no runtime DDL.
+            endpoint = target_url or _config.get('distribution_endpoint', '')
+            delivered = False
+            if endpoint:
+                delivered = await self._deliver(payload, endpoint)
 
+            status = 'SENT' if delivered else 'FAILED'
             row = await conn.fetchrow("""
-                INSERT INTO ris_results_distribution (report_id, accession_number, status, attempts, payload, delivered_at)
-                VALUES ($1, $2, 'SENT', 1, $3, $4)
+                INSERT INTO ris_results_distribution
+                    (report_id, accession_number, status, attempts, payload, delivered_at)
+                VALUES ($1, $2, $3, 1, $4, $5)
                 RETURNING *
-            """, report_id, exam.get('accession_number', ''), payload, now)
+            """, report_id, exam.get('accession_number', ''), status, payload,
+                now if delivered else None)
 
-            # Update distributed_at on report
-            await conn.execute("UPDATE reports SET distributed_at = $2 WHERE id = $1", report_id, now)
-
-            log.info("ORU^R01 report %s distributed successfully to EMR", report_id)
+            if delivered:
+                await conn.execute(
+                    "UPDATE reports SET distributed_at = $2 WHERE id = $1",
+                    report_id, now)
+                log.info("ORU^R01 report %s distributed successfully to EMR",
+                         report_id)
+            else:
+                log.warning(
+                    "ORU^R01 report %s NOT delivered (endpoint %s); row left "
+                    "FAILED for the retry worker", report_id,
+                    endpoint or '<none configured>')
             return dict(row)
 
     async def _deliver(self, payload: str, target_url: str) -> bool:

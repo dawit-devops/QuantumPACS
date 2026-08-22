@@ -223,6 +223,9 @@ class TestAckGuardDb:
 class TestResultsDistributionEngine:
     @pytest.mark.asyncio
     async def test_oru_generation_and_delivery_retry(self):
+        """A2: SENT requires a successful transmission — the engine is
+        exercised through a patched-successful _deliver so the payload
+        assertions run against the earned-status path."""
         async with get_conn() as conn:
             exam_row = await conn.fetchrow(
                 "INSERT INTO exams (accession_number, patient_id, status, modality) "
@@ -239,14 +242,25 @@ class TestResultsDistributionEngine:
 
             # Test distribution engine
             dist_engine = ResultsDistributionEngine()
-            dist_res = await dist_engine.distribute_report(report['id'])
-            assert dist_res['status'] == 'SENT'
-            assert 'ORU^R01' in dist_res['payload']
-            assert 'CRITICAL' in dist_res['payload']
+            try:
+                with patch('config.config',
+                           {'distribution_endpoint': 'http://emr:8080/oru'}), \
+                     patch.object(dist_engine, '_deliver',
+                                  new=AsyncMock(return_value=True)):
+                    dist_res = await dist_engine.distribute_report(report['id'])
+                assert dist_res['status'] == 'SENT'
+                assert 'ORU^R01' in dist_res['payload']
+                assert 'CRITICAL' in dist_res['payload']
 
-            # Verify report timestamp update
-            rep_check = await conn.fetchrow("SELECT distributed_at FROM reports WHERE id = $1", report['id'])
-            assert rep_check['distributed_at'] is not None
+                # Verify report timestamp update
+                rep_check = await conn.fetchrow(
+                    "SELECT distributed_at FROM reports WHERE id = $1",
+                    report['id'])
+                assert rep_check['distributed_at'] is not None
+            finally:
+                await conn.execute(
+                    "DELETE FROM ris_results_distribution WHERE report_id = $1",
+                    report['id'])
 
 
 class TestDeliveryRetry:
@@ -364,3 +378,99 @@ class TestDeliveryStatus:
         assert rows[0]['accession_number'] == 'ACC-DEL-01'
         # CR-8: the ORU payload is PHI — it must not be serialized to callers.
         assert 'payload' not in rows[0]
+
+
+class TestFirstSendHonesty:
+    """A2 (GAP_AUDIT_TDD_PIPELINE.md): distribute_report() used to record
+    SENT without transmitting anything — _deliver() was only reachable from
+    the retry manager. First send must earn its status: SENT only after a
+    real _deliver() success; transport failure or missing endpoint records
+    FAILED so the lifecycle retry worker drains it once EMR routing exists."""
+
+    async def _seed(self, conn, tag):
+        exam_row = await conn.fetchrow(
+            "INSERT INTO exams (accession_number, patient_id, status, modality) "
+            "VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+            f'ACC-A2-{tag}', f'PAT-A2-{tag}')
+        report = await Reports(conn).create(
+            exam_row['id'],
+            {'status': 'draft', 'findings': 'f', 'impression': 'i'},
+            created_by='rad-1')
+        return exam_row, report
+
+    async def _cleanup(self, conn, tag, report_id=None):
+        await conn.execute(
+            "DELETE FROM ris_results_distribution WHERE accession_number LIKE $1",
+            f'ACC-A2-{tag}%')
+        await conn.execute("DELETE FROM reports WHERE id = $1", report_id)
+        await conn.execute("DELETE FROM exams WHERE accession_number LIKE $1",
+                           f'ACC-A2-{tag}%')
+
+    @pytest.mark.asyncio
+    async def test_first_send_without_endpoint_records_failed(self):
+        import uuid as _uuid
+        tag = _uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            _exam, report = await self._seed(conn, tag)
+            try:
+                engine = ResultsDistributionEngine()
+                with patch('config.config', {}):
+                    res = await engine.distribute_report(report['id'])
+                assert res['status'] == 'FAILED', (
+                    'no EMR endpoint configured — SENT would be a fake '
+                    'success; got %r' % res['status'])
+                row = await conn.fetchrow(
+                    "SELECT status, attempts FROM ris_results_distribution"
+                    " WHERE report_id = $1", report['id'])
+                assert row['status'] == 'FAILED'
+                assert row['attempts'] == 1
+            finally:
+                await self._cleanup(conn, tag, report['id'])
+
+    @pytest.mark.asyncio
+    async def test_sent_only_after_successful_delivery(self):
+        import uuid as _uuid
+        tag = _uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            _exam, report = await self._seed(conn, tag)
+            try:
+                engine = ResultsDistributionEngine()
+                with patch('config.config',
+                           {'distribution_endpoint': 'http://emr:8080/oru'}), \
+                     patch.object(engine, '_deliver',
+                                  new=AsyncMock(return_value=True)) as mock_deliver:
+                    res = await engine.distribute_report(report['id'])
+                assert res['status'] == 'SENT'
+                mock_deliver.assert_awaited_once()
+                args = mock_deliver.await_args
+                assert 'ORU^R01' in args.args[0]
+                assert args.args[1] == 'http://emr:8080/oru'
+                row = await conn.fetchrow(
+                    "SELECT status, delivered_at FROM ris_results_distribution"
+                    " WHERE report_id = $1", report['id'])
+                assert row['status'] == 'SENT'
+                assert row['delivered_at'] is not None
+            finally:
+                await self._cleanup(conn, tag, report['id'])
+
+    @pytest.mark.asyncio
+    async def test_transport_failure_records_failed_attempt(self):
+        import uuid as _uuid
+        tag = _uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            _exam, report = await self._seed(conn, tag)
+            try:
+                engine = ResultsDistributionEngine()
+                with patch('config.config',
+                           {'distribution_endpoint': 'http://emr:8080/oru'}), \
+                     patch.object(engine, '_deliver',
+                                  new=AsyncMock(return_value=False)):
+                    res = await engine.distribute_report(report['id'])
+                assert res['status'] == 'FAILED'
+                row = await conn.fetchrow(
+                    "SELECT status, attempts FROM ris_results_distribution"
+                    " WHERE report_id = $1", report['id'])
+                assert row['status'] == 'FAILED'
+                assert row['attempts'] == 1
+            finally:
+                await self._cleanup(conn, tag, report['id'])

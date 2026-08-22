@@ -59,6 +59,7 @@ class LifecycleState:
     escalation_thread: Optional[threading.Thread] = None
     prior_auth_thread: Optional[threading.Thread] = None
     reminder_failure_thread: Optional[threading.Thread] = None
+    distribution_retry_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -382,6 +383,51 @@ def _start_reminder_failure_monitor():
     log.info('Reminder failure monitor started')
 
 
+# A2 (GAP_AUDIT_TDD_PIPELINE.md): ORU retry scheduler. retry_failed_deliveries()
+# existed with real transmission logic but nothing ever ran it, so FAILED
+# deliveries accumulated silently. Same main-loop scheduling pattern as the
+# other pool-owning workers.
+def _run_distribution_retry(loop):
+    async def _loop():
+        from services.results_distribution.service import ResultsDistributionEngine
+        engine = ResultsDistributionEngine()
+        interval = int(config.get('distribution_retry_interval', '300'))
+        while True:
+            try:
+                retried = await engine.retry_failed_deliveries()
+                if retried:
+                    log.info('ORU retry worker delivered %d backlogged report(s)',
+                             retried)
+            except Exception:
+                log.warning('ORU distribution retry pass failed',
+                            exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_distribution_retry():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_distribution_retry,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.distribution_retry_thread = thread
+    log.info('ORU distribution retry worker started')
+
+
 async def setup(db_pool_size=None, sync_db=False, services=None):
     from api.tracing import setup_tracing
     setup_tracing()
@@ -469,6 +515,7 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
     _start_critical_escalation()
     _start_prior_auth_alert()
     _start_reminder_failure_monitor()
+    _start_distribution_retry()
 
     # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
     # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.

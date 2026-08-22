@@ -122,6 +122,7 @@ class RisReportTemplates(Table):
         await self.exec("""
         CREATE TABLE IF NOT EXISTS ris_report_templates (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id TEXT NOT NULL DEFAULT 'default',
             name TEXT NOT NULL,
             modality TEXT NOT NULL,
             body_part TEXT DEFAULT '',
@@ -132,33 +133,47 @@ class RisReportTemplates(Table):
             updated_at TIMESTAMPTZ DEFAULT now()
         )
         """)
+        # A3 (migration 087 parity): versioned publish/rollback scopes the
+        # activated body by tenant — the column must exist on pre-087 DBs.
+        await self.exec(
+            "ALTER TABLE ris_report_templates"
+            " ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
+        )
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_ris_templates_modality ON ris_report_templates(modality)
         """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_ris_templates_tenant_modality
+        ON ris_report_templates(tenant_id, modality)
+        """)
 
-    async def list_templates(self, modality=None):
-        """List report templates, optionally filtered by modality."""
+    async def list_templates(self, modality=None, tenant_id=None):
+        """List report templates, optionally filtered by modality/tenant."""
         await self.sync_db()
+        clauses, values = [], []
         if modality:
-            rows = await self.conn.fetch(
-                "SELECT * FROM ris_report_templates WHERE UPPER(modality) = UPPER($1) ORDER BY name",
-                modality,
-            )
-        else:
-            rows = await self.conn.fetch(
-                "SELECT * FROM ris_report_templates ORDER BY modality, name"
-            )
+            values.append(modality)
+            clauses.append(f'UPPER(modality) = UPPER(${len(values)})')
+        if tenant_id:
+            values.append(tenant_id)
+            clauses.append(f'tenant_id = ${len(values)}')
+        where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        rows = await self.conn.fetch(
+            f"SELECT * FROM ris_report_templates {where} ORDER BY modality, name",
+            *values,
+        )
         return [dict(r) for r in rows]
 
-    async def create_template(self, data):
+    async def create_template(self, data, tenant_id='default'):
         """Create a new report template."""
         await self.sync_db()
         now = datetime.now(timezone.utc)
         row = await self.conn.fetchrow(
             """INSERT INTO ris_report_templates
-               (name, modality, body_part, findings_template, impression_template, is_default, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               (tenant_id, name, modality, body_part, findings_template, impression_template, is_default, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                RETURNING *""",
+            tenant_id,
             data['name'], data['modality'], data.get('body_part', ''),
             data.get('findings_template', ''), data.get('impression_template', ''),
             data.get('is_default', False), now, now,
@@ -205,7 +220,7 @@ class RisReportTemplates(Table):
             " (tenant_id, template_id, version_number,"
             "  findings_template, impression_template, published_by)"
             " VALUES ($1, $2, $3, $4, $5, $6)"
-            " RETURNING id, template_id, version_number",
+            " RETURNING id, template_id, version_number, published_by",
             tenant_id, template_id, next_version, findings, impression,
             str(published_by),
         )
@@ -236,14 +251,16 @@ class RisReportTemplates(Table):
             findings=target['findings_template'],
             impression=target['impression_template'],
             published_by='rollback',
+            tenant_id=target.get('tenant_id', 'default'),
         )
         await self.conn.execute(
             "UPDATE ris_report_templates"
             " SET findings_template = $2, impression_template = $3,"
             " updated_at = now()"
-            " WHERE id = $1",
+            " WHERE id = $1 AND tenant_id = $4",
             target['template_id'], target['findings_template'],
             target['impression_template'],
+            target.get('tenant_id', 'default'),
         )
         return row
 

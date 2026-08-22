@@ -355,13 +355,15 @@ class TestReconciliation:
         assert data['variance'] == 0.0
 
 
-class TestDropChargeStub:
-    """V-3: a report signed twice (or co-signed) must not produce duplicate
-    ris_charges rows — the charge stub is idempotent per report."""
+class TestChargeDropIdempotency:
+    """V-3 / A1: a report signed twice (or co-signed) must not produce
+    duplicate ris_charges rows. Since A1 removed the S8-14 stub, the single
+    writer is RisCharges.create() — its NOT EXISTS-per-report guard carries
+    the idempotency guarantee."""
 
     @pytest.mark.asyncio
-    async def test_second_sign_does_not_insert_duplicate_charge(self):
-        from api.billing import drop_charge_stub
+    async def test_second_charge_drop_is_guarded_noop(self):
+        from db.ris_charges import RisCharges
 
         calls = []
 
@@ -370,10 +372,13 @@ class TestDropChargeStub:
                 calls.append((sql, args))
 
         conn = _RecConn()
-        await drop_charge_stub(
-            conn, 'rep-1', 'exam-1', 'ACC001', 'radio-1')
-        await drop_charge_stub(
-            conn, 'rep-1', 'exam-1', 'ACC001', 'radio-1')
+        repo = RisCharges(conn)
+        for _ in range(2):
+            await repo.create(
+                report_id='rep-1', exam_id='exam-1',
+                accession_number='ACC001', patient_id='P1',
+                patient_name='P One', cpt_code='70450',
+                created_by='radio-1', tenant_id='default')
 
         inserts = [sql for sql, _ in calls if 'INSERT INTO ris_charges' in sql]
         assert len(inserts) == 2, 'both calls must still execute'

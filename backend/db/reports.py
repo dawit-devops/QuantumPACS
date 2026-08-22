@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 
 from db.table import Table
 
+# A4 (GAP_AUDIT_TDD_PIPELINE.md): single source for the HIM release gate
+# (R2-05-05, migration 084). Patient-bound surfaces must exclude held
+# reports; staff-facing reads are unaffected. Alias `r` = reports table.
+RELEASE_VISIBLE_SQL = "r.release_status IS DISTINCT FROM 'held'"
+
 
 class Reports(Table):
     name = 'reports'
@@ -148,19 +153,6 @@ class Reports(Table):
                     report_id, updated.get('findings', ''),
                     updated.get('impression', ''), updated.get('recommendations', ''),
                     edited_by=signed_by,
-                )
-            except Exception:
-                pass
-            try:
-                from api.billing import drop_charge_stub
-                exam_row = await self.conn.fetchrow(
-                    "SELECT accession_number FROM exams WHERE id = $1",
-                    updated.get('exam_id'),
-                )
-                accession = exam_row['accession_number'] if exam_row else ''
-                await drop_charge_stub(
-                    self.conn, report_id, updated.get('exam_id'),
-                    accession, signed_by,
                 )
             except Exception:
                 pass

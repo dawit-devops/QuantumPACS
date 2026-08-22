@@ -212,6 +212,18 @@ class PortalReportHandler(HTTPEndpoint):
                 return ok({'data': None})
             row = await portal.get_final_report(patient_id, report_id)
             if not row:
+                # A4: a scoped patient hitting a HIM-held report is a
+                # blocked patient-visible access — audit it before the 404.
+                if await portal.release_blocked(patient_id, report_id):
+                    await AuditLog(conn).log_event(
+                        event_type='portal.report_hold_blocked',
+                        actor_id=request.user.id,
+                        resource_type='report',
+                        resource_id=report_id,
+                        details={'patient_id': patient_id},
+                        tenant=effective_tenant(request),
+                        request_id=request_id_var.get(),
+                    )
                 return not_found('Report not found')
             await AuditLog(conn).log_event(
                 event_type='portal.report_view',

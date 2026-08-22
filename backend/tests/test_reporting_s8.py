@@ -111,7 +111,10 @@ class TestReportVersionDedup:
 
 class TestReportSignOffAndStubs:
     @pytest.mark.asyncio
-    async def test_sign_report_creates_oru_and_charge_stubs(self):
+    async def test_sign_report_finalizes_without_creating_charges(self):
+        """A1 (GAP_AUDIT_TDD_PIPELINE.md): Reports.sign() is a pure status
+        transition + version snapshot — the enriched charge drop lives in
+        the API sign handler (single writer)."""
         async with get_conn() as conn:
             exam_row = await conn.fetchrow(
                 "INSERT INTO exams (accession_number, patient_id, status, modality) "
@@ -132,13 +135,12 @@ class TestReportSignOffAndStubs:
             assert signed['signed_by'] == 'rad_user_1'
             assert signed['distributed_at'] is not None
 
-            # Verify charge drop stub inserted placeholder row in ris_charges
+            # Repo-level sign must NOT create any charge row (A1)
             charge_row = await conn.fetchrow(
                 "SELECT * FROM ris_charges WHERE report_id = $1",
                 str(report['id']),
             )
-            assert charge_row is not None
-            assert charge_row['accession_number'] == 'ACC-S8-TEST'
+            assert charge_row is None
 
 
 class TestReportVersionDiffBadInput:
@@ -213,3 +215,103 @@ class TestReportEndpointsRLS:
         async with get_conn() as conn:
             items = await Reports(conn).reading_list()
             assert isinstance(items, list)
+
+
+class TestTemplatePublishRollbackRealDb:
+    """A3 (GAP_AUDIT_TDD_PIPELINE.md): publish_version() UPDATEs a
+    tenant_id column that migration 071 never created — on any migrated DB
+    this raises UndefinedColumnError AFTER inserting the version row,
+    leaving version history and activated body out of sync. Migration 087
+    adds ris_report_templates.tenant_id (DEFAULT 'default' backfills the
+    seeded rows); sync_db gains the same column so fresh dev DBs match."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _tpl(self, conn, name='A3 Publish Template'):
+        from db.ris_templates import RisReportTemplates
+        return await RisReportTemplates(conn).create_template({
+            'name': name, 'modality': 'CT',
+            'findings_template': 'body A', 'impression_template': 'imp A',
+        })
+
+    @pytest.mark.asyncio
+    async def test_publish_activates_body_and_rollback_restores(self):
+        import uuid
+        from db.conn import get_conn
+        from db.ris_templates import RisReportTemplates
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            repo = RisReportTemplates(conn)
+            tpl = await self._tpl(conn, f'A3 Rollback {tag}')
+            try:
+                await repo.publish_version(
+                    tpl['id'], findings='body B', impression='imp B',
+                    published_by='rad-1')
+                await repo.publish_version(
+                    tpl['id'], findings='body C', impression='imp C',
+                    published_by='rad-1')
+
+                rolled = await repo.rollback_to_version(tpl['id'], 1)
+                assert rolled is not None
+                assert rolled['version_number'] == 3
+                assert rolled['published_by'] == 'rollback'
+
+                after = await conn.fetchrow(
+                    'SELECT findings_template, impression_template'
+                    ' FROM ris_report_templates WHERE id = $1', tpl['id'])
+                assert after['findings_template'] == 'body B', (
+                    'rollback must re-activate version 1 body')
+                assert after['impression_template'] == 'imp B'
+
+                history = await repo.list_versions(tpl['id'])
+                assert len(history) == 3
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_report_template_versions'
+                    ' WHERE template_id = $1', tpl['id'])
+                await conn.execute(
+                    'DELETE FROM ris_report_templates WHERE id = $1',
+                    tpl['id'])
+
+    @pytest.mark.asyncio
+    async def test_publish_is_tenant_scoped(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            repo = RisReportTemplates(conn)
+            tpl = await self._tpl(conn, f'A3 Tenant {tag}')
+            try:
+                # Another tenant publishes against the same template id:
+                # the default-tenant row body must stay untouched.
+                await repo.publish_version(
+                    tpl['id'], findings='acme body',
+                    impression='acme imp', tenant_id=f't-acme-{tag}')
+
+                row = await conn.fetchrow(
+                    'SELECT findings_template FROM ris_report_templates'
+                    ' WHERE id = $1', tpl['id'])
+                assert row['findings_template'] == 'body A'
+
+                assert len(await repo.list_versions(
+                    tpl['id'], tenant_id=f't-acme-{tag}')) == 1
+                assert len(await repo.list_versions(
+                    tpl['id'], tenant_id='default')) == 0
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_report_template_versions'
+                    ' WHERE template_id = $1', tpl['id'])
+                await conn.execute(
+                    'DELETE FROM ris_report_templates WHERE id = $1',
+                    tpl['id'])

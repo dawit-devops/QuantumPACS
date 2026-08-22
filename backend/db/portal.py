@@ -91,13 +91,17 @@ class Portal:
         return [dict(r) for r in rows]
 
     async def list_final_reports(self, patient_id):
+        # A4: HIM-held reports never appear on patient-facing surfaces
+        # (R2-05-05); the predicate is shared with the FHIR DR search gate.
+        from db.reports import RELEASE_VISIBLE_SQL
         rows = await self.conn.fetch(
-            """
+            f"""
             SELECT r.id AS report_id, r.exam_id, e.accession_number,
                    r.signed_at, r.signed_by
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
             WHERE e.patient_id = $1 AND r.status = 'final'
+              AND {RELEASE_VISIBLE_SQL}
             ORDER BY r.signed_at DESC
             """,
             patient_id,
@@ -105,14 +109,16 @@ class Portal:
         return [dict(r) for r in rows]
 
     async def get_final_report(self, patient_id, report_id):
+        from db.reports import RELEASE_VISIBLE_SQL
         row = await self.conn.fetchrow(
-            """
+            f"""
             SELECT r.id AS report_id, r.exam_id, r.status, e.accession_number,
                    r.findings, r.impression, r.recommendations,
                    r.signed_by, r.signed_at
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
             WHERE r.id = $1 AND e.patient_id = $2
+              AND {RELEASE_VISIBLE_SQL}
             """,
             report_id, patient_id,
         )
@@ -123,6 +129,29 @@ class Portal:
         result = dict(row)
         result.pop('status', None)
         return result
+
+    async def release_blocked(self, patient_id, report_id):
+        """A4: True when the report exists for this patient but is invisible
+        because of a HIM hold — lets handlers audit the blocked attempt."""
+        from db.reports import RELEASE_VISIBLE_SQL
+        visible = await self.conn.fetchval(
+            f"""
+            SELECT 1 FROM reports r
+            JOIN exams e ON e.id = r.exam_id
+            WHERE r.id = $1 AND e.patient_id = $2
+              AND {RELEASE_VISIBLE_SQL}
+            """,
+            report_id, patient_id,
+        )
+        exists = await self.conn.fetchval(
+            """
+            SELECT 1 FROM reports r
+            JOIN exams e ON e.id = r.exam_id
+            WHERE r.id = $1 AND e.patient_id = $2
+            """,
+            report_id, patient_id,
+        )
+        return bool(exists) and not bool(visible)
 
     async def list_follow_ups(self, user_id, status=None):
         if status:

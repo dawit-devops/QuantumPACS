@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -468,3 +469,149 @@ class TestPortalFollowUps:
         with patch('api.portal.get_conn', return_value=mock_conn):
             resp = client.put('/portal/follow-ups/fu-1', json={'status': 'completed'})
         assert resp.status_code == 404
+
+
+class TestReleasePolicyRealDb:
+    """A4 (GAP_AUDIT_TDD_PIPELINE.md): the HIM hold gate (R2-05-05,
+    migration 084) was enforced only in FHIR DR search — Portal.list/
+    get_final_report served any final report regardless of release_status,
+    so a HIM-held report stayed patient-visible. Held must vanish from the
+    patient surfaces; blocked detail views are audited."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _seed(self, conn, tag):
+        from db.reports import Reports
+        mrn = f'MRN-A4-{tag}'
+        await conn.execute(
+            "INSERT INTO patients (patient_id, name, birth_date, sex)"
+            " VALUES ($1, 'A4 Patient', '1980-01-01', 'F')"
+            " ON CONFLICT (patient_id) DO NOTHING",
+            mrn,
+        )
+        await conn.execute(
+            "INSERT INTO patient_staff_scope (patient_id, user_id,"
+            " scope_type, assigned_by) VALUES ($1, 1, 'ward', 1)"
+            " ON CONFLICT (patient_id, user_id) DO NOTHING",
+            mrn,
+        )
+        report_ids = {}
+        for kind in ('auto', 'held'):
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id, status,"
+                " modality) VALUES ($1, $2, 'completed', 'CT')"
+                " RETURNING id",
+                f'ACC-A4-{kind}-{tag}', mrn,
+            )
+            report = await Reports(conn).create(
+                exam_row['id'],
+                {'status': 'draft', 'findings': f'f-{kind}',
+                 'impression': f'i-{kind}'},
+                created_by='rad-1',
+            )
+            await Reports(conn).sign(report['id'], signed_by='rad-1')
+            if kind == 'held':
+                await Reports(conn).set_release_status(
+                    str(report['id']), 'held')
+            report_ids[kind] = report['id']
+        return mrn, report_ids
+
+    async def _cleanup(self, conn, tag):
+        mrn = f'MRN-A4-{tag}'
+        await conn.execute(
+            "DELETE FROM reports WHERE exam_id IN"
+            " (SELECT id FROM exams WHERE accession_number LIKE 'ACC-A4-%')"
+        )
+        await conn.execute(
+            "DELETE FROM exams WHERE accession_number LIKE 'ACC-A4-%'")
+        await conn.execute(
+            "DELETE FROM patient_staff_scope WHERE patient_id = $1", mrn)
+        await conn.execute("DELETE FROM patients WHERE patient_id = $1", mrn)
+
+    @pytest.mark.asyncio
+    async def test_held_report_absent_from_portal_list(self):
+        import uuid
+        from db.conn import get_conn
+        from db.portal import Portal
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_ids = await self._seed(conn, tag)
+            try:
+                rows = await Portal(conn).list_final_reports(mrn)
+                listed = {str(r['report_id']) for r in rows}
+                assert str(report_ids['held']) not in listed, (
+                    'HIM-held report leaked into the patient-facing list')
+                assert str(report_ids['auto']) in listed
+            finally:
+                await self._cleanup(conn, tag)
+
+    @pytest.mark.asyncio
+    async def test_held_report_get_returns_none(self):
+        import uuid
+        from db.conn import get_conn
+        from db.portal import Portal
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_ids = await self._seed(conn, tag)
+            try:
+                got = await Portal(conn).get_final_report(
+                    mrn, str(report_ids['held']))
+                assert got is None, (
+                    'HIM-held report must never leave the detail endpoint')
+                got_ok = await Portal(conn).get_final_report(
+                    mrn, str(report_ids['auto']))
+                assert got_ok is not None
+            finally:
+                await self._cleanup(conn, tag)
+
+    @pytest.mark.asyncio
+    async def test_held_detail_view_is_audited_as_blocked(self):
+        import uuid
+        import httpx
+        from db.conn import get_conn
+        from starlette.applications import Starlette
+        from starlette.routing import Route
+        from api.portal import PortalReportHandler
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_ids = await self._seed(conn, tag)
+        app = Starlette(
+            routes=[Route(
+                '/portal/patients/{patient_id}/reports/{report_id}',
+                endpoint=PortalReportHandler)],
+            middleware=[Middleware(_FakeAuth, user=User(
+                {'id': 1, 'permissions': ['PORTAL_READ']}))],
+        )
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                    transport=transport, base_url='http://test') as client:
+                resp = await client.get(
+                    f'/portal/patients/{mrn}/reports/{report_ids["held"]}')
+            assert resp.status_code == 404, resp.text
+
+            async with get_conn() as conn:
+                blocked = await conn.fetchval(
+                    "SELECT 1 FROM logs WHERE log::jsonb->>'event' ="
+                    " 'portal.report_hold_blocked'"
+                    " AND log::jsonb->'resource'->>'id' = $1"
+                    " ORDER BY created DESC LIMIT 1",
+                    str(report_ids['held']),
+                )
+                assert blocked, (
+                    'a held-report detail attempt must be audited as '
+                    'portal.report_hold_blocked')
+        finally:
+            async with get_conn() as conn:
+                await self._cleanup(conn, tag)

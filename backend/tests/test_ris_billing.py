@@ -394,3 +394,130 @@ class TestReconciliationApi:
             resp = client.get('/ris/billing/reconciliation')
         assert resp.status_code == 200
         assert resp.json()['capture_rate_pct'] == 100.0
+
+class TestChargeDropRealDb:
+    """A1 (GAP_AUDIT_TDD_PIPELINE.md): the S8-14 stub must not shadow the
+    enriched S11-03 charge drop.
+
+    Regression net for the C-1 finding: Reports.sign() used to fire
+    drop_charge_stub first, and the per-report NOT EXISTS guard then made
+    the enriched drop_charge() a silent no-op — bare $0 charges with no
+    coding, wrong tenant. Repo-level sign() creates NO charges; the API
+    sign handler is the single writer of one ENRICHED row.
+
+    Runs against the real database via an in-loop ASGI transport (same
+    pattern as tests/test_tracking_status_constraint.py) so cross-module
+    side effects are exercised end-to-end."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _seed_exam_and_report(self, conn, tag):
+        from db.reports import Reports
+        exam_row = await conn.fetchrow(
+            "INSERT INTO exams (accession_number, patient_id, patient_name,"
+            " status, modality, requested_procedure_desc)"
+            " VALUES ($1, $2, $3, 'completed', 'CT', 'CT head')"
+            " RETURNING id",
+            f'ACC-A1-{tag}', f'PAT-A1-{tag}', 'A1 RealDb Patient',
+        )
+        report = await Reports(conn).create(
+            exam_row['id'],
+            {'status': 'draft',
+             'findings': 'CT head clear',
+             'impression': 'No acute findings'},
+            created_by='rad-9',
+        )
+        return exam_row, report
+
+    @pytest.mark.asyncio
+    async def test_repo_sign_does_not_create_any_charge(self):
+        import uuid
+        from db.conn import get_conn
+        from db.reports import Reports
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            _exam, report = await self._seed_exam_and_report(conn, tag)
+            try:
+                signed = await Reports(conn).sign(
+                    report['id'], signed_by='rad-9')
+                assert signed['status'] == 'final'
+
+                count = await conn.fetchval(
+                    'SELECT count(*) FROM ris_charges WHERE report_id = $1',
+                    str(report['id']),
+                )
+                assert count == 0, (
+                    'Reports.sign() is a pure status transition + version '
+                    'snapshot; charge creation belongs to the API sign '
+                    'handler (single enriched writer) — found %d stub '
+                    'row(s)' % count
+                )
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_charges WHERE report_id = $1',
+                    str(report['id']),
+                )
+
+    @pytest.mark.asyncio
+    async def test_api_sign_drops_exactly_one_enriched_charge(self):
+        import uuid
+        import httpx
+        from db.conn import get_conn
+        from starlette.applications import Starlette
+        from starlette.middleware import Middleware
+        from starlette.routing import Route
+        from api.reports import ExamReportSignHandler
+
+        tag = uuid.uuid4().hex[:6]
+        user = User({'id': 'rad-9', 'permissions': ['REPORT_SIGN'],
+                     'tenant': 'default'})
+        app = Starlette(
+            routes=[Route('/reports/{exam_id}/sign',
+                          endpoint=ExamReportSignHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+        )
+
+        async with get_conn() as conn:
+            exam_row, report = await self._seed_exam_and_report(conn, tag)
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                    transport=transport, base_url='http://test') as client:
+                resp = await client.post(
+                    f'/reports/{exam_row["id"]}/sign',
+                    json={'confirm': True},
+                )
+            assert resp.status_code == 200, resp.text
+
+            async with get_conn() as conn:
+                rows = await conn.fetch(
+                    'SELECT * FROM ris_charges WHERE report_id = $1',
+                    str(report['id']),
+                )
+                assert len(rows) == 1, (
+                    'exactly one charge per signed report, found %d'
+                    % len(rows)
+                )
+                charge = rows[0]
+                assert charge['cpt_code'] == '70450', (
+                    'charge must carry the CodingService CPT suggestion, '
+                    'got %r' % charge['cpt_code']
+                )
+                assert charge['icd10_code'] == 'R51'
+                assert charge['patient_name'] == 'A1 RealDb Patient'
+                assert charge['tenant_id'] == 'default'
+        finally:
+            async with get_conn() as conn:
+                await conn.execute(
+                    'DELETE FROM ris_charges WHERE report_id = $1',
+                    str(report['id']),
+                )
