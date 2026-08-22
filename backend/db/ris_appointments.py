@@ -103,6 +103,19 @@ class RisAppointments(Table):
     async def delete(self, appointment_id):
         return await self.conn.execute(
             'DELETE FROM ris_appointments WHERE id = $1', appointment_id)
+    async def chargeback_summary(self, month_start, month_end,
+                                 tenant_id='default'):
+        """R2-06-04: bookings performed here for OTHER sites, grouped by
+        the requesting site — the servicing-side chargeback view."""
+        return await self.conn.fetch(
+            "SELECT requesting_tenant, count(*) AS bookings "
+            "FROM ris_appointments "
+            "WHERE tenant_id = $1 AND requesting_tenant <> '' "
+            "AND start_time >= $2 AND start_time < $3 "
+            "GROUP BY requesting_tenant ORDER BY bookings DESC",
+            tenant_id, month_start, month_end,
+        )
+
     async def stamp_requesting_tenant(self, appointment_id, home_tenant):
         """R2-03-08: record the requester's home site for chargeback."""
         await self.conn.execute(

@@ -22,6 +22,7 @@ from api.schemas.ris_scheduling import (
     CreateScheduleRequest, RescheduleRequest,
 )
 from api.validate import parse_body
+from api.tenant_middleware import effective_tenant
 from db.conn import get_conn
 from db.ris_appointments import RisAppointments
 from db.ris_resources import RisResourceSchedules, RisResources
@@ -269,3 +270,35 @@ class MultiSiteAvailabilityHandler(HTTPEndpoint):
                             })
                 sites.append({'site': slug, 'resources': resources_out})
         return ok({'data': {'date': day, 'sites': sites}})
+
+
+class RisChargebackHandler(HTTPEndpoint):
+    """R2-06-04: GET /ris/scheduling/chargeback?month=YYYY-MM-DD
+
+    Servicing-site view of cross-facility activity: every booking this
+    site performed for another site in the window, grouped by requester.
+    Reconciliation input for inter-site billing.
+    """
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        from datetime import timedelta
+
+        raw = request.query_params.get('month')
+        if raw:
+            try:
+                month_start = datetime.fromisoformat(raw)
+            except ValueError:
+                return api_error('VALIDATION',
+                                 f'Invalid month: {raw}', status=422)
+        else:
+            today = date.today()
+            month_start = datetime(today.year, today.month, 1)
+        month_end = (month_start.replace(day=28) + timedelta(days=4))
+        month_end = month_end.replace(day=1)
+
+        async with get_conn() as conn:
+            rows = await RisAppointments(conn).chargeback_summary(
+                month_start=month_start, month_end=month_end,
+                tenant_id=effective_tenant(request) or 'default')
+        return ok({'data': [_row_dict(r) for r in rows]})

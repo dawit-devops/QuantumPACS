@@ -31,6 +31,11 @@ export interface RisDashboardKpi {
   unbilled_aging: UnbilledAging;
   volume: number;
   drill_down: DrillDownRow[];
+  chargeback?: {
+    month: string;
+    rows: { requesting_tenant: string; bookings: number }[];
+  };
+  denial_rate?: number;
 }
 
 // S12-34: manager dashboard KPIs (TAT, utilization, unbilled aging, volume).

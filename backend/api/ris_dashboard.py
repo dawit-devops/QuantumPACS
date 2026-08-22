@@ -16,6 +16,7 @@ from starlette.endpoints import HTTPEndpoint
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok
+from datetime import date, datetime
 from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
 
@@ -83,6 +84,25 @@ class RisDashboardKpiHandler(HTTPEndpoint):
                 "   AND status IN ('APPROVED', 'DENIED', 'EXPIRED')",
                 tenant,
             )
+            # R2-06-04: cross-site bookings performed here this month —
+            # the servicing-side view feeding inter-site reconciliation.
+            month_start = datetime(date.today().year, date.today().month, 1)
+            chargeback_rows = await conn.fetch(
+                "SELECT requesting_tenant, count(*) AS bookings"
+                " FROM ris_appointments"
+                " WHERE tenant_id = $1 AND requesting_tenant <> ''"
+                "   AND start_time >= $2"
+                " GROUP BY requesting_tenant ORDER BY bookings DESC",
+                tenant, month_start,
+            )
+            # R2-06-05: claim denial rate over decided claims
+            denial_rate = await conn.fetchval(
+                "SELECT CASE WHEN count(*) = 0 THEN 0.0 ELSE round("
+                "(count(*) FILTER (WHERE status = 'DENIED'))::numeric"
+                " / count(*), 3)::float END FROM ris_claims"
+                " WHERE tenant_id = $1 AND status <> 'DRAFT'",
+                tenant,
+            )
             drill_rows = []
             if drill_down:
                 drill_rows = await conn.fetch(
@@ -111,4 +131,9 @@ class RisDashboardKpiHandler(HTTPEndpoint):
             },
             'volume': volume or 0,
             'drill_down': [dict(r) for r in drill_rows],
+            'chargeback': {
+                'month': month_start.date().isoformat(),
+                'rows': [dict(r) for r in chargeback_rows],
+            },
+            'denial_rate': float(denial_rate or 0),
         })

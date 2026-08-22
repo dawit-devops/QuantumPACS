@@ -156,6 +156,30 @@ function RISDashboard() {
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={6}>
             <Statistic
+              title="Cross-site bookings (mo)"
+              value={
+                kpi.chargeback?.rows?.reduce(
+                  (sum, r) => sum + Number(r.bookings ?? 0),
+                  0,
+                ) ?? 0
+              }
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="Claim denial rate"
+              value={((kpi.denial_rate ?? 0) * 100).toFixed(1)}
+              suffix="%"
+              valueStyle={{
+                color:
+                  (kpi.denial_rate ?? 0) > 0.1 ? "#fa8c16" : undefined,
+              }}
+            />
+          </Col>
+        </Row>
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col span={6}>
+            <Statistic
               title="STAT p95 TAT"
               value={fmtDuration(
                 kpi.tat_by_priority?.find((t) => t.priority === "stat")

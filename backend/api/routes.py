@@ -141,6 +141,7 @@ from api.ris_orders import (
 from api.scheduling import (
     RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
     RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
+    RisChargebackHandler,
 )
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
@@ -317,6 +318,7 @@ _V1_ROUTES = [
     # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
     v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
     # R2-01: Prior authorization — request lifecycle + payer decisions.
+    v2(Route('/ris/scheduling/chargeback', endpoint=RisChargebackHandler)),
     v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
     v2(Route('/ris/prior-auth/expire', endpoint=PriorAuthExpireHandler, methods=['POST'])),
     v2(Route('/ris/prior-auth/{id}/decision', endpoint=PriorAuthDecisionHandler, methods=['POST'])),
