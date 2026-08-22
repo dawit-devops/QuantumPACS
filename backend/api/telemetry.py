@@ -140,6 +140,14 @@ ris_charge_drop_latency_seconds = Histogram(
 ris_unbilled_count = Gauge(
     'ris_unbilled_count', 'Number of unbilled (PENDING) charges',
 )
+ris_unbilled_over_5d = Gauge(
+    'ris_unbilled_over_5d',
+    'Unbilled (PENDING) charges older than the 5-day SLA',
+)
+ris_unbilled_over_10d = Gauge(
+    'ris_unbilled_over_10d',
+    'Unbilled (PENDING) charges older than 10 days (escalation threshold)',
+)
 # S12-33 / RIS-SL-30/31/32: report turnaround time (exam completed -> signed),
 # labelled by priority so the manager dashboard can show STAT vs routine TAT.
 ris_report_tat_seconds = Histogram(

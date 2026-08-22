@@ -15,6 +15,9 @@ from starlette.endpoints import HTTPEndpoint
 from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import ok, created, not_found, validation_error
+from api.telemetry import (
+    ris_unbilled_over_5d, ris_unbilled_over_10d,
+)
 
 
 def _json_row(row):
@@ -887,7 +890,13 @@ async def _unbilled_count(tenant):
 
 
 class RisUnbilledHandler(HTTPEndpoint):
-    """S11-07: GET /ris/billing/unbilled — aging report."""
+    """S11-07: GET /ris/billing/unbilled — aging report.
+
+    R2-02-14: every read also publishes the SLA gauges (5-day / 10-day
+    buckets) so Prometheus sees the backlog even without a scraper inside
+    the billing flow. R2-02-06: a >10-day backlog fires a throttled
+    biller/manager alert — best-effort, never fails the query.
+    """
 
     @requires_permission(Permission.BILLING_READ)
     async def get(self, request):
@@ -895,6 +904,20 @@ class RisUnbilledHandler(HTTPEndpoint):
         async with get_conn() as conn:
             from db.ris_charges import RisCharges
             groups, total = await RisCharges(conn).aging_groups(tenant)
+        bucket = {g['age_bucket']: g['n'] for g in groups}
+        over5 = (bucket.get('5-10 days', 0) + bucket.get('>10 days', 0))
+        over10 = bucket.get('>10 days', 0)
+        try:
+            ris_unbilled_over_5d.set(over5)
+            ris_unbilled_over_10d.set(over10)
+        except Exception:
+            pass
+        if over10:
+            try:
+                from services.billing_alerts import escalate_aging
+                await escalate_aging(None, tenant, over10=over10)
+            except Exception:
+                pass
         return ok({
             'groups': [dict(r) for r in groups],
             'total_unbilled': total,
