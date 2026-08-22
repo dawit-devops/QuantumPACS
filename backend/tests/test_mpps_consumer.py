@@ -233,12 +233,14 @@ class TestMppsConsumer:
                              'status': 'scheduled'},
         )
         count_before = REGISTRY.get_sample_value(
-            'ris_mpps_latency_seconds_count', {'event_type': 'N_CREATE'}) or 0.0
+            'ris_mpps_latency_seconds_count',
+            {'event_type': 'N_CREATE', 'facility': 'default'}) or 0.0
         with patch('services.mpps_consumer.service.get_conn',
                     return_value=conn):
             await MppsConsumer().handle_n_create(event)
         after = REGISTRY.get_sample_value(
-            'ris_mpps_latency_seconds_count', {'event_type': 'N_CREATE'}) or 0.0
+            'ris_mpps_latency_seconds_count',
+            {'event_type': 'N_CREATE', 'facility': 'default'}) or 0.0
         assert after == count_before + 1
 
     @pytest.mark.asyncio

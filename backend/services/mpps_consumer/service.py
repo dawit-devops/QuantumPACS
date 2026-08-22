@@ -12,7 +12,7 @@ import time
 
 from api.telemetry import ris_mpps_latency_seconds
 from db.audit_log import AuditLog
-from db.conn import get_conn
+from db.conn import get_conn, get_tenant_slug
 from log import get_logger
 from services.pacs_echo.service import echo_to_pacs
 
@@ -110,7 +110,9 @@ class MppsConsumer:
             log.info('MPPS N-CREATE: accession %s → IN_PROGRESS', accession)
 
         # S6-11 / RIS-SL-22: MPPS → tracking latency histogram.
-        ris_mpps_latency_seconds.labels(event_type='N_CREATE').observe(
+        ris_mpps_latency_seconds.labels(
+            event_type='N_CREATE',
+            facility=get_tenant_slug() or 'default').observe(
             time.monotonic() - started)
         return True
 
@@ -214,7 +216,9 @@ class MppsConsumer:
             await echo_to_pacs()
 
         # S6-11 / RIS-SL-22: MPPS → tracking latency histogram.
-        ris_mpps_latency_seconds.labels(event_type='N_SET').observe(
+        ris_mpps_latency_seconds.labels(
+            event_type='N_SET',
+            facility=get_tenant_slug() or 'default').observe(
             time.monotonic() - started)
         return True
 
@@ -255,7 +259,6 @@ async def _record_event(conn, accession, event_type, mpps_status,
                         study_uid, station_ae, ds):
     """Persist an MPPS event to the audit trail."""
     import json
-    from db.conn import get_tenant_slug
     now = datetime.now(timezone.utc)
     # Serialize a minimal representation of the DICOM dataset
     # Conformance: key by keyword ('AccessionNumber'), not tag string

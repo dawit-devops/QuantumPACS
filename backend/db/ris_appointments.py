@@ -50,6 +50,11 @@ class RisAppointments(Table):
             ON ris_appointments (order_id)
         """)
 
+    async def _ensure_requesting_tenant(self):
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "requesting_tenant TEXT DEFAULT ''")
+
     async def create(self, data):
         now = datetime.now(timezone.utc)
         data = dict(data)
@@ -98,3 +103,10 @@ class RisAppointments(Table):
     async def delete(self, appointment_id):
         return await self.conn.execute(
             'DELETE FROM ris_appointments WHERE id = $1', appointment_id)
+    async def stamp_requesting_tenant(self, appointment_id, home_tenant):
+        """R2-03-08: record the requester's home site for chargeback."""
+        await self.conn.execute(
+            "UPDATE ris_appointments SET requesting_tenant = $2 "
+            "WHERE id = $1 AND requesting_tenant = ''",
+            appointment_id, home_tenant,
+        )

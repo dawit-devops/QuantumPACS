@@ -160,6 +160,14 @@ class RisAppointmentsHandler(HTTPEndpoint):
             return not_found(str(exc))
         except SchedulingValidation as exc:
             return api_error('VALIDATION', str(exc), status=422)
+        # R2-03-08: chargeback capture — record the requester's home site
+        # so cross-facility activity is attributable even though the write
+        # lands on the servicing site's data plane.
+        home_tenant = getattr(request.user, 'tenant', '') or ''
+        if home_tenant:
+            async with get_conn() as conn:
+                await RisAppointments(conn).stamp_requesting_tenant(
+                    row['id'], home_tenant)
         return created({'data': _row_dict(row)})
 
 
@@ -196,3 +204,68 @@ class RisAppointmentCancelHandler(HTTPEndpoint):
         except SchedulingNotFound as exc:
             return not_found(str(exc))
         return ok({'data': _row_dict(row)})
+
+class MultiSiteAvailabilityHandler(HTTPEndpoint):
+    """R2-03-05: GET /ris/scheduling/multisite-availability?date=YYYY-MM-DD
+
+    One call, every accessible facility: the caller's home site plus any
+    tenant they hold a user_tenant_grants row for. Sites without a
+    registry row are skipped (revoked/decommissioned), and per-site data
+    planes stay isolated — each section is read inside its own
+    tenant_db_scope.
+    """
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        from db.conn import get_tenant_slug
+        from dcm.store import tenant_db_scope
+        from db.user_tenant_grants import UserTenantGrants
+        from db.tenants import Tenants
+
+        day = request.query_params.get('date')
+        if not day:
+            return api_error('VALIDATION',
+                             'date query parameter is required', status=422)
+        try:
+            day_parsed = date.fromisoformat(day)
+        except ValueError:
+            return api_error('VALIDATION', f'Invalid date format: {day}',
+                             status=422)
+        tz = ZoneInfo(_config.get('clinic_timezone', 'UTC'))
+        day_start = datetime.combine(day_parsed, time.min, tzinfo=tz)
+        day_end = day_start + timedelta(days=1)
+
+        home = getattr(request.user, 'tenant', None) \
+            or get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            grants = await UserTenantGrants(conn).list_for_user(
+                str(getattr(request.user, 'id', '')))
+            granted = [g['tenant_slug'] for g in grants]
+            registry = Tenants(conn)
+
+            sites = []
+            seen = set()
+            for slug in [home] + granted:
+                if slug in seen:
+                    continue
+                seen.add(slug)
+                info = await registry.get_by_slug(slug)
+                if slug != home and not info:
+                    continue  # revoked / decommissioned grant target
+                resources_out = []
+                scope_info = info or {}
+                async with tenant_db_scope(slug, scope_info):
+                    async with get_conn() as tconn:
+                        res_rows = await RisResources(tconn).list_for_tenant()
+                        appts = RisAppointments(tconn)
+                        for r in res_rows:
+                            booked = await appts.for_resource(
+                                r['id'], day_start, day_end)
+                            resources_out.append({
+                                'resource': dict(r),
+                                'booked': [_row_dict(a) for a in booked],
+                            })
+                sites.append({'site': slug, 'resources': resources_out})
+        return ok({'data': {'date': day, 'sites': sites}})

@@ -127,7 +127,7 @@ ris_hl7_message_latency_seconds = Histogram(
 # N-CREATE and N-SET paths are distinguishable.
 ris_mpps_latency_seconds = Histogram(
     'ris_mpps_latency_seconds', 'MPPS message processing latency',
-    ['event_type'],
+    ['event_type', 'facility'],
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )
 # S11-14 / spec §10.4: charge-capture rate. The latency histogram drives the
