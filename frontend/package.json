@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "devDependencies": {
+    "@ant-design/cli": "^6.6.1",
     "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.1",
@@ -49,6 +50,10 @@
     "build": "vite build",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
     "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --fix",
+    "antd:lint": "npx antd lint ./src --format json",
+    "antd:lint:fix": "npx antd lint ./src --only deprecated --format json",
+    "antd:usage": "npx antd usage ./src --format json",
+    "antd:doctor": "npx antd doctor --format json",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
