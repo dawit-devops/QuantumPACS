@@ -123,6 +123,7 @@ const Settings = React.lazy(() => import("./admin/Settings"));
 const InterfaceDashboard = React.lazy(() => import("./admin/InterfaceDashboard"));
 const RisDashboard = React.lazy(() => import("./admin/RISDashboard"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
+const CheckIn = React.lazy(() => import("./kiosk/CheckIn"));
 
 function NavigatorSetter() {
   const navigate = useNavigate();
@@ -179,6 +180,8 @@ function ThemedApp() {
               >
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  {/* RIS-REG-04: kiosk check-in is a public surface. */}
+                  <Route path="/checkin" element={<CheckIn />} />
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
                     {/* Per-user notification subscriptions (P1-1). */}

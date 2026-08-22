@@ -235,6 +235,10 @@ class TokenAuth(AuthenticationBackend):
             return
         if path in self._PUBLIC_PATHS:
             return
+        # RIS-REG-04: kiosk check-in — HMAC token in the path is the
+        # credential; the token itself expires, so no session needed.
+        if path.startswith('/api/v2/ris/checkin/'):
+            return
         if request.scope.get('method') == 'OPTIONS':
             return
 

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from datetime import datetime
 import ipaddress
 import json
 import traceback
@@ -279,6 +280,11 @@ async def handle_adt_message(parsed: dict) -> bool:
     if not patient_id:
         return False
 
+    # S3-20 / R2-06-06: HIS pre-registration — patient record plus an
+    # unassigned appointment stub so front desk never re-keys the visit.
+    if event == 'Z01':
+        return await _preregister_patient(parsed)
+
     if event == 'A03':
         data = {'patient_id': patient_id}
         return await _deactivate_patient(data)
@@ -309,6 +315,52 @@ async def handle_adt_message(parsed: dict) -> bool:
 
     log.warning('Unknown ADT event: %s for patient %s', event, patient_id)
     return False
+
+
+async def _preregister_patient(parsed: dict) -> bool:
+    try:
+        async with get_conn() as conn:
+            await Patient(conn).insert_or_select({
+                'patient_id': parsed.get('patient_id', ''),
+                'patient_name': parsed.get('patient_name', ''),
+                'patient_birth_date': parsed.get('birth_date', ''),
+                'patient_sex': parsed.get('sex', ''),
+                'sending_facility': parsed.get('sending_facility', ''),
+            })
+            sd = parsed.get('scheduled_date', '')
+            if not sd:
+                return True  # registration only; slot comes later
+            stime = (parsed.get('scheduled_time') or '').replace(':', '')
+            stime = stime.ljust(6, '0')[:6] or '000000'
+            try:
+                start = datetime.strptime(sd + stime, '%Y%m%d%H%M%S')
+            except ValueError:
+                log.warning('Z01 unparsable schedule %s/%s — registered '
+                            'patient without booking', sd, stime)
+                return True
+            from datetime import timedelta
+            from db.conn import get_tenant_slug
+            from db.ris_appointments import RisAppointments
+            tenant = get_tenant_slug() or (
+                parsed.get('sending_facility') or 'default').lower()
+            await RisAppointments(conn).create({
+                'tenant_id': tenant,
+                # resource stays NULL until staff assign a room/device;
+                # EXCLUDE guard treats NULLs as distinct so stubs never
+                # collide with real bookings (migration 085).
+                'resource_id': None,
+                'patient_id': parsed.get('patient_id', ''),
+                'start_time': start,
+                'end_time': start + timedelta(minutes=30),
+                'status': 'SCHEDULED',
+                'reason': 'HL7 pre-registration (ADT^Z01)',
+                'created_by': 'hl7:adt-z01',
+            })
+        return True
+    except Exception:
+        log.exception('Z01 pre-registration failed for %s',
+                      parsed.get('patient_id'))
+        return False
 
 
 async def _upsert_patient(data: dict) -> bool:

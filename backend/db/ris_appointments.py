@@ -116,6 +116,26 @@ class RisAppointments(Table):
             tenant_id, month_start, month_end,
         )
 
+    async def get_for_checkin(self, appointment_id, tenant_id='default'):
+        """RIS-REG-04: kiosk summary — display name only, no internals."""
+        return await self.conn.fetchrow(
+            "SELECT a.id::text AS id, a.status AS status, "
+            "a.start_time AS start_time, "
+            "COALESCE(p.name, '') AS patient_name "
+            "FROM ris_appointments a "
+            "LEFT JOIN patients p ON p.patient_id = a.patient_id "
+            "AND p.tenant_id = a.tenant_id "
+            "WHERE a.id::text = $1 AND a.tenant_id = $2",
+            appointment_id, tenant_id)
+
+    async def mark_checked_in(self, appointment_id, tenant_id='default'):
+        """Kiosk confirm: SCHEDULED -> ARRIVED; None when not schedulable."""
+        return await self.conn.fetchrow(
+            "UPDATE ris_appointments SET status = 'ARRIVED' "
+            "WHERE id::text = $1 AND tenant_id = $2 AND status = 'SCHEDULED' "
+            "RETURNING id::text AS id, status",
+            appointment_id, tenant_id)
+
     async def stamp_requesting_tenant(self, appointment_id, home_tenant):
         """R2-03-08: record the requester's home site for chargeback."""
         await self.conn.execute(

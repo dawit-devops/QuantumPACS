@@ -129,6 +129,7 @@ from api.frontdesk import (
     RisPatientsMergeHandler, RisPatientsUndoMergeHandler,
     RisPatientEligibilityHandler,
 )
+from api.checkin import PortalCheckInHandler
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
     PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
@@ -447,6 +448,10 @@ _V1_ROUTES = [
     v2(Route('/portal/patients/{patient_id}/reports/{report_id}', endpoint=PortalReportHandler)),
     v2(Route('/portal/patients/{patient_id}/orders', endpoint=PortalOrdersHandler)),
     v2(Route('/portal/follow-ups', endpoint=PortalFollowUpHandler)),
+    # RIS-REG-04: kiosk self-check-in — public path, HMAC token is the
+    # bearer credential (registered in TokenAuth._PUBLIC_PATHS).
+    v2(Route('/ris/checkin/{token}', endpoint=PortalCheckInHandler,
+             methods=['GET', 'POST'])),
     v2(Route('/portal/follow-ups/{id}', endpoint=PortalFollowUpStatusHandler, methods=['PUT'])),
     v2(Route('/admin/status', endpoint=AdminStatusHandler)),
     v2(Route('/admin/maintenance', endpoint=AdminMaintenanceHandler, methods=['POST'])),
