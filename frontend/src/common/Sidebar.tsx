@@ -35,6 +35,7 @@ import {
   SolutionOutlined,
   SettingOutlined,
   ScheduleOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Grid, Drawer, Button } from "antd";
 import React, { useState, useEffect } from "react";
@@ -349,6 +350,13 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     title: "Admin",
     icon: <LockOutlined />,
     items: [
+      {
+        key: "admin-report-templates",
+        path: "/admin/report-templates",
+        label: "Report Templates",
+        icon: <FileTextOutlined />,
+        permissions: ["REPORT_WRITE"],
+      },
       {
         // The dashboard is the landing home of every admin-scoped role; it
         // sits at the top of the Admin section and is role-scoped (adminOnly)

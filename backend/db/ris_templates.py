@@ -173,3 +173,85 @@ class RisReportTemplates(Table):
             return
         for t in DEFAULT_TEMPLATES:
             await self.create_template(t)
+
+    # ------------------------------------------------------------------
+    # R2-02-07/09: versioning — publish snapshots + one-click rollback.
+    # ------------------------------------------------------------------
+
+    async def list_versions(self, template_id, tenant_id='default'):
+        """Version history for a template, newest first."""
+        return await self.conn.fetch(
+            "SELECT id, template_id, version_number, findings_template,"
+            " impression_template, published_by, published_at"
+            " FROM ris_report_template_versions"
+            " WHERE template_id = $1 AND tenant_id = $2"
+            " ORDER BY version_number DESC",
+            template_id, tenant_id,
+        )
+
+    async def publish_version(self, template_id, *, findings,
+                              impression, published_by='',
+                              tenant_id='default'):
+        """Snapshot the new body as the next version and activate it."""
+        current = await self.conn.fetchrow(
+            "SELECT COALESCE(MAX(version_number), 0) AS v"
+            " FROM ris_report_template_versions"
+            " WHERE template_id = $1 AND tenant_id = $2",
+            template_id, tenant_id,
+        )
+        next_version = ((current or {}).get('v') or 0) + 1
+        row = await self.conn.fetchrow(
+            "INSERT INTO ris_report_template_versions"
+            " (tenant_id, template_id, version_number,"
+            "  findings_template, impression_template, published_by)"
+            " VALUES ($1, $2, $3, $4, $5, $6)"
+            " RETURNING id, template_id, version_number",
+            tenant_id, template_id, next_version, findings, impression,
+            str(published_by),
+        )
+        await self.conn.execute(
+            "UPDATE ris_report_templates"
+            " SET findings_template = $2, impression_template = $3,"
+            " updated_at = now()"
+            " WHERE id = $1 AND tenant_id = $4",
+            template_id, findings, impression, tenant_id,
+        )
+        return row
+
+    async def _get_version(self, template_id, version_number,
+                           tenant_id='default'):
+        return await self.conn.fetchrow(
+            "SELECT id, template_id, version_number, findings_template,"
+            " impression_template FROM ris_report_template_versions"
+            " WHERE template_id = $1 AND version_number = $2"
+            " AND tenant_id = $3",
+            template_id, int(version_number), tenant_id,
+        )
+
+    async def apply_version(self, target):
+        """Activate a prior version's body and snapshot it as a new
+        rollback version so history records the undo itself."""
+        row = await self.publish_version(
+            target['template_id'],
+            findings=target['findings_template'],
+            impression=target['impression_template'],
+            published_by='rollback',
+        )
+        await self.conn.execute(
+            "UPDATE ris_report_templates"
+            " SET findings_template = $2, impression_template = $3,"
+            " updated_at = now()"
+            " WHERE id = $1",
+            target['template_id'], target['findings_template'],
+            target['impression_template'],
+        )
+        return row
+
+    async def rollback_to_version(self, template_id, version_number,
+                                  actor='', tenant_id='default'):
+        """Re-activate an older version. Returns None when unknown."""
+        target = await self._get_version(
+            template_id, version_number, tenant_id)
+        if not target:
+            return None
+        return await self.apply_version(target)

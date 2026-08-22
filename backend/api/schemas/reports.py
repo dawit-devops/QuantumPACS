@@ -50,3 +50,12 @@ class SubmitPeerReviewRequest(BaseModel):
         if v not in ('none', 'minor', 'major', 'discrepancy'):
             raise ValueError('discrepancy_level must be none/minor/major/discrepancy')
         return v
+
+
+class PublishTemplateRequest(BaseModel):
+    findings: str = Field('', description="Findings section body")
+    impression: str = Field('', description="Impression section body")
+
+
+class RollbackTemplateRequest(BaseModel):
+    version: int = Field(..., ge=1, description="Version number to re-activate")

@@ -795,3 +795,62 @@ class PeerReviewSubmitHandler(HTTPEndpoint):
                     f'/reading/{exam["id"] if exam else ""}',
                 )
         return ok({'data': review})
+
+
+class TemplateVersionsHandler(HTTPEndpoint):
+    """R2-02-07: GET /ris/report-templates/{id}/versions — history."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            rows = await RisReportTemplates(conn).list_versions(
+                template_id, tenant)
+        return ok({'data': [dict(r) for r in rows]})
+
+
+class TemplatePublishHandler(HTTPEndpoint):
+    """R2-02-09: POST .../publish — snapshot + activate a new version."""
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import PublishTemplateRequest
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        body = await parse_body(PublishTemplateRequest, request)
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            row = await RisReportTemplates(conn).publish_version(
+                template_id,
+                findings=body.findings,
+                impression=body.impression,
+                published_by=str(getattr(request.user, 'id', '')),
+                tenant_id=tenant,
+            )
+        return ok({'data': dict(row)})
+
+
+class TemplateRollbackHandler(HTTPEndpoint):
+    """R2-02-09: POST .../rollback — one-click re-activation."""
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import RollbackTemplateRequest
+        from starlette.responses import JSONResponse
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        body = await parse_body(RollbackTemplateRequest, request)
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            row = await RisReportTemplates(conn).rollback_to_version(
+                template_id, body.version, tenant_id=tenant)
+        if not row:
+            return not_found('Version not found')
+        return ok({'data': dict(row)})

@@ -79,6 +79,8 @@ from api.reports import (
     ReportTemplatesHandler, ReportVersionsHandler,
     PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
+    TemplateVersionsHandler, TemplatePublishHandler,
+    TemplateRollbackHandler,
 )
 from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
 from api.qa import (
@@ -293,6 +295,9 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/ris/report-templates/{id}/versions', endpoint=TemplateVersionsHandler)),
+    v2(Route('/ris/report-templates/{id}/publish', endpoint=TemplatePublishHandler, methods=['POST'])),
+    v2(Route('/ris/report-templates/{id}/rollback', endpoint=TemplateRollbackHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials', endpoint=RisDenialQueueHandler)),
     v2(Route('/ris/billing/denials/import', endpoint=RisDenialImportHandler, methods=['POST'])),
     v2(Route('/ris/billing/claims/{id}/resubmit', endpoint=RisClaimResubmitHandler, methods=['POST'])),
