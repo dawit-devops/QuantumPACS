@@ -163,6 +163,15 @@ class RisCharges(Table):
         )
         return {'signed': signed or 0, 'charged': charged or 0}
 
+    async def apply_override(self, charge_id, override, tenant_id='default'):
+        """R2-06-02: persist coder-corrected codes onto a PENDING charge."""
+        sets = ', '.join(f"{k} = ${i + 3}" for i, k in enumerate(override))
+        await self.conn.execute(
+            f"UPDATE ris_charges SET {sets} "
+            "WHERE id::text = $1 AND tenant_id = $2",
+            str(charge_id), tenant_id, *override.values(),
+        )
+
 
 class RisClaims(Table):
     name = 'ris_claims'
@@ -290,6 +299,7 @@ class RisClaims(Table):
         )
 
 
+
 # 835-ish reason codes seen in the wild; unknown payloads keep their raw
 # text under OTHER so nothing is silently dropped (0 silent failures).
 _KNOWN_DENIAL_CODES = {
@@ -332,6 +342,12 @@ async def drop_charge(conn, *, report_id, exam_id, accession_number,
 
     coding = CodingService(conn)
     suggestion = await coding.get_suggestions(procedure_desc, tenant_id)
+    # R2-06-01: the report's indication is the ICD-10 signal — consult it
+    # whenever the procedure-keyed map left the code empty.
+    if not suggestion.get('icd10_code') and (indication or '').strip():
+        icd = await coding.suggest_icd10(indication, tenant_id)
+        if icd.get('icd10_code'):
+            suggestion['icd10_code'] = icd['icd10_code']
     await RisCharges(conn).create(
         report_id=report_id,
         exam_id=exam_id,

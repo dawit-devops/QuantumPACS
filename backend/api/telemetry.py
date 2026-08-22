@@ -403,3 +403,14 @@ async def health_endpoint(request):
         'uptime_seconds': uptime,
         'components': components,
     }, status_code=http_status)
+
+# R2-06-03: AI-coding pilot instrumentation — acceptance vs override of
+# suggested codes feeds the >= 90% acceptance gate.
+coding_suggestions_accepted_total = Counter(
+    'coding_suggestions_accepted_total',
+    'Charge drops where the coder confirmed the suggested codes',
+)
+coding_suggestions_overridden_total = Counter(
+    'coding_suggestions_overridden_total',
+    'Charge drops where the coder changed a suggested code',
+)

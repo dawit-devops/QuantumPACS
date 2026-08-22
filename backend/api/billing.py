@@ -864,7 +864,23 @@ class RisChargeDropHandler(HTTPEndpoint):
                 return not_found('Charge not found')
             if charge['status'] != 'PENDING':
                 return validation_error('Charge is not PENDING')
+            # R2-06-02: an edited code is an explicit override of the
+            # suggestion — persist it and mark the outcome for the pilot.
+            override = {}
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            for field in ('cpt_code', 'icd10_code'):
+                new_val = (body.get(field) or '').strip()
+                if new_val and new_val != (charge.get(field) or ''):
+                    override[field] = new_val
+            if override:
+                await RisCharges(conn).apply_override(charge_id, override,
+                                                      tenant)
             row = await RisCharges(conn).mark_billed(charge_id, tenant)
+            from services.coding_telemetry import record_outcome
+            await record_outcome('overridden' if override else 'accepted')
             from db.audit_log import AuditLog
             await AuditLog(conn).log_event(
                 event_type='billing.charge_dropped',
@@ -873,6 +889,15 @@ class RisChargeDropHandler(HTTPEndpoint):
                 actor_id=request.user.id,
                 tenant=tenant,
             )
+            if override:
+                await AuditLog(conn).log_event(
+                    event_type='billing.cpt_overridden',
+                    resource_id=charge_id,
+                    resource_type='ris_charges',
+                    actor_id=request.user.id,
+                    details=override,
+                    tenant=tenant,
+                )
         # S11-14: capture-rate instrumentation — time from sign (created_at)
         # to confirm, plus the unbilled count after this drop.
         from datetime import datetime, timezone
