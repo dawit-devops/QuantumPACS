@@ -820,3 +820,168 @@ class FhirDocumentReferenceSearch(HTTPEndpoint):
         resources = [_documentreference_resource(s) for s in shares]
         bundle = await _build_bundle(resources, total, params)
         return FhirJsonResponse(bundle)
+
+
+# ---------------------------------------------------------------------------
+# R2-04-01 — FHIR read for the RIS-native resources.
+# ServiceRequest <- ris_orders; DiagnosticReport <- signed reports.
+# Tenant scoping rides the shared middleware pool routing, same as every
+# other /fhir route (R2-04-02).
+# ---------------------------------------------------------------------------
+
+_SERVICE_REQUEST_STATUS = {
+    'ORDERED': 'active', 'SCHEDULED': 'active', 'ARRIVED': 'active',
+    'IN_PROGRESS': 'active', 'COMPLETED': 'completed',
+    'CANCELLED': 'revoked',
+}
+
+_PRIORITY_MAP = {'STAT': 'stat', 'URGENT': 'urgent', 'ROUTINE': 'routine'}
+
+
+def _service_request_resource(order):
+    return {
+        'resourceType': 'ServiceRequest',
+        'id': str(order['id']),
+        'identifier': [{
+            'system': 'urn:quantumpacs:accession',
+            'value': order.get('accession_number', ''),
+        }],
+        'status': _SERVICE_REQUEST_STATUS.get(
+            str(order.get('status', '')).upper(), 'unknown'),
+        'intent': 'order',
+        'priority': _PRIORITY_MAP.get(
+            str(order.get('priority', '')).upper(), 'routine'),
+        'code': {'text': order.get('procedure_desc')
+                 or order.get('patient_name', '')},
+        'subject': {'display': order.get('patient_name', '')},
+        'authoredOn': str(order.get('created_at') or ''),
+    }
+
+
+class FhirServiceRequestRead(HTTPEndpoint):
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        order_id = request.path_params.get('id')
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                'SELECT id, accession_number, patient_id, patient_name,'
+                ' priority, status, created_at'
+                ' FROM ris_orders WHERE id::text = $1',
+                str(order_id),
+            )
+            if not row:
+                return _operation_outcome(
+                    'not-found', f'ServiceRequest {order_id} not found', 404)
+        return FhirJsonResponse(_service_request_resource(dict(row)))
+
+
+class FhirServiceRequestSearch(HTTPEndpoint):
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        params = {}
+        if request.url.query:
+            for k, v in parse_qs(request.url.query).items():
+                params[k] = v[0] if v else ''
+        conds, vals = [], []
+        idx = 1
+        if params.get('status'):
+            conds.append(f'upper(status) = upper(${idx})')
+            vals.append(params['status'])
+            idx += 1
+        if params.get('patient'):
+            conds.append(f'patient_id = ${idx}')
+            vals.append(params['patient'])
+            idx += 1
+        where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
+        limit = min(max(int(params.get('_count', 50) or 50), 1), 200)
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                'SELECT id, accession_number, patient_id, patient_name,'
+                f' priority, status, created_at FROM ris_orders {where}'
+                ' ORDER BY created_at DESC LIMIT $'
+                + str(idx),
+                *vals, limit,
+            )
+            total = await conn.fetchval('SELECT count(*) FROM ris_orders')
+        entries = [{
+            'fullUrl': f'/api/v2/fhir/ServiceRequest/{r["id"]}',
+            'resource': _service_request_resource(dict(r)),
+        } for r in rows]
+        return FhirJsonResponse({
+            'resourceType': 'Bundle',
+            'type': 'searchset',
+            'total': int(total or 0),
+            'entry': entries,
+        })
+
+
+def _diagnostic_report_resource(report, accession=''):
+    issued = report.get('signed_at') or report.get('created_at')
+    conclusion = report.get('impression') or ''
+    resource = {
+        'resourceType': 'DiagnosticReport',
+        'id': str(report['id']),
+        'status': 'final' if report.get('signed_at') else 'preliminary',
+        'code': {'text': 'Radiology report'},
+        'conclusion': conclusion or None,
+        'effectiveDateTime': str(issued or ''),
+        'issued': str(issued or ''),
+    }
+    if accession:
+        resource['identifier'] = [{
+            'system': 'urn:quantumpacs:accession', 'value': accession,
+        }]
+    return resource
+
+
+class FhirDiagnosticReportRead(HTTPEndpoint):
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        report_id = request.path_params.get('id')
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                'SELECT r.id, r.status, r.findings, r.impression,'
+                ' r.signed_at, r.created_at, e.accession_number'
+                ' FROM reports r JOIN exams e ON e.id = r.exam_id'
+                ' WHERE r.id::text = $1',
+                str(report_id),
+            )
+            if not row:
+                return _operation_outcome(
+                    'not-found', f'DiagnosticReport {report_id} not found',
+                    404)
+        return FhirJsonResponse(
+            _diagnostic_report_resource(dict(row),
+                                        row.get('accession_number', '')))
+
+
+class FhirDiagnosticReportSearch(HTTPEndpoint):
+    @requires_permission(Permission.DICOMWEB_READ)
+    async def get(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                'SELECT r.id, r.status, r.findings, r.impression,'
+                ' r.signed_at, r.created_at, e.accession_number'
+                ' FROM reports r JOIN exams e ON e.id = r.exam_id'
+                ' WHERE r.signed_at IS NOT NULL'
+                ' ORDER BY r.signed_at DESC LIMIT 100',
+            )
+        entries = [{
+            'fullUrl': f'/api/v2/fhir/DiagnosticReport/{r["id"]}',
+            'resource': _diagnostic_report_resource(
+                dict(r), r.get('accession_number', '')),
+        } for r in rows]
+        return FhirJsonResponse({
+            'resourceType': 'Bundle',
+            'type': 'searchset',
+            'total': len(entries),
+            'entry': entries,
+        })

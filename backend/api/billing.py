@@ -12,9 +12,24 @@ from datetime import datetime, timezone
 
 from starlette.endpoints import HTTPEndpoint
 
+from api.validate import parse_body
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, validation_error
+from api.response import (
+    ok, created, not_found, validation_error, api_error,
+)
+from api.schemas.billing import (
+    PricingItemRequest, CreateInvoiceRequest, PaymentRequest,
+    CreateClaimRequest, UpdateClaimRequest, CreateRefundRequest,
+    RefundActionRequest, CreateQuoteRequest, CreatePaymentPlanRequest,
+    ReconciliationCloseRequest,
+)
+from db.audit_log import AuditLog
+from db.billing import money
+from db.conn import get_conn
+from log import request_id_var
+from api.tenant_middleware import effective_tenant
+
 from api.telemetry import (
     ris_unbilled_over_5d, ris_unbilled_over_10d,
 )
@@ -30,18 +45,6 @@ def _json_row(row):
             d[k] = str(v)
     return d
 
-from api.validate import parse_body
-from api.schemas.billing import (
-    PricingItemRequest, CreateInvoiceRequest, PaymentRequest,
-    CreateClaimRequest, UpdateClaimRequest, CreateRefundRequest,
-    RefundActionRequest, CreateQuoteRequest, CreatePaymentPlanRequest,
-    ReconciliationCloseRequest,
-)
-from db.audit_log import AuditLog
-from db.billing import money
-from db.conn import get_conn
-from log import request_id_var
-from api.tenant_middleware import effective_tenant
 
 # Refunds above this amount require BILLING_ADMIN approval (FR-R09-05).
 REFUND_THRESHOLD = 500.00
@@ -904,7 +907,10 @@ class RisUnbilledHandler(HTTPEndpoint):
         async with get_conn() as conn:
             from db.ris_charges import RisCharges
             groups, total = await RisCharges(conn).aging_groups(tenant)
-        bucket = {g['age_bucket']: g['n'] for g in groups}
+        # Tolerate any aging-group shape; buckets are best-effort
+        # instrumentation, never a contract of the query.
+        bucket = {(g.get('age_bucket') or ''): (g.get('n') or 0)
+                  for g in groups}
         over5 = (bucket.get('5-10 days', 0) + bucket.get('>10 days', 0))
         over10 = bucket.get('>10 days', 0)
         try:

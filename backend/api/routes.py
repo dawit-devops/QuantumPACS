@@ -43,6 +43,8 @@ from api.fhir import (
     FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
+    FhirServiceRequestRead, FhirServiceRequestSearch,
+    FhirDiagnosticReportRead, FhirDiagnosticReportSearch,
 )
 from api.fhir_admin import (
     FhirAdminConfigHandler,
@@ -295,6 +297,10 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/fhir/ServiceRequest/{id}', endpoint=FhirServiceRequestRead)),
+    v2(Route('/fhir/ServiceRequest', endpoint=FhirServiceRequestSearch)),
+    v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportRead)),
+    v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportSearch)),
     v2(Route('/ris/report-templates/{id}/versions', endpoint=TemplateVersionsHandler)),
     v2(Route('/ris/report-templates/{id}/publish', endpoint=TemplatePublishHandler, methods=['POST'])),
     v2(Route('/ris/report-templates/{id}/rollback', endpoint=TemplateRollbackHandler, methods=['POST'])),

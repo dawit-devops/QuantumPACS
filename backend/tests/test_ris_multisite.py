@@ -8,7 +8,6 @@ records the requesting site for chargeback.
 
 import pytest
 
-from datetime import date
 from unittest.mock import AsyncMock, patch
 
 from starlette.applications import Starlette
@@ -124,7 +123,6 @@ class TestChargebackTag:
     @pytest.mark.asyncio
     async def test_booking_stamps_requesting_site(self):
         """R2-03-08: the appointment records the requester's home tenant."""
-        from db.ris_appointments import RisAppointments
 
         updates = []
 
@@ -164,7 +162,7 @@ class TestChargebackTag:
                  patch('api.scheduling.get_conn',
                        return_value=conn), \
                  patch('api.scheduling.created',
-                       lambda d: d) as created_mock:
+                       lambda d: d):
                 await RisAppointmentsHandler.post(handler, request)
         assert updates, 'booking must stamp the requesting site'
         sql, args = updates[0]

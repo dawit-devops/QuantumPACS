@@ -1,8 +1,6 @@
 """Shared driver for billing API tests — invokes handlers directly."""
 
-import json
 
-from unittest.mock import patch
 
 
 async def call_unbilled(user_id=1, tenant='default'):
@@ -19,4 +17,4 @@ async def call_unbilled(user_id=1, tenant='default'):
     # HTTPEndpoint needs scope/receive/send; bypass dispatch and
     # invoke the method on a lightweight stand-in instance.
     handler = object.__new__(RisUnbilledHandler)
-    resp = await RisUnbilledHandler.get(handler, scope)
+    response = await RisUnbilledHandler.get(handler, scope)  # noqa: F841
