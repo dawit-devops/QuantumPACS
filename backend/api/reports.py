@@ -212,6 +212,39 @@ class ExamAssignHandler(HTTPEndpoint):
         return ok({'data': updated})
 
 
+async def _notify_referring_on_sign(conn, exam):
+    """R2-05-04: tell the referring provider their result is ready.
+
+    Resolves the ordering physician from the RIS order by accession and
+    only notifies when that field maps to a real user account — free-text
+    external names cannot be fanned out safely. Best-effort: callers wrap
+    this so a lookup failure never blocks sign-off.
+    """
+    accession = exam.get('accession_number') or ''
+    if not accession:
+        return
+    order = await conn.fetchrow(
+        'SELECT referring_physician FROM ris_orders'
+        ' WHERE accession_number = $1 LIMIT 1',
+        str(accession),
+    )
+    if not order or not order.get('referring_physician'):
+        return
+    user = await conn.fetchrow(
+        'SELECT id FROM users WHERE username = $1',
+        str(order['referring_physician']),
+    )
+    if not user:
+        return
+    await notify_user(
+        conn, str(user['id']), 'report.ready',
+        'Result available',
+        f"Report for {exam.get('patient_name') or accession} is signed"
+        ' and available.',
+        f"/reading/{exam.get('id', '')}",
+    )
+
+
 async def _with_person_names(conn, report):
     """Resolve the report's user-id columns to usernames for display.
 
@@ -401,6 +434,12 @@ class ExamReportSignHandler(HTTPEndpoint):
                 f'report signed by radiologist.',
                 f'/reading/{exam_id}',
             )
+            # R2-05-04: result-available ping to the referring provider.
+            try:
+                await _notify_referring_on_sign(conn, exam)
+            except Exception:
+                log.warning('referring-provider notify failed for %s',
+                            exam_id, exc_info=True)
             # R13 co-sign: when an attending signs a resident's submitted
             # draft, tell the resident author their report was co-signed.
             if report.get('created_by') and \
@@ -842,7 +881,6 @@ class TemplateRollbackHandler(HTTPEndpoint):
     async def post(self, request):
         from api.validate import parse_body
         from api.schemas.reports import RollbackTemplateRequest
-        from starlette.responses import JSONResponse
         from db.conn import get_tenant_slug
         template_id = request.path_params['id']
         body = await parse_body(RollbackTemplateRequest, request)
@@ -853,4 +891,32 @@ class TemplateRollbackHandler(HTTPEndpoint):
                 template_id, body.version, tenant_id=tenant)
         if not row:
             return not_found('Version not found')
+        return ok({'data': dict(row)})
+
+
+class ReportReleaseHandler(HTTPEndpoint):
+    """R2-05-05: PATCH /reports/{id}/release — HIM hold/release gate.
+
+    held reports are excluded from patient-bound FHIR bundles; releasing
+    clears the hold. Every transition is audited.
+    """
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def patch(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import ReleaseActionRequest
+        body = await parse_body(ReleaseActionRequest, request)
+        new_status = {'hold': 'held', 'release': 'released',
+                      'auto': 'auto'}[body.action]
+        async with get_conn() as conn:
+            row = await Reports(conn).set_release_status(
+                request.path_params['id'], new_status)
+            if not row:
+                return not_found('Report not found')
+            await AuditLog(conn).log_event(
+                event_type=f'report.{"held" if new_status == "held" else "released"}',
+                actor_id=str(getattr(request.user, 'id', '')),
+                resource_type='reports',
+                resource_id=request.path_params['id'],
+            )
         return ok({'data': dict(row)})

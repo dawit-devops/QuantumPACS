@@ -403,3 +403,45 @@ class TestShareFilesListHandler:
         client = TestClient(self._make_app(user=user))
         resp = client.delete('/files/1/shares/5')
         assert resp.status_code == 403
+
+
+class TestShareAccessAudit:
+    """R2-05-08: share management is audited like every patient-visible
+    access (list = read event, revoke = write event)."""
+
+    def _make_app(self, user=None):
+        return _make_app([
+            Route('/files/{id}/shares', endpoint=ShareFilesListHandler),
+            Route('/files/{id}/shares/{share_id:int}',
+                  endpoint=ShareFilesListHandler),
+        ], user)
+
+    def test_listing_shares_audits_access(self):
+        from datetime import datetime, timedelta, timezone
+        mock_conn = _mock_conn()
+        now = datetime.now(timezone.utc)
+        row = {'id': 7, 'created': now - timedelta(hours=1),
+               'expires': now + timedelta(hours=1), 'hash': 'abcdef1234567890'}
+        async def _fake_list(self, file_id):
+            return [row]
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as me, \
+             patch('api.files.SharedFiles.list_for_file', new=_fake_list), \
+             patch('db.audit_log.AuditLog') as al:
+            me.return_value = dict(FILE_EXTRA)
+            client = TestClient(self._make_app())
+            resp = client.get('/files/1/shares')
+        assert resp.status_code == 200
+        assert al.return_value.log_event.awaited or al.return_value.log_event.called
+
+    def test_revoking_share_audits(self):
+        mock_conn = _mock_conn()
+        with _patch_get_conn('api.files', mock_conn), \
+             patch('api.files.Files.get_extra', new_callable=AsyncMock) as me, \
+             patch('api.files.SharedFiles.revoke', new_callable=AsyncMock), \
+             patch('db.audit_log.AuditLog') as al:
+            me.return_value = dict(FILE_EXTRA)
+            client = TestClient(self._make_app())
+            resp = client.delete('/files/1/shares/7')
+        assert resp.status_code == 200
+        assert al.return_value.log_event.called

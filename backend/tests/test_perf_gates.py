@@ -395,3 +395,66 @@ class TestMppsLatencyGate:
         assert p95 < SOFT_CFIND_P95, (
             f'MPPS N-CREATE p95 {p95:.3f}s exceeded {SOFT_CFIND_P95}s '
             f'(worst {worst:.3f}s)')
+
+
+# ---------------------------------------------------------------------------
+# R2-05-10 — FHIR write perf under load (soft bound)
+# ---------------------------------------------------------------------------
+
+class TestFhirWriteLatencyGate:
+    """R2-05-10: ServiceRequest creation must hold the same soft p95 the
+    read paths are held to — FHIR clients batch-poll and burst-write."""
+
+    def test_fhir_service_request_create_p95_under_5s(self):
+        import asyncio
+        import time as _time
+        from unittest.mock import AsyncMock, patch
+
+        from api.auth import User
+        from api.fhir import FhirServiceRequestCollection
+
+        class _FakeConn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *e):
+                return False
+
+        async def fake_create(self_or_data, order_data=None):
+            return {'id': 'sr-x', 'status': 'ORDERED',
+                    'accession_number': 'ACC-P'}
+
+        async def run_wave():
+            durations = []
+            user = User({'id': 7, 'tenant': 'default', 'admin': True,
+                         'permissions': ['ORDER_WRITE']})
+            payload = {
+                'identifier': [{'value': 'ACC-P'}],
+                'subject': {'display': 'Perf^Patient',
+                            'identifier': {'value': 'P-1'}},
+                'priority': 'routine',
+                'code': {'text': 'CT Chest'},
+            }
+            for _ in range(50):
+                request = type('R', (), {
+                    'path_params': {},
+                    'user': user,
+                    'json': AsyncMock(return_value=dict(payload)),
+                })()
+                handler = object.__new__(FhirServiceRequestCollection)
+                started = _time.perf_counter()
+                with patch('api.fhir.get_conn',
+                           return_value=_FakeConn()), \
+                     patch('api.fhir._is_fhir_enabled',
+                           AsyncMock(return_value=True)), \
+                     patch('db.ris_orders.RisOrders.create', new=fake_create):
+                    await FhirServiceRequestCollection.post(handler, request)
+                durations.append(_time.perf_counter() - started)
+            durations.sort()
+            p95 = durations[int(len(durations) * 0.95) - 1]
+            return p95, durations[-1]
+
+        p95, worst = asyncio.run(run_wave())
+        assert p95 < SOFT_CFIND_P95, (
+            f'FHIR write p95 {p95:.3f}s exceeded {SOFT_CFIND_P95}s '
+            f'(worst {worst:.3f}s)')

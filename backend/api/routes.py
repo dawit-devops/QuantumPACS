@@ -43,8 +43,9 @@ from api.fhir import (
     FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
-    FhirServiceRequestRead, FhirServiceRequestSearch,
+    FhirServiceRequestCollection, FhirServiceRequestItem,
     FhirDiagnosticReportRead, FhirDiagnosticReportSearch,
+    FhirDiagnosticReportCollection, FhirDiagnosticReportItem,
 )
 from api.fhir_admin import (
     FhirAdminConfigHandler,
@@ -83,6 +84,7 @@ from api.reports import (
     PeerReviewHandler, PeerReviewSubmitHandler,
     TemplateVersionsHandler, TemplatePublishHandler,
     TemplateRollbackHandler,
+    ReportReleaseHandler,
 )
 from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
 from api.qa import (
@@ -297,8 +299,11 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
-    v2(Route('/fhir/ServiceRequest/{id}', endpoint=FhirServiceRequestRead)),
-    v2(Route('/fhir/ServiceRequest', endpoint=FhirServiceRequestSearch)),
+    v2(Route('/reports/{id}/release', endpoint=ReportReleaseHandler, methods=['PATCH'])),
+    v2(Route('/fhir/ServiceRequest/{id}', endpoint=FhirServiceRequestItem)),
+    v2(Route('/fhir/ServiceRequest', endpoint=FhirServiceRequestCollection)),
+    v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportItem)),
+    v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportCollection)),
     v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportRead)),
     v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportSearch)),
     v2(Route('/ris/report-templates/{id}/versions', endpoint=TemplateVersionsHandler)),

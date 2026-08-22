@@ -291,6 +291,21 @@ class Reports(Table):
         ))
         return items
 
+    async def _ensure_release_status(self):
+        await self.conn.execute(
+            "ALTER TABLE reports ADD COLUMN IF NOT EXISTS release_status "
+            "TEXT NOT NULL DEFAULT 'auto'")
+
+    async def set_release_status(self, report_id, status):
+        """R2-05-05: HIM release gate — auto | held | released."""
+        if status not in ('auto', 'held', 'released'):
+            raise ValueError('release_status must be auto/held/released')
+        return await self.conn.fetchrow(
+            "UPDATE reports SET release_status = $2 WHERE id::text = $1 "
+            "RETURNING id::text AS id, release_status",
+            str(report_id), status,
+        )
+
 
 class ReportTemplates(Table):
     name = 'report_templates'

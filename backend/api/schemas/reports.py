@@ -59,3 +59,14 @@ class PublishTemplateRequest(BaseModel):
 
 class RollbackTemplateRequest(BaseModel):
     version: int = Field(..., ge=1, description="Version number to re-activate")
+
+
+class ReleaseActionRequest(BaseModel):
+    action: str = Field(..., description='hold / release / auto')
+
+    @field_validator('action')
+    @classmethod
+    def _valid(cls, v):
+        if v not in ('hold', 'release', 'auto'):
+            raise ValueError('action must be hold/release/auto')
+        return v

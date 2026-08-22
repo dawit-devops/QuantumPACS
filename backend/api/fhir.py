@@ -966,13 +966,33 @@ class FhirDiagnosticReportSearch(HTTPEndpoint):
     async def get(self, request):
         if not await _is_fhir_enabled():
             return _fhir_disabled_response()
+        params = {}
+        if request.url.query:
+            for k, v in parse_qs(request.url.query).items():
+                params[k] = v[0] if v else ''
+        conds, vals = ['r.signed_at IS NOT NULL',
+                       "r.release_status != 'held'"], []
+        idx = 1
+        if params.get('patient'):
+            conds.append(f'e.patient_id = ${idx}')
+            vals.append(params['patient'])
+            idx += 1
+        if params.get('date'):
+            conds.append(f'r.signed_at::date >= ${idx}')
+            vals.append(params['date'])
+            idx += 1
+        try:
+            limit = min(max(int(params.get('_count', 50) or 50), 1), 200)
+        except ValueError:
+            limit = 50
         async with get_conn() as conn:
             rows = await conn.fetch(
                 'SELECT r.id, r.status, r.findings, r.impression,'
                 ' r.signed_at, r.created_at, e.accession_number'
                 ' FROM reports r JOIN exams e ON e.id = r.exam_id'
-                ' WHERE r.signed_at IS NOT NULL'
-                ' ORDER BY r.signed_at DESC LIMIT 100',
+                f' WHERE {" AND ".join(conds)}'
+                f' ORDER BY r.signed_at DESC LIMIT ${idx}',
+                *vals, limit,
             )
         entries = [{
             'fullUrl': f'/api/v2/fhir/DiagnosticReport/{r["id"]}',
@@ -985,3 +1005,154 @@ class FhirDiagnosticReportSearch(HTTPEndpoint):
             'total': len(entries),
             'entry': entries,
         })
+
+
+# ---------------------------------------------------------------------------
+# R2-05-01 — FHIR writes for the RIS-native resources. Writes land in the
+# native tables (ris_orders / reports) so FHIR clients and the RIS UI
+# share one source of truth; lifecycle rules stay in the platform services.
+# ---------------------------------------------------------------------------
+
+_FHIR_STATUS_TO_ORDER = {
+    'completed': 'COMPLETED',
+    'revoked': 'CANCELLED',
+    'entered-in-error': 'CANCELLED',
+}
+
+
+class FhirServiceRequestCreate(HTTPEndpoint):
+    """POST /fhir/ServiceRequest -> ris_orders row (ORDERED)."""
+
+    @requires_permission(Permission.ORDER_WRITE)
+    async def post(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        try:
+            body = await request.json()
+        except Exception:
+            return _operation_outcome('invalid', 'Invalid JSON body', 400)
+
+        identifiers = body.get('identifier') or []
+        accession = next((i.get('value') for i in identifiers
+                          if isinstance(i, dict) and i.get('value')), '')
+        subject = body.get('subject') or {}
+        subj_identifiers = subject.get('identifier') or {}
+        patient_id = (subj_identifiers.get('value')
+                      if isinstance(subj_identifiers, dict) else '') \
+            or subject.get('display', '')
+        if not accession or not patient_id:
+            return _operation_outcome(
+                'invalid', 'identifier.value and subject are required', 400)
+
+        fhir_priority = str(body.get('priority', 'routine')).upper()
+        order_data = {
+            'accession_number': str(accession)[:20],
+            'patient_id': str(patient_id)[:64],
+            'patient_name': subject.get('display', ''),
+            'clinical_indication': (body.get('code') or {}).get('text', ''),
+            # FHIR priority vocabulary is lowercase; RIS stores uppercase.
+            'priority': {'STAT': 'STAT', 'URGENT': 'URGENT'}.get(
+                fhir_priority, 'ROUTINE'),
+            'created_by': str(getattr(request.user, 'id', '')),
+        }
+        async with get_conn() as conn:
+            from db.ris_orders import RisOrders
+            row = await RisOrders(conn).create(order_data)
+        resource = _service_request_resource(dict(row) if row else order_data)
+        return FhirJsonResponse(resource, status_code=201)
+
+
+class FhirServiceRequestUpdate(HTTPEndpoint):
+    """PUT /fhir/ServiceRequest/{id} — FHIR status drives the guarded
+    lifecycle transition (invalid transitions still 422 via the service)."""
+
+    @requires_permission(Permission.ORDER_WRITE)
+    async def put(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        order_id = request.path_params.get('id')
+        try:
+            body = await request.json()
+        except Exception:
+            return _operation_outcome('invalid', 'Invalid JSON body', 400)
+        new_status = _FHIR_STATUS_TO_ORDER.get(str(body.get('status', '')))
+        if not new_status:
+            return _operation_outcome(
+                'not-supported',
+                'Only completed/revoked transitions are supported here', 400)
+        async with get_conn() as conn:
+            from services.order_lifecycle.service import (
+                OrderLifecycleService, InvalidTransitionError,
+            )
+            try:
+                row = await OrderLifecycleService(conn).transition(
+                    str(order_id), new_status,
+                    str(getattr(request.user, 'id', '')),
+                    reason='FHIR update')
+            except InvalidTransitionError as exc:
+                return _operation_outcome('processing-failure', str(exc), 422)
+            if not row:
+                return _operation_outcome(
+                    'not-found', f'ServiceRequest {order_id} not found', 404)
+        return FhirJsonResponse(_service_request_resource(dict(row)))
+
+
+class FhirDiagnosticReportCreate(HTTPEndpoint):
+    """POST /fhir/DiagnosticReport -> draft report on the accession's exam."""
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        if not await _is_fhir_enabled():
+            return _fhir_disabled_response()
+        try:
+            body = await request.json()
+        except Exception:
+            return _operation_outcome('invalid', 'Invalid JSON body', 400)
+        identifiers = body.get('identifier') or []
+        accession = next((i.get('value') for i in identifiers
+                          if isinstance(i, dict) and i.get('value')), '')
+        if not accession:
+            return _operation_outcome(
+                'invalid', 'identifier.value (accession) is required', 400)
+        async with get_conn() as conn:
+            from db.reports import Reports
+            exam = await conn.fetchrow(
+                'SELECT id FROM exams WHERE accession_number = $1',
+                str(accession),
+            )
+            if not exam:
+                return _operation_outcome(
+                    'not-found', f'No exam for accession {accession}', 404)
+            report = await Reports(conn).create(
+                exam['id'],
+                {
+                    'status': 'draft',
+                    'findings': body.get('conclusion', ''),
+                    'impression': '',
+                },
+                created_by=str(getattr(request.user, 'id', '')),
+            )
+        return FhirJsonResponse(_diagnostic_report_resource(
+            dict(report), accession), status_code=201)
+
+
+# Starlette's first-match routing: a bare second Route at the same path
+# never sees POST/PUT. Collection and item paths therefore ship as single
+# merged endpoint classes (same pattern as /ris/prior-auth).
+class FhirServiceRequestCollection(HTTPEndpoint):
+    get = FhirServiceRequestSearch.get
+    post = FhirServiceRequestCreate.post
+
+
+class FhirServiceRequestItem(HTTPEndpoint):
+    get = FhirServiceRequestRead.get
+    put = FhirServiceRequestUpdate.put
+
+
+class FhirDiagnosticReportCollection(HTTPEndpoint):
+    get = FhirDiagnosticReportSearch.get
+    post = FhirDiagnosticReportCreate.post
+
+
+class FhirDiagnosticReportItem(HTTPEndpoint):
+    get = FhirDiagnosticReportRead.get
