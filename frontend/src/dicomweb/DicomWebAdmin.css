@@ -1,6 +1,4 @@
-.dicomweb-admin .ant-card {
-  border-radius: 8px;
-}
+/* Card border-radius handled by antd theme tokens (Card.borderRadius). */
 
 .dicomweb-admin .ant-tabs-content-holder {
   background: transparent;

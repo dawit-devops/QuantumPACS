@@ -1,6 +1,4 @@
-.fhir-config .ant-card {
-  border-radius: 8px;
-}
+/* Card border-radius handled by antd theme tokens (Card.borderRadius). */
 
 .fhir-monitoring .ant-statistic-title {
   font-size: 13px;

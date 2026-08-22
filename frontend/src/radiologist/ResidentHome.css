@@ -29,10 +29,6 @@
   margin-bottom: 16px;
 }
 
-.rh-card .ant-card-body {
-  padding-top: 16px;
-}
-
 .rh-card-footer {
   display: flex;
   justify-content: space-between;

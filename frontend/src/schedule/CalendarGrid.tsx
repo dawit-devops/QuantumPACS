@@ -163,7 +163,10 @@ export default function CalendarGrid({
                         <span className="sched-block-title">{a.patient_id}</span>
                         <span className="sched-block-meta">
                           <span>{dayjs.utc(a.start_time).format("HH:mm")}</span>
-                          <Tag color={STATUS_COLORS[statusLabel(a.status)]}>
+                          <Tag
+                            color={STATUS_COLORS[statusLabel(a.status)]}
+                            style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}
+                          >
                             {statusLabel(a.status)}
                           </Tag>
                         </span>

@@ -92,6 +92,12 @@ export function ReadingPresetsPanel({
       ghost
       defaultActiveKey={["presets"]}
       className="reading-presets-panel"
+      styles={{
+        header: {
+          padding: '8px 12px',
+          color: 'var(--text-secondary, #c7c9d4)',
+        },
+      }}
       items={[
         {
           key: "presets",
@@ -167,6 +173,11 @@ export function ReadingPresetsPanel({
                   onChange={(e) => setName(e.target.value)}
                   onPressEnter={saveCurrent}
                   aria-label="New window/level preset name"
+                  style={{
+                    flex: 1,
+                    background: 'var(--bg-input, #12141d)',
+                    color: 'var(--text-primary, #e8eaf2)',
+                  }}
                 />
                 <Button
                   size="small"
