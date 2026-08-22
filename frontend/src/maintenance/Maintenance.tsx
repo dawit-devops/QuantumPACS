@@ -119,7 +119,7 @@ function Maintenance() {
       />
 
       <PageState loading={loading} error={error} onRetry={load}>
-        <Space direction="vertical" style={{ width: "100%" }} size={16}>
+        <Space vertical style={{ width: "100%" }} size={16}>
           <Card size="small">
             <Space align="center" size={16} wrap>
               <span

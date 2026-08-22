@@ -542,8 +542,8 @@ function Logs() {
             placeholder="Filter by actor..."
             prefix={<SearchOutlined />}
             value={actorFilter}
-            onChange={setActorFilter}
-            onSearch={handleActorSearch}
+            onChange={(val) => handleActorSearch(val || '')}
+
             options={actors.map((a) => ({ value: a }))}
             style={{ width: 180 }}
             allowClear

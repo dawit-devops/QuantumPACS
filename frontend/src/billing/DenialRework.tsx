@@ -96,7 +96,7 @@ function DenialRework() {
       title: "Patient",
       dataIndex: "patient_name",
       render: (v: string, row: DenialReworkRow) => (
-        <Space direction="vertical" size={0}>
+        <Space vertical size={0}>
           <span>{v || "—"}</span>
           <span style={{ fontSize: 12, color: "#888" }}>
             {row.accession_number}
@@ -114,7 +114,7 @@ function DenialRework() {
       title: "Reason",
       dataIndex: "rejection_code",
       render: (code: string, row: DenialReworkRow) => (
-        <Space direction="vertical" size={0}>
+        <Space vertical size={0}>
           <Tag color="red">{code || "—"}</Tag>
           <span style={{ fontSize: 12 }}>{row.rejection_reason}</span>
         </Space>

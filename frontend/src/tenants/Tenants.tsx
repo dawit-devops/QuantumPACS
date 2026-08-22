@@ -495,7 +495,7 @@ function Tenants() {
                   )}
                   {isProvisioning ? (
                     <Spin
-                      tip="Provisioning database..."
+                      description="Provisioning database..."
                       style={{
                         display: "block",
                         textAlign: "center",

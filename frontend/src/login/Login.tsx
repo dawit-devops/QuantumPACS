@@ -236,8 +236,7 @@ function LoginForm(props: any) {
               description={shareKeyError}
               type="warning"
               showIcon
-              closable
-              onClose={() => setShareKeyError(null)}
+              closable={{ onClose: () => setShareKeyError(null) }}
               style={{ marginBottom: 16, borderRadius: 8 }}
             />
           )}

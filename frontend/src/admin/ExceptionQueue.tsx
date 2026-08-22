@@ -106,7 +106,7 @@ function ExceptionQueue() {
   }
 
   return (
-    <Space direction="vertical" style={{ width: "100%" }}>
+    <Space vertical style={{ width: "100%" }}>
       <Space>
         <Button icon={<ReloadOutlined />} onClick={() => void fetch()}>
           Refresh

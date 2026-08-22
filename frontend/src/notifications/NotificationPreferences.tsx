@@ -158,7 +158,7 @@ function NotificationPreferences() {
         emptyMessage="No preferences available"
       >
         {prefs && (
-          <Space direction="vertical" style={{ width: "100%" }} size={16}>
+          <Space vertical style={{ width: "100%" }} size={16}>
             {mutedCount > 0 && (
               <Alert
                 type="info"
@@ -174,7 +174,7 @@ function NotificationPreferences() {
                 >
                   {group.hint}
                 </Text>
-                <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                <Space vertical style={{ width: "100%" }} size={8}>
                   {group.events.map((ev) => (
                     <div
                       key={ev}

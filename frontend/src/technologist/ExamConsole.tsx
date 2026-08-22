@@ -754,8 +754,7 @@ function ExamConsole() {
                     value: p.name,
                     label: p.name,
                   }))}
-                  showSearch
-                  optionFilterProp="label"
+                  showSearch={{ optionFilterProp: "label" }}
                 />
                 <Button
                   type="primary"

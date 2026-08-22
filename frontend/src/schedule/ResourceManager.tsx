@@ -274,7 +274,7 @@ function ResourceManager() {
         title={schedResource ? `Schedules — ${schedResource.name}` : "Schedules"}
         open={!!schedResource}
         onClose={() => setSchedResource(null)}
-        width={420}
+        size="large"
       >
         {schedLoading ? (
           <div style={{ padding: 24, textAlign: "center" }}>
@@ -361,7 +361,7 @@ function ResourceManager() {
         title="New Resource"
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        width={420}
+        size="large"
       >
         <Form layout="vertical" onFinish={doCreate}>
           <Form.Item

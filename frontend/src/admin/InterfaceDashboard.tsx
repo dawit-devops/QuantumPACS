@@ -251,7 +251,7 @@ function InterfaceDashboard() {
       : 0;
 
   const interfacesTab = (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space vertical size="large" style={{ width: "100%" }}>
       <Table
         rowKey="id"
         loading={loading}

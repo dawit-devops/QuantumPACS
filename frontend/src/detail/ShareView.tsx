@@ -22,7 +22,7 @@ function ShareView() {
         height: "100vh",
       }}
     >
-      <Spin size="large" tip="Opening shared study..." />
+      <Spin size="large" description="Opening shared study..." />
     </div>
   );
 }

@@ -262,9 +262,9 @@ function Replicas() {
             {canWrite && !record.master && (
               <span>
                 <a onClick={() => setCurrReplica(record)}>Update delay</a>
-                <Divider type="vertical" />
+                <Divider vertical />
                 <a onClick={() => setMaster(record)}>Set master</a>
-                <Divider type="vertical" />
+                <Divider vertical />
               </span>
             )}
             {canDelete && (

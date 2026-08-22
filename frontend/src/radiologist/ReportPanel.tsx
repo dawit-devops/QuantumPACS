@@ -205,8 +205,7 @@ export default function ReportPanel({
                     value: t.name,
                     label: t.name,
                   }))}
-                  showSearch
-                  optionFilterProp="label"
+                  showSearch={{ optionFilterProp: "label" }}
                 />
               }
             >

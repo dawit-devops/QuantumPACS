@@ -135,7 +135,7 @@ function Settings() {
 
       <PageState loading={loading} error={error} onRetry={load}>
         {settings && (
-          <Space direction="vertical" style={{ width: "100%" }} size={16}>
+          <Space vertical style={{ width: "100%" }} size={16}>
             {GROUPS.map((group) => (
               <Card
                 key={group.key}
