@@ -161,7 +161,7 @@ function DenialRework() {
         </Space>
       </div>
       {error && (
-        <Alert type="error" message={error} style={{ marginBottom: 16 }} />
+        <Alert type="error" title={error} style={{ marginBottom: 16 }} />
       )}
       <Table
         rowKey="id"

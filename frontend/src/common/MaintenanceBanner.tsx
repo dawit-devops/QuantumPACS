@@ -40,7 +40,7 @@ function MaintenanceBanner() {
       type="warning"
       banner
       showIcon
-      message={
+      title={
         <span>
           System is in maintenance mode — writes are paused.
           {reason ? ` Reason: ${reason}` : ""}

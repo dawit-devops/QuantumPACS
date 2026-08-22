@@ -287,7 +287,7 @@ function ServiceKeys() {
           closable
           style={{ marginBottom: 16 }}
           onClose={() => setRawKey(null)}
-          message={
+          title={
             <span>
               Key generated:{" "}
               <code

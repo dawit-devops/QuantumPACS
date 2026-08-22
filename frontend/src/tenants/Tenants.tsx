@@ -484,7 +484,7 @@ function Tenants() {
                   {isQuarantined && (
                     <Alert
                       type="warning"
-                      message="Suspicious activity detected — tenant is read-only"
+                      title="Suspicious activity detected — tenant is read-only"
                       style={{
                         marginBottom: 12,
                         fontSize: 12,

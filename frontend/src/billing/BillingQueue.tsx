@@ -146,7 +146,7 @@ function BillingQueue() {
         <Alert
           type="info"
           showIcon
-          message="CPT/ICD-10 suggestions loaded from the coding map — confirm each charge to drop it to billing."
+          title="CPT/ICD-10 suggestions loaded from the coding map — confirm each charge to drop it to billing."
           style={{ marginBottom: 16 }}
         />
       )}

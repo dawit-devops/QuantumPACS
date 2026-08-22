@@ -129,7 +129,7 @@ function Settings() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`Some settings need a restart to take effect: ${restartKeys.join(", ")}`}
+          title={`Some settings need a restart to take effect: ${restartKeys.join(", ")}`}
         />
       )}
 

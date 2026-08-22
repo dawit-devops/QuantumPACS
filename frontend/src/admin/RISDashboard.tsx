@@ -117,11 +117,13 @@ function RISDashboard() {
             <Statistic
               title="Unbilled"
               value={kpi.unbilled_aging?.total_unbilled ?? 0}
-              valueStyle={{
-                color:
-                  (kpi.unbilled_aging?.total_unbilled ?? 0) > 0
-                    ? "#fa8c16"
-                    : undefined,
+              styles={{
+                content: {
+                  color:
+                    (kpi.unbilled_aging?.total_unbilled ?? 0) > 0
+                      ? "#fa8c16"
+                      : undefined,
+                },
               }}
             />
           </Col>
@@ -130,11 +132,13 @@ function RISDashboard() {
               title="Prior-Auth Approval"
               value={((kpi.prior_auth?.approval_rate ?? 0) * 100).toFixed(1)}
               suffix="%"
-              valueStyle={{
-                color:
-                  (kpi.prior_auth?.approval_rate ?? 0) < 0.95
-                    ? "#fa8c16"
-                    : undefined,
+              styles={{
+                content: {
+                  color:
+                    (kpi.prior_auth?.approval_rate ?? 0) < 0.95
+                      ? "#fa8c16"
+                      : undefined,
+                },
               }}
             />
           </Col>
@@ -170,9 +174,11 @@ function RISDashboard() {
               title="Claim denial rate"
               value={((kpi.denial_rate ?? 0) * 100).toFixed(1)}
               suffix="%"
-              valueStyle={{
-                color:
-                  (kpi.denial_rate ?? 0) > 0.1 ? "#fa8c16" : undefined,
+              styles={{
+                content: {
+                  color:
+                    (kpi.denial_rate ?? 0) > 0.1 ? "#fa8c16" : undefined,
+                },
               }}
             />
           </Col>
@@ -213,7 +219,7 @@ function RISDashboard() {
               <Alert
                 type="info"
                 showIcon
-                message={`Drill-down: ${kpi.drill_down?.length} most recent signed reports`}
+                title={`Drill-down: ${kpi.drill_down?.length} most recent signed reports`}
                 style={{ marginBottom: 16 }}
               />
             )}

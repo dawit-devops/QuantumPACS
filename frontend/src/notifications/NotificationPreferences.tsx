@@ -163,7 +163,7 @@ function NotificationPreferences() {
               <Alert
                 type="info"
                 showIcon
-                message={`${mutedCount} event type(s) muted for your account`}
+                title={`${mutedCount} event type(s) muted for your account`}
               />
             )}
             {GROUPS.map((group) => (

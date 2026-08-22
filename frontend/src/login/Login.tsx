@@ -232,7 +232,7 @@ function LoginForm(props: any) {
           </div>
           {shareKeyError && (
             <Alert
-              message="Expired Share Link"
+              title="Expired Share Link"
               description={shareKeyError}
               type="warning"
               showIcon

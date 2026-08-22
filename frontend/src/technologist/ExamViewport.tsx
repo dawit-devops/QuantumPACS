@@ -120,7 +120,7 @@ export default function ExamViewport({
           <Alert
             type="info"
             showIcon
-            message="No images in this series"
+            title="No images in this series"
             style={{ margin: 16 }}
           />
         )}

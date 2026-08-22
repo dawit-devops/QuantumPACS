@@ -210,7 +210,7 @@ function Registration() {
           <Alert
             type="info"
             showIcon
-            message="Read-only registration — you can search patients but not create records."
+            title="Read-only registration — you can search patients but not create records."
           />
         )}
 
@@ -219,7 +219,7 @@ function Registration() {
             type="warning"
             showIcon
             className="fd-dedup-banner"
-            message="No existing patient matched — registering a new record is allowed."
+            title="No existing patient matched — registering a new record is allowed."
           />
         )}
 
@@ -247,7 +247,7 @@ function Registration() {
           type="info"
           showIcon
           className="fd-dedup-banner"
-          message={`Selected ${dedupSelected.name} (${dedupSelected.patient_id})`}
+          title={`Selected ${dedupSelected.name} (${dedupSelected.patient_id})`}
           action={
             <Space>
               {canWrite && (

@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Table,
   Tag,
@@ -11,7 +12,6 @@ import {
   Form,
   Select,
   Input,
-  message,
 } from "antd";
 import { AuditOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
@@ -35,6 +35,7 @@ const DISCREPANCY_COLORS: Record<string, string> = {
 };
 
 function PeerReviewInbox() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Peer Review");
   // Submitting an outcome posts to /submit, gated PEER_REVIEW_WRITE on the
   // backend — a reviewer without the write grant views and discusses but
@@ -191,7 +192,7 @@ function PeerReviewInbox() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load peer reviews"
+          title="Failed to load peer reviews"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -227,7 +228,7 @@ function PeerReviewInbox() {
             <Spin />
           </div>
         )}
-        {reviewError && <Alert type="error" message={reviewError} showIcon />}
+        {reviewError && <Alert type="error" title={reviewError} showIcon />}
         {review && (
           <div className="pr-review-body">
             <h3>
@@ -251,7 +252,7 @@ function PeerReviewInbox() {
               <Alert
                 type="success"
                 showIcon
-                message={`Review complete — discrepancy: ${review.discrepancy_level}`}
+                title={`Review complete — discrepancy: ${review.discrepancy_level}`}
               />
             ) : canSubmit ? (
               <Button
@@ -267,7 +268,7 @@ function PeerReviewInbox() {
                 type="info"
                 showIcon
                 style={{ marginTop: 12 }}
-                message="Read-only review — submitting an outcome requires the PEER_REVIEW_WRITE permission."
+                title="Read-only review — submitting an outcome requires the PEER_REVIEW_WRITE permission."
               />
             )}
           </div>

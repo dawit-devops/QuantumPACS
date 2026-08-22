@@ -30,28 +30,28 @@ export default function KpiStrip({
             <Statistic
               title="In Progress"
               value={kpi.in_progress}
-              valueStyle={{ color: "#fa8c16" }}
+              styles={{ content: { color: "#fa8c16" } }}
             />
           </Col>
           <Col span={4}>
             <Statistic
               title="Awaiting Read"
               value={kpi.awaiting_read}
-              valueStyle={{ color: "#1890ff" }}
+              styles={{ content: { color: "#1890ff" } }}
             />
           </Col>
           <Col span={4}>
             <Statistic
               title="Overdue"
               value={kpi.overdue}
-              valueStyle={{ color: kpi.overdue > 0 ? "#ff4d4f" : undefined }}
+              styles={{ content: { color: kpi.overdue > 0 ? "#ff4d4f" : undefined } }}
             />
           </Col>
           <Col span={4}>
             <Statistic
               title="STAT Queue"
               value={kpi.stat_count}
-              valueStyle={{ color: kpi.stat_count > 0 ? "#ff4d4f" : undefined }}
+              styles={{ content: { color: kpi.stat_count > 0 ? "#ff4d4f" : undefined } }}
             />
           </Col>
           <Col span={4}>
@@ -69,7 +69,7 @@ export default function KpiStrip({
         <Alert
           type="warning"
           showIcon
-          message={kpiError}
+          title={kpiError}
           style={{ marginBottom: 16 }}
         />
       )}

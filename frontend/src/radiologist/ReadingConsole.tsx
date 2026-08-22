@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import {
+  App,
   Layout,
   Tag,
   Button,
@@ -18,7 +19,6 @@ import {
   Grid,
   Badge,
   Input,
-  message,
 } from "antd";
 import {
   FileTextOutlined,
@@ -65,6 +65,7 @@ const CornerstoneElement = React.lazy(
 // text-only ReportEditor had. The report pane collapses to a slim tab via
 // [ / ] and the Sign action moves to the console header while collapsed.
 function ReadingConsole() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Reading Console");
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
@@ -509,7 +510,7 @@ function ReadingConsole() {
             <Alert
               type="info"
               showIcon
-              message="No images in this series"
+              title="No images in this series"
               style={{ margin: 16 }}
             />
           )}
@@ -693,7 +694,7 @@ function ReadingConsole() {
         <div>
           <Alert
             type="error"
-            message="Failed to load exam"
+            title="Failed to load exam"
             description={error}
             showIcon
           />
@@ -726,7 +727,7 @@ function ReadingConsole() {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="No imaging available"
+            title="No imaging available"
             description="No DICOM study matched this exam yet. The report is shown in full width — images will appear here once the study is stored."
           />
           {reportContent}
@@ -767,7 +768,7 @@ function ReadingConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={
+          title={
             status === "submitted"
               ? "Co-signing finalizes the resident's submitted report as FINAL and records you as the signing radiologist."
               : "Signing makes this report FINAL and records you as the signing radiologist."
@@ -792,7 +793,7 @@ function ReadingConsole() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="The report reopens as an editable draft for the resident, with your feedback attached."
+          title="The report reopens as an editable draft for the resident, with your feedback attached."
         />
         <Input.TextArea
           rows={4}

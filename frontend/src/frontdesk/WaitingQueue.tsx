@@ -86,7 +86,7 @@ function WaitingQueue() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load queue"
+          title="Failed to load queue"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -103,7 +103,7 @@ function WaitingQueue() {
           <Spin />
         </div>
       ) : data.length === 0 ? (
-        <Alert type="info" showIcon message={`No patients waiting on ${day}`} />
+        <Alert type="info" showIcon title={`No patients waiting on ${day}`} />
       ) : (
         data.map((row) => (
           <div key={row.visit_id} className="fd-queue-item">

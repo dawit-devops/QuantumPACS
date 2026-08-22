@@ -179,7 +179,7 @@ function CalendarView() {
         </div>
       </div>
 
-      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
+      {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
 
       {loading ? (
         <div style={{ padding: 40, textAlign: "center" }}>

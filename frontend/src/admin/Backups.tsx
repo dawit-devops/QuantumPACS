@@ -141,7 +141,7 @@ function Backups() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`Newest backup is older than 7 days (${new Date(newest!.created_at).toLocaleString()})`}
+          title={`Newest backup is older than 7 days (${new Date(newest!.created_at).toLocaleString()})`}
         />
       )}
 
@@ -269,7 +269,7 @@ function Backups() {
             style={{ marginTop: 12 }}
             type="success"
             showIcon
-            message="Artifact verified — download it to recover this snapshot"
+            title="Artifact verified — download it to recover this snapshot"
           />
         )}
       </Modal>

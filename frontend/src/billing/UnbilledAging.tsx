@@ -106,11 +106,13 @@ function UnbilledAging() {
                 title="Oldest (days)"
                 value={groups[0].oldest_charge_days}
                 suffix="d"
-                valueStyle={{
-                  color:
-                    groups[0].oldest_charge_days > AGING_DAYS
-                      ? "#ff4d4f"
-                      : undefined,
+                styles={{
+                  content: {
+                    color:
+                      groups[0].oldest_charge_days > AGING_DAYS
+                        ? "#ff4d4f"
+                        : undefined,
+                  },
                 }}
               />
             </Col>

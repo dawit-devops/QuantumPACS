@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
+  App,
   Layout,
   Card,
   Descriptions,
@@ -12,7 +13,6 @@ import {
   Select,
   Input,
   Steps,
-  message,
   Alert,
   Spin,
   Table,
@@ -130,6 +130,7 @@ function maxSeriesOf(previews: any[], server: any[]): number {
 }
 
 function ExamConsole() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Exam Console");
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -486,7 +487,7 @@ function ExamConsole() {
       <Content style={{ padding: 24 }}>
         <Alert
           type="error"
-          message="Failed to load exam"
+          title="Failed to load exam"
           description={error}
           showIcon
         />
@@ -598,7 +599,7 @@ function ExamConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Read-only exam console"
+          title="Read-only exam console"
           description="You have view access to this exam. Acquisition actions require the EXAM_WRITE permission."
         />
       )}
@@ -625,7 +626,7 @@ function ExamConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={
+          title={
             <span>
               <b>Next:</b> {nextExam.accession_number || "—"} ·{" "}
               {nextExam.patient_name || nextExam.patient_id || "—"} ·{" "}
@@ -769,7 +770,7 @@ function ExamConsole() {
               <Alert
                 type="info"
                 showIcon
-                message="No protocol started yet — read-only view."
+                title="No protocol started yet — read-only view."
               />
             )}
           </Card>
@@ -791,7 +792,7 @@ function ExamConsole() {
               <Alert
                 type="info"
                 showIcon
-                message="Confirm the patient and start the protocol before acquiring images."
+                title="Confirm the patient and start the protocol before acquiring images."
               />
             ) : (
               <div className="exam-acq">
@@ -905,7 +906,7 @@ function ExamConsole() {
               </div>
             )}
             {isComplete && (
-              <Alert type="success" showIcon message="Acquisition complete." />
+              <Alert type="success" showIcon title="Acquisition complete." />
             )}
           </Card>
         </div>
@@ -1010,7 +1011,7 @@ function ExamConsole() {
                   type="warning"
                   showIcon
                   style={{ marginTop: 12 }}
-                  message="Approaching the ACR benchmark — review remaining exposures."
+                  title="Approaching the ACR benchmark — review remaining exposures."
                 />
               )}
               {doseLevel === "danger" && (
@@ -1018,7 +1019,7 @@ function ExamConsole() {
                   type="error"
                   showIcon
                   style={{ marginTop: 12 }}
-                  message="ACR dose benchmark exceeded — document and notify QA."
+                  title="ACR dose benchmark exceeded — document and notify QA."
                 />
               )}
             </div>
@@ -1077,7 +1078,7 @@ function ExamConsole() {
                         type="warning"
                         showIcon
                         className="exam-safety-warning"
-                        message="Ionizing radiation risk: confirm pregnancy status before scanning. Flag for review if unknown."
+                        title="Ionizing radiation risk: confirm pregnancy status before scanning. Flag for review if unknown."
                       />
                     )}
                   </div>
@@ -1087,7 +1088,7 @@ function ExamConsole() {
               <Alert
                 type="warning"
                 showIcon
-                message={
+                title={
                   exam.status === "completed"
                     ? "No safety checks recorded for this exam."
                     : "Record safety checks before contrast administration."
@@ -1136,7 +1137,7 @@ function ExamConsole() {
               <Alert
                 type="info"
                 showIcon
-                message="Completing the exam hands it off to the radiologist worklist and notifies the reading team."
+                title="Completing the exam hands it off to the radiologist worklist and notifies the reading team."
                 description={
                   rejectedCount > 0
                     ? `${rejectedCount} image(s) rejected this exam — consider logging an incident.`
@@ -1150,7 +1151,7 @@ function ExamConsole() {
             <Alert
               type="success"
               showIcon
-              message="Exam completed and handed off to the radiologist worklist."
+              title="Exam completed and handed off to the radiologist worklist."
             />
           )}
         </div>
@@ -1219,7 +1220,7 @@ function ExamConsole() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Overrides are audited and logged. A justification is required."
+          title="Overrides are audited and logged. A justification is required."
         />
         <Form form={overrideForm} layout="vertical">
           <Form.Item
@@ -1257,7 +1258,7 @@ function ExamConsole() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="This flag is visible to the reading team immediately."
+          title="This flag is visible to the reading team immediately."
         />
         <Form form={flagForm} layout="vertical">
           <Form.Item

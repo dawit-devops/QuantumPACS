@@ -248,7 +248,7 @@ function ScheduleBoard() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load schedule"
+          title="Failed to load schedule"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -274,7 +274,7 @@ function ScheduleBoard() {
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message="Showing the first 500 exams for this day — refine the date or use the worklist for more."
+              title="Showing the first 500 exams for this day — refine the date or use the worklist for more."
             />
           )}
           <div className="schedule-board" role="grid" aria-label="Schedule board">

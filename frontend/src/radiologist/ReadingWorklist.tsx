@@ -361,7 +361,7 @@ function ReadingWorklist() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load reading worklist"
+          title="Failed to load reading worklist"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}

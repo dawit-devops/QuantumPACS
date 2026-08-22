@@ -285,7 +285,7 @@ function FhirConfig(props: any) {
             style={{ marginTop: 12 }}
             type="warning"
             showIcon
-            message="FHIR server is disabled. All FHIR endpoints will return 503. Enable it to allow EHR integrations."
+            title="FHIR server is disabled. All FHIR endpoints will return 503. Enable it to allow EHR integrations."
           />
         )}
       </Card>

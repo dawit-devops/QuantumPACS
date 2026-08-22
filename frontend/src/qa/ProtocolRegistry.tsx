@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Table,
   Button,
@@ -10,7 +11,6 @@ import {
   Select,
   Tag,
   InputNumber,
-  message,
   Popconfirm,
   Alert,
   Space,
@@ -31,6 +31,7 @@ const PROTOCOL_MODALITIES = MODALITIES.filter((m) =>
 );
 
 function ProtocolRegistry() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Protocol Registry");
   const { hasPermission } = useAuth();
   const canManage = hasPermission("PROTOCOL_MANAGE");
@@ -221,7 +222,7 @@ function ProtocolRegistry() {
         <Alert
           type="error"
           showIcon
-          message={error}
+          title={error}
           style={{ margin: "8px 0" }}
         />
       )}

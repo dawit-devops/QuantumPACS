@@ -142,7 +142,7 @@ export default function ReportPanel({
           type="success"
           showIcon
           style={{ marginTop: 16 }}
-          message="This report is FINAL."
+          title="This report is FINAL."
           description={`Signed by ${
             report?.signed_by_name || report?.signed_by || "radiologist"
           } · ${
@@ -156,7 +156,7 @@ export default function ReportPanel({
           type="info"
           showIcon
           style={{ marginTop: 16 }}
-          message={
+          title={
             isResident
               ? "Submitted for attending review"
               : "Awaiting attending review"
@@ -174,7 +174,7 @@ export default function ReportPanel({
           type="warning"
           showIcon
           style={{ marginTop: 16 }}
-          message="Attending returned this report"
+          title="Attending returned this report"
           description={reviewFeedback}
         />
       )}
@@ -184,7 +184,7 @@ export default function ReportPanel({
           type="info"
           showIcon
           style={{ marginTop: 16 }}
-          message="Read-only report"
+          title="Read-only report"
           description="You have view access to this report. Editing requires the REPORT_WRITE permission — only the assigned radiologist can draft or sign."
         />
       )}

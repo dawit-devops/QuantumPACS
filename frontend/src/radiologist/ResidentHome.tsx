@@ -149,7 +149,7 @@ function ResidentHome() {
         <Alert
           type="warning"
           showIcon
-          message="Could not refresh queue data"
+          title="Could not refresh queue data"
           description={error}
           className="rh-error"
         />
@@ -161,20 +161,21 @@ function ResidentHome() {
             className="rh-card"
             title="My Queue"
             extra={<ClockCircleOutlined />}
+            styles={{ body: { paddingTop: 16 } }}
           >
             <Row gutter={16}>
               <Col span={8}>
                 <Statistic
                   title="STAT"
                   value={myCounts.stat}
-                  valueStyle={{ color: "var(--color-error)" }}
+                  styles={{ content: { color: "var(--color-error)" } }}
                 />
               </Col>
               <Col span={8}>
                 <Statistic
                   title="Urgent"
                   value={myCounts.urgent}
-                  valueStyle={{ color: "var(--color-warning)" }}
+                  styles={{ content: { color: "var(--color-warning)" } }}
                 />
               </Col>
               <Col span={8}>
@@ -205,14 +206,14 @@ function ResidentHome() {
                 <Statistic
                   title="In progress"
                   value={inProgress}
-                  valueStyle={{ color: "var(--color-warning)" }}
+                  styles={{ content: { color: "var(--color-warning)" } }}
                 />
               </Col>
               <Col span={8}>
                 <Statistic
                   title="Awaiting review"
                   value={awaitingReview}
-                  valueStyle={{ color: "var(--color-info)" }}
+                  styles={{ content: { color: "var(--color-info)" } }}
                 />
               </Col>
               <Col span={8}>
@@ -223,7 +224,7 @@ function ResidentHome() {
               type="info"
               showIcon
               className="rh-note"
-              message="Attending agreement arrives when a submitted report is co-signed FINAL; returned drafts carry revision feedback."
+              title="Attending agreement arrives when a submitted report is co-signed FINAL; returned drafts carry revision feedback."
             />
           </Card>
         </Col>

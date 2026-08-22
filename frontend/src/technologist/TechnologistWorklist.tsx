@@ -5,6 +5,7 @@ import {
 } from "../hooks";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
+  App,
   Layout,
   Table,
   Tag,
@@ -14,7 +15,6 @@ import {
   Alert,
   Spin,
   Space,
-  message,
 } from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
@@ -58,6 +58,7 @@ const STATUS_TABS = [
 ];
 
 function TechnologistWorklist() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Technologist Worklist");
 
   const navigate = useNavigate();
@@ -432,14 +433,14 @@ function TechnologistWorklist() {
           type="success"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
+          title={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
         />
       )}
 
       {error && (
         <Alert
           type="error"
-          message="Failed to load worklist"
+          title="Failed to load worklist"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}

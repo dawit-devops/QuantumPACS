@@ -252,7 +252,7 @@ function AppointmentBooking({
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message={conflict}
+          title={conflict}
         />
       )}
       {error && (
@@ -260,7 +260,7 @@ function AppointmentBooking({
           type="error"
           showIcon
           style={{ marginBottom: 12 }}
-          message={error}
+          title={error}
         />
       )}
 
@@ -272,7 +272,7 @@ function AppointmentBooking({
         <Alert
           type="info"
           showIcon
-          message="No availability returned for this modality/date."
+          title="No availability returned for this modality/date."
         />
       ) : (
         <div

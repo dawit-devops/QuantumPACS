@@ -397,7 +397,7 @@ function Visits() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load visits"
+          title="Failed to load visits"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -494,7 +494,7 @@ function Visits() {
                 <Alert
                   type="info"
                   showIcon
-                  message="No orders yet — add the referring order below."
+                  title="No orders yet — add the referring order below."
                 />
               ) : (
                 <Timeline
@@ -601,7 +601,7 @@ function Visits() {
                 <Alert
                   type="warning"
                   showIcon
-                  message="No required consents seeded for this visit."
+                  title="No required consents seeded for this visit."
                 />
               ) : (
                 consents.map((c) => (
@@ -682,7 +682,7 @@ function Visits() {
                 <Alert
                   type="info"
                   showIcon
-                  message="No insurance record yet."
+                  title="No insurance record yet."
                 />
               ) : (
                 insurance.map((i) => (
@@ -742,7 +742,7 @@ function Visits() {
             </div>
           </>
         ) : (
-          <Alert type="error" showIcon message="Visit could not be loaded." />
+          <Alert type="error" showIcon title="Visit could not be loaded." />
         )}
       </Drawer>
     </Content>

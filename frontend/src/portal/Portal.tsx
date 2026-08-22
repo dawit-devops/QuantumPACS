@@ -205,7 +205,7 @@ function Portal() {
         <Card>
           <Alert
             type="error"
-            message="Failed to load your records"
+            title="Failed to load your records"
             description={error}
             showIcon
             action={
@@ -243,7 +243,7 @@ function Portal() {
           {error && (
             <Alert
               type="error"
-              message="Failed to load records"
+              title="Failed to load records"
               description={error}
               showIcon
               style={{ marginBottom: 16 }}

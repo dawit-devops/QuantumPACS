@@ -226,7 +226,7 @@ function Maintenance() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="This blocks all clinical and platform writes until you exit maintenance."
+          title="This blocks all clinical and platform writes until you exit maintenance."
         />
         <Form form={form} layout="vertical">
           <Form.Item
