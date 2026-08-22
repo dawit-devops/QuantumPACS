@@ -492,6 +492,16 @@ class ShareFilesListHandler(HTTPEndpoint):
             return not_found('File not found')
         async with get_conn() as conn:
             rows = await SharedFiles(conn).list_for_file(file_id)
+            # R2-05-08: listing share links is a patient-visible access.
+            try:
+                from db.audit_log import AuditLog
+                await AuditLog(conn).log_event(
+                    'portal.share_accessed', str(getattr(request.user, 'id', '')),
+                    'shared_files', file_id,
+                    details={'count': len(rows)},
+                )
+            except Exception:
+                pass
         now = datetime.now(timezone.utc)
         result = []
         for r in rows:
@@ -514,6 +524,15 @@ class ShareFilesListHandler(HTTPEndpoint):
             return not_found('File not found')
         async with get_conn() as conn:
             await SharedFiles(conn).revoke(share_id, file_id)
+            # R2-05-08: revocation ends patient visibility — audit it.
+            try:
+                from db.audit_log import AuditLog
+                await AuditLog(conn).log_event(
+                    'portal.share_revoked', str(getattr(request.user, 'id', '')),
+                    'shared_files', f'{file_id}:{share_id}',
+                )
+            except Exception:
+                pass
         return ok({'message': 'Share link revoked'})
 
 
