@@ -670,3 +670,174 @@ class TestHl7ApiRoute:
         assert resp.status_code == 200
         assert resp.text == 'ACK'
         orders.create.assert_awaited_once()
+
+MULTI_OBR_ORM = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202608221000||ORM^O01|MSG901|P|2.5\r'
+    'PID|1||PID900||Doe^Jane||19900102|F\r'
+    'ORC|NW|ORD900|||CM|||||||202608221000\r'
+    'OBR|1|ORD900|RP-A|CT CHEST^Chest CT^L|||202608230800|||||||||||CT_SCANNER^CT Room 1||||||CT|||1^CM^30^Q^30^A||||Chest pain workup|Lee^Kim\r'
+    'OBR|2|ORD900|RP-B|MRI BRAIN^Brain MRI^L|||202608230900|||||||||||MR_SCANNER^MR Suite||||||MR|||1^CM^30^Q^30^A||||Headache|Lee^Kim\r'
+    'OBR|3|ORD900|RP-C|US ABDOMEN^Abdominal US^L|||202608231000|||||||||||US_ROOM^US Lab||||||US|||1^CM^30^Q^30^A||||RUQ pain|Lee^Kim\r'
+)
+
+
+class TestMultiObrParsing:
+    """B1 (GAP_AUDIT_TDD_PIPELINE.md): the segment map was last-wins, so a
+    multi-procedure ORM kept only its final OBR — procedures 2..N were lost
+    at the wire (plan S3-07/S3-08 acceptance: multi-procedure per order).
+    The parser must expose every OBR as an ordered procedure entry while
+    keeping the single-OBR scalar fields back-compatible."""
+
+    @pytest.mark.asyncio
+    async def test_multi_obr_orm_parses_all_procedures(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(MULTI_OBR_ORM)
+        assert parsed is not None
+        procs = parsed.get('procedures')
+        assert isinstance(procs, list) and len(procs) == 3, (
+            'all three OBR segments must survive parsing, got %r' % (procs,)
+        )
+        codes = [p['procedure_code'] for p in procs]
+        assert codes == ['RP-A', 'RP-B', 'RP-C']
+        descs = [p['procedure_desc'] for p in procs]
+        assert descs == ['CT CHEST^Chest CT^L', 'MRI BRAIN^Brain MRI^L',
+                         'US ABDOMEN^Abdominal US^L']
+        modalities = [p['modality'] for p in procs]
+        assert modalities == ['CT', 'MR', 'US']
+
+    @pytest.mark.asyncio
+    async def test_scalar_fields_remain_first_obr_back_compat(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(MULTI_OBR_ORM)
+        assert parsed['accession_number'] == 'ORD900'
+        assert parsed['requested_procedure_id'] == 'RP-A'
+        assert parsed['requested_procedure_desc'] == 'CT CHEST^Chest CT^L'
+        assert parsed['modality'] == 'CT'
+
+    @pytest.mark.asyncio
+    async def test_single_obr_message_has_one_procedure(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(SAMPLE_ORM_O01)
+        procs = parsed.get('procedures')
+        assert isinstance(procs, list) and len(procs) == 1
+        assert procs[0]['procedure_code'] == 'RP001'
+
+
+class TestMultiProcedureOrmOrder:
+    @pytest.mark.asyncio
+    async def test_orm_creates_one_procedure_per_obr(self, engine_patches):
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        messages = AsyncMock()
+        messages.create.return_value = 'msg-uuid'
+        engine_patches['RisHl7Messages'].return_value = messages
+        orders = AsyncMock()
+        orders.create.return_value = {'id': 'order-uuid'}
+        orders.get_by_accession.return_value = None
+        engine_patches['RisOrders'].return_value = orders
+        procedures = AsyncMock()
+        engine_patches['RisOrderProcedures'].return_value = procedures
+        engine_patches['handle_orm_message'].return_value = True
+
+        result = await Hl7InterfaceEngine().receive_message(
+            MULTI_OBR_ORM.encode())
+
+        assert result == b'ACK'
+        calls = procedures.create.call_args_list
+        assert len(calls) == 3, (
+            'one procedure row per OBR segment expected, got %d'
+            % len(calls))
+        created_codes = [c.args[1]['procedure_code'] for c in calls]
+        assert created_codes == ['RP-A', 'RP-B', 'RP-C']
+        created_names = [c.args[1]['procedure_name'] for c in calls]
+        assert created_names == ['Chest CT', 'Brain MRI', 'Abdominal US']
+        modalities = [c.args[1]['modality'] for c in calls]
+        assert modalities == ['CT', 'MR', 'US']
+
+
+ADT_A04_PV1_DG1 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202608220900||ADT^A04|MSG910|P|2.5\r'
+    'PID|1||PID910||Row^Mary||19850615|F\r'
+    'PV1|1|O|||||Atten^Alan^^Dr||||||||||||V910001\r'
+    'DG1|1||S52.5^Fracture lower end radius^I10||20260822\r'
+    'DG1|2||R51^Headache^I10\r'
+)
+
+ORM_NO_REASON_WITH_DG1 = (
+    'MSH|^~\\&|SENDING|SENDING_FACILITY|QUANTUMPACS||202607251030||ORM^O01|MSG004|P|2.5\r'
+    'PID|1||PID001||Smith^John||19800101|M\r'
+    'ORC|NW|ORD001|||CM|||||||202607251030\r'
+    'OBR|1|ORD001|RP001|CT CHEST^Chest CT^L|||202607260800|||||||||||CT_SCANNER^CT Room 1||||||CT|||1^CM^30^Q^30^A|||||Lee^Kim\r'
+    'DG1|1||S52.5^Fracture lower end radius^I10||20260725\r'
+)
+
+
+class TestPv1Dg1Parsing:
+    """B2 (GAP_AUDIT_TDD_PIPELINE.md): parse_hl7_message extracted
+    MSH/PID/MRG/ORC/OBR only — PV1 and DG1 were dropped despite being in
+    the S3-02 conformance set (parser.py's own docstring overstates
+    coverage). Encounter context rides PV1; diagnoses ride DG1; both are
+    persisted verbatim inside ris_hl7.parsed_segments."""
+
+    @pytest.mark.asyncio
+    async def test_pv1_encounter_fields_parsed(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(ADT_A04_PV1_DG1)
+        assert parsed.get('patient_class') == 'O'
+        assert parsed.get('attending_doctor') == 'Atten^Alan^^Dr'
+        assert parsed.get('visit_number') == 'V910001'
+
+    @pytest.mark.asyncio
+    async def test_dg1_diagnoses_parsed_in_order(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(ADT_A04_PV1_DG1)
+        diagnoses = parsed.get('diagnoses')
+        assert isinstance(diagnoses, list) and len(diagnoses) == 2
+        assert diagnoses[0]['code'] == 'S52.5'
+        assert diagnoses[0]['description'] == 'Fracture lower end radius'
+        assert diagnoses[0]['coding_system'] == 'I10'
+        assert diagnoses[1]['code'] == 'R51'
+
+    @pytest.mark.asyncio
+    async def test_message_without_pv1_dg1_stays_clean(self):
+        from services.ingestion.hl7_server import parse_hl7_message
+
+        parsed = parse_hl7_message(SAMPLE_ADT_A01)
+        assert 'diagnoses' not in parsed
+        assert 'patient_class' not in parsed
+
+
+class TestOrmDiagnosisIndication:
+    @pytest.mark.asyncio
+    async def test_order_indication_falls_back_to_dg1(self, engine_patches):
+        """When OBR-31 (reason for study) is empty, the first DG1
+        descriptions become the order's clinical indication — coders and
+        schedulers see *why* without opening the raw HL7."""
+        from services.hl7_engine.service import Hl7InterfaceEngine
+
+        conn = _conn_ctx()
+        engine_patches['get_conn'].return_value = conn
+        messages = AsyncMock()
+        messages.create.return_value = 'msg-uuid'
+        engine_patches['RisHl7Messages'].return_value = messages
+        orders = AsyncMock()
+        orders.create.return_value = {'id': 'order-uuid'}
+        orders.get_by_accession.return_value = None
+        engine_patches['RisOrders'].return_value = orders
+        procedures = AsyncMock()
+        engine_patches['RisOrderProcedures'].return_value = procedures
+        engine_patches['handle_orm_message'].return_value = True
+
+        result = await Hl7InterfaceEngine().receive_message(
+            ORM_NO_REASON_WITH_DG1.encode())
+
+        assert result == b'ACK'
+        created = orders.create.call_args[0][0]
+        assert created['clinical_indication'] == 'Fracture lower end radius'

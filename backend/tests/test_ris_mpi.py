@@ -336,3 +336,118 @@ class TestFrontDeskMPI:
         call_sql = ' '.join(c.args[0] for c in calls)
         assert 'merged_into' in call_sql
         assert 'active' in call_sql
+
+
+class TestHl7MergePropagation:
+    """B3 (GAP_AUDIT_TDD_PIPELINE.md): the HL7 A40/A06 merge only stamped
+    meta.merged_into + deactivated the loser — orders, appointments and
+    worklist entries kept referencing the merged-away MRN, so schedulers
+    and techs lost sight of live work (plan S3-12 acceptance: 'merges
+    propagate'). The merge must re-point RIS references in one transaction
+    and audit the counts."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    @pytest.mark.asyncio
+    async def test_merge_repoints_orders_appointments_worklist(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        loser = f'MRN-B3-L-{tag}'
+        survivor = f'MRN-B3-S-{tag}'
+        async with get_conn() as conn:
+            from db.patient import Patient as PatientModel
+            pmodel = PatientModel(conn)
+            for mrn in (survivor, loser):
+                await pmodel.insert_or_select({
+                    'patient_id': mrn,
+                    'patient_name': f'Patient {mrn}',
+                    'patient_birth_date': '1990-01-01',
+                    'patient_sex': 'F',
+                })
+            order_row = await conn.fetchrow(
+                "INSERT INTO ris_orders (tenant_id, patient_id,"
+                " accession_number) VALUES ('default', $1, $2)"
+                " RETURNING id",
+                loser, f'ACC-B3-{tag}',
+            )
+            appt_row = await conn.fetchrow(
+                "INSERT INTO ris_appointments (tenant_id, patient_id,"
+                " start_time, end_time)"
+                " VALUES ('default', $1, now() + interval '1 day',"
+                " now() + interval '1 day 30 minutes') RETURNING id",
+                loser,
+            )
+            entry_row = await conn.fetchrow(
+                "INSERT INTO worklist_entries (patient_id, patient_name,"
+                " accession_number, status) VALUES ($1, 'L Patient', $2,"
+                " 'scheduled') RETURNING id",
+                loser, f'ACC-B3-W-{tag}',
+            )
+            try:
+                from services.ingestion.hl7_server import _merge_patients
+
+                ok = await _merge_patients(
+                    survivor,
+                    {'patient_name': 'S Patient', 'birth_date': '1990-01-01',
+                     'sex': 'F'},
+                    loser,
+                )
+                assert ok, 'merge reported failure'
+
+                order_pid = await conn.fetchval(
+                    'SELECT patient_id FROM ris_orders WHERE id = $1',
+                    order_row['id'])
+                assert order_pid == survivor, (
+                    'ris_orders must re-point to the surviving MRN')
+
+                appt_pid = await conn.fetchval(
+                    'SELECT patient_id FROM ris_appointments WHERE id = $1',
+                    appt_row['id'])
+                assert appt_pid == survivor, (
+                    'ris_appointments must re-point to the surviving MRN')
+
+                entry_pid = await conn.fetchval(
+                    'SELECT patient_id FROM worklist_entries WHERE id = $1',
+                    entry_row['id'])
+                assert entry_pid == survivor, (
+                    'worklist_entries must re-point to the surviving MRN')
+
+                merged_into = await conn.fetchval(
+                    "SELECT meta->>'merged_into' FROM patients"
+                    ' WHERE patient_id = $1', loser)
+                assert merged_into == survivor
+                active = await conn.fetchval(
+                    "SELECT meta->>'active' FROM patients"
+                    ' WHERE patient_id = $1', loser)
+                assert active == 'false'
+
+                audited = await conn.fetchval(
+                    "SELECT 1 FROM logs WHERE log::jsonb->>'event' ="
+                    " 'mpi.hl7_merged'"
+                    " AND log::jsonb->'detail'->>'orders' IS NOT NULL"
+                    ' LIMIT 1')
+                assert audited, (
+                    'merge propagation must be audited with re-point counts')
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_appointments WHERE patient_id = $1',
+                    survivor)
+                await conn.execute(
+                    'DELETE FROM ris_orders WHERE accession_number = $1',
+                    f'ACC-B3-{tag}')
+                await conn.execute(
+                    'DELETE FROM worklist_entries WHERE accession_number = $1',
+                    f'ACC-B3-W-{tag}')
+                for mrn in (survivor, loser):
+                    await conn.execute(
+                        'DELETE FROM patients WHERE patient_id = $1', mrn)

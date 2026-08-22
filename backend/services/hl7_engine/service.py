@@ -212,6 +212,14 @@ class Hl7InterfaceEngine:
         if not await handle_orm_message(parsed):
             return False
         accession = parsed.get('accession_number', '')
+        # B2: OBR-31 reason first; DG1 diagnoses as the visible fallback so
+        # the order carries a human-readable *why* either way.
+        indication = parsed.get('reason_for_requested_procedure', '')
+        if not (indication or '').strip():
+            diagnoses = parsed.get('diagnoses') or []
+            descriptions = [d.get('description', '') for d in diagnoses
+                            if d.get('description')]
+            indication = '; '.join(descriptions)
         async with get_conn() as conn:
             # Re-sends (NW/SC/RO for an existing accession) are idempotent:
             # the order already exists; do not duplicate it.
@@ -224,18 +232,33 @@ class Hl7InterfaceEngine:
                 'patient_name': parsed.get('patient_name', ''),
                 'patient_dob': to_date(parsed.get('birth_date', '')),
                 'referring_physician': parsed.get('referring_physician', ''),
-                'clinical_indication': parsed.get('reason_for_requested_procedure', ''),
+                'clinical_indication': indication,
                 'priority': normalize_priority(parsed.get('requested_procedure_priority', '')),
                 'created_by': f"hl7:{parsed.get('sending_facility', '')}",
             })
-            await RisOrderProcedures(conn).create(order['id'], {
-                'procedure_code': parsed.get('requested_procedure_id', ''),
-                'procedure_name': (
-                    parsed.get('requested_procedure_code_meaning')
-                    or parsed.get('requested_procedure_desc', '')
-                ),
-                'modality': parsed.get('modality', ''),
-            })
+            # B1: one procedure row per OBR. Parsed payloads stored before
+            # the multi-OBR fix (exception-queue replays) lack the
+            # 'procedures' key — fall back to the top-level scalar fields
+            # so a replay never loses its single procedure.
+            procedures = parsed.get('procedures')
+            if not procedures:
+                procedures = [{
+                    'procedure_code': parsed.get('requested_procedure_id', ''),
+                    'requested_procedure_code_meaning':
+                        parsed.get('requested_procedure_code_meaning'),
+                    'procedure_desc':
+                        parsed.get('requested_procedure_desc', ''),
+                    'modality': parsed.get('modality', ''),
+                }]
+            for proc in procedures:
+                await RisOrderProcedures(conn).create(order['id'], {
+                    'procedure_code': proc.get('procedure_code', ''),
+                    'procedure_name': (
+                        proc.get('requested_procedure_code_meaning')
+                        or proc.get('procedure_desc', '')
+                    ),
+                    'modality': proc.get('modality', ''),
+                })
             log.info(
                 'ORM^O01 created order for accession %s (facility %s)',
                 accession, parsed.get('sending_facility', '?'),
