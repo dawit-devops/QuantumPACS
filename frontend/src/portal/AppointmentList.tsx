@@ -14,6 +14,8 @@ import {
   Typography,
   Space,
   Tooltip,
+  Select,
+  DatePicker,
 } from "antd";
 import {
   CalendarOutlined,
@@ -21,6 +23,7 @@ import {
   CheckCircleOutlined,
   ArrowLeftOutlined,
   InfoCircleOutlined,
+  FilterOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
@@ -34,6 +37,7 @@ import "./Portal.css";
 
 const { Text } = Typography;
 const Content = Layout.Content;
+const { RangePicker } = DatePicker;
 
 const APPT_STATUS_COLORS: Record<string, string> = {
   SCHEDULED: "blue",
@@ -73,6 +77,7 @@ interface PortalAppointment {
   procedure?: string;
   priority?: string;
   accession_number?: string;
+  report_id?: string | null;
 }
 
 function AppointmentList() {
@@ -87,6 +92,12 @@ function AppointmentList() {
   const [appointments, setAppointments] = useState<PortalAppointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // S6 (P-03): history filters — modality + date range, applied client-side
+  // over the fetched history set.
+  const [filterModality, setFilterModality] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<
+    [Date | null, Date | null] | null
+  >(null);
 
   const activeTab = searchParams.get("tab") || "upcoming";
 
@@ -141,9 +152,25 @@ function AppointmentList() {
   }, [activePatientId, activeTab, loadAppointments]);
 
   // The backend already filters future vs past by the status=history query;
-  // the tab just switches which set is loaded.
+  // the tab just switches which set is loaded. History filters apply
+  // client-side (modality + date range) per spec P-03.
   const upcoming = appointments;
-  const history = appointments;
+  let history = appointments;
+  if (filterModality) {
+    history = history.filter((a) => a.modality === filterModality);
+  }
+  if (dateRange && dateRange[0] && dateRange[1]) {
+    const start = dateRange[0].getTime();
+    const end = dateRange[1].getTime() + 86_400_000;
+    history = history.filter((a) => {
+      if (!a.start_time) return true;
+      const t = new Date(a.start_time).getTime();
+      return t >= start && t <= end;
+    });
+  }
+  const historyModalities = Array.from(
+    new Set(appointments.map((a) => a.modality).filter(Boolean)),
+  ) as string[];
 
   const columns = [
     {
@@ -185,11 +212,12 @@ function AppointmentList() {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      width: 110,
+      width: 130,
       render: (v: string) => (
         <Tag color={APPT_STATUS_COLORS[v] || "default"}>
           {v === "COMPLETED" && <CheckCircleOutlined style={{ marginRight: 4 }} />}
-          {(v || "SCHEDULED").toLowerCase()}
+          {v === "ARRIVED" && <CheckCircleOutlined style={{ marginRight: 4 }} />}
+          {v === "ARRIVED" ? "Checked in" : (v || "SCHEDULED").toLowerCase()}
         </Tag>
       ),
     },
@@ -223,12 +251,17 @@ function AppointmentList() {
             </Button>
           );
         }
-        if ((r.status === "COMPLETED" || r.status === "SIGNED") && r.id) {
+        if ((r.status === "COMPLETED" || r.status === "SIGNED") &&
+            (r.report_id || r.accession_number)) {
           return (
             <Button
               type="link"
               size="small"
-              onClick={() => navigate(`/portal/results`)}
+              onClick={() =>
+                r.report_id
+                  ? navigate(`/portal/results/${r.report_id}`)
+                  : navigate(`/portal/results`)
+              }
             >
               View Report
             </Button>
@@ -304,20 +337,64 @@ function AppointmentList() {
                 </span>
               ),
               children: (
-                <PageState
-                  loading={loading}
-                  error={null}
-                  empty={!loading && history.length === 0}
-                  emptyMessage="No appointment history"
-                >
-                  <Table
-                    rowKey="id"
-                    columns={columns}
-                    dataSource={history}
-                    pagination={{ pageSize: 10, showSizeChanger: false }}
-                    size="small"
-                  />
-                </PageState>
+                <>
+                  <Space
+                    style={{ marginBottom: 12 }}
+                    wrap
+                    data-testid="history-filters"
+                  >
+                    <Select
+                      allowClear
+                      placeholder="Filter by modality"
+                      value={filterModality}
+                      onChange={setFilterModality}
+                      style={{ minWidth: 160 }}
+                      options={historyModalities.map((m) => ({
+                        value: m,
+                        label: m,
+                      }))}
+                      aria-label="Filter by modality"
+                    />
+                    <RangePicker
+                      onChange={(_, dateStrings) => {
+                        if (dateStrings[0] && dateStrings[1]) {
+                          setDateRange([
+                            new Date(dateStrings[0]),
+                            new Date(dateStrings[1]),
+                          ]);
+                        } else {
+                          setDateRange(null);
+                        }
+                      }}
+                      aria-label="Filter by date range"
+                    />
+                    {(filterModality || dateRange) && (
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setFilterModality(undefined);
+                          setDateRange(null);
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                  </Space>
+                  <PageState
+                    loading={loading}
+                    error={null}
+                    empty={!loading && history.length === 0}
+                    emptyMessage="No appointment history"
+                  >
+                    <Table
+                      rowKey="id"
+                      columns={columns}
+                      dataSource={history}
+                      pagination={{ pageSize: 10, showSizeChanger: false }}
+                      size="small"
+                    />
+                  </PageState>
+                </>
               ),
             },
           ]}

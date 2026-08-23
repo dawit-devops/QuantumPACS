@@ -144,6 +144,53 @@ const APPOINTMENTS = [
   },
 ];
 
+const HISTORY_APPOINTMENTS = [
+  {
+    id: "appt-9",
+    patient_id: "P001",
+    start_time: "2026-08-15T09:00:00+00:00",
+    end_time: "2026-08-15T09:30:00+00:00",
+    status: "COMPLETED",
+    modality: "MR",
+    room: "MR-2",
+    prep_instructions: "",
+    procedure: "MR Brain",
+    priority: "ROUTINE",
+    accession_number: "ACC-001",
+    report_id: "r1",
+  },
+  {
+    id: "appt-10",
+    patient_id: "P001",
+    start_time: "2026-08-20T10:00:00+00:00",
+    end_time: "2026-08-20T10:30:00+00:00",
+    status: "CANCELLED",
+    modality: "CT",
+    room: "CT-1",
+    prep_instructions: "",
+    procedure: "CT Abdomen",
+    priority: "URGENT",
+    accession_number: "ACC-003",
+    report_id: null,
+  },
+];
+
+const ARRIVED_APPOINTMENTS = [
+  {
+    id: "appt-7",
+    patient_id: "P001",
+    start_time: "2026-08-28T10:30:00+00:00",
+    end_time: "2026-08-28T11:00:00+00:00",
+    status: "ARRIVED",
+    modality: "CT",
+    room: "CT-1",
+    prep_instructions: "",
+    procedure: "CT Chest",
+    priority: "ROUTINE",
+    accession_number: "ACC-005",
+  },
+];
+
 // ========================================================================
 // PortalHome tests
 // ========================================================================
@@ -414,6 +461,30 @@ describe("AppointmentList", () => {
     renderWithAuth(<AppointmentList />);
     await waitFor(() => {
       expect(screen.getByText("routine")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a checked-in badge for ARRIVED appointments", async () => {
+    mockGetPortalAppointments.mockResolvedValue(ARRIVED_APPOINTMENTS);
+    renderWithAuth(<AppointmentList />);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/checked in/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("links a completed appointment to its report", async () => {
+    mockGetPortalAppointments.mockResolvedValue(HISTORY_APPOINTMENTS);
+    renderWithAuth(<AppointmentList />);
+    await waitFor(() => {
+      expect(screen.getByText("MR Brain")).toBeInTheDocument();
+    });
+    // Switch to history tab, then the completed row links to the report.
+    const historyTab = screen.getByRole("tab", { name: /history/i });
+    await userEvent.setup().click(historyTab);
+    await waitFor(() => {
+      expect(screen.getAllByText("View Report").length).toBeGreaterThan(0);
     });
   });
 });

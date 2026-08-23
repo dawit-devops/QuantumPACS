@@ -121,7 +121,8 @@ class Portal:
         """P-02/P-03: patient-facing appointments. Modality + room come from
         the booked resource; prep instructions from the appointment row.
         history=True returns past (completed/cancelled) visits; otherwise
-        upcoming/scheduled ones. Consent-gated like every patient read."""
+        upcoming/scheduled ones. Consent-gated like every patient read.
+        S6: LEFT JOIN reports so the UI can deep-link to a signed report."""
         rows = await self.conn.fetch(
             f"""
             SELECT a.id::text AS id, a.patient_id, a.start_time, a.end_time,
@@ -131,10 +132,13 @@ class Portal:
                    COALESCE(a.prep_instructions, '') AS prep_instructions,
                    COALESCE(o.clinical_indication, '') AS procedure,
                    COALESCE(o.priority, 'ROUTINE') AS priority,
-                   COALESCE(o.accession_number, '') AS accession_number
+                   COALESCE(o.accession_number, '') AS accession_number,
+                   rpt.id AS report_id
             FROM ris_appointments a
             LEFT JOIN ris_resources r ON r.id = a.resource_id
             LEFT JOIN ris_orders o ON o.id = a.order_id
+            LEFT JOIN reports rpt ON rpt.exam_id = o.id
+              AND rpt.status = 'final'
             JOIN patients p ON p.patient_id = a.patient_id
             WHERE a.patient_id = $1 AND {self._CONSENT_PREDICATE}
               AND (a.start_time >= now()) = NOT $2

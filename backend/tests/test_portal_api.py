@@ -457,6 +457,26 @@ class TestPortalAppointments:
         assert resp.status_code == 200
         assert resp.json()['data'] == []
 
+    def test_appointments_sql_joins_linked_report_id(self):
+        # S6 (P-03): a completed appointment should carry its signed report
+        # id so the history view can deep-link to the specific report.
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = _scope_row()
+        sqls = []
+
+        async def fetch(sql, *args):
+            sqls.append(sql)
+            return []
+
+        mock_conn.fetch = fetch
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            client.get('/portal/patients/MRN1/appointments')
+        assert sqls, 'no fetch captured'
+        assert 'reports' in sqls[0], sqls[0]
+        assert 'report_id' in sqls[0], sqls[0]
+
 
 class TestPortalConsent:
     def test_requires_portal_read(self):
