@@ -141,6 +141,12 @@ default_config = {
     # localhost dev topology keeps working; set true (COOKIE_SECURE=true /
     # config.local.yaml) for any TLS deployment so the HttpOnly auth cookies
     # are never sent over cleartext.
+    # R2-01-07: prior-auth expiry alerts poll interval (seconds).
+    # D4: critical-finding escalation policy — SLA (minutes) and target role.
+    # Lifecycle worker reads these each tick, so operator changes apply
+    # without a restart; invalid/absent values fail safe to the defaults.
+    'critical_escalation_sla_minutes': '15',
+    'critical_escalation_target_role': 'radiologist',
     'cookie_secure': 'false',
 }
 
