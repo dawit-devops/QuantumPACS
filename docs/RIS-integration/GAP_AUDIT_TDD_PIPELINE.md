@@ -17,7 +17,7 @@
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
 | **E** FHIR/portal v2.0 (E1–E3) | ✅ DONE (E1–E3) | — | E2 4 green; FHIR combined 50 green; portal 40 green |
-| **F** Honest gate evidence (F1–F4) | 🚧 F1 F2 F3 done | — | F1 perf 13 green; F2 RBAC/IDOR 111 green; F3 WCAG axe scans green (5 suites) |
+| **F** Honest gate evidence (F1–F4) | ✅ ALL DONE | — | F1 perf 13 green; F2 RBAC/IDOR 111 green; F3 WCAG axe scans green (5 suites); F4 seed_uat.py + 7 persona walkthroughs |
 
 ---
 
