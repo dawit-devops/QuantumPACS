@@ -11,12 +11,14 @@ const mockGetCheckIn = vi.hoisted(() => vi.fn());
 const mockConfirmCheckIn = vi.hoisted(() => vi.fn());
 const mockSubmitConsent = vi.hoisted(() => vi.fn());
 const mockSubmitPayment = vi.hoisted(() => vi.fn());
+const mockGetQueuePosition = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/checkin", () => ({
   getCheckIn: mockGetCheckIn,
   confirmCheckIn: mockConfirmCheckIn,
   submitConsent: mockSubmitConsent,
   submitPayment: mockSubmitPayment,
+  getQueuePosition: mockGetQueuePosition,
 }));
 
 vi.mock("../hooks", () => ({
@@ -57,6 +59,7 @@ const SUMMARY = {
 
 beforeEach(() => {
   mockSubmitConsent.mockResolvedValue({ id: "a1", accepted: true });
+  mockGetQueuePosition.mockResolvedValue({ position: 1, eta_minutes: 0 });
 });
 
 describe("CheckIn (enhanced kiosk)", () => {

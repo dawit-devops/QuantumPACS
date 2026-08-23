@@ -375,3 +375,74 @@ class TestKioskPayment:
         assert body['receipt']['payment_id'] == 'pay-1'
         assert any('UPDATE invoice' in s for s in executed), executed
         assert any('INSERT INTO payment' in s for s in seen_sql), seen_sql
+
+
+class TestKioskQueuePosition:
+    """K-05 (S5): after ARRIVED, the kiosk shows the patient's queue
+    position + ETA computed from the same resource's same-day appointments."""
+
+    def _queue_app(self):
+        from starlette.routing import Route
+        from api.checkin import PortalCheckInQueueHandler
+
+        return Starlette(routes=[
+            Route('/ris/checkin/{token}/queue-position',
+                  endpoint=PortalCheckInQueueHandler),
+        ])
+
+    def test_invalid_token_rejected(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._queue_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+        head, _, sig = token.rpartition('.')
+        bad = f'{head}.{sig[:-2]}xx'
+        resp = client.get(f'/ris/checkin/{bad}/queue-position')
+        assert resp.status_code == 403
+
+    def test_returns_position_and_eta(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._queue_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+
+        # appointment lookup -> ahead-of-me count
+        async def fetchrow(sql, *args):
+            if 'ris_appointments' in sql and 'id::text' in sql:
+                return {'id': 'appt-1', 'resource_id': 'res-1',
+                        'start_time': '2026-08-28T10:30:00+00:00'}
+            return None
+
+        async def fetchval(sql, *args):
+            return 2  # two ARRIVED appointments ahead of this one
+
+        conn = MagicMock(fetchrow=fetchrow, fetchval=fetchval)
+        with patch('api.checkin.get_conn') as gc:
+            gc.return_value.__aenter__ = AsyncMock(return_value=conn)
+            gc.return_value.__aexit__ = AsyncMock(return_value=False)
+            resp = client.get(f'/ris/checkin/{token}/queue-position')
+        assert resp.status_code == 200, resp.text
+        data = resp.json()['data']
+        # 2 ahead + self = position 3
+        assert data['position'] == 3
+        assert data['eta_minutes'] > 0
+
+    def test_empty_queue_is_position_one(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._queue_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+
+        async def fetchrow(sql, *args):
+            if 'ris_appointments' in sql and 'id::text' in sql:
+                return {'id': 'appt-1', 'resource_id': 'res-1',
+                        'start_time': '2026-08-28T10:30:00+00:00'}
+            return None
+
+        async def fetchval(sql, *args):
+            return 0
+
+        conn = MagicMock(fetchrow=fetchrow, fetchval=fetchval)
+        with patch('api.checkin.get_conn') as gc:
+            gc.return_value.__aenter__ = AsyncMock(return_value=conn)
+            gc.return_value.__aexit__ = AsyncMock(return_value=False)
+            resp = client.get(f'/ris/checkin/{token}/queue-position')
+        assert resp.status_code == 200, resp.text
+        assert resp.json()['data']['position'] == 1

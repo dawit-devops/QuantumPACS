@@ -19,6 +19,7 @@ import {
 } from "@ant-design/icons";
 import { confirmCheckIn, getCheckIn, submitConsent, CheckInSummary } from "../api/checkin";
 import CoPayPrompt from "./CoPayPrompt";
+import WaitTime from "./WaitTime";
 import "./CheckIn.css";
 
 const { Title, Text, Paragraph } = Typography;
@@ -306,7 +307,9 @@ const [confirming, setConfirming] = useState(false);
   }
 
   if (phase === "done") {
-    return (
+    return token ? (
+      <WaitTime token={token} />
+    ) : (
       <div className="kiosk-center">
         <Result
           status="success"

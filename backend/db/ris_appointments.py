@@ -180,6 +180,31 @@ class RisAppointments(Table):
             "RETURNING id::text AS id",
             appointment_id, tenant_id, accepted, signature_png, decline_reason)
 
+    async def queue_position(self, appointment_id, tenant_id='default'):
+        """K-05: how many ARRIVED appointments on the same resource are ahead
+        of this one (position = ahead + 1). Same-day window."""
+        row = await self.conn.fetchrow(
+            """
+            SELECT r.resource_id, r.start_time
+            FROM ris_appointments r
+            WHERE r.id::text = $1 AND r.tenant_id = $2
+            """,
+            appointment_id, tenant_id,
+        )
+        if not row:
+            return None
+        ahead = await self.conn.fetchval(
+            """
+            SELECT count(*) FROM ris_appointments a
+            WHERE a.resource_id = $1 AND a.tenant_id = $2
+              AND a.status = 'ARRIVED'
+              AND a.start_time <= $3
+              AND date_trunc('day', a.start_time) = date_trunc('day', $3)
+            """,
+            row['resource_id'], tenant_id, row['start_time'],
+        )
+        return ahead + 1
+
     async def stamp_requesting_tenant(self, appointment_id, home_tenant):
         """R2-03-08: record the requester's home site for chargeback."""
         await self.conn.execute(

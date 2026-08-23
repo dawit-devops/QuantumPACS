@@ -236,3 +236,27 @@ class PortalCheckInPaymentHandler(HTTPEndpoint):
                         'method': body.method},
             'receipt': dict(receipt),
         }})
+
+
+class PortalCheckInQueueHandler(HTTPEndpoint):
+    """K-05: GET /ris/checkin/{token}/queue-position — after check-in the
+    kiosk shows the patient's place in the queue and an ETA based on how
+    many ARRIVED appointments on the same resource are ahead."""
+
+    # Nominal service minutes per position when no real service-time data
+    # exists; conservative so the ETA never under-promises.
+    MINUTES_PER_POSITION = 15
+
+    async def get(self, request):
+        claims = verify_checkin_token(request.path_params['token'])
+        if not claims:
+            return api_error('INVALID_TOKEN', 'Token invalid or expired',
+                             status=403)
+        async with get_conn() as conn:
+            from db.ris_appointments import RisAppointments
+            position = await RisAppointments(conn).queue_position(
+                claims['a'], claims['t'])
+            if position is None:
+                return not_found('Appointment not found')
+        eta = max(1, (position - 1)) * self.MINUTES_PER_POSITION
+        return ok({'data': {'position': position, 'eta_minutes': eta}})

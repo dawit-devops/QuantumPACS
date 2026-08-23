@@ -63,3 +63,16 @@ export const submitPayment = (
     `ris/checkin/${encodeURIComponent(token)}/payment`,
     { method: "POST", data: payload },
   ).then((res) => res.data);
+
+export interface QueuePosition {
+  position: number;
+  eta_minutes: number;
+}
+
+// K-05: queue position + ETA after check-in (auto-refreshed every 60s).
+export const getQueuePosition = (
+  token: string,
+): Promise<QueuePosition> =>
+  request<{ data: QueuePosition }>(
+    `ris/checkin/${encodeURIComponent(token)}/queue-position`,
+  ).then((res) => res.data);
