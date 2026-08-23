@@ -55,6 +55,16 @@ const GROUPS: { key: string; title: string; hint: string; events: string[] }[] =
         "report.signed",
       ],
     },
+    {
+      key: "portal",
+      title: "Patient portal",
+      hint: "Patient-facing notifications for portal users.",
+      events: [
+        "portal.report_available",
+        "portal.appointment_reminder",
+        "portal.follow_up_response",
+      ],
+    },
   ];
 
 const EVENT_LABELS: Record<string, string> = {
@@ -71,6 +81,9 @@ const EVENT_LABELS: Record<string, string> = {
   "report.ready": "Report ready",
   "report.returned": "Report returned for revision",
   "report.signed": "Report signed",
+  "portal.report_available": "New imaging report available",
+  "portal.appointment_reminder": "Appointment reminder",
+  "portal.follow_up_response": "Follow-up response",
 };
 
 function NotificationPreferences() {

@@ -76,6 +76,11 @@ class Permission(str, Enum):
     # patients can file/cancel their OWN follow-ups without FOLLOW_UP_WRITE
     # (which would also open scope attachment — R3-01).
     FOLLOW_UP_SELF = 'FOLLOW_UP_SELF'
+    # S3 (P-04): patient-scoped notification access. The bell endpoints were
+    # gated FILE_READ (a patient role grant? no), so patients could never
+    # read their own notifications. NOTIFICATIONS_SELF covers the
+    # user-scoped self endpoints (list/mark-read/dismiss/unread/prefs).
+    NOTIFICATIONS_SELF = 'NOTIFICATIONS_SELF'
     # R2-03 Cross-tenant clinical reads (teleradiology / telemedicine) —
     # permission gate for user_tenant_grants rows: a grant only takes effect
     # when the user's role also carries this code.
@@ -338,6 +343,7 @@ MATRIX_C_TENANT_ADMIN = {
 MATRIX_C_PATIENT = {
     'PORTAL_READ', 'CHART_READ', 'RESULTS_READ', 'MED_ORDER_READ',
     'SCHEDULE_READ', 'VIEWER_READ', 'FOLLOW_UP_SELF',
+    'NOTIFICATIONS_SELF',
 }
 
 # ---------------------------------------------------------------------------

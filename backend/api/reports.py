@@ -20,7 +20,7 @@ from db.conn import get_conn
 from db.exams import Exams
 from db.patient import Patient
 from db.reports import Reports, ReportTemplates, PeerReviews
-from api.notify import notify_role, notify_user
+from api.notify import notify_patient_scoped, notify_role, notify_user
 from log import request_id_var, get_logger
 from api.tenant_middleware import effective_tenant
 from services.results_distribution.service import ResultsDistributionEngine
@@ -470,6 +470,21 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'Your draft was co-signed as FINAL by the attending.',
                     f'/reading/{exam_id}',
                 )
+            # S3 (P-04): notify portal-scoped users (including the patient
+            # role) that a signed report is available.
+            patient_id = exam.get('patient_id')
+            if patient_id:
+                try:
+                    await notify_patient_scoped(
+                        conn, patient_id, 'portal.report_available',
+                        'New imaging report available',
+                        f'{exam.get("accession_number") or exam_id} — '
+                        f'{exam.get("requested_procedure_desc", "")} report ready',
+                        f'/portal/results/{report.get("id") or report_id}',
+                    )
+                except Exception:
+                    log.warning('portal.report_available notify failed for %s',
+                                exam_id, exc_info=True)
             report = await _with_person_names(conn, report)
         return ok({'data': report})
 

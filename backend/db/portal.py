@@ -287,7 +287,7 @@ class Portal:
             UPDATE follow_up_requests
             SET status = $1, updated_at = now()
             WHERE id = $2 AND requester_id = $3
-            RETURNING id
+            RETURNING id, patient_id
             """,
             status, follow_up_id, user_id,
         )

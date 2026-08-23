@@ -7,7 +7,7 @@ from "no such patient", so staff cannot enumerate or probe other patients.
 """
 from starlette.endpoints import HTTPEndpoint
 
-from api.notify import notify_role
+from api.notify import notify_patient_scoped, notify_role
 from api.permissions import Permission
 from api.rbac import requires_permission
 from api.response import created, not_found, ok, validation_error
@@ -431,5 +431,15 @@ class PortalFollowUpStatusHandler(HTTPEndpoint):
                     details={'status': body.status},
                     tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
+                )
+            elif body.status == 'completed':
+                # S3 (P-04): the coordinator's response reaches the patient
+                # (all users scoped to that patient).
+                await notify_patient_scoped(
+                    conn, row['patient_id'],
+                    'portal.follow_up_response',
+                    'Follow-up response available',
+                    'Your follow-up request has been completed by the team.',
+                    '/portal/follow-ups',
                 )
         return ok({})

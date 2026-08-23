@@ -54,6 +54,11 @@ class NotificationPrefs:
         'reminder.appointment',
         'reminder.prior_auth',
         'reminder.delivery',
+        # S3 (P-04): patient portal notification types — the patient role
+        # holds NOTIFICATIONS_SELF, enabling the bell for portal users.
+        'portal.report_available',
+        'portal.appointment_reminder',
+        'portal.follow_up_response',
     })
     def __init__(self, conn=None):
         self.conn = conn

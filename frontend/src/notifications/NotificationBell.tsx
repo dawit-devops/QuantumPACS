@@ -40,6 +40,10 @@ const EVENT_LABELS: Record<string, string> = {
   "report.ready": "green",
   "quota.warning": "orange",
   "system.alert": "red",
+  // S3 (P-04): patient portal event types.
+  "portal.report_available": "green",
+  "portal.appointment_reminder": "blue",
+  "portal.follow_up_response": "purple",
 };
 
 function NotificationBell() {

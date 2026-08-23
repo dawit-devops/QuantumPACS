@@ -245,7 +245,7 @@ class TestMatrixC:
         patient = perms('patient')
         assert {'PORTAL_READ', 'CHART_READ', 'RESULTS_READ',
                 'MED_ORDER_READ', 'SCHEDULE_READ', 'VIEWER_READ',
-                'FOLLOW_UP_SELF'} == patient
+                'FOLLOW_UP_SELF', 'NOTIFICATIONS_SELF'} == patient
 
 
 class TestDeadPermissions:

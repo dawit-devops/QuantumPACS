@@ -9,9 +9,14 @@ from db.conn import get_conn
 from db.notifications import Notifications
 from db.notification_prefs import NotificationPrefs
 
+# S3 (P-04): the user-scoped self endpoints accept either the legacy staff
+# FILE_READ grant or the patient NOTIFICATIONS_SELF grant — the bell must
+# work for patients who hold no FILE_READ.
+_SELF = [Permission.FILE_READ, Permission.NOTIFICATIONS_SELF]
+
 
 class NotificationPreferencesHandler(HTTPEndpoint):
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def get(self, request):
         """Return explicit prefs plus role-default resolution per event type."""
         user_id = request.user.id
@@ -33,7 +38,7 @@ class NotificationPreferencesHandler(HTTPEndpoint):
             'role_defaults': defaults,
         })
 
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def put(self, request):
         body = await parse_body(NotificationPrefsRequest, request)
         user_id = request.user.id
@@ -60,7 +65,7 @@ class NotificationPreferencesHandler(HTTPEndpoint):
 
 
 class NotificationsHandler(HTTPEndpoint):
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def get(self, request):
         user_id = request.user.id
         offset = int(request.query_params.get('offset', 0))
@@ -73,7 +78,7 @@ class NotificationsHandler(HTTPEndpoint):
 
         return ok({'data': data, 'total': total})
 
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def delete(self, request):
         user_id = request.user.id
         async with get_conn() as conn:
@@ -82,7 +87,7 @@ class NotificationsHandler(HTTPEndpoint):
 
 
 class NotificationHandler(HTTPEndpoint):
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def post(self, request):
         nid = request.path_params['id']
         user_id = request.user.id
@@ -90,7 +95,7 @@ class NotificationHandler(HTTPEndpoint):
             await Notifications(conn).mark_read(nid, user_id)
         return ok({})
 
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def delete(self, request):
         nid = request.path_params['id']
         user_id = request.user.id
@@ -100,7 +105,7 @@ class NotificationHandler(HTTPEndpoint):
 
 
 class NotificationsReadAllHandler(HTTPEndpoint):
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def post(self, request):
         user_id = request.user.id
         async with get_conn() as conn:
@@ -109,7 +114,7 @@ class NotificationsReadAllHandler(HTTPEndpoint):
 
 
 class NotificationsUnreadCountHandler(HTTPEndpoint):
-    @requires_permission(Permission.FILE_READ)
+    @requires_permission(_SELF)
     async def get(self, request):
         user_id = request.user.id
         async with get_conn() as conn:
