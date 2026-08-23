@@ -18,7 +18,6 @@ import {
   FileTextOutlined,
   ArrowLeftOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router";
 import withSidebar from "../common/base";
@@ -41,6 +40,7 @@ interface PortalReportDetail {
   exam_id?: string;
   accession_number?: string;
   modality?: string;
+  requested_procedure_desc?: string;
   findings?: string;
   finding?: string;
   impression?: string;
@@ -221,6 +221,9 @@ function ReportDetail() {
               ? `Accession ${report.accession_number}`
               : ""}
             {report?.modality ? ` · ${report.modality}` : ""}
+            {report?.requested_procedure_desc
+              ? ` · ${report.requested_procedure_desc}`
+              : ""}
           </Text>
         </div>
         <Button onClick={() => navigate("/portal/results")}>
@@ -228,113 +231,79 @@ function ReportDetail() {
         </Button>
       </div>
 
-      {/* Report metadata */}
-      <Card className="portal-card" style={{ marginBottom: 16 }}>
-        <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small">
-          <Descriptions.Item label="Accession Number">
-            <Text strong>{report?.accession_number || "—"}</Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="Modality">
-            {report?.modality ? <Tag>{report.modality}</Tag> : "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Status">
-            <Tag color="green" icon={<CheckCircleOutlined />}>
-              Signed
-            </Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="Signed Date">
+      {/* Compact single report card — metadata + body in one scroll span */}
+      <Card className="portal-card portal-report" size="small">
+        {/* Metadata strip */}
+        <div className="portal-report-meta">
+          <Text type="secondary" style={{ fontSize: 12 }}>Accession</Text>
+          <Text strong>{report?.accession_number || "—"}</Text>
+          <span className="portal-report-meta-sep" />
+          <Text type="secondary" style={{ fontSize: 12 }}>Modality</Text>
+          <Text strong>{report?.modality || "—"}</Text>
+          <span className="portal-report-meta-sep" />
+          <Text type="secondary" style={{ fontSize: 12 }}>Status</Text>
+          <Tag color="green" icon={<CheckCircleOutlined />}>Signed</Tag>
+          <span className="portal-report-meta-sep" />
+          <Text type="secondary" style={{ fontSize: 12 }}>Signed</Text>
+          <Text strong>
             {report?.signed_at
-              ? new Date(report.signed_at).toLocaleString()
+              ? new Date(report.signed_at).toLocaleDateString()
               : "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Signed By">
-            {report?.signed_by || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Report ID">
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {reportId || "—"}
-            </Text>
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+          </Text>
+          <span className="portal-report-meta-sep" />
+          <Text type="secondary" style={{ fontSize: 12 }}>Radiologist</Text>
+          <Text strong>{report?.signed_by || "—"}</Text>
+        </div>
 
-      {/* Findings */}
-      <Card
-        className="portal-card"
-        style={{ marginBottom: 16 }}
-        title={
-          <span>
-            <FileTextOutlined style={{ marginRight: 6 }} />
+        <Divider style={{ margin: "12px 0" }} />
+
+        {/* Findings */}
+        <div className="portal-report-section">
+          <Text strong style={{ display: "block", marginBottom: 4 }}>
             Findings
-          </span>
-        }
-      >
-        {findings ? (
-          <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.8 }}>
-            {findings}
-          </Paragraph>
-        ) : (
-          <Text type="secondary">No findings documented.</Text>
-        )}
-      </Card>
+          </Text>
+          {findings ? (
+            <Paragraph className="portal-report-body">
+              {findings}
+            </Paragraph>
+          ) : (
+            <Text type="secondary">No findings documented.</Text>
+          )}
+        </div>
 
-      {/* Impression */}
-      <Card
-        className="portal-card"
-        style={{ marginBottom: 16 }}
-        title={
-          <span>
-            <CheckCircleOutlined style={{ marginRight: 6 }} />
+        {/* Impression */}
+        <div className="portal-report-section">
+          <Text strong style={{ display: "block", marginBottom: 4 }}>
             Impression
-          </span>
-        }
-      >
-        {impression ? (
-          <Paragraph
-            style={{
-              whiteSpace: "pre-wrap",
-              margin: 0,
-              lineHeight: 1.8,
-              fontWeight: 500,
-            }}
-          >
-            {impression}
-          </Paragraph>
-        ) : (
-          <Text type="secondary">No impression documented.</Text>
-        )}
-      </Card>
+          </Text>
+          {impression ? (
+            <Paragraph className="portal-report-body portal-report-impression">
+              {impression}
+            </Paragraph>
+          ) : (
+            <Text type="secondary">No impression documented.</Text>
+          )}
+        </div>
 
-      {/* Recommendations */}
-      {recommendations ? (
-        <Card
-          className="portal-card"
-          style={{ marginBottom: 16 }}
-          title={
-            <span>
-              <ClockCircleOutlined style={{ marginRight: 6 }} />
+        {/* Recommendations */}
+        {recommendations ? (
+          <div className="portal-report-section">
+            <Text strong style={{ display: "block", marginBottom: 4 }}>
               Recommendations
-            </span>
-          }
-        >
-          <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.8 }}>
-            {recommendations}
-          </Paragraph>
-        </Card>
-      ) : null}
+            </Text>
+            <Paragraph className="portal-report-body">
+              {recommendations}
+            </Paragraph>
+          </div>
+        ) : null}
+      </Card>
 
       {/* Footer note */}
-      <Divider />
-      <Space direction="vertical" size={4}>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          This report was signed by the reading radiologist and represents the
-          final interpretation of your imaging study.
-        </Text>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          If you have questions about this report, please contact your ordering
-          physician or the radiology department.
-        </Text>
-      </Space>
+      <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 12 }}>
+        This report was signed by the reading radiologist and represents the
+        final interpretation of your imaging study. If you have questions,
+        contact your ordering physician or the radiology department.
+      </Text>
     </Content>
   );
 }
