@@ -1,5 +1,5 @@
 import { useDocumentTitle } from "../hooks";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   App,
   Layout,
@@ -8,6 +8,7 @@ import {
   Button,
   Space,
   Input,
+  Select,
   Modal,
   Drawer,
   Timeline,
@@ -42,6 +43,28 @@ function DenialRework() {
   const [historyFor, setHistoryFor] = useState<DenialReworkRow | null>(null);
   const [history, setHistory] = useState<ClaimEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // D3: the rework queue is grouped by denial-code; status/payer filters
+  // refine the groups so coders work one root cause at a time.
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [payerFilter, setPayerFilter] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const q = payerFilter.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        (statusFilter === "all" || r.status === statusFilter) &&
+        (!q || (r.payer_name || "").toLowerCase().includes(q)),
+    );
+  }, [rows, statusFilter, payerFilter]);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, DenialReworkRow[]>();
+    for (const r of filteredRows) {
+      const code = r.rejection_code || "NO CODE";
+      m.set(code, [...(m.get(code) || []), r]);
+    }
+    return [...m.entries()];
+  }, [filteredRows]);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -163,15 +186,52 @@ function DenialRework() {
       {error && (
         <Alert type="error" title={error} style={{ marginBottom: 16 }} />
       )}
-      <Table
-        rowKey="id"
-        size="small"
-        loading={loading}
-        dataSource={rows}
-        columns={columns}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
-        locale={{ emptyText: "No denied claims in the rework queue" }}
-      />
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          style={{ width: 160 }}
+          options={[
+            { value: "all", label: "All statuses" },
+            { value: "DENIED", label: "Denied" },
+            { value: "RESUBMITTED", label: "Resubmitted" },
+          ]}
+        />
+        <Input
+          aria-label="Filter by payer"
+          placeholder="Filter by payer"
+          allowClear
+          value={payerFilter}
+          onChange={(e) => setPayerFilter(e.target.value)}
+          style={{ width: 200 }}
+        />
+      </Space>
+      {groups.length === 0 ? (
+        <Table
+          rowKey="id"
+          size="small"
+          loading={loading}
+          dataSource={[]}
+          columns={columns}
+          pagination={false}
+          locale={{ emptyText: "No denied claims match the filters" }}
+        />
+      ) : (
+        groups.map(([code, groupRows]) => (
+          <div key={code} style={{ marginBottom: 24 }}>
+            <h3 style={{ marginBottom: 8 }}>{code}</h3>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={loading}
+              dataSource={groupRows}
+              columns={columns}
+              pagination={{ pageSize: 20, showSizeChanger: false }}
+            />
+          </div>
+        ))
+      )}
 
       <Modal
         title={`Rework — ${reworkTarget?.claim_number || ""}`}

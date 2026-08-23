@@ -51,29 +51,37 @@ class RisCharges(Table):
             updated_at TIMESTAMPTZ DEFAULT now()
         )
         """)
+        await self.conn.execute("""
+        ALTER TABLE ris_charges
+        ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES ris_orders(id)
+        """)
 
     async def create(self, *, report_id, exam_id=None, accession_number='',
                      patient_id='', patient_name='', cpt_code='',
                      cpt_description='', icd10_code='', charge_amount=0.0,
-                     created_by='', tenant_id='default'):
+                     created_by='', tenant_id='default', order_id=None,
+                     prior_auth_id=None):
         """Insert a PENDING charge idempotently per report (V-3 guard).
 
         A report signed twice (or co-signed) must not produce a second
         charge row — the NOT EXISTS guard makes this a no-op instead of a
         duplicate, preserving the S8 V-3 fix in the full implementation.
+        order_id/prior_auth_id (D3) carry the authorization context so the
+        claim line can ride the payer-approved number.
         """
         await self.conn.execute("""
         INSERT INTO ris_charges
             (tenant_id, report_id, exam_id, accession_number, patient_id,
              patient_name, cpt_code, cpt_description, icd10_code,
-             charge_amount, status, created_by)
-        SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING', $11
+             charge_amount, status, created_by, order_id, prior_auth_id)
+        SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING', $11,
+               $12, $13
         WHERE NOT EXISTS (
             SELECT 1 FROM ris_charges WHERE report_id = $2
         )
         """, tenant_id, report_id, exam_id, accession_number, patient_id,
              patient_name, cpt_code, cpt_description, icd10_code,
-             charge_amount, created_by)
+             charge_amount, created_by, order_id, prior_auth_id)
 
     async def get(self, charge_id, tenant_id='default'):
         return await self.conn.fetchrow(
@@ -244,12 +252,21 @@ class RisClaims(Table):
         """)
 
     async def submit(self, charge_id, claim_number, payer_id='', payer_name='',
-                     tenant_id='default', prior_auth_number=''):
+                     tenant_id='default', prior_auth_number='',
+                     prior_auth_id=None):
         """837 export stub (S11-09): create a SUBMITTED claim for a charge.
 
         R2-01-08: the prior-auth number rides the claim line so payers and
         the rework queue see authorization state without a join to orders.
+        When prior_auth_id is provided the auth_number is resolved from the
+        prior-auth request in a single query (D3).
         """
+        if prior_auth_id and not prior_auth_number:
+            row = await self.conn.fetchrow(
+                "SELECT auth_number FROM ris_prior_auth_requests"
+                " WHERE id = $1", prior_auth_id,
+            )
+            prior_auth_number = row['auth_number'] if row else ''
         return await self.conn.fetchrow("""
         INSERT INTO ris_claims
             (tenant_id, charge_id, claim_number, payer_id, payer_name,
@@ -407,4 +424,32 @@ async def drop_charge(conn, *, report_id, exam_id, accession_number,
         charge_amount=charge_amount,
         created_by=radiologist_id,
         tenant_id=tenant_id,
+        # D3: ride the order's approved prior-auth onto the charge so the
+        # claim line carries the payer-granted auth number. Resolved via a
+        # single JOIN on accession (orders are unique per tenant+accession).
+        **await _resolve_prior_auth(
+            conn, accession_number, tenant_id,
+        ),
     )
+
+
+async def _resolve_prior_auth(conn, accession_number, tenant_id):
+    """D3: order + approved prior-auth for a signed exam's accession.
+
+    Returns kwargs for RisCharges.create() — empty when the order is
+    unknown or no authorization was approved, so a missing auth never
+    blocks the charge drop.
+    """
+    row = await conn.fetchrow("""
+    SELECT o.id AS order_id, pa.id AS prior_auth_id
+    FROM ris_orders o
+    JOIN ris_prior_auth_requests pa
+      ON pa.order_id = o.id AND pa.status = 'APPROVED'
+    WHERE o.accession_number = $1 AND o.tenant_id = $2
+    ORDER BY pa.created_at DESC
+    LIMIT 1
+    """, accession_number, tenant_id)
+    if not row:
+        return {}
+    return {'order_id': row.get('order_id'),
+            'prior_auth_id': row.get('prior_auth_id')}

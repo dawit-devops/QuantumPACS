@@ -671,3 +671,134 @@ class TestAgingDimensionsRealDb:
                         'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
         finally:
             reset_tenant_slug()
+
+
+class TestPriorAuthBillingLinkageRealDb:
+    """D3: prior_auth_id was written nowhere — charges never carried the
+    authorization that the payer granted, so submitted claims lost the
+    auth number the rework queue already displays. Drop must resolve the
+    approved prior-auth through the order; claim submit must carry the
+    auth number onto the claim.
+    """
+
+    @pytest.fixture(autouse=True)
+    async def _db(self):
+        import db.conn as database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.teardown()
+
+    async def _seed(self, conn, tag, auth_number='AUTH-12345'):
+        """Order with an approved prior-auth; returns (order_id, request_id)."""
+        order = await conn.fetchrow(
+            "INSERT INTO ris_orders (tenant_id, patient_id, patient_name,"
+            " accession_number, prior_auth_status)"
+            " VALUES ($1, $2, $3, $4, 'APPROVED') RETURNING id",
+            tag, f'P-{tag}', f'Prior Auth Patient {tag}',
+            f'ACC-PA-{tag}',
+        )
+        request_id = await conn.fetchval(
+            "INSERT INTO ris_prior_auth_requests"
+            " (tenant_id, order_id, procedure_code, status, auth_number)"
+            " VALUES ($1, $2, 'CT CHEST', 'APPROVED', $3) RETURNING id",
+            tag, order['id'], auth_number,
+        )
+        return order['id'], request_id
+
+    @pytest.mark.asyncio
+    async def test_drop_charge_populates_prior_auth_id(self):
+        import uuid
+        from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+        from db.ris_charges import drop_charge, RisCharges
+
+        tag = f'pa-{uuid.uuid4().hex[:6]}'
+        set_tenant_slug(tag)
+        try:
+            async with get_conn() as conn:
+                order_id, request_id = await self._seed(conn, tag)
+                try:
+                    await drop_charge(
+                        conn,
+                        report_id=None,
+                        exam_id=None,
+                        accession_number=f'ACC-PA-{tag}',
+                        patient_id=f'P-{tag}',
+                        patient_name='Prior Auth Patient',
+                        procedure_desc='CT CHEST',
+                        indication='',
+                        radiologist_id='rad-1',
+                        charge_amount=250.0,
+                        tenant_id=tag,
+                    )
+                    charge = await conn.fetchrow(
+                        "SELECT order_id, prior_auth_id FROM ris_charges"
+                        " WHERE tenant_id = $1 AND accession_number = $2",
+                        tag, f'ACC-PA-{tag}',
+                    )
+                    assert charge['order_id'] == order_id
+                    assert charge['prior_auth_id'] == request_id, (
+                        'drop must resolve the approved prior-auth onto the charge')
+                finally:
+                    await conn.execute(
+                        'DELETE FROM ris_claims WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_prior_auth_requests WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_orders WHERE tenant_id = $1', tag)
+        finally:
+            reset_tenant_slug()
+
+    @pytest.mark.asyncio
+    async def test_claim_submit_carries_prior_auth_number(self):
+        import uuid
+        from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+        from db.ris_charges import RisCharges, RisClaims
+
+        tag = f'pa2-{uuid.uuid4().hex[:6]}'
+        set_tenant_slug(tag)
+        try:
+            async with get_conn() as conn:
+                order_id, request_id = await self._seed(conn, tag)
+                try:
+                    await RisCharges(conn).create(
+                        report_id=None, exam_id=None,
+                        accession_number=f'ACC-PA-{tag}',
+                        patient_id=f'P-{tag}', patient_name='PA Patient',
+                        cpt_code='71250', charge_amount=250.0,
+                        tenant_id=tag,
+                    )
+                    charge = await conn.fetchrow(
+                        "SELECT id FROM ris_charges"
+                        " WHERE tenant_id = $1 AND accession_number = $2",
+                        tag, f'ACC-PA-{tag}',
+                    )
+                    # Attach the resolved authorization onto the charge, as
+                    # drop_charge now does.
+                    await conn.execute(
+                        "UPDATE ris_charges SET order_id = $2, prior_auth_id = $3"
+                        " WHERE id = $1", charge['id'], order_id, request_id)
+                    claim = await RisClaims(conn).submit(
+                        charge['id'], 'CLM-PA', tenant_id=tag,
+                        prior_auth_id=request_id)
+                    row = await conn.fetchrow(
+                        "SELECT prior_auth_number FROM ris_claims WHERE id = $1",
+                        claim['id'],
+                    )
+                    assert row['prior_auth_number'] == 'AUTH-12345', (
+                        'claim submit must carry the charge authorization number')
+                finally:
+                    await conn.execute(
+                        'DELETE FROM ris_claims WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_prior_auth_requests WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_orders WHERE tenant_id = $1', tag)
+        finally:
+            reset_tenant_slug()

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./renderWithApp";
@@ -53,7 +53,8 @@ describe("DenialRework", () => {
     mockListDenials.mockResolvedValue([deniedRow]);
     renderWithAuth(<DenialRework />);
     await waitFor(() => {
-      expect(screen.getByText("CO-16")).toBeInTheDocument();
+      // D3 group headers render the code too — target the row Tag.
+      expect(screen.getByText("CO-16", { selector: "span" })).toBeInTheDocument();
     });
     expect(screen.getByText(/Jane Doe/)).toBeInTheDocument();
     // R2-02-04: prior-auth linkage visible on rework rows.
@@ -93,5 +94,72 @@ describe("DenialRework", () => {
       expect(mockHistory).toHaveBeenCalledWith("clm-9");
     });
     expect(await screen.findByText(/DENIED/)).toBeInTheDocument();
+  });
+});
+
+describe("DenialRework D3 grouping and filters", () => {
+  const rows = [
+    {
+      ...deniedRow,
+      id: "clm-1",
+      rejection_code: "CO-16",
+      rejection_reason: "Missing information",
+      patient_name: "Alice",
+    },
+    {
+      ...deniedRow,
+      id: "clm-2",
+      rejection_code: "CO-16",
+      rejection_reason: "Missing information",
+      patient_name: "Bob",
+    },
+    {
+      ...deniedRow,
+      id: "clm-3",
+      rejection_code: "CO-22",
+      rejection_reason: "Duplicate claim",
+      patient_name: "Carol",
+      status: "RESUBMITTED",
+    },
+  ];
+
+  beforeEach(() => {
+    mockListDenials.mockResolvedValue(rows);
+  });
+
+  it("groups rows under their denial-code headers", async () => {
+    renderWithAuth(<DenialRework />);
+    await waitFor(() => {
+      expect(screen.getByText("CO-16", { selector: "h3" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("CO-22", { selector: "h3" })).toBeInTheDocument();
+    expect(screen.getByText(/Alice/)).toBeInTheDocument();
+    expect(screen.getByText(/Bob/)).toBeInTheDocument();
+  });
+
+  it("status filter refines the grouped rows", async () => {
+    renderWithAuth(<DenialRework />);
+    await waitFor(() => {
+      expect(screen.getByText("CO-16", { selector: "h3" })).toBeInTheDocument();
+    });
+    fireEvent.mouseDown(screen.getByLabelText("Filter by status"));
+    const resubmitted = await screen.findByText("Resubmitted");
+    fireEvent.click(resubmitted);
+    await waitFor(() => {
+      expect(screen.getByText("CO-22", { selector: "h3" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Alice/)).not.toBeInTheDocument();
+  });
+
+  it("payer filter narrows rows by payer", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<DenialRework />);
+    await waitFor(() => {
+      expect(screen.getByText("CO-16", { selector: "h3" })).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText("Filter by payer"), "nonexistent");
+    await waitFor(() => {
+      expect(screen.queryByText(/Alice/)).not.toBeInTheDocument();
+    });
   });
 });

@@ -954,7 +954,11 @@ class RisClaimSubmitHandler(HTTPEndpoint):
             import random
             claim_number = f'CLM-{random.randint(100000, 999999)}'
             result = await RisClaims(conn).submit(
-                charge_id, claim_number, tenant_id=tenant)
+                charge_id, claim_number, tenant_id=tenant,
+                # D3: the charge carries the approved authorization resolved
+                # at drop time — the claim line must ride that auth number.
+                prior_auth_id=charge.get('prior_auth_id') or None,
+            )
             from db.audit_log import AuditLog
             await AuditLog(conn).log_event(
                 event_type='billing.claim_submitted',

@@ -15,7 +15,7 @@
 | **A** P0 defect kills (A1, A1b, A2, A3, A4) | ✅ DONE | `363e26c` | Full suite 2357 passed / 2 skipped; migrations 086+087 applied |
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
-| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D7 done | — | D2 backend 65 green (billing quartet); FE UnbilledAging 2 green + tsc clean |
+| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D3 D7 done | — | D2/D3 backend 81 green; FE UnbilledAging 2 + DenialRework D3 3 green |
 | **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
@@ -219,9 +219,10 @@ Commits: `feat(scheduling): stamp station AE on MWL entries` · `feat(mpps): per
 
 ### Cycle D3: Denial-rework UX + orphaned prior_auth_id
 **Evidence:** UI flat table without filters/grouping (`DenialRework.tsx`); claim submit passes only `(charge_id, claim_number, tenant_id)` (`billing.py:972-973`); `ris_charges.prior_auth_id` written nowhere.
-**RED (vitest):** Status/date filters refine table; rows grouped under denial-code headers; correction drawer unchanged. **RED (pytest):** claim submit persists `prior_auth_id` when charge carries one; charge drop populates `prior_auth_id` from an approved prior-auth joined through the order's appointments.
-**GREEN:** UI filter bar + grouping; API signature gains optional `prior_auth_id`; `drop_charge` resolves linkage via single JOIN.
-**REFACTOR:** Claim-submit payload validated against a Pydantic schema (fold in the 837-stub payload check deferred from §0.3).
+**GREEN (committed `083747e`+D3):** `drop_charge()` resolves the order's approved prior-auth via `_resolve_prior_auth()` (single JOIN order↔prior_auth on accession+tenant) and stamps `order_id`/`prior_auth_id` onto the created charge (create() gained both params + sync_db order_id parity ALTER). `RisClaims.submit()` accepts `prior_auth_id` and resolves `auth_number` when the caller passes an id; `RisClaimSubmitHandler` forwards the charge's `prior_auth_id`. FE `DenialRework.tsx` gained a status Select + payer filter Input and renders rows grouped under `<h3>{rejection_code}</h3>` headers; the row Tag still shows the code (tests target `{ selector: "span" }`).
+**RED:** `TestPriorAuthBillingLinkageRealDb` (real-DB, `test_ris_billing.py`): drop populates order_id+prior_auth_id from an approved prior-auth; claim submit rides the auth_number. FE `DenialRework.test.tsx` D3 describe: group headers, status filter refines groups, payer filter narrows. 3/3 FE green.
+**Known env flake (pre-existing, not D3):** the `resubmits a corrected claim` / `shows the rework history` userEvent+Modal/Drawer tests hang under jsdom even on pristine HEAD (verified by stash); D3 tests avoid Modal interaction.
+**REFACTOR:** deferred — claim-submit Pydantic schema folded into later claim payload hardening; not needed for the linkage fix.
 
 ### Cycle D4: Escalation policy configurable
 **Evidence:** SLA hardcoded 15 min and target hardcoded `'radiologist'` (`services/notification/escalation.py:13-14`) contradicting recipient-role design (072 defaults `ed_physician`).
