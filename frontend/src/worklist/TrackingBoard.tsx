@@ -417,6 +417,7 @@ function TrackingBoard() {
         <Select
           allowClear
           placeholder="Modality"
+          aria-label="Modality filter"
           value={modalityFilter}
           onChange={(v) => {
             setModalityFilter(v);
@@ -439,6 +440,7 @@ function TrackingBoard() {
         <Select
           allowClear
           placeholder="Status"
+          aria-label="Status filter"
           value={statusFilter}
           onChange={(v) => {
             setStatusFilter(v);

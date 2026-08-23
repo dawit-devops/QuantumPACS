@@ -162,4 +162,14 @@ describe("DenialRework D3 grouping and filters", () => {
       expect(screen.queryByText(/Alice/)).not.toBeInTheDocument();
     });
   });
+  it("passes WCAG 2.1 AA automated scan (F3)", async () => {
+    renderWithAuth(<DenialRework />)
+    await waitFor(() => {
+      expect(screen.getByText("Denial Rework")).toBeTruthy();
+    });
+    const { scanA11y, seriousViolations } = await import("./axe");
+    const results = await scanA11y(document.body);
+    expect(seriousViolations(results)).toEqual([]);
+  });
+
 });

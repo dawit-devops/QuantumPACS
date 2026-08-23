@@ -64,4 +64,19 @@ describe("CheckIn kiosk", () => {
       expect(screen.getByText(/Cannot check in/i)).toBeTruthy(),
     );
   });
+  it("passes WCAG 2.1 AA automated scan (F3)", async () => {
+    mockedGet.mockResolvedValue({
+      patient_name: "Test Patient",
+      start_time: "2026-08-25T09:30:00Z",
+      status: "SCHEDULED",
+    });
+    render(<CheckIn />);
+    await waitFor(() => {
+      expect(screen.getByTestId("checkin-summary")).toBeTruthy();
+    });
+    const { scanA11y, seriousViolations } = await import("./axe");
+    const results = await scanA11y(document.body);
+    expect(seriousViolations(results)).toEqual([]);
+  });
+
 });
