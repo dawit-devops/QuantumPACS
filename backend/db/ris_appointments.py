@@ -49,6 +49,7 @@ class RisAppointments(Table):
         CREATE INDEX IF NOT EXISTS ix_ris_appointments_order
             ON ris_appointments (order_id)
         """)
+        await self._ensure_requesting_tenant()
 
     async def _ensure_requesting_tenant(self):
         await self.conn.execute(

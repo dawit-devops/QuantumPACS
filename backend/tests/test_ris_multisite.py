@@ -148,6 +148,7 @@ class TestChargebackTag:
                 'start_time': '2026-08-25T09:00:00+00:00',
                 'end_time': '2026-08-25T09:30:00+00:00',
                 'reason': '', 'override_reason': '',
+                'prep_instructions': '',
             })()
             request = type('R', (), {
                 'path_params': {},
