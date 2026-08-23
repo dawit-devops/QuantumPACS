@@ -14,7 +14,7 @@
 |---|---|---|---|
 | **A** P0 defect kills (A1, A1b, A2, A3, A4) | ✅ DONE | `363e26c` | Full suite 2357 passed / 2 skipped; migrations 086+087 applied |
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
-| **C** Scheduling/MWL/MPPS coherence (C1–C5) | ⬜ pending | — | — |
+| **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ⬜ pending | — | — |
 | **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
