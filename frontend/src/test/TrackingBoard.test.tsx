@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { MemoryRouter } from "react-router";
@@ -26,7 +26,7 @@ vi.mock("../auth/AuthContext", async (importOriginal) => {
     ...actual,
     useAuth: () => ({
       hasPermission: (perm: string) =>
-        ["WORKLIST_READ", "WORKLIST_WRITE"].includes(perm),
+        ["WORKLIST_READ", "WORKLIST_WRITE", "SCHEDULE_WRITE"].includes(perm),
     }),
   };
 });
@@ -197,5 +197,101 @@ describe("TrackingBoard", () => {
     await waitFor(() => {
       expect(screen.getByText("CRITICAL")).toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5: priority/date/room filters + reschedule action from the board
+// ---------------------------------------------------------------------------
+import { userEvent } from "@testing-library/user-event";
+import { getResourceAvailability } from "../api/scheduling";
+import RescheduleModal from "../schedule/RescheduleModal";
+
+vi.mock("../api/scheduling", () => ({
+  getResourceAvailability: vi.fn(),
+  bookAppointment: vi.fn(),
+  rescheduleAppointment: vi.fn(),
+  cancelRisAppointment: vi.fn(),
+  searchRisOrders: vi.fn(),
+}));
+vi.mock("../schedule/RescheduleModal", () => ({
+  default: (props: { open: boolean; appointment: any }) =>
+    props.open ? (
+      <div data-testid="reschedule-modal">
+        modal for {props.appointment?.id}
+      </div>
+    ) : null,
+}));
+
+describe("TrackingBoard C5 filters + actions", () => {
+  const mockGetAvailability = vi.mocked(getResourceAvailability);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListTracking.mockResolvedValue({
+      data: [
+        {
+          ...mockTrackingData[0],
+          appointment_id: "appt-1",
+          resource_id: "res-1",
+        },
+      ],
+      total: 1,
+      page: 1,
+      per_page: 20,
+    });
+    mockGetTrackingKpi.mockResolvedValue({
+      volume: 1,
+      in_progress: 0,
+      awaiting_read: 0,
+      overdue: 0,
+      stat_count: 0,
+    });
+    mockGetAvailability.mockResolvedValue([
+      { start: "10:00", end: "10:30" },
+    ]);
+  });
+
+  it("sends room filter as query param; priority control renders", async () => {
+    render(
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <TrackingBoard />
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    );
+    await screen.findByText("ACC001");
+    expect(screen.getByLabelText("Priority filter")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Room filter"), "CT01");
+    await waitFor(() => {
+      const last = mockListTracking.mock.calls[mockListTracking.mock.calls.length - 1]?.[0] ?? {};
+      expect(last.station_ae_title).toBe("CT01");
+    });
+    // Priority/date params ride buildQuery alongside — their dropdown
+    // interaction is covered by Playwright E2E (rc-select is not reliably
+    // drivable under jsdom).
+  });
+
+  it("opens the shared reschedule modal from a scheduled row", async () => {
+    render(
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter>
+            <TrackingBoard />
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    );
+    await screen.findByText("ACC001");
+    await userEvent.click(await screen.findByLabelText("Reschedule"));
+    await waitFor(() => {
+      expect(mockGetAvailability).toHaveBeenCalledWith("res-1", "2026-08-20");
+    });
+    expect(await screen.findByTestId("reschedule-modal")).toHaveTextContent(
+      "modal for appt-1"
+    );
   });
 });

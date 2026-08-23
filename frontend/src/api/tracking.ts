@@ -16,6 +16,10 @@ export interface TrackingEntry {
   exam_status?: string;
   assigned_technologist?: string;
   has_critical?: boolean;
+  /** C5: the entry's live SCHEDULED appointment, when one exists —
+   * enables reschedule/reassign actions from the board. */
+  appointment_id?: string;
+  resource_id?: string;
 }
 
 export interface TrackingPage {

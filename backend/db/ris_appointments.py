@@ -75,13 +75,21 @@ class RisAppointments(Table):
         return await self.fetch(q)
 
     async def for_resource(self, resource_id, day_start, day_end):
-        q = self.query().select('*').where(
-            (self.table.resource_id == resource_id)
-            & (self.table.start_time < day_end)
-            & (self.table.end_time > day_start)
+        # C4: LEFT JOIN the order's priority onto each block so the day
+        # view can render STAT/URGENT badges without a second round-trip.
+        rows = await self.conn.fetch(
+            """
+            SELECT a.*, o.priority AS priority
+            FROM ris_appointments a
+            LEFT JOIN ris_orders o ON o.id = a.order_id
+            WHERE a.resource_id = $1
+              AND a.start_time < $3
+              AND a.end_time > $2
+            ORDER BY a.start_time
+            """,
+            resource_id, day_start, day_end,
         )
-        q = q.orderby(self.table.start_time)
-        return await self.fetch(q)
+        return [dict(r) for r in rows]
 
     async def update_slot(self, appointment_id, start_time, end_time,
                           reason=''):

@@ -65,6 +65,15 @@ default_config = {
     # C-STORE port (single SCP). Non-empty + different = a second AE serves
     # Modality Worklist C-FIND on this port (lifecycle._run_dicom).
     'dicom_mwl_port': '',
+    # C3 drift fix: the MPPS AE port previously existed only as an inline
+    # fallback in lifecycle.py — surface it here like its siblings.
+    'dicom_mpps_port': '11114',
+    # C3: forward modality MPPS N-CREATE/N-SET to a remote PACS (S6-09).
+    # Off by default; enabling points exam-status updates at the peer AE.
+    'mpps_forward_enabled': False,
+    'mpps_forward_host': '',
+    'mpps_forward_port': '',
+    'mpps_forward_called_ae': '',
     'dicom_aet_allowed': '',
     'dicom_allowed_ips': '',
     'dicom_require_called_aet': 'false',

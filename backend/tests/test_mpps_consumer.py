@@ -410,7 +410,8 @@ class TestMppsExamLinkage:
         conn = AsyncMock()
         conn.__aenter__ = AsyncMock(return_value=conn)
         conn.__aexit__ = AsyncMock(return_value=None)
-        conn.fetchrow = AsyncMock(side_effect=[wl_row, exam_row])
+        conn.fetchrow = AsyncMock(
+            side_effect=[wl_row, None, exam_row])  # wl, C2 probe, exam
         conn.execute = AsyncMock()
         conn.transaction = MagicMock(return_value=AsyncMock())
 
@@ -436,7 +437,8 @@ class TestMppsExamLinkage:
         conn = AsyncMock()
         conn.__aenter__ = AsyncMock(return_value=conn)
         conn.__aexit__ = AsyncMock(return_value=None)
-        conn.fetchrow = AsyncMock(side_effect=[wl_row, exam_row])
+        conn.fetchrow = AsyncMock(
+            side_effect=[wl_row, None, exam_row])  # wl, C2 probe, exam
         conn.execute = AsyncMock()
         conn.transaction = MagicMock(return_value=AsyncMock())
 
@@ -459,8 +461,8 @@ class TestMppsExamLinkage:
         conn = AsyncMock()
         conn.__aenter__ = AsyncMock(return_value=conn)
         conn.__aexit__ = AsyncMock(return_value=None)
-        # First call returns worklist row, second returns None (no exam)
-        conn.fetchrow = AsyncMock(side_effect=[wl_row, None])
+        # wl row → C2 proc probe (None) → exam lookup (None)
+        conn.fetchrow = AsyncMock(side_effect=[wl_row, None, None])
         conn.execute = AsyncMock()
         conn.transaction = MagicMock(return_value=AsyncMock())
 
@@ -635,3 +637,117 @@ class TestMppsPerformedProcedureStepStatus:
         assert result is True
         calls = [str(c) for c in conn.execute.await_args_list]
         assert any('performed' in c for c in calls), calls
+
+
+class TestMppsStatusColumnsRealDb:
+    """C2 (GAP_AUDIT_TDD_PIPELINE.md): migration 075 added mpps_status /
+    body_part / contrast to worklist_entries but nothing ever wrote them —
+    dead columns; tracking couldn't show modality-reported progress from
+    the row itself. The consumer must write mpps_status on every
+    transition and populate body_part/contrast from the order procedure."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _seed(self, conn, tag):
+        from db.ris_orders import RisOrderProcedures, RisOrders
+        accession = f'ACC-C2-{tag}'
+        order = await RisOrders(conn).create({
+            'accession_number': accession,
+            'patient_id': f'PAT-C2-{tag}',
+        })
+        await RisOrderProcedures(conn).create(order['id'], {
+            'procedure_code': 'CT CHEST',
+            'procedure_name': 'Chest CT',
+            'modality': 'CT',
+            'body_part': 'Chest',
+            'contrast': True,
+        })
+        entry = await conn.fetchrow(
+            "INSERT INTO worklist_entries (patient_id, patient_name,"
+            " accession_number, status)"
+            " VALUES ($1, 'C2 Patient', $2, 'scheduled') RETURNING id",
+            f'PAT-C2-{tag}', accession,
+        )
+        return accession, entry['id']
+
+    async def _cleanup(self, conn, tag):
+        accession = f'ACC-C2-{tag}'
+        await conn.execute(
+            "DELETE FROM ris_order_procedures WHERE order_id IN"
+            " (SELECT id FROM ris_orders WHERE accession_number = $1)",
+            accession)
+        await conn.execute(
+            'DELETE FROM ris_orders WHERE accession_number = $1', accession)
+        await conn.execute(
+            'DELETE FROM worklist_entries WHERE accession_number = $1',
+            accession)
+
+    @pytest.mark.asyncio
+    async def test_n_create_writes_status_and_procedure_fields(self):
+        import uuid
+        from db.conn import database, get_conn
+        from services.mpps_consumer.service import MppsConsumer
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            accession, _entry_id = await self._seed(conn, tag)
+        event = _fake_event(accession=accession, mpps_status='IN_PROGRESS')
+
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                   database.acquire):
+            assert await consumer.handle_n_create(event) is True
+
+            try:
+                async with database.acquire() as c2:
+                    row = await c2.fetchrow(
+                        'SELECT status, mpps_status, body_part, contrast'
+                        ' FROM worklist_entries WHERE accession_number = $1',
+                        accession,
+                    )
+                assert row['status'] == 'in_progress'
+                assert row['mpps_status'] == 'IN_PROGRESS', (
+                    'migration-075 column must record the modality-reported '
+                    'MPPS status')
+                assert row['body_part'] == 'Chest'
+                assert bool(row['contrast']) is True
+            finally:
+                async with get_conn() as conn:
+                    await self._cleanup(conn, tag)
+
+    @pytest.mark.asyncio
+    async def test_n_set_terminal_writes_mpps_status(self):
+        import uuid
+        from db.conn import database, get_conn
+        from services.mpps_consumer.service import MppsConsumer
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            accession, _entry_id = await self._seed(conn, tag)
+        event = _fake_event(accession=accession, mpps_status='COMPLETED')
+
+        consumer = MppsConsumer()
+        with patch('services.mpps_consumer.service.get_conn',
+                   database.acquire):
+            assert await consumer.handle_n_set(event) is True
+
+            try:
+                async with database.acquire() as c2:
+                    row = await c2.fetchrow(
+                        'SELECT status, mpps_status'
+                        ' FROM worklist_entries WHERE accession_number = $1',
+                        accession,
+                    )
+                assert row['status'] == 'performed'
+                assert row['mpps_status'] == 'COMPLETED'
+            finally:
+                async with get_conn() as conn:
+                    await self._cleanup(conn, tag)

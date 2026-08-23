@@ -1,10 +1,12 @@
-import { App, Button, Input, Modal, Tag } from "antd";
+import { Alert, App, Button, Input, Modal, Select, Tag } from "antd";
 import React, { useEffect, useState } from "react";
 import { toErrorMessage } from "../common/errors";
 import {
   bookAppointment,
+  getRisOrder,
   searchRisOrders,
   type ResourceAvailabilitySlot,
+  type RisOrderProcedure,
   type RisOrderRow,
   type RisResource,
 } from "../api/scheduling";
@@ -22,12 +24,24 @@ export interface BookingFormModalProps {
   onConflict?: (message: string) => void;
 }
 
+const PRIORITY_COLOR: Record<string, string> = {
+  STAT: "red",
+  URGENT: "orange",
+  ROUTINE: "blue",
+};
+
 /**
  * Booking form for the calendar grid (S4-15). A scheduler either picks an
  * existing RIS order (search by name/MRN/accession) or types a patient ID
  * directly for an order-less booking. Slot times from availability are UTC
  * wall-clock, so the ISO instants sent to the engine are built in UTC — never
  * browser-local — or the engine rejects them as outside availability.
+ *
+ * C4: multi-procedure orders expose a procedure picker (the choice is
+ * recorded as the booking reason so technologists know what to perform);
+ * the order's priority shows beside the slot; and a prior-authorization
+ * conflict surfaces an audited override path (R2-01-05/R2-01-06) instead of
+ * a dead-end toast.
  */
 export default function BookingFormModal({
   open,
@@ -43,8 +57,12 @@ export default function BookingFormModal({
   const [orderResults, setOrderResults] = useState<RisOrderRow[]>([]);
   const [orderSearching, setOrderSearching] = useState(false);
   const [pickedOrder, setPickedOrder] = useState<RisOrderRow | null>(null);
+  const [procedures, setProcedures] = useState<RisOrderProcedure[]>([]);
+  const [procedureId, setProcedureId] = useState<string>("");
   const [patientId, setPatientId] = useState("");
   const [reason, setReason] = useState("");
+  const [conflictMessage, setConflictMessage] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Reset transient form state whenever the modal is (re)opened for a slot.
@@ -54,6 +72,10 @@ export default function BookingFormModal({
       setOrderResults([]);
       setPatientId("");
       setReason("");
+      setProcedures([]);
+      setProcedureId("");
+      setConflictMessage("");
+      setOverrideReason("");
     }
   }, [open, resource?.id, slot?.start]);
 
@@ -71,10 +93,37 @@ export default function BookingFormModal({
     }
   };
 
-  const submitBooking = async () => {
+  const pickOrder = async (o: RisOrderRow) => {
+    setPickedOrder(o);
+    setPatientId(o.patient_id);
+    setProcedures([]);
+    setProcedureId("");
+    try {
+      const detail = await getRisOrder(o.id);
+      const procs = detail.procedures ?? [];
+      setProcedures(procs);
+      if (procs.length > 0) {
+        const first = procs[0];
+        setProcedureId(first.id ?? "");
+        // The chosen procedure becomes the visible booking reason — the
+        // engine has no procedure input, so this is how the selection is
+        // recorded for the technologist.
+        setReason(`Procedure: ${first.procedure_name || first.procedure_code || ""}`);
+      }
+    } catch (e: unknown) {
+      // Detail fetch is enhancement-only — booking proceeds without it.
+      message.warning(toErrorMessage(e) || "Could not load order procedures");
+    }
+  };
+
+  const submitBooking = async (override = false) => {
     if (!resource || !slot) return;
     if (!pickedOrder && !patientId.trim()) {
       message.error("Select an order or enter a patient ID");
+      return;
+    }
+    if (override && !overrideReason.trim()) {
+      message.error("An override reason is required");
       return;
     }
     setSubmitting(true);
@@ -88,12 +137,20 @@ export default function BookingFormModal({
         start_time: startISO,
         end_time: endISO,
         reason,
+        ...(override ? { override_reason: overrideReason.trim() } : {}),
       });
       message.success("Appointment booked");
       onDone();
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string; code?: string };
-      if (err.status === 409 || err.code === "SLOT_CONFLICT") {
+      if (
+        err.status === 409 &&
+        /requires prior authorization/i.test(err.message || "")
+      ) {
+        // R2-01-06: keep the form open and offer the audited override —
+        // a plain toast loses the whole booking context.
+        setConflictMessage(err.message || "Prior authorization required");
+      } else if (err.status === 409 || err.code === "SLOT_CONFLICT") {
         onConflict?.(err.message || "Slot just taken — availability refreshed");
         reset();
         onClose();
@@ -110,6 +167,10 @@ export default function BookingFormModal({
     setOrderResults([]);
     setPatientId("");
     setReason("");
+    setProcedures([]);
+    setProcedureId("");
+    setConflictMessage("");
+    setOverrideReason("");
   };
 
   return (
@@ -131,13 +192,21 @@ export default function BookingFormModal({
             type="primary"
             loading={submitting}
             disabled={!pickedOrder && !patientId.trim()}
-            onClick={submitBooking}
+            onClick={() => submitBooking(false)}
           >
             Confirm Booking
           </Button>
         </div>
       }
     >
+      {pickedOrder && (
+        <div style={{ marginBottom: 8 }} data-testid="booking-order-summary">
+          <Tag>{pickedOrder.accession_number}</Tag>
+          <Tag color={PRIORITY_COLOR[pickedOrder.priority] ?? "default"}>
+            {pickedOrder.priority}
+          </Tag>
+        </div>
+      )}
       <div style={{ marginBottom: 16 }} className="sched-form-section">
         <div className="sched-form-section-title">
           Search order or enter patient
@@ -156,18 +225,14 @@ export default function BookingFormModal({
           <div
             key={o.id}
             className={`sched-order-result ${pickedOrder?.id === o.id ? "is-selected" : ""}`}
-            onClick={() => {
-              setPickedOrder(o);
-              setPatientId(o.patient_id);
-            }}
+            onClick={() => void pickOrder(o)}
             role="button"
             tabIndex={0}
             aria-label={`Select order ${o.patient_name || o.patient_id}`}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                setPickedOrder(o);
-                setPatientId(o.patient_id);
+                void pickOrder(o);
               }
             }}
           >
@@ -191,6 +256,30 @@ export default function BookingFormModal({
           }}
           style={{ marginTop: 8 }}
         />
+        {procedures.length > 1 && (
+          <Select
+            aria-label="Procedure"
+            placeholder="Choose procedure"
+            value={procedureId || undefined}
+            onChange={(id) => {
+              setProcedureId(id);
+              const proc = procedures.find((p) => p.id === id);
+              if (proc) {
+                setReason(
+                  `Procedure: ${proc.procedure_name || proc.procedure_code || ""}`
+                );
+              }
+            }}
+            style={{ marginTop: 8, width: "100%" }}
+            options={procedures.map((p) => ({
+              value: p.id ?? "",
+              label:
+                p.procedure_name ||
+                p.procedure_code ||
+                `Procedure ${p.id ?? ""}`,
+            }))}
+          />
+        )}
         <Input
           aria-label="Reason"
           placeholder="Reason (optional)"
@@ -198,6 +287,33 @@ export default function BookingFormModal({
           onChange={(e) => setReason(e.target.value)}
           style={{ marginTop: 8 }}
         />
+        {conflictMessage && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="Booking blocked by prior authorization"
+            description={
+              <>
+                <div style={{ marginBottom: 8 }}>{conflictMessage}</div>
+                <Input
+                  aria-label="Override reason"
+                  placeholder="Override reason (required, audited)"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                />
+                <Button
+                  danger
+                  style={{ marginTop: 8 }}
+                  loading={submitting}
+                  onClick={() => submitBooking(true)}
+                >
+                  Book with override
+                </Button>
+              </>
+            }
+          />
+        )}
       </div>
     </Modal>
   );

@@ -70,11 +70,27 @@ class MppsConsumer:
             async with conn.transaction():
                 if not terminal:
                     now = datetime.now(timezone.utc)
+                    # C2: record the modality-reported MPPS status on the
+                    # entry itself (migration-075 column) and enrich
+                    # body_part/contrast from the order procedure when the
+                    # order carries them.
+                    proc_fields = await conn.fetchrow(
+                        "SELECT p.body_part, p.contrast"
+                        " FROM ris_order_procedures p"
+                        " JOIN ris_orders o ON o.id = p.order_id"
+                        " WHERE o.accession_number = $1"
+                        " LIMIT 1",
+                        accession,
+                    )
                     await conn.execute(
                         "UPDATE worklist_entries SET status = 'in_progress', "
-                        "updated_at = $2, study_uid = $3 "
+                        "mpps_status = $2, updated_at = $3, study_uid = $4, "
+                        "body_part = COALESCE(NULLIF($5, ''), body_part), "
+                        "contrast = COALESCE($6, contrast) "
                         "WHERE id = $1",
-                        worklist_row['id'], now, study_uid,
+                        worklist_row['id'], mpps_status, now, study_uid,
+                        (proc_fields or {}).get('body_part') or '',
+                        (proc_fields or {}).get('contrast'),
                     )
 
                     # Update exam status if one exists for this accession
@@ -110,6 +126,10 @@ class MppsConsumer:
             log.info('MPPS N-CREATE: accession %s → IN_PROGRESS', accession)
 
         # S6-11 / RIS-SL-22: MPPS → tracking latency histogram.
+        from services.mpps_forward.service import maybe_forward_mpps
+        await maybe_forward_mpps('N_CREATE', ds)
+        from services.mpps_forward.service import maybe_forward_mpps
+        await maybe_forward_mpps('N_SET', ds)
         ris_mpps_latency_seconds.labels(
             event_type='N_CREATE',
             facility=get_tenant_slug() or 'default').observe(
@@ -150,24 +170,38 @@ class MppsConsumer:
             # audit) must be atomic.
             async with conn.transaction():
                 now = datetime.now(timezone.utc)
+                # C2: every transition records the modality-reported status.
+                proc_fields = await conn.fetchrow(
+                    "SELECT p.body_part, p.contrast"
+                    " FROM ris_order_procedures p"
+                    " JOIN ris_orders o ON o.id = p.order_id"
+                    " WHERE o.accession_number = $1"
+                    " LIMIT 1",
+                    accession,
+                )
                 if wl_status == 'performed':
                     await conn.execute(
                         "UPDATE worklist_entries SET status = 'performed', "
-                        "performed_at = $2, updated_at = $3, study_uid = $4 "
+                        "mpps_status = $2, performed_at = $3, updated_at = $4,"
+                        " study_uid = $5, "
+                        "body_part = COALESCE(NULLIF($6, ''), body_part), "
+                        "contrast = COALESCE($7, contrast) "
                         "WHERE id = $1",
-                        worklist_row['id'], now, now, study_uid,
+                        worklist_row['id'], mpps_status, now, now, study_uid,
+                        (proc_fields or {}).get('body_part') or '',
+                        (proc_fields or {}).get('contrast'),
                     )
                 elif wl_status == 'cancelled':
                     await conn.execute(
                         "UPDATE worklist_entries SET status = 'cancelled', "
-                        "updated_at = $2 "
+                        "mpps_status = $2, updated_at = $3 "
                         "WHERE id = $1",
-                        worklist_row['id'], now,
+                        worklist_row['id'], mpps_status, now,
                     )
                 else:
                     await conn.execute(
                         "UPDATE worklist_entries SET status = $2, "
-                        "updated_at = $3 WHERE id = $1",
+                        "mpps_status = $2, updated_at = $3 WHERE id = $1",
                         worklist_row['id'], wl_status, now,
                     )
 

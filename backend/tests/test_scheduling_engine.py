@@ -1018,3 +1018,88 @@ class TestPriorAuthExpired:
             assert 'EXPIRED' in str(exc.value)
             engine._appointments.create.assert_not_awaited()
         asyncio.run(run())
+
+
+class TestStationAeStamping:
+    """C1 (GAP_AUDIT_TDD_PIPELINE.md): booked MWL entries never carried the
+    resource identity, so a modality filtering its C-FIND by
+    ScheduledStationAE missed every RIS-booked exam (plan S6-01/02 ≥98%
+    auto-fill). The resource's name is the room/AE identity — it must be
+    stamped on create AND kept correct through reschedule."""
+
+    @staticmethod
+    def _engine_with_mocks(worklist_entry=None):
+        engine = SchedulingEngine()
+        engine._appointments = AsyncMock()
+        engine._appointments.for_resource = AsyncMock(return_value=[])
+        created = {
+            'id': 'appt-1', 'tenant_id': 'default', 'order_id': 'ord-1',
+            'resource_id': 'res-1', 'patient_id': 'MRN-1',
+            'start_time': '2026-08-20 09:00:00+00',
+            'end_time': '2026-08-20 09:30:00+00',
+            'status': 'SCHEDULED', 'reason': '',
+        }
+        engine._appointments.create = AsyncMock(return_value=created)
+        engine._schedules = AsyncMock()
+        engine._schedules.for_resource = AsyncMock(return_value=[])
+        engine._orders = AsyncMock()
+        engine._orders.get = AsyncMock(return_value={
+            'id': 'ord-1', 'patient_id': 'MRN-1', 'accession_number': 'ACC-C1',
+            'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+        engine._lifecycle = AsyncMock()
+        engine._lifecycle.transition = AsyncMock(return_value={'id': 'ord-1'})
+        engine._audit = AsyncMock()
+        engine._resources = AsyncMock()
+        engine._resources.get = AsyncMock(return_value={
+            'id': 'res-1', 'name': 'CT Room 1', 'modality': 'CT'})
+        engine._worklist = AsyncMock()
+        engine._worklist.get_by_accession = AsyncMock(
+            return_value=worklist_entry)
+        return engine
+
+    def test_book_stamps_station_ae_from_resource(self):
+        async def run():
+            engine = self._engine_with_mocks()
+
+            await engine.book(
+                order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00',
+            )
+
+            data = engine._worklist.create.call_args[0][0]
+            assert data['station_ae_title'] == 'CT Room 1', (
+                'booked MWL entry must carry the resource AE so '
+                'station-scoped C-FIND finds it')
+            assert data['modality'] == 'CT'
+
+        asyncio.run(run())
+
+    def test_reschedule_keeps_station_ae_on_moved_entry(self):
+        async def run():
+            engine = self._engine_with_mocks(
+                worklist_entry={'id': 'entry-1', 'accession_number': 'ACC-C1'})
+            engine._appointments.get = AsyncMock(return_value={
+                'id': 'appt-1', 'order_id': 'ord-1',
+                'resource_id': 'res-1',
+                'start_time': '2026-08-20 09:00:00+00',
+                'end_time': '2026-08-20 09:30:00+00',
+                'status': 'SCHEDULED',
+            })
+            engine._appointments.update_slot = AsyncMock(return_value={
+                'id': 'appt-1', 'status': 'SCHEDULED'})
+
+            await engine.reschedule(
+                appointment_id='appt-1',
+                new_start_time='2026-08-21 10:00:00+00',
+                new_end_time='2026-08-21 10:30:00+00', reason='conflict')
+
+            updates = [
+                c.args[1] for c in engine._worklist.update_entry.call_args_list
+            ]
+            assert any(u.get('station_ae_title') == 'CT Room 1'
+                       for u in updates), (
+                'reschedule must re-stamp station_ae_title so the entry '
+                'never loses its station identity')
+
+        asyncio.run(run())

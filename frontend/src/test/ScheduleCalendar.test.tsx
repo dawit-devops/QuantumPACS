@@ -105,6 +105,15 @@ describe("CalendarView", () => {
     expect(screen.getByText("SCHEDULED")).toBeInTheDocument();
   });
 
+  it("renders a STAT priority badge on high-priority blocks (C4)", async () => {
+    mockListAppointments.mockResolvedValue([
+      { ...APPT, id: "a2", patient_id: "P-STAT", priority: "STAT" },
+    ]);
+    renderWithAuth(<CalendarView />);
+    expect(await screen.findByText("P-STAT")).toBeInTheDocument();
+    expect(screen.getByText("STAT")).toBeInTheDocument();
+  });
+
   it("shows an empty state when no resources are configured", async () => {
     mockListResources.mockResolvedValue([]);
     renderWithAuth(<CalendarView />);

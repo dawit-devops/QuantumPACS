@@ -8,6 +8,7 @@ transaction that is rolled back; schema DDL ships with the test.
 
 import asyncio
 import uuid
+from datetime import datetime
 
 import pytest
 
@@ -219,5 +220,83 @@ class TestOrderFkBackstop(TestRisAppointmentsRepo):
             finally:
                 reset_tenant_slug()
                 await teardown()
+
+        asyncio.run(run())
+
+
+class TestForResourcePriority:
+    """C4 support (GAP_AUDIT_TDD_PIPELINE.md): the calendar day view needs
+    each block's priority for STAT/URGENT badges — priority lives on the
+    order, so for_resource must surface it via a LEFT JOIN."""
+
+    @staticmethod
+    async def _schema(conn):
+        from db.ris_appointments import RisAppointments
+        from db.ris_resources import RisResources
+        await RisResources(conn).sync_db()
+        await RisAppointments(conn).sync_db()
+
+    @staticmethod
+    async def _resource(conn, tag):
+        from db.ris_resources import RisResources
+        return await RisResources(conn).create({
+            'name': f'CT Room {tag}',
+            'resource_type': 'ROOM',
+            'modality': 'CT',
+        })
+
+    def test_for_resource_returns_order_priority(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = uuid.uuid4().hex[:6]
+            from db.conn import get_conn
+            from db.ris_appointments import RisAppointments
+            from db.ris_orders import RisOrders
+
+            set_tenant_slug('default')
+            try:
+                async with get_conn() as conn:
+                    await self._schema(conn)
+                    order = await RisOrders(conn).create({
+                        'accession_number': f'ACC-C4-{tag}',
+                        'patient_id': f'P-C4-{tag}',
+                        'priority': 'STAT',
+                    })
+                    resource = await self._resource(conn, tag)
+                    appt = await RisAppointments(conn).create({
+                        'order_id': order['id'],
+                        'resource_id': resource['id'],
+                        'patient_id': f'P-C4-{tag}',
+                        'start_time': '2026-09-01 09:00:00+00',
+                        'end_time': '2026-09-01 09:30:00+00',
+                    })
+                    rows = await RisAppointments(conn).for_resource(
+                        resource['id'],
+                        datetime.fromisoformat('2026-09-01T00:00:00+00:00'),
+                        datetime.fromisoformat('2026-09-02T00:00:00+00:00'),
+                    )
+                    match = [r for r in rows if r['id'] == appt['id']]
+                    assert match, 'booked appointment must be returned'
+                    assert match[0].get('priority') == 'STAT', (
+                        'for_resource must join the order priority for '
+                        'day-view badges')
+            finally:
+                try:
+                    async with get_conn() as conn:
+                        await conn.execute(
+                            'DELETE FROM ris_appointments WHERE patient_id = $1',
+                            f'P-C4-{tag}')
+                        await conn.execute(
+                            'DELETE FROM ris_orders WHERE accession_number = $1',
+                            f'ACC-C4-{tag}')
+                        await conn.execute(
+                            'DELETE FROM ris_resources WHERE name = $1',
+                            f'CT Room {tag}')
+                finally:
+                    reset_tenant_slug()
 
         asyncio.run(run())

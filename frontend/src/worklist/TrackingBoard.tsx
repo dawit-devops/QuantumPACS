@@ -14,6 +14,7 @@ import {
   Space,
   Modal,
   Descriptions,
+  DatePicker,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -22,6 +23,7 @@ import {
   ExclamationCircleOutlined,
   ArrowRightOutlined,
   AlertOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { useAuth } from "../auth/AuthContext";
@@ -32,6 +34,9 @@ import {
   type TrackingEntry,
   type TrackingKpi,
 } from "../api/tracking";
+import { getResourceAvailability } from "../api/scheduling";
+import RescheduleModal from "../schedule/RescheduleModal";
+import type { ResourceAvailabilitySlot, RisAppointment } from "../api/scheduling";
 import { PageState } from "../common/PageState";
 import { TRACKING_STATUS_COLORS, TRACKING_PRIORITY_COLORS } from "../common/statusColors";
 import KpiStrip from "./KpiStrip";
@@ -69,9 +74,22 @@ function TrackingBoard() {
   const [kpiError, setKpiError] = useState<string | null>(null);
   const [modalityFilter, setModalityFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [priorityFilter, setPriorityFilter] = useState<string | undefined>();
+  const [roomFilter, setRoomFilter] = useState("");
+  const [debouncedRoom, setDebouncedRoom] = useState("");
+  const [dateRange, setDateRange] = useState<[any, any] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [detailModal, setDetailModal] = useState<TrackingEntry | null>(null);
+  // C5: reschedule straight from the board — the row's live appointment
+  // plus the target resource's availability feed the shared modal.
+  const [rescheduleTarget, setRescheduleTarget] = useState<{
+    entry: TrackingEntry;
+    appointment: RisAppointment;
+    slots: ResourceAvailabilitySlot[];
+    day: string;
+  } | null>(null);
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
   // M-1: staleness guard — last successful fetch time so operators can see
   // when the board data was actually retrieved.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -86,16 +104,26 @@ function TrackingBoard() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Debounce room filter
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedRoom(roomFilter.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [roomFilter]);
+
   const buildQuery = useCallback(
     (overrides?: Record<string, string>) => {
       const query: Record<string, string> = {};
       if (modalityFilter) query.modality = modalityFilter;
       if (statusFilter) query.status = statusFilter;
+      if (priorityFilter) query.priority = priorityFilter;
+      if (debouncedRoom) query.station_ae_title = debouncedRoom;
+      if (dateRange?.[0]) query.date_from = dateRange[0].format("YYYY-MM-DD");
+      if (dateRange?.[1]) query.date_to = dateRange[1].format("YYYY-MM-DD");
       if (debouncedSearch) query.search = debouncedSearch;
       if (overrides) Object.assign(query, overrides);
       return query;
     },
-    [modalityFilter, statusFilter, debouncedSearch],
+    [modalityFilter, statusFilter, priorityFilter, debouncedRoom, dateRange, debouncedSearch],
   );
 
   const fetchKpi = useCallback(() => {
@@ -169,6 +197,40 @@ function TrackingBoard() {
       }
     },
     [fetch],
+  );
+
+  // C5: open the shared reschedule modal against the entry's live
+  // appointment — availability comes from the scheduling engine so the
+  // picked slot is guaranteed free at submit time.
+  const canSchedule = hasPermission("SCHEDULE_WRITE");
+  const handleReschedule = useCallback(
+    async (entry: TrackingEntry) => {
+      if (!entry.appointment_id || !entry.resource_id) return;
+      setRescheduleLoading(true);
+      const day =
+        (entry.scheduled_date || new Date().toISOString().slice(0, 10));
+      try {
+        const slots = await getResourceAvailability(entry.resource_id, day);
+        setRescheduleTarget({
+          entry,
+          appointment: {
+            id: entry.appointment_id,
+            resource_id: entry.resource_id,
+            patient_id: entry.patient_id,
+            status: "SCHEDULED",
+            start_time: `${entry.scheduled_date}T${entry.scheduled_time || "00:00"}:00Z`,
+            end_time: `${entry.scheduled_date}T${entry.scheduled_time || "00:00"}:00Z`,
+          },
+          slots,
+          day,
+        });
+      } catch (e: any) {
+        message.error(e.message || "Could not load availability");
+      } finally {
+        setRescheduleLoading(false);
+      }
+    },
+    [message],
   );
 
   const columns: any[] = useMemo(
@@ -245,12 +307,28 @@ function TrackingBoard() {
             {
               title: "Actions",
               key: "actions",
-              width: "10%",
+              width: "12%",
               render: (_: any, record: TrackingEntry) => {
                 const transitions = VALID_TRANSITIONS[record.status] || [];
-                if (transitions.length === 0) return <span>-</span>;
+                const canReschedule =
+                  canSchedule &&
+                  record.status === "scheduled" &&
+                  !!record.appointment_id;
+                if (transitions.length === 0 && !canReschedule)
+                  return <span>-</span>;
                 return (
                   <Space size="small">
+                    {canReschedule && (
+                      <Tooltip title="Reschedule">
+                        <Button
+                          size="small"
+                          aria-label="Reschedule"
+                          icon={<CalendarOutlined />}
+                          loading={rescheduleLoading}
+                          onClick={() => void handleReschedule(record)}
+                        />
+                      </Tooltip>
+                    )}
                     {transitions.includes("arrived") && (
                       <Tooltip title="Check In">
                         <Button
@@ -311,7 +389,7 @@ function TrackingBoard() {
           ]
         : []),
     ],
-    [canWrite, handleStatusUpdate],
+    [canWrite, canSchedule, rescheduleLoading, handleStatusUpdate, handleReschedule],
   );
 
   return (
@@ -376,6 +454,46 @@ function TrackingBoard() {
             { value: "completed", label: "Completed" },
             { value: "cancelled", label: "Cancelled" },
           ]}
+        />
+        <Select
+          allowClear
+          placeholder="Priority"
+          aria-label="Priority filter"
+          value={priorityFilter}
+          onChange={(v) => {
+            setPriorityFilter(v);
+            pageRef.current = 1;
+            setPagination((p: any) => ({ ...p, current: 1 }));
+          }}
+          style={{ width: 120 }}
+          options={[
+            { value: "STAT", label: "STAT" },
+            { value: "URGENT", label: "Urgent" },
+            { value: "ROUTINE", label: "Routine" },
+          ]}
+        />
+        <Input
+          allowClear
+          aria-label="Room filter"
+          placeholder="Room / station AE"
+          value={roomFilter}
+          onChange={(e) => {
+            setRoomFilter(e.target.value);
+            pageRef.current = 1;
+            setPagination((p: any) => ({ ...p, current: 1 }));
+          }}
+          style={{ width: 150 }}
+        />
+        <DatePicker.RangePicker
+          aria-label="Date range filter"
+          value={dateRange}
+          onChange={(v) => {
+            setDateRange(v as [any, any]);
+            pageRef.current = 1;
+            setPagination((p: any) => ({ ...p, current: 1 }));
+          }}
+          allowClear
+          style={{ width: 240 }}
         />
       </Space>
 
@@ -450,6 +568,20 @@ function TrackingBoard() {
           </Descriptions>
         )}
       </Modal>
+      {rescheduleTarget && (
+        <RescheduleModal
+          open
+          appointment={rescheduleTarget.appointment}
+          slots={rescheduleTarget.slots}
+          day={rescheduleTarget.day}
+          onClose={() => setRescheduleTarget(null)}
+          onDone={() => {
+            setRescheduleTarget(null);
+            fetch();
+            fetchKpi();
+          }}
+        />
+      )}
     </Content>
   );
 }

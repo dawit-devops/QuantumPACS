@@ -503,9 +503,9 @@ class TestClinicDayWindow:
                 resp = client.get(
                     '/ris/appointments?date=2026-08-20&resource_id=res-1')
         assert resp.status_code == 200
-        sql = str(mock_conn.fetch.call_args.args[0])
+        args = [str(a) for a in mock_conn.fetch.call_args.args[1:]]
         # The day bounds must be tz-aware in the clinic zone (+09:00) —
         # a naive UTC window would render 'T00:00:00+00:00' and shift the
-        # clinic's calendar day.
-        assert "'2026-08-20T00:00:00+09:00'" in sql, sql
-        assert "'2026-08-21T00:00:00+09:00'" in sql, sql
+        # clinic's calendar day. Bounds travel as bound parameters.
+        assert any('2026-08-20 00:00:00+09:00' in a for a in args), args
+        assert any('2026-08-21 00:00:00+09:00' in a for a in args), args

@@ -289,6 +289,12 @@ class SchedulingEngine:
                                 'scheduled_date': start_dt.date(),
                                 'scheduled_time': start_dt.time(),
                                 'modality': (resource or {}).get('modality', ''),
+                                # C1: the resource name is the room/AE
+                                # identity — modalities filter their C-FIND
+                                # by ScheduledStationAE, so a booking without
+                                # it is invisible to the scanner.
+                                'station_ae_title':
+                                    (resource or {}).get('name', ''),
                                 'status': 'scheduled',
                                 # S6-23: the order's priority (STAT/URGENT/
                                 # ROUTINE) must flow into the MWL so the
@@ -394,7 +400,8 @@ class SchedulingEngine:
                     details={'from': str(current['start_time']),
                              'to': str(start), 'reason': reason})
 
-                # H5: the MWL entry moves with the appointment.
+                # H5: the MWL entry moves with the appointment — and C1
+                # keeps its station identity stamped from the resource.
                 if (current.get('order_id')
                         and (self._worklist is not None or conn is not None)):
                     from db.worklist import Worklist
@@ -406,9 +413,15 @@ class SchedulingEngine:
                         if accession:
                             entry = await worklist.get_by_accession(accession)
                         if entry:
+                            from db.ris_resources import RisResources
+                            resource = await (
+                                self._resources or RisResources(conn)).get(
+                                    current['resource_id'])
                             await worklist.update_entry(entry['id'], {
                                 'scheduled_date': start.date(),
                                 'scheduled_time': start.time(),
+                                'station_ae_title':
+                                    (resource or {}).get('name', ''),
                             })
                     except Exception as exc:
                         await self._audit_log(conn).log_event(

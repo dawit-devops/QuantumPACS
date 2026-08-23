@@ -177,3 +177,26 @@ export const searchRisOrders = (
     (res) => res ?? { data: [], total: 0, page: 1, per_page: 25 }
   );
 };
+
+// ---- C4: order detail for the booking form ---------------------------------
+
+export interface RisOrderProcedure {
+  id?: string;
+  procedure_code?: string;
+  procedure_name?: string;
+  modality?: string;
+  body_part?: string;
+  contrast?: boolean;
+  [key: string]: unknown;
+}
+
+export interface RisOrderDetail {
+  order: RisOrderRow;
+  procedures: RisOrderProcedure[];
+  appointments: RisAppointment[];
+}
+
+export const getRisOrder = (orderId: string): Promise<RisOrderDetail> =>
+  request<{ data: RisOrderDetail }>(`ris/orders/${orderId}`).then(
+    (res) => res.data
+  );
