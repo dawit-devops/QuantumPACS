@@ -8,6 +8,7 @@ import {
   Card,
   Divider,
   Alert,
+  Input,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -16,7 +17,7 @@ import {
   MedicineBoxOutlined,
   ClockCircleOutlined,
 } from "@ant-design/icons";
-import { confirmCheckIn, getCheckIn, CheckInSummary } from "../api/checkin";
+import { confirmCheckIn, getCheckIn, submitConsent, CheckInSummary } from "../api/checkin";
 import "./CheckIn.css";
 
 const { Title, Text, Paragraph } = Typography;
@@ -128,7 +129,10 @@ const CheckIn: React.FC = () => {
     };
   }, [token]);
 
-  const [confirming, setConfirming] = useState(false);
+const [confirming, setConfirming] = useState(false);
+  const [submittingConsent, setSubmittingConsent] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [declining, setDeclining] = useState(false);
 
   // Confirm check-in
   const onConfirm = useCallback(async () => {
@@ -149,7 +153,51 @@ const CheckIn: React.FC = () => {
     }
   }, [token]);
 
-  // --- Signature pad handlers ---
+  const captureSignature = (): string => {
+    const canvas = canvasRef.current;
+    if (!canvas) return "";
+    return canvas.toDataURL("image/png");
+  };
+
+  const handleConsentSubmit = async () => {
+    if (!consentChecked || !hasSignature || !token) return;
+    setSubmittingConsent(true);
+    try {
+      const signature_png = captureSignature();
+      await submitConsent(token, {
+        accepted: true,
+        signature_png,
+        decline_reason: "",
+      });
+      setConsentSigned(true);
+      setPhase("ready");
+    } catch (e: any) {
+      setError(e?.message || "Failed to submit consent");
+      setPhase("error");
+    } finally {
+      setSubmittingConsent(false);
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!token || !declineReason.trim()) return;
+    setSubmittingConsent(true);
+    try {
+      await submitConsent(token, {
+        accepted: false,
+        signature_png: "",
+        decline_reason: declineReason.trim(),
+      });
+      setConsentSigned(true);
+      setPhase("ready");
+    } catch (e: any) {
+      setError(e?.message || "Failed to record decline");
+      setPhase("error");
+    } finally {
+      setSubmittingConsent(false);
+    }
+  };
+
   const getPos = (e: React.TouchEvent | React.MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -206,12 +254,6 @@ const CheckIn: React.FC = () => {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
-  };
-
-  const handleConsentSubmit = () => {
-    if (!consentChecked || !hasSignature) return;
-    setConsentSigned(true);
-    setPhase("ready");
   };
 
   // Get prep instructions
@@ -396,12 +438,61 @@ const CheckIn: React.FC = () => {
             type="primary"
             size="large"
             disabled={!consentChecked || !hasSignature}
+            loading={submittingConsent}
             onClick={handleConsentSubmit}
             style={{ marginTop: 16 }}
             data-testid="consent-submit"
           >
             Accept Consent & Continue
           </Button>
+
+          <Divider style={{ margin: "16px 0" }} />
+
+          {/* Decline flow — refusal still allows check-in (K-03) */}
+          {!declining ? (
+            <Button
+              type="link"
+              danger
+              onClick={() => setDeclining(true)}
+              data-testid="decline-consent"
+            >
+              I decline this consent
+            </Button>
+          ) : (
+            <div className="kiosk-decline">
+              <Input.TextArea
+                placeholder="Reason for declining (required)"
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                rows={2}
+                maxLength={500}
+                data-testid="decline-reason"
+              />
+              <Button
+                type="primary"
+                danger
+                block
+                disabled={!declineReason.trim()}
+                loading={submittingConsent}
+                onClick={handleDecline}
+                style={{ marginTop: 8 }}
+                data-testid="decline-submit"
+              >
+                Decline Consent — proceed to check-in
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  setDeclining(false);
+                  setDeclineReason("");
+                }}
+                style={{ marginTop: 4 }}
+              >
+                Back to accept consent
+              </Button>
+            </div>
+          )}
 
           <Button
             type="link"

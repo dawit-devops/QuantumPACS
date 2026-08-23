@@ -59,6 +59,19 @@ class RisAppointments(Table):
         await self.conn.execute(
             "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
             "prep_instructions TEXT DEFAULT ''")
+        # S2: kiosk consent fields (mirrors migration 089).
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "consent_signature TEXT")
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "consent_accepted BOOLEAN")
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "consent_decline_reason TEXT")
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "consent_at TIMESTAMPTZ")
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -154,6 +167,18 @@ class RisAppointments(Table):
             "WHERE id::text = $1 AND tenant_id = $2 AND status = 'SCHEDULED' "
             "RETURNING id::text AS id, status",
             appointment_id, tenant_id)
+
+    async def record_consent(self, appointment_id, tenant_id, accepted,
+                             signature_png, decline_reason):
+        """K-03: persist kiosk digital consent against the appointment.
+        Idempotent — repeating the POST re-records the latest signature."""
+        return await self.conn.fetchrow(
+            "UPDATE ris_appointments "
+            "SET consent_accepted = $3, consent_signature = $4, "
+            "    consent_decline_reason = $5, consent_at = now() "
+            "WHERE id::text = $1 AND tenant_id = $2 "
+            "RETURNING id::text AS id",
+            appointment_id, tenant_id, accepted, signature_png, decline_reason)
 
     async def stamp_requesting_tenant(self, appointment_id, home_tenant):
         """R2-03-08: record the requester's home site for chargeback."""

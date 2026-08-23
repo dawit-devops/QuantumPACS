@@ -200,3 +200,98 @@ class TestKioskCheckIn:
         assert ok.status_code == 200, ok.text
         assert ok.json()['status'] == 'ARRIVED'
         assert dup.status_code == 409
+
+
+class TestKioskConsent:
+    """K-03: the kiosk digital consent form's signature + refusal are
+    persisted server-side (S2). The signature is linked to the appointment
+    record, stored as base64 PNG; refusal still allows check-in."""
+
+    def _consent_app(self):
+        from starlette.routing import Route
+        from api.checkin import PortalCheckInConsentHandler
+
+        return Starlette(routes=[
+            Route('/ris/checkin/{token}/consent',
+                  endpoint=PortalCheckInConsentHandler, methods=['POST']),
+        ])
+
+    def test_invalid_token_rejected(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._consent_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+        head, _, sig = token.rpartition('.')
+        bad = f'{head}.{sig[:-2]}xx'
+        resp = client.post(f'/ris/checkin/{bad}/consent', json={
+            'accepted': True, 'signature_png': 'data:image/png;base64,AAA=',
+        })
+        assert resp.status_code == 403
+
+    def test_accept_stores_signature_and_audits(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._consent_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+
+        calls = {'updated': None}
+        class _Appts:
+            def __init__(self, conn):
+                pass
+
+            async def record_consent(self, aid, tenant, accepted,
+                                     signature_png, decline_reason):
+                calls['updated'] = (aid, tenant, accepted,
+                                    signature_png, decline_reason)
+                return {'id': aid}
+
+        async def noop_log(*a, **k):
+            pass
+
+        with patch('api.checkin.get_conn') as gc, \
+             patch('db.ris_appointments.RisAppointments', _Appts), \
+             patch('db.audit_log.AuditLog.log_event', new=noop_log):
+            gc.return_value.__aenter__ = AsyncMock(return_value=None)
+            gc.return_value.__aexit__ = AsyncMock(return_value=False)
+            resp = client.post(f'/ris/checkin/{token}/consent', json={
+                'accepted': True,
+                'signature_png': 'data:image/png;base64,AAA=',
+            })
+        assert resp.status_code == 200, resp.text
+        assert calls['updated'] == (
+            'appt-1', 'main-hospital', True,
+            'data:image/png;base64,AAA=', '',
+        )
+
+    def test_decline_with_reason_allows_check_in(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._consent_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+
+        calls = {'updated': None}
+        class _Appts:
+            def __init__(self, conn):
+                pass
+
+            async def record_consent(self, aid, tenant, accepted,
+                                     signature_png, decline_reason):
+                calls['updated'] = (aid, tenant, accepted,
+                                    signature_png, decline_reason)
+                return {'id': aid}
+
+        async def noop_log(*a, **k):
+            pass
+
+        with patch('api.checkin.get_conn') as gc, \
+             patch('db.ris_appointments.RisAppointments', _Appts), \
+             patch('db.audit_log.AuditLog.log_event', new=noop_log):
+            gc.return_value.__aenter__ = AsyncMock(return_value=None)
+            gc.return_value.__aexit__ = AsyncMock(return_value=False)
+            resp = client.post(f'/ris/checkin/{token}/consent', json={
+                'accepted': False,
+                'signature_png': '',
+                'decline_reason': 'Patient declined to consent',
+            })
+        assert resp.status_code == 200, resp.text
+        assert calls['updated'] == (
+            'appt-1', 'main-hospital', False, '',
+            'Patient declined to consent',
+        )

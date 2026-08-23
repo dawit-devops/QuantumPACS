@@ -9,10 +9,12 @@ import { ThemeProvider } from "../common/ThemeProvider";
 
 const mockGetCheckIn = vi.hoisted(() => vi.fn());
 const mockConfirmCheckIn = vi.hoisted(() => vi.fn());
+const mockSubmitConsent = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/checkin", () => ({
   getCheckIn: mockGetCheckIn,
   confirmCheckIn: mockConfirmCheckIn,
+  submitConsent: mockSubmitConsent,
 }));
 
 vi.mock("../hooks", () => ({
@@ -50,6 +52,10 @@ const SUMMARY = {
   modality: "CT",
   prep_instructions: "Fast for 4 hours before your CT exam",
 };
+
+beforeEach(() => {
+  mockSubmitConsent.mockResolvedValue({ id: "a1", accepted: true });
+});
 
 describe("CheckIn (enhanced kiosk)", () => {
   beforeEach(() => {
@@ -295,5 +301,31 @@ describe("CheckIn (enhanced kiosk)", () => {
     expect(
       await screen.findByText(/Bring your insurance card/),
     ).toBeInTheDocument();
+  });
+
+  it("decline requires a reason and submits decline consent", async () => {
+    const user = userEvent.setup();
+    mockGetCheckIn.mockResolvedValue(SUMMARY);
+    renderKiosk();
+    await screen.findByText(/Preparation Instructions/);
+    await user.click(
+      screen.getByText(/I understand — continue to consent/),
+    );
+    // Submit must be disabled before a reason is typed.
+    await user.click(screen.getByTestId("decline-consent"));
+    expect(screen.getByTestId("decline-submit")).toBeDisabled();
+    await user.type(screen.getByTestId("decline-reason"), "Not comfortable");
+    await user.click(screen.getByTestId("decline-submit"));
+    await waitFor(() => {
+      expect(mockSubmitConsent).toHaveBeenCalledWith("test-token-123", {
+        accepted: false,
+        signature_png: "",
+        decline_reason: "Not comfortable",
+      });
+    });
+    // Refusal still proceeds to the ready-to-check-in phase.
+    await waitFor(() => {
+      expect(screen.getByText(/I'm here/)).toBeInTheDocument();
+    });
   });
 });

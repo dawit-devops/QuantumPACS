@@ -14,6 +14,8 @@ import time
 from starlette.endpoints import HTTPEndpoint
 
 from api.response import api_error, not_found, ok
+from api.schemas.checkin import SubmitConsentRequest
+from api.validate import parse_body
 from db.conn import get_conn
 from log import get_logger
 
@@ -105,3 +107,34 @@ class PortalCheckInHandler(HTTPEndpoint):
                 tenant=claims['t'],
             )
         return ok({'id': row['id'], 'status': row['status']})
+
+
+class PortalCheckInConsentHandler(HTTPEndpoint):
+    """K-03: POST /ris/checkin/{token}/consent — persist the kiosk digital
+    consent (signature PNG base64, acceptance, or decline with reason).
+    Token-authenticated like check-in; refusal still allows check-in."""
+
+    async def post(self, request):
+        claims = verify_checkin_token(request.path_params['token'])
+        if not claims:
+            return api_error('INVALID_TOKEN', 'Token invalid or expired',
+                             status=403)
+        body = await parse_body(SubmitConsentRequest, request)
+        async with get_conn() as conn:
+            from db.ris_appointments import RisAppointments
+            row = await RisAppointments(conn).record_consent(
+                claims['a'], claims['t'], body.accepted,
+                body.signature_png, body.decline_reason)
+            if not row:
+                return not_found('Appointment not found')
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='ris.consent_signed' if body.accepted
+                           else 'ris.consent_declined',
+                actor_id='',  # kiosk: the token is the actor
+                resource_id=claims['a'],
+                resource_type='ris_appointments',
+                tenant=claims['t'],
+                details={'accepted': body.accepted},
+            )
+        return ok({'id': row['id'], 'accepted': body.accepted})

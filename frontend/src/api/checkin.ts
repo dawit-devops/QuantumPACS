@@ -14,6 +14,12 @@ export interface CheckInConfirmation {
   status: string;
 }
 
+export interface ConsentPayload {
+  accepted: boolean;
+  signature_png: string;
+  decline_reason: string;
+}
+
 // RIS-REG-04: kiosk self-check-in. The QR token is the credential —
 // no Authorization header, the backend whitelists this path.
 export const getCheckIn = (token: string): Promise<CheckInSummary> =>
@@ -25,3 +31,13 @@ export const confirmCheckIn = (
   request<CheckInConfirmation>(`ris/checkin/${encodeURIComponent(token)}`, {
     method: "POST",
   });
+
+// K-03: persist kiosk digital consent (signature PNG base64 / decline reason).
+export const submitConsent = (
+  token: string,
+  payload: ConsentPayload,
+): Promise<{ id: string; accepted: boolean }> =>
+  request<{ id: string; accepted: boolean }>(
+    `ris/checkin/${encodeURIComponent(token)}/consent`,
+    { method: "POST", data: payload },
+  );

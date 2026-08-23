@@ -141,3 +141,13 @@
     max-width: 100%;
   }
 }
+
+/* ── Consent decline flow (K-03) ────────────────────────────────────── */
+
+.kiosk-decline {
+  margin-top: 8px;
+  padding: 12px;
+  background: #FFF1F0;
+  border: 1px solid #FFCCC7;
+  border-radius: 12px;
+}
