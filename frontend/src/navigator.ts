@@ -50,6 +50,7 @@ export const ADMIN_SCOPED_ROLES: ReadonlyArray<string> = [
   "tenant_admin",
   "pacs_admin",
   "emr_admin",
+  "dept_manager",
 ];
 
 /**
@@ -229,6 +230,7 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   patient: "portal",
   super_admin: "platform",
   tenant_admin: "platform",
+  dept_manager: "dashboard",
 };
 
 // Mirrors AuthContext.hasPermission: the admin flag bypasses every gate.

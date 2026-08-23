@@ -297,12 +297,13 @@ class TestRoleImmutabilityPolicy:
         assert PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES <= set(BUILT_IN_ROLES)
         assert not (PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES & IMMUTABLE_ROLE_SLUGS)
 
-    def test_exactly_eight_built_ins_are_facility_editable(self):
+    def test_exactly_nine_built_ins_are_facility_editable(self):
         editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
             PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
         assert editable == {
             'radiologist', 'physician', 'referring_physician', 'resident',
             'care_coordinator', 'technologist', 'receptionist', 'cashier',
+            'dept_manager',
         }
 
     def test_immutable_anchors_are_in_place(self):
@@ -383,10 +384,11 @@ class TestEdPhysicianRuntimeRole:
     def test_is_an_immutable_anchor(self):
         assert 'ed_physician' in IMMUTABLE_ROLE_SLUGS
 
-    def test_facility_editable_set_stays_exactly_eight(self):
+    def test_facility_editable_set_stays_exactly_nine(self):
         editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
             PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
         assert editable == {
             'radiologist', 'physician', 'referring_physician', 'resident',
             'care_coordinator', 'technologist', 'receptionist', 'cashier',
+            'dept_manager',
         }

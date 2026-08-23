@@ -3,10 +3,16 @@
 ## Prerequisites
 
 ```bash
-cd backend && .venv/bin/python ../scripts/seed_uat.py --persona manager
+cd backend && .venv/bin/python ../scripts/seed_uat.py --persona dept_manager
 ```
 
 Seeds: 3 exams across ready / in_progress / completed+PAID (dashboard aggregate).
+
+> The `dept_manager` role (S12-34) is read-only operational analytics: it
+> opens the RIS dashboard (REPORT_READ gate), unbilled aging (BILLING_READ)
+> and analytics (ANALYTICS_READ/METRICS_READ), with no writes and no
+> user/role/tenant administration. If `test.dept_manager` does not exist yet,
+> re-run `backend/venv/bin/python backend/seed_test_users.py`.
 
 ## Walkthrough
 
@@ -14,7 +20,7 @@ Seeds: 3 exams across ready / in_progress / completed+PAID (dashboard aggregate)
 
 | Step | Action | Expected Outcome |
 |------|--------|------------------|
-| 1 | Login as `test.super_admin` / `Test@123456` | Dashboard loads with aggregate cards |
+| 1 | Login as `test.dept_manager` / `Test@123456` | Dashboard loads with aggregate cards |
 | 2 | Verify total counts | 3 exams visible in summary |
 | 3 | Verify status breakdown | Ready (1), In Progress (1), Completed (1) |
 

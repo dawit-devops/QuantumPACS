@@ -20,6 +20,7 @@ NAME_BY_SLUG = {
     'care_coordinator': 'Care Coordinator',
     'emr_admin': 'EMR Admin',
     'patient': 'Patient',
+    'dept_manager': 'Department Manager',
 }
 
 

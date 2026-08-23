@@ -304,6 +304,17 @@ MATRIX_B_EMRADM = {
 }
 
 # Matrix C — Platform roles
+# Matrix C — dept_manager (S12-34): read-only operational analytics for a
+# department manager — REPORT_READ is the RIS dashboard KPI gate, BILLING_READ
+# unlocks the unbilled-aging card, ANALYTICS_READ/METRICS_READ surface the
+# analytics workspace, and the clinical reads let the manager open reports
+# referenced from dashboards. No writes, no user/role/tenant administration.
+MATRIX_C_DEPTMGR = {
+    'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'BILLING_READ',
+    'ANALYTICS_READ', 'METRICS_READ', 'CHART_READ', 'RESULTS_READ',
+    'AUDIT_READ',
+}
 MATRIX_C_TENANT_ADMIN = {
     'TENANT_READ', 'TENANT_ADMIN', 'METERING_READ',
     'USER_READ', 'USER_WRITE', 'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',
@@ -412,4 +423,7 @@ BUILT_IN_ROLES = {
     'care_coordinator': sorted(MATRIX_B_COORD),
     'emr_admin': sorted(MATRIX_B_EMRADM),
     'patient': sorted(MATRIX_C_PATIENT),
+    # S12-34: department manager — read-only operational analytics (RIS
+    # dashboard KPI gate REPORT_READ, unbilled aging BILLING_READ).
+    'dept_manager': sorted(MATRIX_C_DEPTMGR),
 }

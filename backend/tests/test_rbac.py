@@ -88,6 +88,27 @@ class TestGetRolePermissions:
         assert Permission.FILE_WRITE.value in perms
         assert Permission.USER_WRITE.value in perms
 
+    def test_dept_manager_is_read_only_operational_analytics(self):
+        """S12-34: dept_manager must open the RIS dashboard + analytics but
+        carry no writes and no user/role/tenant administration."""
+        perms = set(get_role_permissions('dept_manager'))
+        assert Permission.REPORT_READ.value in perms       # RIS dashboard KPI
+        assert Permission.BILLING_READ.value in perms      # unbilled aging
+        assert Permission.ANALYTICS_READ.value in perms    # analytics workspace
+        assert Permission.METRICS_READ.value in perms      # metrics
+        assert Permission.PATIENT_READ.value in perms      # patient lookup
+        assert not perms & {
+            Permission.REPORT_WRITE.value,
+            Permission.REPORT_SIGN.value,
+            Permission.BILLING_WRITE.value,
+            Permission.USER_WRITE.value,
+            Permission.ROLE_WRITE.value,
+            Permission.TENANT_ADMIN.value,
+            Permission.ADMIN.value,
+            Permission.ORDER_WRITE.value,
+            Permission.WORKLIST_WRITE.value,
+        }, f'dept_manager must be read-only, got writes: {perms}'
+
 
 class TestUserCanAccessTenant:
     def test_admin_can_access_any_tenant(self):

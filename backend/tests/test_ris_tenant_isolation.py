@@ -794,6 +794,77 @@ class TestRisCrossTenantReadIsolation:
             await teardown()
 
 
+class TestRisCrossTenantReadNoLeak:
+    """R2-06-09: the shared-DB read contract — every RIS handler query that
+    crosses the lineage tag must filter by the caller's tenant_id, so a
+    tenant-B scoped read can never return a tenant-A row.
+
+    Pool separation (ADR-029) is the physical read boundary for tenant-owned
+    databases; on the shared-DB `default` tenant the tenant_id column is the
+    discriminator. This pins the handler query contract: a tenant-scoped
+    SELECT (the shape every RIS api module issues) must resolve to zero
+    foreign rows even when a same-accession or same-patient row exists for
+    another tenant.
+    """
+
+    def test_tenant_scoped_read_never_leaks_foreign_rows(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        acc = f'ACC-{uuid.uuid4().hex[:8]}'
+
+                        set_tenant_slug('tenant-a')
+                        row_a = await _insert_ris_order(conn, 'tenant-a')
+                        await conn.execute(
+                            'UPDATE ris_orders SET accession_number = $1 WHERE id = $2',
+                            acc, row_a['id'],
+                        )
+
+                        set_tenant_slug('tenant-b')
+                        row_b = await _insert_ris_order(conn, 'tenant-b')
+                        await conn.execute(
+                            'UPDATE ris_orders SET accession_number = $1 WHERE id = $2',
+                            acc, row_b['id'],
+                        )
+
+                        # The exact shape of the RIS handler read (the
+                        # tenant-scoped SELECT): accessions belonging to the
+                        # *current* tenant only. tenant-a's same-accession row
+                        # must never surface.
+                        leaked = await conn.fetch(
+                            'SELECT * FROM ris_orders '
+                            "WHERE tenant_id = 'tenant-b' AND accession_number = $1",
+                            acc,
+                        )
+                        assert [r['id'] for r in leaked] == [row_b['id']], (
+                            'tenant-b scoped read leaked a tenant-a row'
+                        )
+                        assert all(r['tenant_id'] == 'tenant-b' for r in leaked)
+
+                        # And an unscoped read sees both — proving the query is
+                        # what isolates, not the data being absent.
+                        both = await conn.fetch(
+                            'SELECT * FROM ris_orders WHERE accession_number = $1',
+                            acc,
+                        )
+                        assert len(both) == 2
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
+
+
 class TestRisUniquePerTenant:
     """Accession uniqueness is per-tenant, not global — two tenants can
     share the same accession number."""

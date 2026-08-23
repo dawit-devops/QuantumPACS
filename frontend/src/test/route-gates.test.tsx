@@ -434,4 +434,26 @@ describe("PACS workspace route gates", () => {
     expect(screen.queryByTestId("dashboard-page")).toBeNull();
     result.unmount();
   });
+
+  it("lets a dept_manager open the dashboard with a dashboard permission", () => {
+    // S12-34: dept_manager is admin-scoped (ADMIN_SCOPED_ROLES) with read-only
+    // operational analytics — METRICS_READ satisfies the dashboard gate.
+    seedUser({ role: "dept_manager", admin: false, permissions: ["METRICS_READ"] });
+
+    const result = renderAt("/admin");
+    expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("closes clinical routes to a dept_manager even with the permission", () => {
+    // dept_manager carries REPORT_READ (RIS dashboard gate) but is
+    // admin-scoped — the clinical reading surface must stay closed.
+    seedUser({ role: "dept_manager", admin: false, permissions: ["REPORT_READ"] });
+    landingRouteForMock.mockImplementation(() => "/account");
+
+    const result = renderAt("/reading");
+    expect(screen.getByTestId("account-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("reading-page")).toBeNull();
+    result.unmount();
+  });
 });

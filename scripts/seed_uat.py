@@ -10,6 +10,7 @@ scenario without disturbing the others:
   biller         — PENDING/BILLED/PAID/DENIED charges + claims + prior-auth
   ris-admin      — templates, coding map, resources
   manager        — cross-status dashboard aggregate (mix of the above)
+  dept_manager   — same data as manager; login as test.dept_manager
 
 Personas compose: `--persona all` runs every scenario exactly once. Every
 insert is guarded by ON CONFLICT / EXISTS so re-runs are no-ops.
@@ -587,6 +588,7 @@ PERSONAS = {
     'biller': seed_biller,
     'ris-admin': seed_ris_admin,
     'manager': seed_manager,
+    'dept_manager': seed_manager,
 }
 
 
@@ -629,7 +631,7 @@ def main():
     parser.add_argument(
         '--persona', default='all',
         help='persona to seed (default: all): all|radiologist|technologist|'
-             'scheduler|front-desk|biller|ris-admin|manager',
+             'scheduler|front-desk|biller|ris-admin|manager|dept_manager',
     )
     parser.add_argument(
         '--allow-docker', action='store_true',
