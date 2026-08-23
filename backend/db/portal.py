@@ -29,6 +29,17 @@ class Portal:
             patient_id,
         )
 
+    async def set_consent(self, patient_id, consent_results):
+        """P-01: grant/withdraw results sharing. Writes patients.meta
+        consent_results — the same JSONB key the read gates test, so a
+        withdrawal revokes portal visibility on the next poll."""
+        return await self.conn.execute(
+            "UPDATE patients SET meta = COALESCE(meta, '{}'::jsonb)"
+            " || jsonb_build_object('consent_results', $2)"
+            " WHERE patient_id = $1",
+            patient_id, consent_results,
+        )
+
     async def get_scope(self, patient_id, user_id):
         return await self.conn.fetchrow(
             "SELECT id, scope_type FROM patient_staff_scope"
@@ -106,14 +117,44 @@ class Portal:
         )
         return [dict(r) for r in rows]
 
+    async def list_appointments(self, patient_id, history=False):
+        """P-02/P-03: patient-facing appointments. Modality + room come from
+        the booked resource; prep instructions from the appointment row.
+        history=True returns past (completed/cancelled) visits; otherwise
+        upcoming/scheduled ones. Consent-gated like every patient read."""
+        rows = await self.conn.fetch(
+            f"""
+            SELECT a.id::text AS id, a.patient_id, a.start_time, a.end_time,
+                   a.status,
+                   COALESCE(r.modality, '') AS modality,
+                   COALESCE(r.location, '') AS room,
+                   COALESCE(a.prep_instructions, '') AS prep_instructions,
+                   COALESCE(o.clinical_indication, '') AS procedure,
+                   COALESCE(o.priority, 'ROUTINE') AS priority,
+                   COALESCE(o.accession_number, '') AS accession_number
+            FROM ris_appointments a
+            LEFT JOIN ris_resources r ON r.id = a.resource_id
+            LEFT JOIN ris_orders o ON o.id = a.order_id
+            JOIN patients p ON p.patient_id = a.patient_id
+            WHERE a.patient_id = $1 AND {self._CONSENT_PREDICATE}
+              AND (a.start_time >= now()) = NOT $2
+            ORDER BY a.start_time {"DESC" if history else "ASC"}
+            """,
+            patient_id, history,
+        )
+        return [dict(r) for r in rows]
+
     async def list_final_reports(self, patient_id):
         # A4: HIM-held reports never appear on patient-facing surfaces
         # (R2-05-05); the predicate is shared with the FHIR DR search gate.
         # E1: consent gate — a patient who has not consented sees nothing.
+        # S6: the portal list renders modality/status/impression and links
+        # by report id, so the projection must carry them.
         from db.reports import RELEASE_VISIBLE_SQL
         rows = await self.conn.fetch(
             f"""
-            SELECT r.id AS report_id, r.exam_id, e.accession_number,
+            SELECT r.id AS id, r.id AS report_id, r.exam_id, e.accession_number,
+                   e.modality, r.status, r.impression,
                    r.signed_at, r.signed_by
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
@@ -131,7 +172,8 @@ class Portal:
         from db.reports import RELEASE_VISIBLE_SQL
         row = await self.conn.fetchrow(
             f"""
-            SELECT r.id AS report_id, r.exam_id, r.status, e.accession_number,
+            SELECT r.id AS report_id, r.id AS id, r.exam_id, r.status,
+                   e.accession_number, e.modality,
                    r.findings, r.impression, r.recommendations,
                    r.signed_by, r.signed_at
             FROM reports r
@@ -207,12 +249,14 @@ class Portal:
         return await self.conn.fetchrow(
             """
             INSERT INTO follow_up_requests
-                (report_id, exam_id, patient_id, requester_id, reason, status, priority)
-            VALUES ($1, $2, $3, $4, $5, 'submitted', $6)
+                (report_id, exam_id, patient_id, requester_id, reason, status,
+                 priority, contact_method, note, preferred_time)
+            VALUES ($1, $2, $3, $4, $5, 'submitted', $6, $7, $8, $9)
             RETURNING id
             """,
             body.report_id, body.exam_id, body.patient_id, user_id,
             body.reason, body.priority,
+            body.contact_method, body.note, body.preferred_time,
         )
 
     async def follow_up_targets_valid(self, patient_id, report_id, exam_id):

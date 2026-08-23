@@ -54,6 +54,11 @@ class RisAppointments(Table):
         await self.conn.execute(
             "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
             "requesting_tenant TEXT DEFAULT ''")
+        # S1: kiosk prep instructions (mirrors migration 088). Added via
+        # ALTER here so dev db_init paths converge with alembic.
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "prep_instructions TEXT DEFAULT ''")
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -125,12 +130,18 @@ class RisAppointments(Table):
         )
 
     async def get_for_checkin(self, appointment_id, tenant_id='default'):
-        """RIS-REG-04: kiosk summary — display name only, no internals."""
+        """RIS-REG-04: kiosk summary — display name, modality, room, prep.
+        Minimal PHI: never MRN or order internals. Modality + room live on
+        the booked resource (ris_resources), not the appointment row."""
         return await self.conn.fetchrow(
             "SELECT a.id::text AS id, a.status AS status, "
             "a.start_time AS start_time, "
+            "COALESCE(r.modality, '') AS modality, "
+            "COALESCE(r.location, '') AS room, "
+            "COALESCE(a.prep_instructions, '') AS prep_instructions, "
             "COALESCE(p.name, '') AS patient_name "
             "FROM ris_appointments a "
+            "LEFT JOIN ris_resources r ON r.id = a.resource_id "
             "LEFT JOIN patients p ON p.patient_id = a.patient_id "
             "AND p.tenant_id = a.tenant_id "
             "WHERE a.id::text = $1 AND a.tenant_id = $2",

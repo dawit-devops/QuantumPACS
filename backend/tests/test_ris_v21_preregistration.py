@@ -105,6 +105,8 @@ def _app():
 _APPT = {
     'id': 'appt-1', 'tenant_id': 'main-hospital', 'status': 'SCHEDULED',
     'patient_name': 'John Doe', 'modality': 'CT',
+    'room': 'CT-1',
+    'prep_instructions': 'Fast for 4 hours before your exam',
 }
 
 
@@ -117,6 +119,8 @@ class TestKioskCheckIn:
 
         async def fetchrow(sql, *args):
             assert 'ris_appointments' in sql
+            assert 'ris_resources' in sql  # S1: join for modality/room
+            assert 'prep_instructions' in sql  # S1: prep field
             assert "p.name" in sql or 'patients' in sql
             return dict(_APPT)
 
@@ -129,6 +133,10 @@ class TestKioskCheckIn:
         body = resp.json()
         assert body['patient_name'] == 'John Doe'
         assert body['status'] == 'SCHEDULED'
+        # S1: kiosk summary includes modality, room, prep_instructions
+        assert body['modality'] == 'CT'
+        assert body['room'] == 'CT-1'
+        assert body['prep_instructions'] == 'Fast for 4 hours before your exam'
 
     def test_tampered_token_rejected(self):
         from api.checkin import PortalCheckInHandler, make_checkin_token

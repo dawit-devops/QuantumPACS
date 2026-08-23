@@ -132,8 +132,8 @@ from api.frontdesk import (
 from api.checkin import PortalCheckInHandler
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
-    PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
-    PortalFollowUpStatusHandler,
+    PortalReportHandler, PortalOrdersHandler, PortalAppointmentsHandler,
+    PortalConsentHandler, PortalFollowUpHandler, PortalFollowUpStatusHandler,
 )
 from api.orders import OrdersHandler
 from api.ris_orders import (
@@ -447,6 +447,10 @@ _V1_ROUTES = [
     v2(Route('/portal/patients/{patient_id}', endpoint=PortalPatientHandler)),
     v2(Route('/portal/patients/{patient_id}/reports/{report_id}', endpoint=PortalReportHandler)),
     v2(Route('/portal/patients/{patient_id}/orders', endpoint=PortalOrdersHandler)),
+    v2(Route('/portal/patients/{patient_id}/appointments',
+             endpoint=PortalAppointmentsHandler)),
+    v2(Route('/portal/patients/{patient_id}/consent', endpoint=PortalConsentHandler,
+             methods=['PUT'])),
     v2(Route('/portal/follow-ups', endpoint=PortalFollowUpHandler)),
     # RIS-REG-04: kiosk self-check-in — public path, HMAC token is the
     # bearer credential (registered in TokenAuth._PUBLIC_PATHS).

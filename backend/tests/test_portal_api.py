@@ -33,6 +33,8 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 def _make_app(user=None):
     from api.portal import (
+        PortalAppointmentsHandler,
+        PortalConsentHandler,
         PortalFollowUpHandler,
         PortalFollowUpStatusHandler,
         PortalOrdersHandler,
@@ -52,6 +54,15 @@ def _make_app(user=None):
                 endpoint=PortalReportHandler,
             ),
             Route('/portal/patients/{patient_id}/orders', endpoint=PortalOrdersHandler),
+            Route(
+                '/portal/patients/{patient_id}/appointments',
+                endpoint=PortalAppointmentsHandler,
+            ),
+            Route(
+                '/portal/patients/{patient_id}/consent',
+                endpoint=PortalConsentHandler,
+                methods=['PUT'],
+            ),
             Route('/portal/follow-ups', endpoint=PortalFollowUpHandler),
             Route(
                 '/portal/follow-ups/{id}',
@@ -70,6 +81,10 @@ def _make_app(user=None):
 STAFF = User({'id': 1, 'permissions': ['PORTAL_READ', 'FOLLOW_UP_WRITE']})
 READ_ONLY = User({'id': 2, 'permissions': ['PORTAL_READ']})
 NO_PERMS = User({'id': 3, 'permissions': []})
+# P-05: patients hold FOLLOW_UP_SELF (self-scoped writes only) — never
+# FOLLOW_UP_WRITE, which would let them attach scopes to arbitrary patients
+# (R3-01).
+PATIENT = User({'id': 4, 'permissions': ['PORTAL_READ', 'FOLLOW_UP_SELF']})
 
 
 def _scope_row(**over):
@@ -101,6 +116,8 @@ def _report_row(**over):
     row = {
         'report_id': 'rep-1', 'exam_id': 'exam-1', 'accession_number': 'ACC001',
         'signed_at': None, 'signed_by': 'Dr. Radiologist',
+        'status': 'final', 'modality': 'CT',
+        'impression': 'Normal', 'findings': 'No acute findings',
     }
     row.update(over)
     return row
@@ -128,6 +145,13 @@ class TestPortalScope:
         # R3-01: PORTAL_READ alone (the patient role's grant) must never
         # attach a scope to an arbitrary patient.
         client = TestClient(_make_app(READ_ONLY))
+        resp = client.post('/portal/scope', json={'patient_id': 'MRN1'})
+        assert resp.status_code == 403
+
+    def test_patient_cannot_attach_scope(self):
+        # R3-01: FOLLOW_UP_SELF must not open scope attachment — that stays
+        # FOLLOW_UP_WRITE (staff) only.
+        client = TestClient(_make_app(PATIENT))
         resp = client.post('/portal/scope', json={'patient_id': 'MRN1'})
         assert resp.status_code == 403
 
@@ -237,6 +261,44 @@ class TestPortalPatientSearch:
         assert len(data) == 1
         assert data[0]['patient_id'] == 'MRN1'
         mock_conn.fetch.assert_awaited_once()
+
+
+class TestPortalReportFields:
+    """S6: list_final_reports must return status, modality, impression,
+    and id — the frontend renders these columns and the old SQL omitted
+    them, leaving blank cells in ReportList and PortalHome."""
+
+    def test_list_sql_includes_status_modality_impression_id(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        scope_returned = False
+        sqls = []
+
+        async def fetchrow(sql, *args):
+            nonlocal scope_returned
+            if not scope_returned:
+                scope_returned = True
+                return _scope_row()
+            return None  # get_demographics — not our concern
+
+        async def fetch(sql, *args):
+            sqls.append(sql)
+            return [_report_row()]
+
+        mock_conn.fetchrow = fetchrow
+        mock_conn.fetch = fetch
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            client.get('/portal/patients/MRN1')
+        assert sqls, 'no fetch call captured'
+        # Capture the report query (second fetch is for list_final_reports)
+        report_sql = sqls[1] if len(sqls) > 1 else sqls[0]
+        assert 'modality' in report_sql, report_sql
+        assert 'status' in report_sql, report_sql
+        assert 'impression' in report_sql, report_sql
+        # The frontend reads r.id; the SQL must alias it
+        assert 'r.id AS id' in report_sql or 'report_id AS id' in report_sql, \
+            report_sql
 
 
 class TestPortalPatientView:
@@ -350,6 +412,116 @@ class TestPortalOrders:
         assert resp.json()['data'] == []
 
 
+class TestPortalAppointments:
+    def test_requires_portal_read(self):
+        client = TestClient(_make_app(NO_PERMS))
+        resp = client.get('/portal/patients/MRN1/appointments')
+        assert resp.status_code == 403
+
+    def test_scoped_appointments_include_prep_modality_room(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = _scope_row()
+        mock_conn.fetch.return_value = [
+            {
+                'id': 'appt-1', 'patient_id': 'MRN1',
+                'start_time': '2026-08-28T10:30:00+00:00',
+                'end_time': '2026-08-28T11:00:00+00:00',
+                'status': 'SCHEDULED',
+                'modality': 'CT', 'room': 'CT-1',
+                'prep_instructions': 'Fast for 4 hours before your exam',
+                'procedure': 'CT Chest with Contrast',
+                'priority': 'ROUTINE', 'accession_number': 'ACC001',
+            },
+        ]
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            resp = client.get('/portal/patients/MRN1/appointments')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert len(data) == 1
+        assert data[0]['status'] == 'SCHEDULED'
+        assert data[0]['modality'] == 'CT'
+        assert data[0]['room'] == 'CT-1'
+        assert data[0]['prep_instructions'] == \
+            'Fast for 4 hours before your exam'
+        assert data[0]['procedure'] == 'CT Chest with Contrast'
+
+    def test_out_of_scope_appointments_empty(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = None
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            resp = client.get('/portal/patients/MRN1/appointments')
+        assert resp.status_code == 200
+        assert resp.json()['data'] == []
+
+
+class TestPortalConsent:
+    def test_requires_portal_read(self):
+        client = TestClient(_make_app(NO_PERMS))
+        resp = client.put('/portal/patients/MRN1/consent',
+                          json={'consent_results': True})
+        assert resp.status_code == 403
+
+    def test_grant_consent_updates_meta_and_audits(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),
+            {'id': 1},  # consent_granted probe is not used here; set_consent
+        ]
+        executed = []
+
+        async def execute(sql, *args):
+            executed.append(sql)
+            return 'UPDATE 1'
+
+        mock_conn.execute = execute
+        with patch('api.portal.get_conn', return_value=mock_conn), \
+             patch('db.audit_log.AuditLog.log_event', new=AsyncMock()) as alog:
+            resp = client.put('/portal/patients/MRN1/consent',
+                              json={'consent_results': True})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()['data']['consent_results'] is True
+        assert any("UPDATE patients" in s for s in executed), executed
+        assert any("consent_results" in s for s in executed), executed
+
+    def test_revoke_consent_writes_false(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),
+        ]
+        executed = []
+
+        async def execute(sql, *args):
+            executed.append(sql)
+            return 'UPDATE 1'
+
+        mock_conn.execute = execute
+        with patch('api.portal.get_conn', return_value=mock_conn), \
+             patch('db.audit_log.AuditLog.log_event', new=AsyncMock()):
+            resp = client.put('/portal/patients/MRN1/consent',
+                              json={'consent_results': False})
+        assert resp.status_code == 200
+        assert any("UPDATE patients" in s for s in executed), executed
+        assert any("consent_results" in s for s in executed), executed
+
+    def test_out_of_scope_not_found(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = None
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            resp = client.put('/portal/patients/MRN1/consent',
+                              json={'consent_results': True})
+        assert resp.status_code == 404
+
+
 class TestPortalFollowUps:
     def test_list_requires_portal_read(self):
         client = TestClient(_make_app(NO_PERMS))
@@ -387,6 +559,62 @@ class TestPortalFollowUps:
             'patient_id': 'MRN1', 'reason': 'Repeat imaging',
         })
         assert resp.status_code == 403
+
+    def test_patient_with_follow_up_self_can_create(self):
+        # P-05: a patient may file a follow-up against their own scoped
+        # patient via FOLLOW_UP_SELF — no FOLLOW_UP_WRITE needed.
+        client = TestClient(_make_app(PATIENT))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),          # get_scope — in scope
+            {'id': 'fu-1'},        # create_follow_up
+        ]
+        mock_conn.fetchval.return_value = 1  # follow_up_targets_valid
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            with patch('api.portal.notify_role') as mock_notify:
+                resp = client.post('/portal/follow-ups', json={
+                    'patient_id': 'MRN1',
+                    'reason': 'Question about my results',
+                    'priority': 'routine',
+                })
+        assert resp.status_code == 201
+        assert resp.json()['data']['id'] == 'fu-1'
+        mock_notify.assert_awaited_once()
+
+    def test_create_persists_contact_method_and_note(self):
+        # P-05: the coordinator needs the patient's preferred contact info —
+        # create_follow_up must INSERT contact_method/note/preferred_time.
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),
+            {'id': 'fu-1'},
+        ]
+        mock_conn.fetchval.return_value = 1
+        insert_sql = []
+
+        original_fetchrow = mock_conn.fetchrow
+        async def tracked_fetchrow(sql, *args):
+            insert_sql.append(sql)
+            return await original_fetchrow(sql, *args)
+
+        mock_conn.fetchrow = tracked_fetchrow
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            with patch('api.portal.notify_role'):
+                resp = client.post('/portal/follow-ups', json={
+                    'patient_id': 'MRN1',
+                    'reason': 'Please call me about my results',
+                    'priority': 'routine',
+                    'contact_method': 'email',
+                    'note': 'Prefer email, weekday mornings',
+                    'preferred_time': 'morning',
+                })
+        assert resp.status_code == 201, resp.text
+        assert any('contact_method' in s for s in insert_sql), insert_sql
+        assert any('note' in s for s in insert_sql), insert_sql
+        assert any('preferred_time' in s for s in insert_sql), insert_sql
 
     def test_create_returns_422_without_reason(self):
         client = TestClient(_make_app(STAFF))
@@ -451,6 +679,18 @@ class TestPortalFollowUps:
         client = TestClient(_make_app(NO_PERMS))
         resp = client.put('/portal/follow-ups/fu-1', json={'status': 'cancelled'})
         assert resp.status_code == 403
+
+    def test_patient_can_cancel_own_follow_up(self):
+        # P-05: cancel-before-in-progress is a patient action via
+        # FOLLOW_UP_SELF — the PUT gate accepts either write grant.
+        client = TestClient(_make_app(PATIENT))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.return_value = {'id': 'fu-1'}
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            resp = client.put('/portal/follow-ups/fu-1',
+                              json={'status': 'cancelled'})
+        assert resp.status_code == 200
 
     def test_update_own_follow_up_success(self):
         client = TestClient(_make_app(STAFF))

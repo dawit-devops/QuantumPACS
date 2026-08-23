@@ -4,6 +4,9 @@ export interface CheckInSummary {
   patient_name: string | null;
   start_time: string;
   status: string;
+  modality?: string | null;
+  room?: string | null;
+  prep_instructions?: string | null;
 }
 
 export interface CheckInConfirmation {

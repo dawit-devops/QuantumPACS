@@ -88,7 +88,12 @@ const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
-const PatientPortal = React.lazy(() => import("./portal/Portal"));
+const PatientPortal = React.lazy(() => import("./portal/PortalHome"));
+const PatientProfile = React.lazy(() => import("./portal/PatientProfile"));
+const AppointmentList = React.lazy(() => import("./portal/AppointmentList"));
+const ReportList = React.lazy(() => import("./portal/ReportList"));
+const ReportDetail = React.lazy(() => import("./portal/ReportDetail"));
+const FollowUpHub = React.lazy(() => import("./portal/FollowUpHub"));
 const TechnologistWorklist = React.lazy(() => import("./technologist/TechnologistWorklist"));
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
 const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
@@ -534,6 +539,46 @@ function ThemedApp() {
                         // surface.
                         <ClinicalRoute permission="PORTAL_READ">
                           <PatientPortal />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/profile"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <PatientProfile />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/appointments"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <AppointmentList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/results"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <ReportList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/results/:reportId"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <ReportDetail />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/follow-ups"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <FollowUpHub />
                         </ClinicalRoute>
                       }
                     />

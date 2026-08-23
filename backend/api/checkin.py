@@ -75,10 +75,13 @@ class PortalCheckInHandler(HTTPEndpoint):
                 claims['a'], claims['t'])
             if not row:
                 return not_found('Appointment not found')
-        # minimal PHI: display name + time only, never MRN/order internals
+        # minimal PHI: display name + time + prep instructions. No MRN.
         return ok({'patient_name': row.get('patient_name'),
                    'start_time': row.get('start_time'),
-                   'status': row.get('status')})
+                   'status': row.get('status'),
+                   'modality': row.get('modality'),
+                   'room': row.get('room'),
+                   'prep_instructions': row.get('prep_instructions', ''),})
 
     async def post(self, request):
         claims = await self._claims(request)

@@ -5,8 +5,11 @@ import {
   getPortalPatient,
   getPortalOrders,
   getPortalReport,
+  getPortalAppointments,
   listFollowUps,
   createFollowUp,
+  updateFollowUp,
+  updateConsent,
 } from "../api/portal";
 
 // R4-04: portal.ts is fully mocked in Portal.test.tsx; the request contract
@@ -82,5 +85,49 @@ describe("portal api client", () => {
       data: { reason: "follow-up" },
     });
     expect(result).toEqual({ id: "f2" });
+  });
+
+  it("updateFollowUp PUTs the status change", async () => {
+    mockRequest.mockResolvedValue({});
+    await updateFollowUp("f1", { status: "cancelled" });
+    expect(mockRequest).toHaveBeenCalledWith("portal/follow-ups/f1", {
+      method: "PUT",
+      data: { status: "cancelled" },
+    });
+  });
+
+  it("updateConsent PUTs consent_results", async () => {
+    mockRequest.mockResolvedValue({
+      data: { patient_id: "P001", consent_results: false },
+    });
+    const result = await updateConsent("P001", false);
+    expect(mockRequest).toHaveBeenCalledWith("portal/patients/P001/consent", {
+      method: "PUT",
+      data: { consent_results: false },
+    });
+    expect(result).toEqual({ patient_id: "P001", consent_results: false });
+  });
+
+  it("getPortalAppointments hits the appointments path and unwraps", async () => {
+    mockRequest.mockResolvedValue({
+      data: [
+        {
+          id: "a1",
+          status: "SCHEDULED",
+          modality: "CT",
+          room: "CT-1",
+          prep_instructions: "Fast 4 hours",
+          procedure: "CT Chest",
+          priority: "ROUTINE",
+          start_time: "2026-08-28T10:30:00+00:00",
+        },
+      ],
+    });
+    const rows = await getPortalAppointments("P001");
+    const call = mockRequest.mock.calls[0];
+    expect(call[0]).toBe("portal/patients/P001/appointments");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].room).toBe("CT-1");
+    expect(rows[0].prep_instructions).toBe("Fast 4 hours");
   });
 });

@@ -60,6 +60,20 @@ export interface PortalFollowUp {
   created_at?: string;
 }
 
+export interface PortalAppointment {
+  id: string;
+  patient_id?: string;
+  start_time?: string;
+  end_time?: string;
+  status?: string;
+  modality?: string;
+  room?: string;
+  prep_instructions?: string;
+  procedure?: string;
+  priority?: string;
+  accession_number?: string;
+}
+
 // ---- Scope ------------------------------------------------------------------
 
 export const listScope = (): Promise<PortalScope[]> =>
@@ -104,3 +118,34 @@ export const createFollowUp = (
   request<{ data: { id: string } }>("portal/follow-ups", { data }).then(
     (res) => res.data,
   );
+
+export const updateFollowUp = (
+  id: string,
+  data: Record<string, unknown>,
+): Promise<void> =>
+  request<void>(`portal/follow-ups/${id}`, {
+    method: "PUT",
+    data,
+  }).then(() => undefined);
+
+// ---- Consent ----------------------------------------------------------------
+
+export const updateConsent = (
+  patientId: string,
+  consentResults: boolean,
+): Promise<{ patient_id: string; consent_results: boolean }> =>
+  request<{ data: { patient_id: string; consent_results: boolean } }>(
+    `portal/patients/${patientId}/consent`,
+    { method: "PUT", data: { consent_results: consentResults } },
+  ).then((res) => res.data);
+
+// ---- Appointments ----------------------------------------------------------
+
+export const getPortalAppointments = (
+  patientId: string,
+  query?: Record<string, string>,
+): Promise<PortalAppointment[]> =>
+  request<{ data: PortalAppointment[] }>(
+    `portal/patients/${patientId}/appointments`,
+    query ? { query } : undefined,
+  ).then((res) => res.data ?? []);

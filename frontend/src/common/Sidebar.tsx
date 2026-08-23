@@ -594,6 +594,27 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         // patient_staff_scope, never a navigation target for non-holders.
         permissions: ["PORTAL_READ"],
       },
+      {
+        key: "portal-appointments",
+        path: "/portal/appointments",
+        label: "Appointments",
+        icon: <CalendarOutlined />,
+        permissions: ["PORTAL_READ"],
+      },
+      {
+        key: "portal-results",
+        path: "/portal/results",
+        label: "Results",
+        icon: <FileTextOutlined />,
+        permissions: ["PORTAL_READ"],
+      },
+      {
+        key: "portal-followups",
+        path: "/portal/follow-ups",
+        label: "Follow-ups",
+        icon: <MessageOutlined />,
+        permissions: ["PORTAL_READ"],
+      },
     ],
   },
   {
@@ -661,6 +682,9 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",
   "portal-records": "portal",
+  "portal-appointments": "portal",
+  "portal-results": "portal",
+  "portal-followups": "portal",
   metrics: "analytics",
 };
 

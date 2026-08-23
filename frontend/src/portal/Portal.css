@@ -36,3 +36,120 @@
   justify-content: center;
   padding: var(--space-12);
 }
+
+/* ── Portal Home Dashboard ──────────────────────────────────────────── */
+
+.portal-home {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.portal-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.portal-home-header h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+}
+
+/* Portal cards — softer, patient-friendly style */
+.portal-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  transition: box-shadow 0.2s;
+  height: 100%;
+}
+
+.portal-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.portal-card .ant-card-head {
+  border-bottom: 1px solid var(--border-color);
+  min-height: 44px;
+}
+
+.portal-card .ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.portal-card .ant-card-body {
+  padding: 16px;
+}
+
+/* Card list items (appointments, results) */
+.portal-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.portal-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.portal-card-item:hover {
+  background: var(--bg-sunken, #f5f5f5);
+}
+
+.portal-card-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-card-item-main .ant-typography {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* New results get a subtle pulse */
+.portal-result-new {
+  border-left: 3px solid #52c41a;
+}
+
+/* Quick actions */
+.portal-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.portal-quick-actions .ant-btn {
+  text-align: left;
+  justify-content: flex-start;
+  height: 40px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .portal-home {
+    padding: 16px;
+  }
+
+  .portal-home-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

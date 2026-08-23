@@ -72,6 +72,10 @@ class Permission(str, Enum):
     # R19 Hospital Staff
     PORTAL_READ = 'PORTAL_READ'
     FOLLOW_UP_WRITE = 'FOLLOW_UP_WRITE'
+    # P-05: patient-scoped follow-up writes. Carried by the patient role so
+    # patients can file/cancel their OWN follow-ups without FOLLOW_UP_WRITE
+    # (which would also open scope attachment — R3-01).
+    FOLLOW_UP_SELF = 'FOLLOW_UP_SELF'
     # R2-03 Cross-tenant clinical reads (teleradiology / telemedicine) —
     # permission gate for user_tenant_grants rows: a grant only takes effect
     # when the user's role also carries this code.
@@ -333,7 +337,7 @@ MATRIX_C_TENANT_ADMIN = {
 }
 MATRIX_C_PATIENT = {
     'PORTAL_READ', 'CHART_READ', 'RESULTS_READ', 'MED_ORDER_READ',
-    'SCHEDULE_READ', 'VIEWER_READ',
+    'SCHEDULE_READ', 'VIEWER_READ', 'FOLLOW_UP_SELF',
 }
 
 # ---------------------------------------------------------------------------
