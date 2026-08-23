@@ -45,6 +45,7 @@ class CreateAppointmentRequest(BaseModel):
     end_time: str
     reason: str = Field('', max_length=500)
     override_reason: str = Field('', max_length=500)
+    prep_instructions: str = Field('', max_length=2000)
 
     @field_validator('start_time', 'end_time')
     @classmethod

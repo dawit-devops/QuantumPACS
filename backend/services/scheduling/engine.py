@@ -93,7 +93,8 @@ class SchedulingEngine:
         return False
 
     async def book(self, *, order_id, patient_id, resource_id,
-                   start_time, end_time, reason='', override_reason=''):
+                   start_time, end_time, reason='', override_reason='',
+                   prep_instructions=''):
         start = _as_datetime(start_time)
         end = _as_datetime(end_time)
         if end <= start:
@@ -223,6 +224,7 @@ class SchedulingEngine:
                         'end_time': end,
                         'reason': reason,
                         'override_reason': override_reason if overrode else '',
+                        'prep_instructions': prep_instructions,
                         'created_by': self.actor_id,
                     })
                 except Exception as exc:

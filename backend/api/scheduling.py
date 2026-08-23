@@ -151,6 +151,7 @@ class RisAppointmentsHandler(HTTPEndpoint):
                 end_time=body.end_time,
                 reason=body.reason,
                 override_reason=override_reason,
+                prep_instructions=body.prep_instructions,
             )
         except SchedulingConflict as exc:
             # Overlap / prior-auth / outside-window rejections are expected

@@ -58,6 +58,39 @@ class TestBook:
 
         asyncio.run(run())
 
+    def test_book_persists_prep_instructions(self):
+        # S1 (K-02): prep instructions authored at booking must be written to
+        # the appointment row so the kiosk/portal read path has real text.
+        async def run():
+            engine = SchedulingEngine()
+            engine._appointments = AsyncMock()
+            engine._appointments.for_resource = AsyncMock(return_value=[])
+            engine._schedules = AsyncMock()
+            engine._schedules.for_resource = AsyncMock(return_value=[])
+            engine._orders = AsyncMock()
+            engine._orders.get = AsyncMock(return_value={
+                'id': 'ord-1', 'patient_id': 'MRN-1',
+                'prior_auth_status': 'NOT_REQUIRED', 'status': 'ORDERED'})
+            created = {'id': 'appt-1', 'status': 'SCHEDULED'}
+            engine._appointments.create = AsyncMock(return_value=created)
+            engine._lifecycle = AsyncMock()
+            engine._lifecycle.transition = AsyncMock(return_value={
+                'id': 'ord-1', 'status': 'SCHEDULED'})
+            engine._audit = AsyncMock()
+
+            await engine.book(
+                order_id='ord-1', patient_id='MRN-1', resource_id='res-1',
+                start_time='2026-08-20 09:00:00+00',
+                end_time='2026-08-20 09:30:00+00',
+                prep_instructions='Fast for 4 hours before your exam',
+            )
+
+            call_kwargs = engine._appointments.create.call_args.args[0]
+            assert call_kwargs.get('prep_instructions') == \
+                'Fast for 4 hours before your exam'
+
+        asyncio.run(run())
+
     def test_book_overlapping_slot_raises_conflict(self):
         async def run():
             engine = SchedulingEngine()
