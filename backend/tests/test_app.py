@@ -80,6 +80,7 @@ class TestMiddlewareStack:
             'TrustedHostMiddleware',
             'RequestIDMiddleware',
             'RisRateLimitMiddleware',
+            'FhirScopeMiddleware',
             'CORSMiddleware',
             'SecurityHeadersMiddleware',
             'CSRFMiddleware',

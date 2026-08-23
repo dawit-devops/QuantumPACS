@@ -317,6 +317,17 @@ class FhirMetadata(HTTPEndpoint):
             'format': ['application/fhir+json'],
             'rest': [{
                 'mode': 'server',
+                'security': {
+                    'cors': True,
+                    'extension': [{
+                        'url': 'http://fhir-registry.smarthealthit.org/StructureDefinition/oauth-uris',
+                        'extension': [
+                            {'url': 'authorize', 'valueUri': '/api/v2/oauth/login'},
+                            {'url': 'token', 'valueUri': '/api/v2/oauth/token'},
+                        ],
+                    }],
+                    'description': 'SMART-on-FHIR scopes enforced: patient/*.read, patient/*.write, patient/*.*',
+                },
                 'resource': [
                     {
                         'type': 'Patient',

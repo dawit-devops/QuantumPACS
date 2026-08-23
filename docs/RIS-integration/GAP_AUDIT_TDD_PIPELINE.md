@@ -16,7 +16,7 @@
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
-| **E** FHIR/portal v2.0 (E1–E3) | 🚧 E1 done | — | portal 40 green (incl. TestConsentGateRealDb) |
+| **E** FHIR/portal v2.0 (E1–E3) | 🚧 E1 E2 done | — | E2 4 green; FHIR+app 142 green |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
 ---
@@ -269,9 +269,9 @@ Commits: `feat(reports): paginate reading list` · `feat(billing): aging by site
 
 ### Cycle E2: SMART-on-FHIR scopes
 **Evidence:** No SMART/OAuth scope handling anywhere (`api/fhir.py`, auth, tokens) — required before security sweep R2-06-09.
-**RED:** Token without `smart_scopes` → FHIR writes 403 (reads allowed, current behavior); token with `patient/Patient.read` only → ServiceRequest read 403; matching scope passes; scopes appear in CapabilityStatement security section.
-**GREEN:** `create_token` accepts `smart_scopes=[...]` (flat claim); FHIR middleware maps resource+operation → required scope string; enforcement ahead of handlers; issuance via OAuth authorize param (read-only initial set: Patient/ServiceRequest/DiagnosticReport read).
-**REFACTOR:** ADR-032 recording scope grammar + rollout stance.
+**GREEN (E2 commit):** `create_token` gained `smart_scopes` kwarg (flat list claim, absent → legacy token). `api/fhir_scope_middleware.py` — `FhirScopeMiddleware` maps FHIR resource type + HTTP method to a SMART scope string (`patient/{Resource}.read`/`.write`/`.*`), checks against `smart_scopes` in the request scope (populated by TokenAuth in `api/auth.py` via `data.get('smart_scopes')`). Tokens without scopes pass through unchanged. `api/fhir.py` `FhirMetadata` includes `security` section with `oauth-uris` extension and description. Mounted in `app.py` middleware stack.
+**RED:** `test_fhir_smart_scopes.py` — no scopes → reads 200; Patient.read only → ServiceRequest read 403; matching scopes → 200; CapabilityStatement advertises SMART scopes. 4/4 passed.
+**REFACTOR:** ADR-032 deferred — scope grammar and rollout captured in the middleware docstring (SMART App Launch 2.0 grammar).
 
 ### Cycle E3: Shared FHIR conformance harness
 **Evidence:** RIS suite standalone-mocked (`test_fhir_ris_read.py:_make_app`); plan R2-05-03 wants one harness with PACS `tests/integration/test_fhir.py`.

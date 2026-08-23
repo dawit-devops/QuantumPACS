@@ -311,6 +311,9 @@ class TokenAuth(AuthenticationBackend):
                     raise AuthenticationError('Token expired')
                 except _jwt.InvalidTokenError:
                     raise AuthenticationError('Invalid auth')
+                # E2: surface SMART-on-FHIR scopes to the FHIR scope
+                # middleware (absent = legacy role-gated token).
+                request.scope['smart_scopes'] = data.get('smart_scopes')
                 if await is_blocked(data.get('jti', '')):
                     raise AuthenticationError('Token revoked')
                 cached = await _get_cached_active(data['id'])
