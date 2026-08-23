@@ -147,6 +147,12 @@ default_config = {
     # without a restart; invalid/absent values fail safe to the defaults.
     'critical_escalation_sla_minutes': '15',
     'critical_escalation_target_role': 'radiologist',
+    # D5: app-level rate limits for the /api/v2/ris/* surface (S1-04).
+    # ris_rate_limit_per_minute governs normal RIS traffic per tenant+IP;
+    # the kiosk self-check-in path keeps its own (tighter) budget so a busy
+    # lobby cannot starve normal clinic traffic and vice-versa.
+    'ris_rate_limit_per_minute': '120',
+    'ris_rate_limit_kiosk_per_minute': '60',
     'cookie_secure': 'false',
 }
 

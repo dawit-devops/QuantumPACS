@@ -15,7 +15,7 @@
 | **A** P0 defect kills (A1, A1b, A2, A3, A4) | ✅ DONE | `363e26c` | Full suite 2357 passed / 2 skipped; migrations 086+087 applied |
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
-| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D3 D7 done | — | D2/D3 backend 81 green; FE UnbilledAging 2 + DenialRework D3 3 green |
+| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D3 D4 D5 D7 done | — | D2/D3 backend 81 green; D5 middleware 34 green; ADR-031 |
 | **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
@@ -231,10 +231,10 @@ Commits: `feat(scheduling): stamp station AE on MWL entries` · `feat(mpps): per
 **REFACTOR:** none.
 
 ### Cycle D5: App-level rate limiting for RIS surface (platform seam, not forks)
-**Evidence:** `ratelimit.py` is login-only; nothing wires budgets into `app.py:253-265` middleware stack (S1-04 unmet).
-**RED:** Middleware tests — burst beyond budget on `/api/v2/ris/*` → 429 with `Retry-After`; same burst on non-RIS route → untouched; login limiter behavior unchanged; per-tenant isolation of buckets.
-**GREEN:** `api/ratelimit_middleware.py` wrapping existing `TokenBucket`/`RedisTokenBucket` primitives; mounted in `app.py` for `/api/v2/ris` prefix; budgets from `default_config` (`ris_rate_limit_per_minute`, per-class overrides keyed by permission group); exempt: kiosk `/api/v2/ris/checkin/*` (own tight token-bucket instead).
-**REFACTOR:** ADR-031 documenting placement + bucket taxonomy.
+**Evidence:** `ratelimit.py` is login-only; nothing wires budgets into `app.py` middleware stack (S1-04 unmet).
+**GREEN (D5 commit):** `api/ratelimit_middleware.py` — `RisRateLimitMiddleware` wraps the existing `RedisTokenBucket` (falls back to in-memory `TokenBucket`) keyed `{prefix}:{tenant}:{ip}`, mounted in `app.py` for the `/api/v2/ris` prefix; budgets from `default_config` `ris_rate_limit_per_minute` (120) and `ris_rate_limit_kiosk_per_minute` (60); kiosk `/api/v2/ris/checkin/*` uses its own bucket; 429 + `Retry-After: 60`. `RedisTokenBucket.__init__` gained `key_prefix` (default `'login'`, backward compatible) so RIS keys never collide with the login limiter. ADR-031 written.
+**RED:** `test_rate_limit_middleware.py` (TestClient): burst past budget → 429; non-RIS routes untouched; kiosk uses its own budget; Retry-After present. Per-test unique Redis key prefix (env has live Redis). Existing `test_ratelimit*` still green; `test_app.py` middleware-order updated.
+**REFACTOR:** ADR-031 documents placement + bucket taxonomy.
 
 ### Cycle D6: Provisioner RIS defaults + rollback hygiene
 **Evidence:** No default-data seeding (resources/templates) beyond schema; rollback marks decommissioned but leaves artifacts; rollback path untested.

@@ -95,18 +95,19 @@ class TokenBucket:
 
 
 class RedisTokenBucket:
-    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300):
+    def __init__(self, max_attempts=50, window_seconds=60, lockout_attempts=100, lockout_seconds=300, key_prefix='login'):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self.lockout_attempts = lockout_attempts
         self.lockout_seconds = lockout_seconds
+        self.key_prefix = key_prefix
         self._fallback = TokenBucket(max_attempts, window_seconds, lockout_attempts, lockout_seconds)
 
     def _rkey(self, ip):
-        return f'ratelimit:login:{ip}'
+        return f'ratelimit:{self.key_prefix}:{ip}'
 
     def _lkey(self, ip):
-        return f'ratelimit:login:lockout:{ip}'
+        return f'ratelimit:{self.key_prefix}:lockout:{ip}'
 
     async def check(self, ip):
         r = await _get_rate_redis()
