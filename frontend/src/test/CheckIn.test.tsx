@@ -10,11 +10,13 @@ import { ThemeProvider } from "../common/ThemeProvider";
 const mockGetCheckIn = vi.hoisted(() => vi.fn());
 const mockConfirmCheckIn = vi.hoisted(() => vi.fn());
 const mockSubmitConsent = vi.hoisted(() => vi.fn());
+const mockSubmitPayment = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/checkin", () => ({
   getCheckIn: mockGetCheckIn,
   confirmCheckIn: mockConfirmCheckIn,
   submitConsent: mockSubmitConsent,
+  submitPayment: mockSubmitPayment,
 }));
 
 vi.mock("../hooks", () => ({
@@ -262,6 +264,11 @@ describe("CheckIn (enhanced kiosk)", () => {
     await user.click(screen.getByTestId("consent-submit"));
     // Confirm check-in
     await user.click(screen.getByTestId("checkin-confirm"));
+    // Co-pay phase — skip it
+    await waitFor(() => {
+      expect(screen.getByTestId("copay-skip")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("copay-skip"));
     await waitFor(() => {
       expect(screen.getByText(/checked in/)).toBeInTheDocument();
     });

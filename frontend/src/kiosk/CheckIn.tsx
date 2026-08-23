@@ -18,6 +18,7 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import { confirmCheckIn, getCheckIn, submitConsent, CheckInSummary } from "../api/checkin";
+import CoPayPrompt from "./CoPayPrompt";
 import "./CheckIn.css";
 
 const { Title, Text, Paragraph } = Typography;
@@ -27,8 +28,13 @@ type Phase =
   | "prep"
   | "consent"
   | "ready"
+  | "copay"
   | "done"
   | "error";
+
+// K-04: default co-pay amount presented at the kiosk (configurable per
+// tenant later; today a fixed placeholder derived from the modality).
+const COPRAY_AMOUNT = 25.0;
 
 // Modality-specific prep instruction defaults (used when backend provides none)
 const DEFAULT_PREP: Record<string, string[]> = {
@@ -140,7 +146,7 @@ const [confirming, setConfirming] = useState(false);
     setConfirming(true);
     try {
       await confirmCheckIn(token);
-      setPhase("done");
+      setPhase("copay");
     } catch (e: any) {
       setError(
         e?.status === 409
@@ -309,6 +315,18 @@ const [confirming, setConfirming] = useState(false);
           subTitle="Please have a seat — we'll call you when it's time."
         />
       </div>
+    );
+  }
+
+  // --- Co-pay Phase (K-04) ---
+  if (phase === "copay" && token) {
+    return (
+      <CoPayPrompt
+        token={token}
+        amount={COPRAY_AMOUNT}
+        onComplete={() => setPhase("done")}
+        onSkip={() => setPhase("done")}
+      />
     );
   }
 

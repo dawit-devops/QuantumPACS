@@ -14,7 +14,7 @@ import time
 from starlette.endpoints import HTTPEndpoint
 
 from api.response import api_error, not_found, ok
-from api.schemas.checkin import SubmitConsentRequest
+from api.schemas.checkin import SubmitConsentRequest, SubmitPaymentRequest
 from api.validate import parse_body
 from db.conn import get_conn
 from log import get_logger
@@ -138,3 +138,101 @@ class PortalCheckInConsentHandler(HTTPEndpoint):
                 details={'accepted': body.accepted},
             )
         return ok({'id': row['id'], 'accepted': body.accepted})
+
+
+class PortalCheckInPaymentHandler(HTTPEndpoint):
+    """K-04: POST /ris/checkin/{token}/payment — co-pay capture at the
+    kiosk. The token is the credential; the appointment's order resolves
+    the patient's invoice (order-linked). Payment/balance/receipt reuse
+    the billing machinery; no operator attribution (the kiosk is the
+    actor)."""
+
+    async def post(self, request):
+        claims = verify_checkin_token(request.path_params['token'])
+        if not claims:
+            return api_error('INVALID_TOKEN', 'Token invalid or expired',
+                             status=403)
+        body = await parse_body(SubmitPaymentRequest, request)
+        async with get_conn() as conn:
+            # Duplicate detection first (mirrors BillingPaymentsHandler).
+            dup = await conn.fetchval(
+                'SELECT 1 FROM payment WHERE idempotency_key = $1',
+                body.idempotency_key,
+            )
+            if dup:
+                return ok({'data': {'duplicate': True}})
+
+            # Resolve the appointment -> order -> invoice.
+            appt = await conn.fetchrow(
+                'SELECT id, order_id, patient_id FROM ris_appointments'
+                ' WHERE id::text = $1 AND tenant_id = $2',
+                claims['a'], claims['t'],
+            )
+            if not appt or not appt['order_id']:
+                return not_found('Appointment or order not found')
+
+            invoice = await conn.fetchrow(
+                'SELECT * FROM invoice WHERE order_id = $1 ORDER BY created_at'
+                ' LIMIT 1',
+                appt['order_id'],
+            )
+            if not invoice:
+                invoice = await conn.fetchrow(
+                    """INSERT INTO invoice
+                           (patient_id, order_id, total_amount, paid_amount,
+                            balance, status, created_by)
+                       VALUES ($1, $2, $3, 0, $3, 'open', 'kiosk')
+                       RETURNING *""",
+                    appt['patient_id'], appt['order_id'],
+                    round(body.amount, 2),
+                )
+            balance = float(invoice['balance'])
+            if body.amount > balance:
+                return api_error(
+                    'PAYMENT_EXCEEDS_BALANCE',
+                    'Payment exceeds outstanding balance',
+                    status=422,
+                )
+
+            payment = await conn.fetchrow(
+                """INSERT INTO payment
+                       (invoice_id, method, amount, operator_id,
+                        processor_token, idempotency_key)
+                   VALUES ($1, $2, $3, '', $4, $5)
+                   RETURNING *""",
+                invoice['id'], body.method, round(body.amount, 2),
+                body.processor_token, body.idempotency_key,
+            )
+            new_paid = round(float(invoice['paid_amount']) + body.amount, 2)
+            status = ('paid' if new_paid >= float(invoice['total_amount'])
+                      else 'partially_paid')
+            new_balance = round(float(invoice['total_amount']) - new_paid, 2)
+            await conn.execute(
+                """UPDATE invoice SET paid_amount = $2, balance = $3,
+                       status = $4, updated_at = now() WHERE id = $1""",
+                invoice['id'], new_paid, new_balance, status,
+            )
+            receipt = await conn.fetchrow(
+                """INSERT INTO receipt (payment_id, receipt_number)
+                   VALUES ($1, $2)
+                   RETURNING id, payment_id, receipt_number""",
+                payment['id'], f'K{payment["id"][:8].upper()}',
+            )
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='ris.copay_collected',
+                actor_id='',  # kiosk: the token is the actor
+                resource_id=claims['a'],
+                resource_type='ris_appointments',
+                tenant=claims['t'],
+                details={
+                    'invoice_id': invoice['id'],
+                    'method': body.method,
+                    'amount': round(body.amount, 2),
+                },
+            )
+        return ok({'data': {
+            'payment': {'id': payment['id'], 'amount': round(body.amount, 2),
+                        'method': body.method},
+            'receipt': dict(receipt),
+        }})

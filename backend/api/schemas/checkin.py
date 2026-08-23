@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -29,3 +31,17 @@ class SubmitConsentRequest(BaseModel):
         if accepted is False and not v.strip():
             raise ValueError('decline_reason is required when consent is declined')
         return v
+
+
+class SubmitPaymentRequest(BaseModel):
+    """K-04 kiosk co-pay capture — mirrors BillingPaymentRequest minus the
+    operator (the kiosk token is the actor)."""
+    method: Literal['cash', 'card', 'check'] = Field(
+        description="Payment method")
+    amount: float = Field(..., gt=0,
+                          description="Co-pay amount (must be positive)")
+    idempotency_key: str = Field(
+        ..., min_length=1,
+        description="Client-supplied key for duplicate payment detection")
+    processor_token: str = Field(
+        '', description="Card processor token — never a raw PAN")

@@ -151,3 +151,33 @@
   border: 1px solid #FFCCC7;
   border-radius: 12px;
 }
+
+/* ── Co-pay prompt (K-04) ───────────────────────────────────────────── */
+
+.kiosk-copay-amount {
+  font-size: 48px;
+  font-weight: 700;
+  color: #1A1A2E;
+  margin: 16px 0;
+  text-align: center;
+}
+
+.kiosk-copay-methods {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin: 24px 0;
+}
+
+.kiosk-copay-method {
+  min-width: 120px;
+  min-height: 56px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+.kiosk-copay-skip {
+  margin-top: 16px;
+  color: #8B949E;
+  font-size: 14px;
+}

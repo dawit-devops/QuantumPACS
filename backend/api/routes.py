@@ -129,7 +129,7 @@ from api.frontdesk import (
     RisPatientsMergeHandler, RisPatientsUndoMergeHandler,
     RisPatientEligibilityHandler,
 )
-from api.checkin import PortalCheckInConsentHandler, PortalCheckInHandler
+from api.checkin import PortalCheckInConsentHandler, PortalCheckInHandler, PortalCheckInPaymentHandler
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
     PortalReportHandler, PortalOrdersHandler, PortalAppointmentsHandler,
@@ -457,6 +457,8 @@ _V1_ROUTES = [
     v2(Route('/ris/checkin/{token}', endpoint=PortalCheckInHandler,
              methods=['GET', 'POST'])),
     v2(Route('/ris/checkin/{token}/consent', endpoint=PortalCheckInConsentHandler,
+             methods=['POST'])),
+    v2(Route('/ris/checkin/{token}/payment', endpoint=PortalCheckInPaymentHandler,
              methods=['POST'])),
     v2(Route('/portal/follow-ups/{id}', endpoint=PortalFollowUpStatusHandler, methods=['PUT'])),
     v2(Route('/admin/status', endpoint=AdminStatusHandler)),

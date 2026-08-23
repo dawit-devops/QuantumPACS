@@ -40,9 +40,21 @@ def upgrade() -> None:
         sa.Column('consent_at', sa.DateTime(timezone=True), nullable=True,
                   server_default=None),
     )
+    # S4 (K-04): kiosk co-pay — the invoice is linked to the RIS order so the
+    # token-scoped payment path can find the patient's invoice from the
+    # appointment's order without exposing billing internals to the kiosk.
+    op.add_column(
+        'invoice',
+        sa.Column('order_id', sa.Text(), nullable=True, server_default=None),
+    )
+    op.create_index(
+        'ix_invoice_order_id', 'invoice', ['order_id'],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index('ix_invoice_order_id', table_name='invoice')
+    op.drop_column('invoice', 'order_id')
     op.drop_column('ris_appointments', 'consent_at')
     op.drop_column('ris_appointments', 'consent_decline_reason')
     op.drop_column('ris_appointments', 'consent_accepted')

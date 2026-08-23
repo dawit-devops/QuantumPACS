@@ -295,3 +295,83 @@ class TestKioskConsent:
             'appt-1', 'main-hospital', False, '',
             'Patient declined to consent',
         )
+
+
+class TestKioskPayment:
+    """K-04 (S4): token-scoped co-pay capture reuses the billing machinery —
+    an order-linked invoice is found/created and a payment recorded. The
+    kiosk has no login, so the HMAC token is the authorization."""
+
+    def _payment_app(self):
+        from starlette.routing import Route
+        from api.checkin import PortalCheckInPaymentHandler
+
+        return Starlette(routes=[
+            Route('/ris/checkin/{token}/payment',
+                  endpoint=PortalCheckInPaymentHandler, methods=['POST']),
+        ])
+
+    def test_invalid_token_rejected(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._payment_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+        head, _, sig = token.rpartition('.')
+        bad = f'{head}.{sig[:-2]}xx'
+        resp = client.post(f'/ris/checkin/{bad}/payment', json={
+            'method': 'cash', 'amount': 25.0,
+            'idempotency_key': 'k1',
+        })
+        assert resp.status_code == 403
+
+    def test_payment_records_against_order_linked_invoice(self):
+        from api.checkin import make_checkin_token
+        client = TestClient(self._payment_app())
+        token = make_checkin_token('main-hospital', 'appt-1')
+
+        # appointment -> order lookup, then invoice (reused), then payment
+        async def fetchrow(sql, *args):
+            if 'ris_appointments' in sql:
+                return {'id': 'appt-1', 'order_id': 'ord-1',
+                        'patient_id': 'MRN1'}
+            if 'invoice' in sql and 'order_id' in sql and 'id' not in args:
+                return {'id': 'inv-1', 'order_id': 'ord-1',
+                        'patient_id': 'MRN1', 'balance': 25.0,
+                        'paid_amount': 0.0, 'total_amount': 25.0,
+                        'status': 'open'}
+            if sql.strip().upper().startswith('SELECT') and 'payment' in sql:
+                return None  # no duplicate payment
+            if 'receipt' in sql:
+                return {'id': 'r-1', 'payment_id': 'pay-1',
+                        'receipt_number': 'KPAY-1-01'}
+            if 'payment' in sql:
+                return {'id': 'pay-1', 'method': 'cash',
+                        'amount': 25.0, 'invoice_id': 'inv-1'}
+            return {'id': 'pay-1'}
+
+        executed = []
+        seen_sql = []
+        async def execute(sql, *args):
+            executed.append(sql)
+            return 'INSERT 0 1'
+
+        orig_fetchrow = fetchrow
+        async def tracked_fetchrow(sql, *args):
+            seen_sql.append(sql)
+            return await orig_fetchrow(sql, *args)
+
+        conn = MagicMock(fetchrow=tracked_fetchrow, execute=execute)
+        conn.fetchval = AsyncMock(return_value=None)  # no duplicate payment
+        with patch('api.checkin.get_conn') as gc:
+            gc.return_value.__aenter__ = AsyncMock(return_value=conn)
+            gc.return_value.__aexit__ = AsyncMock(return_value=False)
+            with patch('db.audit_log.AuditLog.log_event', new=AsyncMock()):
+                resp = client.post(f'/ris/checkin/{token}/payment', json={
+                    'method': 'cash', 'amount': 25.0,
+                    'idempotency_key': 'kiosk-123',
+                })
+        assert resp.status_code == 200, resp.text
+        body = resp.json()['data']
+        assert body['payment']['amount'] == 25.0
+        assert body['receipt']['payment_id'] == 'pay-1'
+        assert any('UPDATE invoice' in s for s in executed), executed
+        assert any('INSERT INTO payment' in s for s in seen_sql), seen_sql
