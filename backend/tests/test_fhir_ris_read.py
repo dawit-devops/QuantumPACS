@@ -2,31 +2,19 @@
 
 ServiceRequest maps a ris_orders row; DiagnosticReport maps a signed
 reports row. Both are tenant-scoped by the shared middleware pool routing
-and gated by the existing FHIR feature flag.
+and gated by the existing FHIR feature flag. The app factory comes from
+the shared fhir_harness (E3).
 """
 
 import pytest
 
 from unittest.mock import AsyncMock, patch
 
-from starlette.applications import Starlette
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import User
-
-
-class _FakeAuth(BaseHTTPMiddleware):
-    def __init__(self, app, user=None):
-        super().__init__(app)
-        self._user = user or User({'id': 1, 'permissions': []})
-
-    async def dispatch(self, request, call_next):
-        request.scope['user'] = self._user
-        request.scope['auth'] = None
-        return await call_next(request)
+from tests.fhir_harness import make_fhir_app
 
 
 def _make_app(user=None):
@@ -37,8 +25,11 @@ def _make_app(user=None):
         FhirDiagnosticReportSearch,
     )
 
-    return Starlette(
-        routes=[
+    return make_fhir_app(
+        user=user or User({'id': 1, 'tenant': 'default',
+                           'permissions': ['*'],
+                           'admin': True}),
+        extra_routes=[
             Route('/fhir/ServiceRequest/{id}', endpoint=FhirServiceRequestRead),
             Route('/fhir/ServiceRequest', endpoint=FhirServiceRequestSearch),
             Route('/fhir/DiagnosticReport/{id}',
@@ -46,10 +37,6 @@ def _make_app(user=None):
             Route('/fhir/DiagnosticReport',
                   endpoint=FhirDiagnosticReportSearch),
         ],
-        middleware=[Middleware(_FakeAuth,
-                               user=user or User({'id': 1, 'tenant': 'default',
-                                                  'permissions': ['*'],
-                                                  'admin': True}))],
     )
 
 
@@ -151,17 +138,15 @@ class TestFhirRisWrites:
             FhirServiceRequestItem,
             FhirServiceRequestCollection,
         )
-        return Starlette(
-            routes=[
+        return make_fhir_app(
+            user=User({'id': 7, 'tenant': 'default',
+                       'permissions': ['*'], 'admin': True}),
+            extra_routes=[
                 Route('/fhir/ServiceRequest/{id}',
                       endpoint=FhirServiceRequestItem),
                 Route('/fhir/ServiceRequest',
                       endpoint=FhirServiceRequestCollection),
             ],
-            middleware=[Middleware(_FakeAuth,
-                                   user=User({'id': 7, 'tenant': 'default',
-                                              'permissions': ['*'],
-                                              'admin': True}))],
         )
 
     def test_create_service_request_inserts_ris_order(self):
@@ -219,13 +204,11 @@ class TestFhirRisWrites:
 
     def test_diagnostic_report_create_makes_draft(self):
         from api.fhir import FhirDiagnosticReportCollection
-        app = Starlette(
-            routes=[Route('/fhir/DiagnosticReport',
-                          endpoint=FhirDiagnosticReportCollection)],
-            middleware=[Middleware(_FakeAuth,
-                                   user=User({'id': 7, 'tenant': 'default',
-                                              'permissions': ['*'],
-                                              'admin': True}))],
+        app = make_fhir_app(
+            user=User({'id': 7, 'tenant': 'default',
+                       'permissions': ['*'], 'admin': True}),
+            extra_routes=[Route('/fhir/DiagnosticReport',
+                                endpoint=FhirDiagnosticReportCollection)],
         )
         client = TestClient(app)
         conn = AsyncMock()
@@ -254,12 +237,11 @@ class TestFhirRisWrites:
     def test_writes_require_write_permission(self):
         # Swap in a read-only user app for the write route check.
         from api.fhir import FhirServiceRequestCollection
-        read_only = Starlette(
-            routes=[Route('/fhir/ServiceRequest',
-                          endpoint=FhirServiceRequestCollection)],
-            middleware=[Middleware(_FakeAuth,
-                                   user=User({'id': 7, 'tenant': 'default',
-                                              'permissions': []}))],
+        read_only = make_fhir_app(
+            user=User({'id': 7, 'tenant': 'default',
+                       'permissions': []}),
+            extra_routes=[Route('/fhir/ServiceRequest',
+                                endpoint=FhirServiceRequestCollection)],
         )
         client = TestClient(read_only)
         resp = client.post('/fhir/ServiceRequest', json={})

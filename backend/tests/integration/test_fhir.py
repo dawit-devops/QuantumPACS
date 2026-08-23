@@ -1,46 +1,27 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from starlette.applications import Starlette
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import User
-from api.fhir import (
-    FhirMetadata,
-    FhirPatientRoot, FhirPatientResource,
-    FhirImagingStudyRead, FhirImagingStudySearch,
-    FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
+from tests.fhir_harness import (
+    assert_capability_statement,
+    bundle_entries,
+    make_fhir_app,
 )
 
 
-class _FakeAuth(BaseHTTPMiddleware):
-    def __init__(self, app, user=None):
-        super().__init__(app)
-        self._user = user or User({'id': 1, 'permissions': ['PATIENT_READ', 'DICOMWEB_READ', 'FILE_READ']})
-
-    async def dispatch(self, request, call_next):
-        request.scope['user'] = self._user
-        request.scope['auth'] = None
-        return await call_next(request)
-
-
 def _make_app(user=None, extra_routes=None):
-    routes = [
-        Route('/fhir/metadata', endpoint=FhirMetadata),
-        Route('/fhir/Patient', endpoint=FhirPatientRoot),
-        Route('/fhir/Patient/{id}', endpoint=FhirPatientResource),
-        Route('/fhir/ImagingStudy', endpoint=FhirImagingStudySearch),
-        Route('/fhir/ImagingStudy/{id}', endpoint=FhirImagingStudyRead),
-        Route('/fhir/DocumentReference', endpoint=FhirDocumentReferenceSearch),
-        Route('/fhir/DocumentReference/{id}', endpoint=FhirDocumentReferenceRead),
-    ]
-    if extra_routes:
-        routes.extend(extra_routes)
-    return Starlette(
-        routes=routes,
-        middleware=[Middleware(_FakeAuth, user=user)],
+    from api.fhir import (
+        FhirPatientRoot, FhirPatientResource,
+        FhirImagingStudyRead, FhirImagingStudySearch,
+        FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
+    )
+
+    extra = extra_routes or []
+    return make_fhir_app(
+        user=user or User({'id': 1, 'permissions': ['PATIENT_READ', 'DICOMWEB_READ', 'FILE_READ']}),
+        extra_routes=extra,
     )
 
 
@@ -387,11 +368,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientRoot
-            app = Starlette(
-                routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.post('/fhir/Patient', json={
                 'resourceType': 'Patient',
@@ -420,11 +397,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientRoot
-            app = Starlette(
-                routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.post('/fhir/Patient', json={
                 'resourceType': 'Patient',
@@ -438,10 +411,7 @@ class TestFhirPatientWrite:
 
     def test_create_patient_invalid_gender(self):
         from api.fhir import FhirPatientRoot
-        app = Starlette(
-            routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
-            middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-        )
+        app = make_fhir_app(user=_WRITE_USER)
         client = TestClient(app)
         resp = client.post('/fhir/Patient', json={
             'resourceType': 'Patient',
@@ -453,20 +423,14 @@ class TestFhirPatientWrite:
 
     def test_create_patient_missing_identifier(self):
         from api.fhir import FhirPatientRoot
-        app = Starlette(
-            routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
-            middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-        )
+        app = make_fhir_app(user=_WRITE_USER)
         client = TestClient(app)
         resp = client.post('/fhir/Patient', json={'resourceType': 'Patient'})
         assert resp.status_code == 422
 
     def test_create_patient_invalid_body(self):
         from api.fhir import FhirPatientRoot
-        app = Starlette(
-            routes=[Route('/fhir/Patient', endpoint=FhirPatientRoot)],
-            middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-        )
+        app = make_fhir_app(user=_WRITE_USER)
         client = TestClient(app)
         resp = client.post('/fhir/Patient', json={'invalid': 'data'})
         assert resp.status_code == 422
@@ -485,11 +449,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.put('/fhir/Patient/PID001', json={
                 'resourceType': 'Patient',
@@ -512,11 +472,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.put('/fhir/Patient/NONEXISTENT', json={
                 'resourceType': 'Patient',
@@ -534,11 +490,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.delete('/fhir/Patient/PID001')
 
@@ -553,11 +505,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.delete('/fhir/Patient/PID001')
 
@@ -579,11 +527,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.put(
                 '/fhir/Patient/PID001',
@@ -603,11 +547,7 @@ class TestFhirPatientWrite:
             mock_get.return_value.__aenter__.return_value = mock_conn
             mock_get.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            from api.fhir import FhirPatientResource
-            app = Starlette(
-                routes=[Route('/fhir/Patient/{id}', endpoint=FhirPatientResource)],
-                middleware=[Middleware(_FakeAuth, user=_WRITE_USER)],
-            )
+            app = make_fhir_app(user=_WRITE_USER)
             client = TestClient(app)
             resp = client.delete('/fhir/Patient/NONEXISTENT')
 

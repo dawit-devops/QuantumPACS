@@ -16,7 +16,7 @@
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
-| **E** FHIR/portal v2.0 (E1–E3) | 🚧 E1 E2 done | — | E2 4 green; FHIR+app 142 green |
+| **E** FHIR/portal v2.0 (E1–E3) | ✅ DONE (E1–E3) | — | E2 4 green; FHIR combined 50 green; portal 40 green |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
 ---
@@ -275,8 +275,8 @@ Commits: `feat(reports): paginate reading list` · `feat(billing): aging by site
 
 ### Cycle E3: Shared FHIR conformance harness
 **Evidence:** RIS suite standalone-mocked (`test_fhir_ris_read.py:_make_app`); plan R2-05-03 wants one harness with PACS `tests/integration/test_fhir.py`.
-**RED/GREEN:** Refactor test-infrastructure cycle — extract `backend/tests/fhir_harness.py` (client factory, CapabilityStatement assertions, Bundle paging helpers, scope-token helper from E2); both suites import it; combined run green; count duplicated assertions removed.
-**REFACTOR:** Harness registered in test README/docs.
+**GREEN (E3 commit):** `tests/fhir_harness.py` — `make_fhir_app` (Starlette with core FHIR routes + `_FakeAuth`), `make_fhir_client`, `assert_capability_statement`, `bundle_entries`/`next_link`, `scope_token` (E2). Both suites import from it. RIS suite (`tests/test_fhir_ris_read.py`) and PACS suite (`tests/integration/test_fhir.py`) refactored: removed their local `_FakeAuth`/`_make_app`/`Starlette` imports, used `make_fhir_app` instead. Combined run: 50 passed (17 RIS + 29 PACS + 4 SMART scopes).
+**REFACTOR:** Harness lives at `tests/fhir_harness.py`; both suites import it.
 
 **Phase E exit gate**
 
