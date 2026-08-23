@@ -1,9 +1,62 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
+import React from "react";
 
 import { renderWithAuth } from "./renderWithApp";
 import TemplateManager from "../admin/TemplateManager";
+
+// antd's Drawer + Table defer their body render to async layout (motion /
+// ResizeObserver) that never completes under jsdom, so the versions table
+// never appears and the test hangs on waitFor. Stub both to render
+// synchronously (the same per-file vi.mock pattern QAReviewForm.test.tsx
+// uses for `message`). App.useApp() is stubbed too: TemplateManager toasts
+// via the App context, and the real App-provided message spawns a React
+// root + auto-dismiss timer that outlives jsdom and hangs the test.
+vi.mock("antd", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("antd")>();
+  const mockMessage = {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    loading: vi.fn(),
+  };
+  const Drawer = ({ children, ..._props }: any) => (
+    <div data-testid="versions-drawer">{children}</div>
+  );
+  // Minimal Table: render the first column's dataIndex text per row so the
+  // test can find "v1" and the Rollback action buttons synchronously.
+  const Table = ({ dataSource, columns }: any) => (
+    <table data-testid="versions-table">
+      <tbody>
+        {(dataSource || []).map((row: any, i: number) => (
+          <tr key={i}>
+            {columns.map((col: any, j: number) => (
+              <td key={j}>
+                {col.render
+                  ? col.render(row[col.dataIndex], row)
+                  : String(row[col.dataIndex] ?? "")}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+  return {
+    ...actual,
+    Drawer,
+    Table,
+    App: {
+      ...actual.App,
+      useApp: () => ({
+        message: mockMessage,
+        notification: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        modal: { confirm: vi.fn() },
+      }),
+    },
+  };
+});
 
 const mockListTemplates = vi.hoisted(() => vi.fn());
 const mockListVersions = vi.hoisted(() => vi.fn());
@@ -57,32 +110,39 @@ describe("TemplateManager", () => {
   });
 
   it("publishes a new version from the editor", async () => {
-    const user = userEvent.setup();
     renderWithAuth(<TemplateManager />);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /edit/i }));
-    const boxes = await screen.findAllByRole("textbox");
-    await user.type(boxes[0], " updated");
-    await user.click(screen.getByRole("button", { name: /^publish$/i }));
+    // fireEvent (not userEvent): the antd Modal motion transition never
+    // completes under jsdom, so userEvent's pointer/visibility waits hang
+    // forever. fireEvent.click opens the modal and fireEvent.change edits
+    // the textarea without waiting on the transition.
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }));
+    // Query by placeholder (antd textarea renders the placeholder role
+    // immediately, before the modal motion animation completes) — avoids
+    // the perma-pending waitFor inside findAllByRole("textbox").
+    const findingsBox = screen.getByPlaceholderText(
+      "Findings template",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(findingsBox, { target: { value: `${findingsBox.value} updated` } });
+    fireEvent.click(screen.getByRole("button", { name: /^publish$/i }));
     await waitFor(() => {
       expect(mockPublish).toHaveBeenCalled();
     });
   });
 
   it("rolls back to a prior version (R2-02-09)", async () => {
-    const user = userEvent.setup();
     renderWithAuth(<TemplateManager />);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /history/i })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /history/i }));
+    fireEvent.click(screen.getByRole("button", { name: /history/i }));
     await waitFor(() => {
       expect(screen.getByText("v1")).toBeInTheDocument();
     });
     const rollbackButtons = screen.getAllByRole("button", { name: /rollback/i });
-    await user.click(rollbackButtons[rollbackButtons.length - 1]);
+    fireEvent.click(rollbackButtons[rollbackButtons.length - 1]);
     await waitFor(() => {
       expect(mockRollback).toHaveBeenCalledWith("tpl-1", 1);
     });

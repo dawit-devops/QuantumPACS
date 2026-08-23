@@ -94,7 +94,7 @@ describe("ReadingWorklist", () => {
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith("reports/reading-list", {
-        query: {},
+        query: { page: "1", per_page: "20" },
       });
     });
   });
@@ -220,7 +220,7 @@ describe("ReadingWorklist", () => {
     // The refetch fires after the assignment resolves.
     await waitFor(() => {
       expect(mockRequest).toHaveBeenLastCalledWith("reports/reading-list", {
-        query: {},
+        query: { page: "1", per_page: "20" },
       });
     });
   });

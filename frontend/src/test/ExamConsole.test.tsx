@@ -6,6 +6,7 @@ import {
   fireEvent,
   within,
 } from "@testing-library/react";
+import { App as AntdApp } from "antd";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
@@ -30,17 +31,24 @@ vi.mock("../hooks", () => ({
 
 function renderConsole() {
   return render(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/exams/e1"]}>
-          <Routes>
-            <Route path="/exams/:id" element={<ExamConsole />} />
-            {/* Stub target for the Ctrl+Shift+W worklist shortcut test. */}
-            <Route path="/exams" element={<div>Worklist Stub</div>} />
-          </Routes>
-        </MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
+    // ExamConsole uses App.useApp() for message/notification — that context
+    // comes from antd's App provider, which must wrap the tree in tests
+    // exactly as index.tsx does (the static message.* patch in setup.ts is
+    // not the App.useApp() instance, so without the provider every
+    // message.error/success call throws and the test hangs on retries).
+    <AntdApp>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter initialEntries={["/exams/e1"]}>
+            <Routes>
+              <Route path="/exams/:id" element={<ExamConsole />} />
+              {/* Stub target for the Ctrl+Shift+W worklist shortcut test. */}
+              <Route path="/exams" element={<div>Worklist Stub</div>} />
+            </Routes>
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    </AntdApp>,
   );
 }
 
