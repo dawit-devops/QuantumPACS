@@ -168,6 +168,19 @@ class PortalPatientHandler(HTTPEndpoint):
             demo = await portal.get_demographics(patient_id)
             orders = await portal.list_orders(patient_id)
             reports = await portal.list_final_reports(patient_id)
+            # E1: scoped but no consent -> the empty view is consent-gated;
+            # audit it so HIM can distinguish gating from no-data.
+            if demo is None and await portal.consent_granted(patient_id) is None \
+                    and scope:
+                await AuditLog(conn).log_event(
+                    event_type='portal.consent_blocked',
+                    actor_id=request.user.id,
+                    resource_type='patient',
+                    resource_id=patient_id,
+                    details={'patient_id': patient_id},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
             await AuditLog(conn).log_event(
                 event_type='portal.patient_view',
                 actor_id=request.user.id,
@@ -256,6 +269,19 @@ class PortalOrdersHandler(HTTPEndpoint):
                 )
                 return ok({'data': []})
             orders = await portal.list_orders(patient_id)
+            # E1: a scoped patient whose consent was not (yet) granted sees
+            # an empty list — audit the blocked access distinctly so HIM can
+            # tell consent-gating from a genuinely absent order set.
+            if scope and not orders and not await portal.consent_granted(patient_id):
+                await AuditLog(conn).log_event(
+                    event_type='portal.consent_blocked',
+                    actor_id=request.user.id,
+                    resource_type='patient',
+                    resource_id=patient_id,
+                    details={'patient_id': patient_id},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
             await AuditLog(conn).log_event(
                 event_type='portal.orders_view',
                 actor_id=request.user.id,

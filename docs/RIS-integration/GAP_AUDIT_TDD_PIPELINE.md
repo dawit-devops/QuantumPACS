@@ -16,7 +16,7 @@
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
-| **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
+| **E** FHIR/portal v2.0 (E1–E3) | 🚧 E1 done | — | portal 40 green (incl. TestConsentGateRealDb) |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
 ---
@@ -263,9 +263,9 @@ Commits: `feat(reports): paginate reading list` · `feat(billing): aging by site
 
 ### Cycle E1: Portal consent gating
 **Evidence:** Zero consent model in portal path (R2-05-07 acceptance).
-**RED:** Patient without consent → portal list/get empty + audit `portal.consent_blocked`; consent granted (audited) → visible; withdrawal revokes future access.
-**GREEN:** `patients.meta.consent_results` boolean (JSONB meta — avoids migration if column-free pattern exists; else migration 088) + toggle in Registration UI (REGISTRATION_WRITE); enforcement in `db/portal.py`; every check audited.
-**REFACTOR:** Consent read helper shared by share-link path.
+**GREEN (E1 commit):** `patients.meta.consent_results` JSONB boolean gate — `Portal._CONSENT_PREDICATE` (`meta->>'consent_results' = 'true'`) ANDed into `search_patients`, `get_demographics`, `list_orders`, `list_final_reports`, `get_final_report` (JOIN patients); `consent_granted()` helper. No migration needed (JSONB meta, column-free pattern). Registration UI gained a "Patient consents…" Checkbox → `meta.consent_results` on create (REGISTRATION_WRITE). `PortalPatientHandler`/`PortalOrdersHandler` audit `portal.consent_blocked` when a scoped patient has no consent.
+**RED:** `TestConsentGateRealDb` (`test_portal_api.py`) — no consent → all surfaces empty; consent true → visible; withdrawal (meta reset) revokes. A4 hold-gate seed updated to grant consent so the hold tests exercise the hold gate, not consent.
+**REFACTOR:** `consent_granted()` read helper is available to the share-link path (not wired yet — no share-link surface in scope).
 
 ### Cycle E2: SMART-on-FHIR scopes
 **Evidence:** No SMART/OAuth scope handling anywhere (`api/fhir.py`, auth, tokens) — required before security sweep R2-06-09.

@@ -13,6 +13,7 @@ import {
   Divider,
   Spin,
   Space,
+  Checkbox,
 } from "antd";
 import {
   SearchOutlined,
@@ -97,6 +98,9 @@ function Registration() {
         name: values.name,
         birth_date: values.birth_date || undefined,
         sex: values.sex || undefined,
+        // E1: consent captured at registration (R2-05-07) — the portal gate
+        // keeps reports/orders hidden until this is granted.
+        meta: { consent_results: Boolean(values.consent) },
       });
     } catch (e: any) {
       message.error(e.message || "Registration failed");
@@ -344,6 +348,15 @@ function Registration() {
               <Input placeholder="e.g. CT Room 1" />
             </Form.Item>
           </div>
+          <Form.Item
+            name="consent"
+            valuePropName="checked"
+            style={{ marginBottom: 8 }}
+          >
+            <Checkbox disabled={!canWrite}>
+              Patient consents to results being shared via the portal
+            </Checkbox>
+          </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"

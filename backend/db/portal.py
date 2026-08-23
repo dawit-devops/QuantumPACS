@@ -10,9 +10,22 @@ class Portal:
     def __init__(self, conn=None):
         self.conn = conn
 
+    # E1: patient consent (R2-05-07). patients.meta is JSONB — we use
+    # meta->>'consent_results' = 'true' as the gate, no migration needed.
+    # Every patient-facing read must AND this predicate; withdrawn consent
+    # revokes access because the flag simply stops matching.
+    _CONSENT_PREDICATE = "COALESCE((meta->>'consent_results') = 'true', false)"
+
     async def patient_exists(self, patient_id):
         return await self.conn.fetchval(
             "SELECT 1 FROM patients WHERE patient_id = $1",
+            patient_id,
+        )
+
+    async def consent_granted(self, patient_id):
+        return await self.conn.fetchval(
+            f"SELECT 1 FROM patients WHERE patient_id = $1"
+            f" AND {self._CONSENT_PREDICATE}",
             patient_id,
         )
 
@@ -58,12 +71,13 @@ class Portal:
     async def search_patients(self, user_id, query):
         like = f'%{query}%'
         rows = await self.conn.fetch(
-            """
+            f"""
             SELECT p.patient_id, p.name, p.birth_date, p.sex
             FROM patients p
             JOIN patient_staff_scope pss
               ON pss.patient_id = p.patient_id AND pss.user_id = $1
-            WHERE p.name ILIKE $2 OR p.patient_id ILIKE $2
+            WHERE (p.name ILIKE $2 OR p.patient_id ILIKE $2)
+              AND {self._CONSENT_PREDICATE}
             LIMIT 20
             """,
             user_id, like,
@@ -72,19 +86,21 @@ class Portal:
 
     async def get_demographics(self, patient_id):
         return await self.conn.fetchrow(
-            "SELECT patient_id, name, birth_date, sex FROM patients"
-            " WHERE patient_id = $1",
+            f"SELECT patient_id, name, birth_date, sex FROM patients"
+            f" WHERE patient_id = $1 AND {self._CONSENT_PREDICATE}",
             patient_id,
         )
 
     async def list_orders(self, patient_id):
         rows = await self.conn.fetch(
-            """
-            SELECT id, accession_number, modality, requested_procedure_desc,
-                   status, priority, created_at, completed_at
-            FROM exams
-            WHERE patient_id = $1
-            ORDER BY created_at DESC
+            f"""
+            SELECT e.id, e.accession_number, e.modality,
+                   e.requested_procedure_desc, e.status, e.priority,
+                   e.created_at, e.completed_at
+            FROM exams e
+            JOIN patients p ON p.patient_id = e.patient_id
+            WHERE e.patient_id = $1 AND {self._CONSENT_PREDICATE}
+            ORDER BY e.created_at DESC
             """,
             patient_id,
         )
@@ -93,6 +109,7 @@ class Portal:
     async def list_final_reports(self, patient_id):
         # A4: HIM-held reports never appear on patient-facing surfaces
         # (R2-05-05); the predicate is shared with the FHIR DR search gate.
+        # E1: consent gate — a patient who has not consented sees nothing.
         from db.reports import RELEASE_VISIBLE_SQL
         rows = await self.conn.fetch(
             f"""
@@ -100,7 +117,9 @@ class Portal:
                    r.signed_at, r.signed_by
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
+            JOIN patients p ON p.patient_id = e.patient_id
             WHERE e.patient_id = $1 AND r.status = 'final'
+              AND {self._CONSENT_PREDICATE}
               AND {RELEASE_VISIBLE_SQL}
             ORDER BY r.signed_at DESC
             """,
@@ -117,7 +136,9 @@ class Portal:
                    r.signed_by, r.signed_at
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
+            JOIN patients p ON p.patient_id = e.patient_id
             WHERE r.id = $1 AND e.patient_id = $2
+              AND {self._CONSENT_PREDICATE}
               AND {RELEASE_VISIBLE_SQL}
             """,
             report_id, patient_id,

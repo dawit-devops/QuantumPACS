@@ -492,8 +492,9 @@ class TestReleasePolicyRealDb:
         from db.reports import Reports
         mrn = f'MRN-A4-{tag}'
         await conn.execute(
-            "INSERT INTO patients (patient_id, name, birth_date, sex)"
-            " VALUES ($1, 'A4 Patient', '1980-01-01', 'F')"
+            "INSERT INTO patients (patient_id, name, birth_date, sex, meta)"
+            " VALUES ($1, 'A4 Patient', '1980-01-01', 'F',"
+            " jsonb_build_object('consent_results', true))"
             " ON CONFLICT (patient_id) DO NOTHING",
             mrn,
         )
@@ -614,4 +615,122 @@ class TestReleasePolicyRealDb:
                     'portal.report_hold_blocked')
         finally:
             async with get_conn() as conn:
+                await self._cleanup(conn, tag)
+
+
+class TestConsentGateRealDb:
+    """E1 (GAP_AUDIT_TDD_PIPELINE.md): patient-facing portal reads had no
+    consent model (R2-05-07 acceptance). A patient without consent_results
+    must not surface reports/orders/demographics; granting consent makes
+    them visible; withdrawal revokes future access."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _seed(self, conn, tag, consent=None):
+        mrn = f'MRN-E1-{tag}'
+        if consent is None:
+            meta_sql = "'{}'::jsonb"
+            params = [mrn]
+        else:
+            meta_sql = "jsonb_build_object('consent_results', $2::boolean)"
+            params = [mrn, consent]
+        await conn.execute(
+            f"INSERT INTO patients (patient_id, name, birth_date, sex, meta)"
+            f" VALUES ($1, 'E1 Patient', '1980-01-01', 'F', {meta_sql})",
+            *params,
+        )
+        await conn.execute(
+            "INSERT INTO patient_staff_scope (patient_id, user_id,"
+            " scope_type, assigned_by) VALUES ($1, 1, 'ward', 1)"
+            " ON CONFLICT (patient_id, user_id) DO NOTHING",
+            mrn,
+        )
+        exam_row = await conn.fetchrow(
+            "INSERT INTO exams (accession_number, patient_id, status,"
+            " modality) VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+            f'ACC-E1-{tag}', mrn,
+        )
+        from db.reports import Reports
+        report = await Reports(conn).create(
+            exam_row['id'],
+            {'status': 'draft', 'findings': 'f', 'impression': 'i'},
+            created_by='rad-1',
+        )
+        await Reports(conn).sign(report['id'], signed_by='rad-1')
+        return mrn, str(report['id'])
+
+    async def _cleanup(self, conn, tag):
+        mrn = f'MRN-E1-{tag}'
+        await conn.execute(
+            "DELETE FROM reports WHERE exam_id IN"
+            " (SELECT id FROM exams WHERE accession_number LIKE 'ACC-E1-%')")
+        await conn.execute(
+            "DELETE FROM exams WHERE accession_number LIKE 'ACC-E1-%'")
+        await conn.execute(
+            "DELETE FROM patient_staff_scope WHERE patient_id = $1", mrn)
+        await conn.execute("DELETE FROM patients WHERE patient_id = $1", mrn)
+
+    @pytest.mark.asyncio
+    async def test_without_consent_patient_surfaces_empty(self):
+        import uuid
+        from db.conn import get_conn
+        from db.portal import Portal
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_id = await self._seed(conn, tag, consent=None)
+            try:
+                assert await Portal(conn).list_final_reports(mrn) == [], (
+                    'no consent -> no reports surfaced')
+                assert await Portal(conn).list_orders(mrn) == []
+                assert await Portal(conn).get_final_report(mrn, report_id) is None
+                assert await Portal(conn).get_demographics(mrn) is None
+            finally:
+                await self._cleanup(conn, tag)
+
+    @pytest.mark.asyncio
+    async def test_consent_granted_makes_patient_visible(self):
+        import uuid
+        from db.conn import get_conn
+        from db.portal import Portal
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_id = await self._seed(conn, tag, consent=True)
+            try:
+                reports = await Portal(conn).list_final_reports(mrn)
+                assert [str(r['report_id']) for r in reports] == [report_id]
+                assert await Portal(conn).list_orders(mrn)
+                detail = await Portal(conn).get_final_report(mrn, report_id)
+                assert detail is not None and str(detail['report_id']) == report_id
+                assert await Portal(conn).get_demographics(mrn) is not None
+            finally:
+                await self._cleanup(conn, tag)
+
+    @pytest.mark.asyncio
+    async def test_withdrawal_revokes_future_access(self):
+        import uuid
+        from db.conn import get_conn
+        from db.portal import Portal
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            mrn, report_id = await self._seed(conn, tag, consent=True)
+            try:
+                assert await Portal(conn).list_final_reports(mrn)
+                # withdrawal = consent_results flipped off
+                await conn.execute(
+                    "UPDATE patients SET meta = '{}'::jsonb"
+                    " WHERE patient_id = $1", mrn)
+                assert await Portal(conn).list_final_reports(mrn) == [], (
+                    'withdrawn consent must revoke future access')
+            finally:
                 await self._cleanup(conn, tag)
