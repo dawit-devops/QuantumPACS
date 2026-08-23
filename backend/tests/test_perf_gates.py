@@ -540,6 +540,8 @@ class TestRegistrationPerf:
                 name = 'Perf^Patient'
                 birth_date = None
                 sex = None
+                phone = None
+                email = None
                 meta = None
 
             async def run_one(_):

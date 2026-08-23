@@ -50,9 +50,21 @@ def upgrade() -> None:
     op.create_index(
         'ix_invoice_order_id', 'invoice', ['order_id'],
     )
+    # S8 (P-01): patient contact fields for the portal profile — the front
+    # desk captures them at registration, the portal displays read-only.
+    op.add_column(
+        'patients',
+        sa.Column('phone', sa.Text(), nullable=True, server_default=None),
+    )
+    op.add_column(
+        'patients',
+        sa.Column('email', sa.Text(), nullable=True, server_default=None),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column('patients', 'email')
+    op.drop_column('patients', 'phone')
     op.drop_index('ix_invoice_order_id', table_name='invoice')
     op.drop_column('invoice', 'order_id')
     op.drop_column('ris_appointments', 'consent_at')

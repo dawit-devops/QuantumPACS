@@ -38,12 +38,13 @@ class FrontDesk:
         meta = json.dumps(data.get('meta')) if data.get('meta') is not None else None
         return await self.conn.fetchrow(
             """
-            INSERT INTO patients (patient_id, name, birth_date, sex, meta, tenant_id)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-            RETURNING id, patient_id, name, birth_date, sex
+            INSERT INTO patients (patient_id, name, birth_date, sex, phone,
+                                  email, meta, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+            RETURNING id, patient_id, name, birth_date, sex, phone, email
             """,
             data['patient_id'], data['name'], data.get('birth_date', ''),
-            data.get('sex', ''), meta,
+            data.get('sex', ''), data.get('phone'), data.get('email'), meta,
             get_tenant_slug() or 'default',
         )
 

@@ -9,6 +9,10 @@ class CreatePatientRequest(BaseModel):
     name: str = Field(..., description="Patient full name")
     birth_date: str = Field('', description="Patient date of birth (YYYY-MM-DD)")
     sex: str = Field('', description="Patient sex (M/F/O)")
+    phone: str | None = Field(None, max_length=50,
+                               description="Patient phone number")
+    email: str | None = Field(None, max_length=200,
+                               description="Patient email address")
     meta: dict | None = Field(None, description="Free-form registration metadata")
 
 

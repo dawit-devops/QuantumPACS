@@ -97,6 +97,7 @@ def _demo_row(**over):
     row = {
         'patient_id': 'MRN1', 'name': 'Jane^Doe',
         'birth_date': '19900101', 'sex': 'F',
+        'phone': '(555) 123-4567', 'email': 'jane@example.com',
     }
     row.update(over)
     return row
@@ -118,6 +119,8 @@ def _report_row(**over):
         'signed_at': None, 'signed_by': 'Dr. Radiologist',
         'status': 'final', 'modality': 'CT',
         'impression': 'Normal', 'findings': 'No acute findings',
+        'requested_procedure_desc': 'CT Chest',
+        'signed_by_name': 'Dr. Radiologist',
     }
     row.update(over)
     return row
@@ -299,6 +302,39 @@ class TestPortalReportFields:
         # The frontend reads r.id; the SQL must alias it
         assert 'r.id AS id' in report_sql or 'report_id AS id' in report_sql, \
             report_sql
+
+
+class TestPortalDemographicsPhoneEmail:
+    """S8 (P-01): demographics must include phone/email and consent_status."""
+
+    def test_demographics_sql_projects_phone_email_consent(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        sqls = []
+        scope_returned = False
+
+        async def fetchrow(sql, *args):
+            nonlocal scope_returned
+            if not scope_returned:
+                scope_returned = True
+                return _scope_row()
+            sqls.append(sql)
+            return None
+
+        async def fetch(sql, *args):
+            return []
+
+        mock_conn.fetchrow = fetchrow
+        mock_conn.fetch = fetch
+        with patch('api.portal.get_conn', return_value=mock_conn):
+            client.get('/portal/patients/MRN1')
+        # The demographics query is the first fetchrow call after scope
+        demo_sql = next((s for s in sqls if 'patients' in s and 'birth_date' in s), None)
+        assert demo_sql, sqls
+        assert 'phone' in demo_sql, demo_sql
+        assert 'email' in demo_sql, demo_sql
+        assert 'consent_results' in demo_sql, demo_sql
 
 
 class TestPortalPatientView:

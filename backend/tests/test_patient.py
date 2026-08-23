@@ -50,8 +50,11 @@ class TestPatient:
         conn = AsyncMock()
         p = Patient(conn=conn)
         await p.sync_db()
-        assert conn.execute.call_count == 3
+        # S8: two ALTERs added for phone/email on top of CREATE + 2 indexes.
+        assert conn.execute.call_count == 5
         first_sql = conn.execute.call_args_list[0][0][0]
         assert 'CREATE TABLE' in first_sql
         assert 'CREATE INDEX IF NOT EXISTS patients_patient_id' in conn.execute.call_args_list[1][0][0]
         assert 'CREATE INDEX IF NOT EXISTS ix_patients_tenant' in conn.execute.call_args_list[2][0][0]
+        assert 'ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone' in conn.execute.call_args_list[3][0][0]
+        assert 'ALTER TABLE patients ADD COLUMN IF NOT EXISTS email' in conn.execute.call_args_list[4][0][0]

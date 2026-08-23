@@ -92,12 +92,14 @@ function PatientProfile() {
       .then((b) => {
         if (seq !== patientSeq.current) return;
         setBundle(b);
-        // Consent is stored in patients.meta.consent_results.
-        // The backend bundle doesn't expose meta directly, so we default
-        // to true (consent granted) if reports are visible — if consent
-        // were false, reports would be empty.
-        if (b?.reports && b.reports.length > 0) {
+        // Consent status now comes from the bundle's demographics
+        // (patients.meta.consent_results projected by the backend, S8) —
+        // no more guessing from report visibility.
+        const consent = b?.patient && (b.patient as any).consent_status;
+        if (consent === "true") {
           setConsentResults(true);
+        } else if (consent === "false" || consent === "") {
+          setConsentResults(false);
         }
         if (!b || !b.patient) {
           message.warning("No records are currently shared for this patient.");
@@ -261,11 +263,14 @@ function PatientProfile() {
                 {patient.sex || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Phone">
-                {/* Phone not returned by current API — shown as placeholder */}
-                <Text type="secondary">On file</Text>
+                {(patient as any).phone || (
+                  <Text type="secondary">On file</Text>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Email">
-                <Text type="secondary">On file</Text>
+                {(patient as any).email || (
+                  <Text type="secondary">On file</Text>
+                )}
               </Descriptions.Item>
             </Descriptions>
 

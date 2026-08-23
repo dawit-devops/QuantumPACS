@@ -89,6 +89,8 @@ async def _register_patient(conn, request, body):
             'name': name,
             'birth_date': body.birth_date,
             'sex': body.sex,
+            'phone': body.phone,
+            'email': body.email,
             'meta': body.meta,
         })
     except UniqueViolationError:

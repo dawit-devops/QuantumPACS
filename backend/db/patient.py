@@ -24,6 +24,13 @@ class Patient(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_patients_tenant ON patients(tenant_id);
         """)
+        # S8 (P-01): portal contact fields (mirrors migration 089).
+        await self.exec(
+            "ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone TEXT"
+        )
+        await self.exec(
+            "ALTER TABLE patients ADD COLUMN IF NOT EXISTS email TEXT"
+        )
 
     async def insert_or_select(self, data):
         q = self.insert().columns(

@@ -98,6 +98,8 @@ function Registration() {
         name: values.name,
         birth_date: values.birth_date || undefined,
         sex: values.sex || undefined,
+        phone: values.phone || undefined,
+        email: values.email || undefined,
         // E1: consent captured at registration (R2-05-07) — the portal gate
         // keeps reports/orders hidden until this is granted.
         meta: { consent_results: Boolean(values.consent) },
@@ -339,6 +341,20 @@ function Registration() {
                   { value: "O", label: "Other" },
                 ]}
               />
+            </Form.Item>
+            <Form.Item
+              name="phone"
+              label="Phone"
+              style={{ flex: 1 }}
+            >
+              <Input placeholder="(555) 123-4567" />
+            </Form.Item>
+            <Form.Item
+              name="email"
+              label="Email"
+              style={{ flex: 1 }}
+            >
+              <Input placeholder="patient@example.com" />
             </Form.Item>
             <Form.Item
               name="destination_room"

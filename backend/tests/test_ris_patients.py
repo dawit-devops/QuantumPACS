@@ -109,6 +109,24 @@ class TestRisPatientRegistration:
         fd.create_patient.assert_awaited_once()
         frontdesk_patches['audit'].instances[0].log_event.assert_awaited_once()
 
+    def test_post_captures_phone_and_email(self, frontdesk_patches):
+        # S8 (P-01): registration must pass the patient's contact fields
+        # through to persistence for the portal profile.
+        fd = _fd(frontdesk_patches)
+        fd.find_patient_duplicate.return_value = None
+        fd.create_patient.return_value = _patient_row()
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
+        resp = client.post('/ris/patients', json={
+            'name': 'Jane Doe', 'birth_date': '1980-01-01', 'sex': 'F',
+            'phone': '(555) 123-4567', 'email': 'jane@example.com',
+        })
+
+        assert resp.status_code == 201, resp.text
+        kwargs = fd.create_patient.call_args.args[0]
+        assert kwargs['phone'] == '(555) 123-4567'
+        assert kwargs['email'] == 'jane@example.com'
+
     def test_post_returns_409_on_duplicate(self, frontdesk_patches):
         fd = _fd(frontdesk_patches)
         fd.find_patient_duplicate.return_value = _patient_row()

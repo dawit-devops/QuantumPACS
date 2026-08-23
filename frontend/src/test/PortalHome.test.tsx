@@ -70,6 +70,9 @@ const BUNDLE = {
     name: "John Doe",
     birth_date: "1980-05-15",
     sex: "M",
+    phone: "(555) 123-4567",
+    email: "john@example.com",
+    consent_status: "true",
   },
   orders: [
     {
@@ -93,8 +96,10 @@ const BUNDLE = {
       exam_id: "e1",
       accession_number: "ACC-001",
       modality: "CT",
+      requested_procedure_desc: "CT Chest",
       status: "final",
       impression: "No acute findings",
+      signed_by_name: "Dr. Smith",
       signed_at: "2026-08-22T10:00:00+00:00",
     },
   ],
@@ -228,13 +233,13 @@ describe("PortalHome", () => {
     await waitFor(() => {
       expect(screen.getByText("CT Chest with Contrast")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Room CT-1/)).toBeInTheDocument();
+    expect(screen.getByText(/Room: CT-1/)).toBeInTheDocument();
   });
 
   it("renders recent results card", async () => {
     renderWithAuth(<PortalHome />);
     await waitFor(() => {
-      expect(screen.getByText(/ACC-001/)).toBeInTheDocument();
+      expect(screen.getByText("CT Chest")).toBeInTheDocument();
     });
   });
 
@@ -284,6 +289,9 @@ describe("PatientProfile", () => {
     expect(screen.getByText("P001")).toBeInTheDocument();
     expect(screen.getByText("1980-05-15")).toBeInTheDocument();
     expect(screen.getByText("M")).toBeInTheDocument();
+    // S8: phone/email from the demographics bundle (not placeholders).
+    expect(screen.getByText("(555) 123-4567")).toBeInTheDocument();
+    expect(screen.getByText("john@example.com")).toBeInTheDocument();
   });
 
   it("shows read-only tag", async () => {

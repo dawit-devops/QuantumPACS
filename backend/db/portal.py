@@ -97,8 +97,11 @@ class Portal:
 
     async def get_demographics(self, patient_id):
         return await self.conn.fetchrow(
-            f"SELECT patient_id, name, birth_date, sex FROM patients"
-            f" WHERE patient_id = $1 AND {self._CONSENT_PREDICATE}",
+            f"""SELECT patient_id, name, birth_date, sex,
+                       phone, email,
+                       COALESCE(meta->>'consent_results', '') AS consent_status
+                FROM patients
+                WHERE patient_id = $1 AND {self._CONSENT_PREDICATE}""",
             patient_id,
         )
 
@@ -158,11 +161,16 @@ class Portal:
         rows = await self.conn.fetch(
             f"""
             SELECT r.id AS id, r.id AS report_id, r.exam_id, e.accession_number,
-                   e.modality, r.status, r.impression,
-                   r.signed_at, r.signed_by
+                   e.modality, e.requested_procedure_desc, r.status,
+                   r.impression, r.signed_at, r.signed_by,
+                   u.username AS signed_by_name
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
             JOIN patients p ON p.patient_id = e.patient_id
+            LEFT JOIN users u ON u.id = CASE
+                WHEN r.signed_by ~ '^\d+$' THEN r.signed_by::bigint
+                ELSE NULL
+            END
             WHERE e.patient_id = $1 AND r.status = 'final'
               AND {self._CONSENT_PREDICATE}
               AND {RELEASE_VISIBLE_SQL}
@@ -177,12 +185,16 @@ class Portal:
         row = await self.conn.fetchrow(
             f"""
             SELECT r.id AS report_id, r.id AS id, r.exam_id, r.status,
-                   e.accession_number, e.modality,
+                   e.accession_number, e.modality, e.requested_procedure_desc,
                    r.findings, r.impression, r.recommendations,
-                   r.signed_by, r.signed_at
+                   r.signed_by, r.signed_at, u.username AS signed_by_name
             FROM reports r
             JOIN exams e ON e.id = r.exam_id
             JOIN patients p ON p.patient_id = e.patient_id
+            LEFT JOIN users u ON u.id = CASE
+                WHEN r.signed_by ~ '^\d+$' THEN r.signed_by::bigint
+                ELSE NULL
+            END
             WHERE r.id = $1 AND e.patient_id = $2
               AND {self._CONSENT_PREDICATE}
               AND {RELEASE_VISIBLE_SQL}

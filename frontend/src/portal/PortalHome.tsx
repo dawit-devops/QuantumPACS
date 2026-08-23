@@ -25,6 +25,8 @@ import {
   BellOutlined,
   RightOutlined,
   TeamOutlined,
+  PhoneOutlined,
+  MailOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
@@ -197,7 +199,7 @@ function PortalHome() {
         <div>
           <h2 style={{ margin: 0 }}>
             <MedicineBoxOutlined style={{ marginRight: 8 }} />
-            Patient Portal
+            QuantumPACS Patient Portal
           </h2>
           <Text type="secondary">
             Welcome{patient?.name ? `, ${patient.name}` : ""} — your imaging
@@ -261,27 +263,46 @@ function PortalHome() {
                 ) : (
                   <div className="portal-card-list">
                     {upcomingAppointments.slice(0, 3).map((apt) => (
-                      <div key={apt.id} className="portal-card-item">
+                      <div key={apt.id} className="portal-card-item portal-appt-item">
                         <div className="portal-card-item-main">
                           <Text strong>{apt.procedure || "Imaging"}</Text>
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {apt.start_time
-                              ? new Date(apt.start_time).toLocaleDateString()
+                              ? `${new Date(apt.start_time).toLocaleDateString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                })}, ${new Date(apt.start_time).toLocaleTimeString(undefined, {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}`
                               : "—"}
-                            {apt.room ? ` · Room ${apt.room}` : ""}
                           </Text>
+                          {apt.room && (
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              Room: {apt.room}
+                            </Text>
+                          )}
                         </div>
-                        <Tag
-                          color={
-                            apt.priority === "STAT"
-                              ? "red"
-                              : apt.priority === "URGENT"
-                                ? "orange"
-                                : "default"
-                          }
-                        >
-                          {apt.priority?.toLowerCase() || "routine"}
-                        </Tag>
+                        <div className="portal-card-item-side">
+                          <Tag
+                            color={
+                              apt.priority === "STAT"
+                                ? "red"
+                                : apt.priority === "URGENT"
+                                  ? "orange"
+                                  : "default"
+                            }
+                          >
+                            {apt.priority?.toLowerCase() || "routine"}
+                          </Tag>
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => navigate("/portal/appointments")}
+                          >
+                            View Details
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -323,23 +344,38 @@ function PortalHome() {
                       <div key={rpt.id} className="portal-card-item portal-result-new">
                         <div className="portal-card-item-main">
                           <Text strong>
-                            {rpt.modality} — {rpt.accession_number || "—"}
+                            {(rpt as any).requested_procedure_desc ||
+                              rpt.modality ||
+                              rpt.accession_number ||
+                              "Imaging report"}
                           </Text>
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {rpt.signed_at
                               ? `Signed ${new Date(rpt.signed_at).toLocaleDateString()}`
                               : "Pending"}
+                            {(rpt as any).signed_by_name
+                              ? ` · ${(rpt as any).signed_by_name}`
+                              : ""}
                           </Text>
                         </div>
-                        <Tag
-                          color={
-                            rpt.status === "signed" || rpt.status === "final"
-                              ? "green"
-                              : "orange"
-                          }
-                        >
-                          {rpt.status || "draft"}
-                        </Tag>
+                        <div className="portal-card-item-side">
+                          <Tag
+                            color={
+                              rpt.status === "signed" || rpt.status === "final"
+                                ? "green"
+                                : "orange"
+                            }
+                          >
+                            {rpt.status || "draft"}
+                          </Tag>
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => navigate(`/portal/results/${rpt.id}`)}
+                          >
+                            Read Report
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -381,6 +417,15 @@ function PortalHome() {
                     onClick={() => navigate("/portal/appointments")}
                   >
                     View Appointments
+                  </Button>
+                  <Divider style={{ margin: "8px 0" }} />
+                  <Button
+                    block
+                    icon={<PhoneOutlined />}
+                    onClick={() => navigate("/portal")}
+                    type="default"
+                  >
+                    Contact Us
                   </Button>
                 </div>
               </Card>
@@ -437,6 +482,24 @@ function PortalHome() {
                   <Text type="secondary" style={{ fontSize: 12 }}>Sex</Text>
                   <br />
                   <Text strong>{patient.sex || "—"}</Text>
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Phone</Text>
+                  <br />
+                  <Text strong>
+                    {(patient as any).phone || (
+                      <Text type="secondary">On file</Text>
+                    )}
+                  </Text>
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Email</Text>
+                  <br />
+                  <Text strong>
+                    {(patient as any).email || (
+                      <Text type="secondary">On file</Text>
+                    )}
+                  </Text>
                 </Col>
               </Row>
             </Card>

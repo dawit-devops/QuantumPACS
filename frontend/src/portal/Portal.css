@@ -153,3 +153,36 @@
     align-items: flex-start;
   }
 }
+
+/* Card list item with side actions (PortalHome dashboard) */
+.portal-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.portal-card-item:last-child {
+  border-bottom: none;
+}
+
+.portal-card-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-card-item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.portal-appt-item {
+  align-items: flex-start;
+}
