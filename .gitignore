@@ -42,3 +42,6 @@ cov-json-report.json
 # SHA-256 pinned by scripts/fetch_weasis.sh) and per-stack secrets.
 /docker/dcm4chee/weasis-pacs-connector.war
 /docker/dcm4chee/.env.dcm4chee
+
+# Root-level dependencies (managed by package managers)
+node_modules/

@@ -306,7 +306,6 @@ class TestDenialChainRealDb:
 
     @pytest.mark.asyncio
     async def test_full_rework_roundtrip(self):
-        from datetime import datetime, timezone
         from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
         from db.ris_charges import (
             RisCharges, RisClaims, parse_denial,
