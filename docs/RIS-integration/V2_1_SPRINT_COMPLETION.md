@@ -59,3 +59,37 @@ These are follow-on QA/UAT gates, not implementation work:
 | R2-06-11 | AI 30-day pilot gate: ≥ 90% acceptance | Requires ≥30 days of production `coding_suggestions_*` data |
 | R2-06-12 | RVG-6 re-verify: charge ≥ 98%, unbilled $0 > 5d | Depends on R2-06-04/05 dashboards being fed real billing data |
 | R2-06-13 | Per-persona UAT: biller, manager, scheduler, front desk | UAT sign-off |
+
+---
+
+## 5. Corrective Note (2026-08-23) — gate-green caveat
+
+The §3 exit gate was re-audited by `GAP_AUDIT_TDD_PIPELINE.md` (phases A–F). The
+original gate record stands **only with the following caveat**:
+
+- **A1/A2 pending:** the claimed "full suite" pass did not hold a real-engine
+  p95/throughput assertion (durations were averaged, not percentile-bounded)
+  and the RBAC/IDOR evidence was static — neither asserted the generated
+  negative net nor swept the RIS catalog. Phases F1/F2 add those gates
+  (`test_perf_gates.py`, `test_rbac_matrix_gen.py`); the baseline number in §3
+  is superseded by the pipeline's final exit-gate run.
+- **A11y not evidenced:** the §3 gate did not run WCAG scans. Phase F3 adds
+  per-page axe scans (RISDashboard, BillingQueue, TrackingBoard, kiosk CheckIn,
+  TemplateManager, DenialRework) and fixed a real `label` violation found by the
+  new scan (antd Selects in TrackingBoard lacked accessible names).
+- **UAT material missing:** R2-06-13 stayed open. Phase F4 ships the material:
+  `scripts/seed_uat.py` + `docs/uat/*.md` (radiologist, technologist, scheduler,
+  front-desk, biller, ris-admin, manager). Sign-off still belongs to UAT owners.
+
+For the authoritative, pipeline-tracked status see `GAP_AUDIT_TDD_PIPELINE.md`
+(status table: A–F committed `363e26c` → `e017985`).
+
+**Pipeline exit gate** (2026-08-23, pipeline phases A–F):
+
+| Area | Result | Detail |
+|:---|:---|:---|
+| Backend (pytest, full suite) | **2523 passed / 2 skipped / 0 failed** | 2m13s; includes F1 perf gates (13), F2 RBAC matrix (111 + 88 pre-existing) |
+| Frontend (tsc noEmit) | **0 errors** | — |
+| F3 WCAG scans | **5 suites green** | RISDashboard, BillingQueue, TrackingBoard, CheckIn, TemplateManager, DenialRework — each verified in isolation with `-t "WCAG"` |
+| F4 UAT material | **Delivered** | `scripts/seed_uat.py` + 7 persona walkthroughs in `docs/uat/` |
+| Full FE run | Known infra constraint — 3 pre-existing hang files (ExamConsole, ReadingWorklist, TemplateManager) timeout; all pipeline-touched suites pass | — |
