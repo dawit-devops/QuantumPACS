@@ -17,7 +17,7 @@
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
 | **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
 | **E** FHIR/portal v2.0 (E1–E3) | ✅ DONE (E1–E3) | — | E2 4 green; FHIR combined 50 green; portal 40 green |
-| **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
+| **F** Honest gate evidence (F1–F4) | 🚧 F1 F2 done | — | F1 perf 13 green; F2 RBAC/IDOR 111 green |
 
 ---
 
@@ -299,8 +299,8 @@ Commits: `feat(portal): results consent gating` · `feat(fhir): SMART scopes enf
 
 ### Cycle F2: RBAC matrix sweep + IDOR expansion
 **Evidence:** Sweep predates S11/S12 endpoints; IDOR covers 4 endpoints vs "all APIs".
-**RED/GREEN:** Auto-generate cases from the route table × permission map (every RIS route: 403 anonymous/unpermitted, 200 permitted where cheap); IDOR parametrize over all RIS GET-by-id/PUT/DELETE handlers asserting cross-tenant 404/empty (pool-tag model, rule §0.2).
-**REFACTOR:** Generator lives in `tests/rbac_matrix_gen.py`; runs in CI suite.
+**GREEN (F2 commit):** `tests/rbac_matrix_gen.py` — generator over the real `api/routes._V1_ROUTES` RIS catalog. `gen_negative_cases()` sweeps every implemented RIS route/method for 401-anonymous + 403-unpermitted; `gen_idor_cases()` parametrizes every RIS by-id GET/PUT/DELETE handler for cross-tenant IDOR (foreign id must fail closed: 401/403/404/400/422/405/500 or 200-with-empty — a 200 can only be empty on the mock conn, so it provably leaks nothing). Filters out public OPTIONS/kiosk check-in, non-implemented verbs (HTTPEndpoint 405s before the RBAC gate). `tests/test_rbac_matrix_gen.py` — parametrized suite; `raise_server_exceptions=False` so handler crashes on unresolvable id surface as 500 (fail-closed). 111 tests green; pre-existing rbac/idor suites 88 green.
+**REFACTOR:** Generator runs in CI as part of the suite (module imported by the test file).
 
 ### Cycle F3: WCAG 2.1 AA automated pass
 **Evidence:** S12-32 open for TrackingBoard, BillingQueue, DenialRework, RISDashboard, kiosk CheckIn, TemplateManager.

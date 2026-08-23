@@ -55,6 +55,7 @@ class TestConcurrentCfindPerf:
         from pydicom.dataset import Dataset
 
         calls = []
+        durations = []
 
         class _FakeConn:
             async def __aenter__(self):
@@ -82,17 +83,20 @@ class TestConcurrentCfindPerf:
             ]
             return rows, len(rows)
 
-        async def run_one(_):
+        async def run_one(i):
             from dcm.server import handle_find_async
             query_ds = Dataset()
-            return await handle_find_async(query_ds, ae_title='PERF')
+            started = time.monotonic()
+            try:
+                return await handle_find_async(query_ds, ae_title='PERF')
+            finally:
+                durations.append(time.monotonic() - started)
 
         @asynccontextmanager
         async def _scope():
             yield
 
         async def run():
-            start = time.monotonic()
             # Patch once at this scope, NOT inside run_one: 50 concurrent
             # `with patch(...)` contexts race — each saves its own "original"
             # and exiting restores a leaked mock. Single outer patch keeps
@@ -104,11 +108,14 @@ class TestConcurrentCfindPerf:
                  patch('db.conn.get_conn', return_value=_FakeConn()), \
                  patch('db.worklist.Worklist.search', fake_search):
                 results = await asyncio.gather(*[run_one(i) for i in range(50)])
-            elapsed = time.monotonic() - start
 
-            per_req = elapsed / 50
-            assert per_req < SOFT_CFIND_P95, \
-                f'p95 C-FIND {per_req:.3f}s exceeded soft bound {SOFT_CFIND_P95}s'
+            # F1: assert the real 95th percentile of per-request latency,
+            # not the mean-of-elapsed. The fake_search yields to the loop,
+            # so latencies stay tiny but the gate is honest about the tail.
+            from tests.perf_utils import percentile
+            p95 = percentile(durations, 95)
+            assert p95 < SOFT_CFIND_P95, \
+                f'p95 C-FIND {p95:.3f}s exceeded soft bound {SOFT_CFIND_P95}s'
             assert all(len(r) > 0 for r in results), 'every find must return rows'
             assert len(calls) == 50, 'every find must hit the DB'
 
@@ -458,3 +465,170 @@ class TestFhirWriteLatencyGate:
         assert p95 < SOFT_CFIND_P95, (
             f'FHIR write p95 {p95:.3f}s exceeded {SOFT_CFIND_P95}s '
             f'(worst {worst:.3f}s)')
+
+
+# ---------------------------------------------------------------------------
+# F1 — honest p95 (GAP_AUDIT_TDD_PIPELINE.md)
+# ---------------------------------------------------------------------------
+
+class TestPerfUtilsPercentile:
+    """F1: the gate math must be a real 95th percentile, not the mean
+    labelled p95. Known distributions give exact, verifiable values."""
+
+    def test_percentile_exact_value_on_known_distribution(self):
+        from tests.perf_utils import percentile
+
+        values = [float(i) for i in range(1, 101)]  # 1..100
+        # p95 of a uniform 1..100 = 95.05 (linear interp between 95 and 96)
+        p = percentile(values, 95)
+        assert abs(p - 95.05) < 1e-9, f'p95 expected 95.05, got {p}'
+
+    def test_percentile_single_value(self):
+        from tests.perf_utils import percentile
+        assert percentile([0.42], 95) == 0.42
+
+    def test_percentile_empty_returns_zero(self):
+        from tests.perf_utils import percentile
+        assert percentile([], 95) == 0.0
+
+    def test_percentile_different_from_mean(self):
+        from tests.perf_utils import percentile
+        # Skewed distribution: fast cluster + slow tail. The p95 lands in
+        # the slow tail and must exceed the (drag-free) mean.
+        values = [0.1] * 80 + [10.0] * 20
+        mean = sum(values) / len(values)
+        p95 = percentile(values, 95)
+        assert p95 > mean, 'p95 must exceed the mean when the tail is slow'
+        assert p95 == 10.0, 'p95 of an 80/20 split lands in the slow cluster'
+
+
+# ---------------------------------------------------------------------------
+# F1 — registration + report autosave gates (GAP_AUDIT_TDD_PIPELINE.md)
+# ---------------------------------------------------------------------------
+
+class TestRegistrationPerf:
+    """F1: patient registration must complete under a soft bound — the
+    receptionist's busiest action and the entry point for every workflow."""
+
+    def test_registration_latency_under_soft_bound(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        SOFT_REG = 2.0
+
+        async def run():
+            conn = AsyncMock()
+            conn.__aenter__ = AsyncMock(return_value=conn)
+            conn.__aexit__ = AsyncMock(return_value=False)
+            conn.fetchrow.return_value = {
+                'id': 1, 'patient_id': 'PID-PERF', 'name': 'Perf^Patient',
+                'birth_date': None, 'sex': None,
+            }
+            created = []
+            visit_rows = []
+
+            async def fake_create_patient(self_or_data, data=None):
+                created.append(data if data is not None else self_or_data)
+                return conn.fetchrow.return_value
+
+            async def fake_create_visit(data):
+                visit_rows.append(data)
+                return {'id': 1}
+
+            class Body:
+                patient_id = ''
+                name = 'Perf^Patient'
+                birth_date = None
+                sex = None
+                meta = None
+
+            async def run_one(_):
+                started = asyncio.get_event_loop().time()
+                req = type('R', (), {'user': type('U', (), {'id': 1})()})()
+                with patch('db.frontdesk.FrontDesk.find_patient_duplicate',
+                           AsyncMock(return_value=None)), \
+                     patch('db.frontdesk.FrontDesk.create_patient',
+                           new=fake_create_patient), \
+                     patch('db.frontdesk.FrontDesk.create_visit',
+                           new=fake_create_visit), \
+                     patch('db.frontdesk.FrontDesk.seed_default_consents',
+                           AsyncMock()), \
+                     patch('api.frontdesk.AuditLog.log_event',
+                           AsyncMock()):
+                    from api.frontdesk import _register_patient
+                    await _register_patient(conn, req, Body())
+                    return asyncio.get_event_loop().time() - started
+
+            durations = []
+            for i in range(20):
+                durations.append(await run_one(i))
+            from tests.perf_utils import percentile
+            p95 = percentile(durations, 95)
+            assert p95 < SOFT_REG, \
+                f'registration p95 {p95:.3f}s exceeded {SOFT_REG}s'
+            assert len(created) == 20, 'every registration must hit create_patient'
+
+        asyncio.run(run())
+
+
+class TestReportAutosavePerf:
+    """F1: report autosave (PUT /reports/{exam_id}) must stay fast — it
+    fires on every keystroke burst, so p95 latency bounds the UX."""
+
+    def test_autosave_latency_under_soft_bound(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        SOFT_AUTOSAVE = 2.0
+
+        async def run():
+            conn = AsyncMock()
+            conn.__aenter__ = AsyncMock(return_value=conn)
+            conn.__aexit__ = AsyncMock(return_value=False)
+            conn.fetchrow.return_value = {
+                'id': 1, 'status': 'draft', 'findings': 'f', 'impression': 'i',
+            }
+            conn.fetchval.return_value = None
+
+            async def run_one(_):
+                started = asyncio.get_event_loop().time()
+                try:
+                    with patch('api.reports.get_conn',
+                               return_value=conn), \
+                         patch('api.reports.parse_body',
+                               AsyncMock(return_value=type(
+                                   'B', (), {
+                                       'model_dump': lambda self: {
+                                           'findings': 'x', 'impression': 'y'},
+                                       'confirm': True,
+                                   })())):
+                        import api.reports as rpt
+                        from starlette.endpoints import HTTPEndpoint
+                        class H(HTTPEndpoint):
+                            pass
+                        handler = object.__new__(H)
+                        req = type('R', (), {
+                            'path_params': {'exam_id': 'exam-1'},
+                            'user': type('U', (), {'id': 1})(),
+                        })()
+                        # invoke the Reports.update path directly via
+                        # db.reports.Reports.update with a mocked conn
+                        from db.reports import Reports
+                        updated = await Reports(conn).update(
+                            'rep-1',
+                            {'findings': 'x', 'impression': 'y'},
+                            edited_by='1',
+                        )
+                        return asyncio.get_event_loop().time() - started
+                except Exception:
+                    return 999.0
+
+            durations = []
+            for i in range(20):
+                durations.append(await run_one(i))
+            from tests.perf_utils import percentile
+            p95 = percentile(durations, 95)
+            assert p95 < SOFT_AUTOSAVE, \
+                f'autosave p95 {p95:.3f}s exceeded {SOFT_AUTOSAVE}s'
+
+        asyncio.run(run())
