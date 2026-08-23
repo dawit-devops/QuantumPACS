@@ -549,6 +549,8 @@ describe("FollowUpHub", () => {
     ]);
     mockListFollowUps.mockResolvedValue(FOLLOWUPS);
     mockCreateFollowUp.mockResolvedValue({ id: "f3" });
+    mockGetPortalAppointments.mockResolvedValue(APPOINTMENTS);
+    mockGetPortalPatient.mockResolvedValue(BUNDLE);
   });
 
   it("renders the request form", async () => {
@@ -632,5 +634,18 @@ describe("FollowUpHub", () => {
         status: "cancelled",
       });
     });
+  });
+
+  it("shows linked report and preferred time fields", async () => {
+    mockGetPortalAppointments.mockResolvedValue(APPOINTMENTS);
+    mockGetPortalPatient.mockResolvedValue(BUNDLE);
+    renderWithAuth(<FollowUpHub />);
+    await waitFor(() => {
+      expect(screen.getByText("New Request")).toBeInTheDocument();
+    });
+    // The form should have a linked report/appointment selector and a
+    // preferred time window field (spec P-05).
+    expect(screen.getByText(/Linked report/i)).toBeInTheDocument();
+    expect(screen.getByText(/Preferred contact time/i)).toBeInTheDocument();
   });
 });

@@ -26,6 +26,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
+  LinkOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
@@ -35,8 +36,11 @@ import {
   listFollowUps,
   createFollowUp,
   updateFollowUp,
+  getPortalAppointments,
+  getPortalPatient,
   type PortalScope,
   type PortalFollowUp,
+  type PortalAppointment,
 } from "../api/portal";
 import "./Portal.css";
 
@@ -93,6 +97,14 @@ function FollowUpHub() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // S7 (P-05): linked context — the patient's own reports/appointments the
+  // coordinator can be pointed at to pre-fill the request.
+  const [reportOptions, setReportOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+  const [appointmentOptions, setAppointmentOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
   const [form] = Form.useForm();
 
   const loadScope = useCallback(() => {
@@ -133,6 +145,28 @@ function FollowUpHub() {
     loadFollowUps();
   }, [loadFollowUps]);
 
+  // S7: load linked context options (reports + appointments) for the
+  // active patient so the form can pre-fill report/exam context.
+  useEffect(() => {
+    if (!activePatientId) return;
+    getPortalPatient(activePatientId).then((b) => {
+      const reports = (b?.reports || []).map((r) => ({
+        value: r.id || "",
+        label: `${r.accession_number || ""} ${r.modality || ""}`.trim() || r.id,
+      }));
+      setReportOptions(reports);
+    });
+    getPortalAppointments(activePatientId).then((appts) => {
+      const opts = appts
+        .filter((a) => a.status === "SCHEDULED" || a.status === "CONFIRMED")
+        .map((a) => ({
+          value: a.id,
+          label: `${a.procedure || "Imaging"} — ${a.start_time ? new Date(a.start_time).toLocaleDateString() : ""}`,
+        }));
+      setAppointmentOptions(opts);
+    });
+  }, [activePatientId]);
+
   const handleSubmit = async (values: any) => {
     if (!activePatientId) return;
     setSubmitting(true);
@@ -143,6 +177,9 @@ function FollowUpHub() {
         contact_method: values.contact_method,
         note: values.note || "",
         priority: values.priority || "routine",
+        report_id: values.report_id || undefined,
+        exam_id: values.exam_id || undefined,
+        preferred_time: values.preferred_time || undefined,
       });
       message.success("Follow-up request submitted");
       form.resetFields();
@@ -238,6 +275,50 @@ function FollowUpHub() {
             <Select
               placeholder="Select a reason"
               options={REASON_OPTIONS}
+            />
+          </Form.Item>
+
+          {/* S7 (P-05): linked context — pre-fill the coordinator with a
+              specific report or appointment. */}
+          <Form.Item
+            name="report_id"
+            label="Linked report (optional)"
+            tooltip="Attach a specific report for context"
+          >
+            <Select
+              allowClear
+              placeholder="Select a report"
+              options={reportOptions}
+              aria-label="Linked report"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="exam_id"
+            label="Linked appointment (optional)"
+            tooltip="Attach a specific appointment for context"
+          >
+            <Select
+              allowClear
+              placeholder="Select an appointment"
+              options={appointmentOptions}
+              aria-label="Linked appointment"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="preferred_time"
+            label="Preferred contact time (optional)"
+          >
+            <Select
+              allowClear
+              placeholder="When should we contact you?"
+              options={[
+                { value: "morning", label: "Morning (9am-12pm)" },
+                { value: "afternoon", label: "Afternoon (12pm-5pm)" },
+                { value: "evening", label: "Evening (5pm-8pm)" },
+              ]}
+              aria-label="Preferred contact time"
             />
           </Form.Item>
 
