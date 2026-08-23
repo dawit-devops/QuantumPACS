@@ -26,10 +26,15 @@ class TestAgingInstrumentation:
         ]
         observed = {}
 
-        async def fake_aging(tenant_id='default', min_age_days=5):
+        async def fake_aging(tenant_id='default', min_age_days=5,
+                             group_by='date'):
             return groups, sum(g['n'] for g in groups)
 
+        async def fake_buckets(self=None, tenant_id='default'):
+            return {'over5': 4, 'over10': 3}
+
         with patch.object(RisCharges, 'aging_groups', fake_aging), \
+             patch.object(RisCharges, 'aging_buckets', fake_buckets), \
              patch('api.billing.get_conn', return_value=conn), \
              patch('api.billing.ris_unbilled_over_5d') as g5, \
              patch('api.billing.ris_unbilled_over_10d') as g10:
@@ -40,8 +45,8 @@ class TestAgingInstrumentation:
         assert g10.set.called
         observed['over5'] = g5.set.call_args[0][0]
         observed['over10'] = g10.set.call_args[0][0]
-        # 5-10 bucket plus >10 are both past the 5-day SLA.
-        assert observed['over5'] == 5
+        # D2: gauges read the exact backlog counts from aging_buckets().
+        assert observed['over5'] == 4
         assert observed['over10'] == 3
 
 
@@ -93,8 +98,12 @@ class TestAgingEscalation:
         conn.__aenter__ = AsyncMock(return_value=conn)
         conn.__aexit__ = AsyncMock(return_value=False)
 
-        async def fake_aging(tenant_id='default', min_age_days=5):
+        async def fake_aging(tenant_id='default', min_age_days=5,
+                             group_by='date'):
             return [{'age_bucket': '>10 days', 'n': 9}], 9
+
+        async def fake_buckets(self=None, tenant_id='default'):
+            return {'over5': 9, 'over10': 9}
 
         async def boom(*a, **kw):
             raise RuntimeError('notify down')
@@ -114,6 +123,7 @@ class TestAgingEscalation:
                 sent['body'] = body
 
         with patch.object(RisCharges, 'aging_groups', fake_aging), \
+             patch.object(RisCharges, 'aging_buckets', fake_buckets), \
              patch('api.billing.get_conn', return_value=conn), \
              patch('api.billing.ris_unbilled_over_5d'), \
              patch('api.billing.ris_unbilled_over_10d'), \

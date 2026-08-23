@@ -15,7 +15,7 @@
 | **A** P0 defect kills (A1, A1b, A2, A3, A4) | ✅ DONE | `363e26c` | Full suite 2357 passed / 2 skipped; migrations 086+087 applied |
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
-| **D** Reporting/billing/platform (D1–D7) | ⬜ pending | — | — |
+| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D7 done | — | D2 backend 65 green (billing quartet); FE UnbilledAging 2 green + tsc clean |
 | **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
@@ -212,10 +212,10 @@ Commits: `feat(scheduling): stamp station AE on MWL entries` · `feat(mpps): per
 **REFACTOR:** none.
 
 ### Cycle D2: Unbilled aging site/payer grouping
-**Evidence:** Grouped by date only (`db/ris_charges.py:120-150`); FE already expects `facility_name`/`payer_name` (see stale mock note in `test_ris_billing.py:317-320`) — align API to the UI contract.
-**RED:** Real-DB: charges across two sites + a claim with payer → aging rows carry `site`/`payer` dimensions; date buckets intact; gauges expose per-site totals.
-**GREEN:** Join chain charge→order→appointment(resource/site) and charge→claims(payer) in the aging query; extend gauge labels conservatively (cardinality-safe).
-**REFACTOR:** Aging query builder extracted for testability.
+**Evidence:** Grouped by date only (`db/ris_charges.py:120-150`); handler gauges read `age_bucket`/`n` keys the query never emitted (always 0).
+**GREEN:** `aging_groups()` accepts `group_by=date|site|payer` with dynamic JOINs; `aging_buckets()` returns exact over5/over10 via `SELECT count(*)` (gauges now honest). Handler exposes `?group_by=` param. FE column title switches between "Sign Date"/"Site / Room"/"Payer" based on group. `RisUnbilledHandler` replaced the broken `{age_bucket:n}` gauge mapping with `aging_buckets()` calls. Commit: _uncommitted_ (waiting for D1+D7 to commit together).
+**RED:** `TestAgingDimensionsRealDb` in `test_ris_billing.py` — real-DB: two charges at different sites, one claimed with Medicare payer; `aging_groups(group_by='site')` returns distinct site rows each with count 1; `aging_groups(group_by='payer')` shows Medicare=1, unbilled=1; `aging_buckets` returns correct over5/over10 counts. FE `UnbilledAging.test.tsx` — fetch fires with `group_by: 'date'` by default; group-by Select switches to site and issues `group_by: 'site'`. 
+**REFACTOR:** None — query builder would add premature abstraction for three cases.
 
 ### Cycle D3: Denial-rework UX + orphaned prior_auth_id
 **Evidence:** UI flat table without filters/grouping (`DenialRework.tsx`); claim submit passes only `(charge_id, claim_number, tenant_id)` (`billing.py:972-973`); `ris_charges.prior_auth_id` written nowhere.

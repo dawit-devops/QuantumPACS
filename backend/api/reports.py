@@ -136,12 +136,28 @@ class ReadingListHandler(HTTPEndpoint):
         review = request.query_params.get('review')
         if review in ('0', 'false', ''):
             review = None
+        # D1: server-side pagination (page/per_page). Absent params mean
+        # "unpaged" — never coerce them to an implicit page of 1×1.
+        try:
+            page = max(1, int(request.query_params.get('page')))
+        except (TypeError, ValueError):
+            page = None
+        try:
+            per_page = min(200, max(1, int(
+                request.query_params.get('per_page'))))
+        except (TypeError, ValueError):
+            per_page = None
         async with get_conn() as conn:
-            items = await Reports(conn).reading_list(
+            result = await Reports(conn).reading_list(
                 status=status, modality=modality, search=search,
                 radiologist=radiologist, physician=physician,
                 date_from=date_from, date_to=date_to, review=review,
+                page=page, per_page=per_page,
             )
+            if isinstance(result, tuple):
+                items, total = result
+            else:  # legacy unpaged callers
+                items, total = result, len(result)
             # R13 resident home: "Claimed today" counts drafts the resident
             # started today (claim = first draft autosave, created_by=user).
             # Only computed for the requester's own queue so other consumers
@@ -157,6 +173,10 @@ class ReadingListHandler(HTTPEndpoint):
             # claimed_today is resident-home-only (R13); other consumers of
             # the reading list (worklist page) keep the payload shape.
             payload = {'data': items}
+            if isinstance(result, tuple):
+                payload['total'] = total
+                payload['page'] = page or 1
+                payload['per_page'] = per_page
             if is_me:
                 payload['claimed_today'] = claimed_today
         return ok(payload)

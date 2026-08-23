@@ -1,6 +1,6 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
-import { App, Layout, Table, Tag, Button, Alert, Statistic, Row, Col } from "antd";
+import { App, Layout, Table, Tag, Button, Alert, Statistic, Row, Col, Select } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
@@ -25,11 +25,13 @@ function UnbilledAging() {
   const [totalUnbilled, setTotalUnbilled] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // D2: dimension switch — date (default), site or payer.
+  const [groupBy, setGroupBy] = useState<"date" | "site" | "payer">("date");
 
   const fetch = useCallback(() => {
     setLoading(true);
     setError(null);
-    getUnbilledAging()
+    getUnbilledAging({ group_by: groupBy })
       .then((res) => {
         setLoading(false);
         setGroups(res.groups);
@@ -40,7 +42,7 @@ function UnbilledAging() {
         setError(e.message);
         message.error(e.message);
       });
-  }, [message]);
+  }, [message, groupBy]);
 
   useEffect(() => {
     fetch();
@@ -53,8 +55,11 @@ function UnbilledAging() {
 
   const columns: any[] = [
     {
-      title: "Sign Date",
-      dataIndex: "date",
+      title:
+        groupBy === "site" ? "Site / Room"
+        : groupBy === "payer" ? "Payer"
+        : "Sign Date",
+      dataIndex: groupBy === "date" ? "date" : "bucket",
       width: "20%",
       render: (v: string) => v || "-",
     },
@@ -86,13 +91,22 @@ function UnbilledAging() {
     <Content style={{ padding: 24 }} role="main">
       <div className="unbilled-header">
         <h2>Unbilled Aging</h2>
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={fetch}
-          style={{ marginBottom: 16 }}
-        >
-          Refresh
-        </Button>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <Select
+            aria-label="Group aging by"
+            value={groupBy}
+            onChange={(v) => setGroupBy(v)}
+            style={{ width: 140 }}
+            options={[
+              { value: "date", label: "By sign date" },
+              { value: "site", label: "By site" },
+              { value: "payer", label: "By payer" },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={fetch}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {totalUnbilled > 0 && (

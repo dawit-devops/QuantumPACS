@@ -29,7 +29,10 @@ export interface CptSuggestion {
 }
 
 export interface UnbilledAgingGroup {
-  date: string;
+  // 'date' on the default grouping; dimension value under 'bucket' for
+  // site/payer groupings (D2).
+  date?: string;
+  bucket?: string;
   count: number;
   total_amount: number;
   oldest_charge_days: number;
@@ -38,6 +41,8 @@ export interface UnbilledAgingGroup {
 export interface UnbilledAgingReport {
   groups: UnbilledAgingGroup[];
   total_unbilled: number;
+  group_by?: "date" | "site" | "payer";
+  buckets?: { over5: number; over10: number };
 }
 
 export const listBillingQueue = (
@@ -48,8 +53,10 @@ export const listBillingQueue = (
 export const dropCharge = (id: string): Promise<{ id: string; status: string }> =>
   request(`ris/billing/charges/${id}/drop`, { method: "POST" });
 
-export const getUnbilledAging = (): Promise<UnbilledAgingReport> =>
-  request<UnbilledAgingReport>("ris/billing/unbilled", { method: "GET" });
+export const getUnbilledAging = (
+  query: Record<string, string> = {}
+): Promise<UnbilledAgingReport> =>
+  request<UnbilledAgingReport>("ris/billing/unbilled", { query });
 
 export const getCptSuggestions = (
   procedure: string,

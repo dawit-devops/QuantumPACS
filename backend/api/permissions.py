@@ -362,6 +362,15 @@ PHYSICIAN_PERMISSIONS = sorted(LEGACY_PHYSICIAN | MATRIX_B_PHYS)
 TENANT_ADMIN_PERMISSIONS = sorted(LEGACY_TENANT_ADMIN | MATRIX_C_TENANT_ADMIN)
 CASHIER_PERMISSIONS = sorted(LEGACY_CASHIER | MATRIX_A_BILL)
 
+# D7: ED physicians ack critical results — the grants mirror migration 052's
+# seed snapshot exactly so upgraded DBs and fresh seeds cannot diverge.
+ED_PHYSICIAN_PERMISSIONS = [
+    'PATIENT_READ', 'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'CRITICAL_RESULTS_WRITE', 'VIEWER_READ',
+    'STUDY_READ', 'CHART_READ', 'RESULTS_READ', 'ENCOUNTER_WRITE',
+    'NOTE_SIGN', 'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MAR_READ',
+]
+
 
 # ---------------------------------------------------------------------------
 # Immutability policy for built-in roles (R2-16).
@@ -379,6 +388,9 @@ CASHIER_PERMISSIONS = sorted(LEGACY_CASHIER | MATRIX_A_BILL)
 # ---------------------------------------------------------------------------
 IMMUTABLE_ROLE_SLUGS = frozenset({
     'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+    # D7: the ED-physician ack chain (critical results) must survive any
+    # facility-level role edit — grants stay pinned to the 052 snapshot.
+    'ed_physician',
 })
 PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES = frozenset({'teleradiologist'})
 
@@ -389,6 +401,7 @@ BUILT_IN_ROLES = {
     'radiologist': list(RADIOLOGIST_PERMISSIONS),
     'teleradiologist': list(RADIOLOGIST_PERMISSIONS),  # RAD == TEL (spec §5)
     'physician': list(PHYSICIAN_PERMISSIONS),
+    'ed_physician': sorted(ED_PHYSICIAN_PERMISSIONS),
     'tenant_admin': list(TENANT_ADMIN_PERMISSIONS),
     'cashier': list(CASHIER_PERMISSIONS),
     # ---- Canonical roles (docs/reaserch/RBAC_matrix_spec.md §4/§5) ----

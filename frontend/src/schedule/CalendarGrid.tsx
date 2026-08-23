@@ -163,6 +163,20 @@ export default function CalendarGrid({
                         <span className="sched-block-title">{a.patient_id}</span>
                         <span className="sched-block-meta">
                           <span>{dayjs.utc(a.start_time).format("HH:mm")}</span>
+                          {(a as { priority?: string }).priority === "STAT" ||
+                            (a as { priority?: string }).priority ===
+                              "URGENT" ? (
+                            <Tag
+                              color={
+                                (a as { priority?: string }).priority === "STAT"
+                                  ? "red"
+                                  : "orange"
+                              }
+                              style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}
+                            >
+                              {(a as { priority?: string }).priority}
+                            </Tag>
+                          ) : null}
                           <Tag
                             color={STATUS_COLORS[statusLabel(a.status)]}
                             style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}

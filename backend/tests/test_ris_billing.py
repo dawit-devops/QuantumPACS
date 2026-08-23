@@ -521,3 +521,153 @@ class TestChargeDropRealDb:
                     'DELETE FROM ris_charges WHERE report_id = $1',
                     str(report['id']),
                 )
+
+
+class TestAgingDimensionsRealDb:
+    """D2 (GAP_AUDIT_TDD_PIPELINE.md): aging was grouped by sign DATE only
+    — plan RIS-SL-41 wants date/site/payer so billers know WHERE the
+    backlog sits. Also fixes the handler's gauge mapping, which read
+    'age_bucket'/'n' keys the query never produced (gauges pinned at 0).
+    """
+
+    @pytest.fixture(autouse=True)
+    async def _db(self):
+        import db.conn as database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.teardown()
+
+    async def _seed(self, conn, tag):
+        """Two charges; one claimed with a payer (create() is
+        fire-and-return-None, so ids come back via accession lookup)."""
+        from db.ris_charges import RisClaims
+
+        old = 'now() - make_interval(days => 12)'
+        for suffix, cpt, amount in (('A', '71250', 200.0),
+                                    ('B', '70450', 150.0)):
+            from db.ris_charges import RisCharges
+            await RisCharges(conn).create(
+                report_id=None, exam_id=None,
+                accession_number=f'ACC-D2-{suffix}-{tag}',
+                patient_id=f'P-{tag}', patient_name='D2 Patient',
+                cpt_code=cpt, charge_amount=amount, tenant_id=tag)
+        # Backdate both beyond the 5-day threshold.
+        await conn.execute(
+            f"UPDATE ris_charges SET created_at = {old}"
+            " WHERE tenant_id = $1", tag)
+        ca = await conn.fetchrow(
+            "SELECT id FROM ris_charges WHERE accession_number = $1"
+            " AND tenant_id = $2", f'ACC-D2-A-{tag}', tag)
+        cb = await conn.fetchrow(
+            "SELECT id FROM ris_charges WHERE accession_number = $1"
+            " AND tenant_id = $2", f'ACC-D2-B-{tag}', tag)
+        await RisClaims(conn).submit(cb['id'], f'CLM-D2-{tag}',
+                                     payer_name='Medicare', tenant_id=tag)
+        return ca['id'], cb['id']
+
+    @pytest.mark.asyncio
+    async def test_group_by_site_and_payer(self):
+        import uuid
+        from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+        from db.ris_charges import RisCharges
+
+        tag = f'd2-{uuid.uuid4().hex[:6]}'
+        set_tenant_slug(tag)
+        try:
+            async with get_conn() as conn:
+                ca, cb = await self._seed(conn, tag)
+                try:
+                    # Put charge A on a booked room so site has a real name.
+                    res = await conn.fetchrow(
+                        "INSERT INTO ris_resources (name, resource_type,"
+                        " modality) VALUES ($1, 'ROOM', 'CT') RETURNING id",
+                        f'D2 Room {tag}')
+                    order = await conn.fetchrow(
+                        "INSERT INTO ris_orders (tenant_id, patient_id,"
+                        " accession_number) VALUES ($1, $2, $3)"
+                        " RETURNING id", tag, f'P-{tag}', f'ORD-D2-{tag}')
+                    await conn.execute(
+                        "INSERT INTO ris_appointments (tenant_id, order_id,"
+                        " resource_id, patient_id, start_time, end_time)"
+                        " VALUES ($1, $2, $3, $4,"
+                        " now() - interval '10 days',"
+                        " now() - interval '10 days' + interval '30 minutes')",
+                        tag, order['id'], res['id'], f'P-{tag}')
+                    await conn.execute(
+                        "UPDATE ris_charges SET order_id = $2"
+                        " WHERE id = $1", ca, order['id'])
+
+                    by_site, total = await RisCharges(conn).aging_groups(
+                        tenant_id=tag, group_by='site')
+                    assert total == 2
+                    sites = {r['bucket']: r['count'] for r in by_site}
+                    assert sum(sites.values()) == 2
+                    assert sites.get(f'D2 Room {tag}') == 1
+                    assert sites.get('(no room)') == 1
+
+                    by_payer, _ = await RisCharges(conn).aging_groups(
+                        tenant_id=tag, group_by='payer')
+                    payers = {r['bucket']: r['count'] for r in by_payer}
+                    assert payers.get('Medicare') == 1
+                    unbilled = sum(v for k, v in payers.items()
+                                   if k != 'Medicare')
+                    assert unbilled == 1
+                finally:
+                    await conn.execute(
+                        'DELETE FROM ris_claims WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
+        finally:
+            reset_tenant_slug()
+
+    @pytest.mark.asyncio
+    async def test_date_grouping_keeps_legacy_shape(self):
+        import uuid
+        from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+        from db.ris_charges import RisCharges
+
+        tag = f'd2b-{uuid.uuid4().hex[:6]}'
+        set_tenant_slug(tag)
+        try:
+            async with get_conn() as conn:
+                await self._seed(conn, tag)
+                try:
+                    rows, total = await RisCharges(conn).aging_groups(
+                        tenant_id=tag)
+                    assert total == 2
+                    assert rows and 'date' in rows[0]
+                    assert 'total_amount' in rows[0]
+                finally:
+                    await conn.execute(
+                        'DELETE FROM ris_claims WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
+        finally:
+            reset_tenant_slug()
+
+    @pytest.mark.asyncio
+    async def test_aging_buckets_counts_backlog(self):
+        import uuid
+        from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+        from db.ris_charges import RisCharges
+
+        tag = f'd2c-{uuid.uuid4().hex[:6]}'
+        set_tenant_slug(tag)
+        try:
+            async with get_conn() as conn:
+                await self._seed(conn, tag)  # both charges aged 9 days
+                try:
+                    buckets = await RisCharges(conn).aging_buckets(tag)
+                    assert buckets.get('over10') == 2, (
+                        '>10-day gauge input must count real backlog rows')
+                    assert buckets.get('over5') == 2
+                finally:
+                    await conn.execute(
+                        'DELETE FROM ris_claims WHERE tenant_id = $1', tag)
+                    await conn.execute(
+                        'DELETE FROM ris_charges WHERE tenant_id = $1', tag)
+        finally:
+            reset_tenant_slug()

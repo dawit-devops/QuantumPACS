@@ -117,23 +117,49 @@ class RisCharges(Table):
             tenant_id,
         )
 
-    async def aging_groups(self, tenant_id='default', min_age_days=5):
-        """Unbilled aging grouped by sign date (S11-07).
+    # D2: aging dimensions (RIS-SL-41 date/site/payer). Site = the room
+    # the exam was booked into; payer = the latest claim for the charge.
+    _AGING_DIMENSIONS = {
+        'date': ("c.created_at::date", 'date'),
+        'site': ("COALESCE(res.name, '(no room)')", 'bucket'),
+        'payer': ("COALESCE(cl.payer_name, '(no claim)')", 'bucket'),
+    }
+
+    async def aging_groups(self, tenant_id='default', min_age_days=5,
+                           group_by='date'):
+        """Unbilled aging grouped by a dimension (S11-07 / RIS-SL-41).
 
         A PENDING charge becomes actionable once its report has been
-        signed for more than min_age_days. Returns per-date groups with
-        count, total amount and the oldest charge's age in days.
+        signed for more than min_age_days. group_by: 'date' (legacy shape:
+        per-date rows), 'site' or 'payer' (rows keyed under 'bucket').
         """
-        rows = await self.conn.fetch("""
-        SELECT c.created_at::date AS date,
+        expr, key = self._AGING_DIMENSIONS.get(group_by,
+                                               self._AGING_DIMENSIONS['date'])
+        joins = ''
+        if group_by == 'site':
+            joins = (
+                " LEFT JOIN ris_orders o ON o.id = c.order_id"
+                " LEFT JOIN LATERAL (SELECT a.resource_id"
+                "   FROM ris_appointments a WHERE a.order_id = o.id"
+                "   ORDER BY a.start_time LIMIT 1) appt ON true"
+                " LEFT JOIN ris_resources res ON res.id = appt.resource_id"
+            )
+        elif group_by == 'payer':
+            joins = (
+                " LEFT JOIN LATERAL (SELECT cl.payer_name"
+                "   FROM ris_claims cl WHERE cl.charge_id = c.id"
+                "   ORDER BY cl.created_at DESC LIMIT 1) cl ON true"
+            )
+        rows = await self.conn.fetch(f"""
+        SELECT {expr} AS {key},
                count(*) AS count,
                sum(c.charge_amount) AS total_amount,
                max(date_part('day', now() - c.created_at))::int AS oldest_charge_days
-        FROM ris_charges c
+        FROM ris_charges c{joins}
         WHERE c.tenant_id = $1 AND c.status = 'PENDING'
           AND c.created_at < now() - make_interval(days => $2)
-        GROUP BY c.created_at::date
-        ORDER BY c.created_at::date
+        GROUP BY {expr}
+        ORDER BY {expr}
         """, tenant_id, min_age_days)
         total = await self.conn.fetchval(
             "SELECT count(*) FROM ris_charges"
@@ -148,6 +174,27 @@ class RisCharges(Table):
             d['total_amount'] = money(d.get('total_amount'))
             out.append(d)
         return out, total or 0
+
+    async def aging_buckets(self, tenant_id='default'):
+        """D2: exact 5-day / 10-day backlog counts — the SLA gauge inputs.
+
+        The handler previously derived these from group keys that the
+        aging query never produced ('age_bucket'/'n'), pinning both gauges
+        at zero regardless of the real backlog.
+        """
+        over5 = await self.conn.fetchval(
+            "SELECT count(*) FROM ris_charges"
+            " WHERE tenant_id = $1 AND status = 'PENDING'"
+            " AND created_at < now() - make_interval(days => 5)",
+            tenant_id,
+        )
+        over10 = await self.conn.fetchval(
+            "SELECT count(*) FROM ris_charges"
+            " WHERE tenant_id = $1 AND status = 'PENDING'"
+            " AND created_at < now() - make_interval(days => 10)",
+            tenant_id,
+        )
+        return {'over5': over5 or 0, 'over10': over10 or 0}
 
     async def reconciliation(self, tenant_id='default'):
         """S11-13: signed reports vs charges — capture-rate inputs."""

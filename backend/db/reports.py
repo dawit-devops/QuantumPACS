@@ -189,7 +189,8 @@ class Reports(Table):
 
     async def reading_list(self, status=None, modality=None, search=None,
                             radiologist=None, physician=None,
-                            date_from=None, date_to=None, review=None):
+                            date_from=None, date_to=None, review=None,
+                            page=None, per_page=None):
         """Exams handed off to the reading worklist that lack a final report.
 
         A study is "ready to read" when the technologist completed it (handoff,
@@ -281,6 +282,13 @@ class Reports(Table):
             priority_order.get(r.get('priority') or 'routine', 9),
             r.get('completed_at') or datetime.max.replace(tzinfo=timezone.utc),
         ))
+        # D1: server-side pagination — the tiered ordering is applied over
+        # the full filtered set first, then the page is sliced, so STAT
+        # stays on page 1 and no row is skipped or duplicated across pages.
+        if page is not None and per_page:
+            total = len(items)
+            start = (max(1, page) - 1) * per_page
+            return items[start:start + per_page], total
         return items
 
     async def _ensure_release_status(self):

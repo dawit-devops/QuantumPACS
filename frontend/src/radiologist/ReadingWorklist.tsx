@@ -1,5 +1,5 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Layout,
   Table,
@@ -75,6 +75,10 @@ function ReadingWorklist() {
     () => searchParams.get("physician") || "",
   );
   const [data, setData] = useState<any[]>([]);
+  // D1: server-side pagination state
+  const [total, setTotal] = useState(0);
+  const pageRef = useRef(1);
+  const pageSizeRef = useRef(20);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -95,10 +99,14 @@ function ReadingWorklist() {
     if (assignedToMe) query.radiologist = "me";
     if (physicianFilter) query.physician = physicianFilter;
     if (reviewFilter) query.review = "1";
+    // D1: server-side pagination — the queue can exceed any client page.
+    query.page = String(pageRef.current);
+    query.per_page = String(pageSizeRef.current);
     request("reports/reading-list", { query })
       .then((res: any) => {
         setLoading(false);
         setData(Array.isArray(res.data) ? res.data : []);
+        setTotal(typeof res.total === "number" ? res.total : res.data.length);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -377,7 +385,17 @@ function ReadingWorklist() {
           rowKey="exam_id"
           columns={columns}
           dataSource={data}
-          pagination={{ pageSize: 20, showSizeChanger: false }}
+          pagination={{
+            current: pageRef.current,
+            pageSize: pageSizeRef.current,
+            total,
+            showSizeChanger: false,
+            onChange: (p: number, ps: number) => {
+              pageRef.current = p;
+              pageSizeRef.current = ps;
+              fetchList();
+            },
+          }}
           onRow={(r) => ({
             // STAT studies get a persistent red edge + (in the priority tag) a
             // pulsing dot — visible even when the STAT row sorts below the fold.

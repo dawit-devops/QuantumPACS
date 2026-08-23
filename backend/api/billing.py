@@ -904,15 +904,22 @@ class RisUnbilledHandler(HTTPEndpoint):
     @requires_permission(Permission.BILLING_READ)
     async def get(self, request):
         tenant = effective_tenant(request) or 'default'
+        # D2: dimension switch — date (default), site or payer.
+        group_by = request.query_params.get('group_by', 'date')
+        if group_by not in ('date', 'site', 'payer'):
+            return api_error('VALIDATION',
+                             'group_by must be date, site or payer',
+                             status=422)
         async with get_conn() as conn:
             from db.ris_charges import RisCharges
-            groups, total = await RisCharges(conn).aging_groups(tenant)
-        # Tolerate any aging-group shape; buckets are best-effort
-        # instrumentation, never a contract of the query.
-        bucket = {(g.get('age_bucket') or ''): (g.get('n') or 0)
-                  for g in groups}
-        over5 = (bucket.get('5-10 days', 0) + bucket.get('>10 days', 0))
-        over10 = bucket.get('>10 days', 0)
+            groups, total = await RisCharges(conn).aging_groups(
+                tenant, group_by=group_by)
+            buckets = await RisCharges(conn).aging_buckets(tenant)
+        # D2: the gauges read exact backlog counts (the previous mapping
+        # keyed off 'age_bucket'/'n' fields that never existed, pinning
+        # both gauges at zero).
+        over5 = buckets.get('over5', 0)
+        over10 = buckets.get('over10', 0)
         try:
             ris_unbilled_over_5d.set(over5)
             ris_unbilled_over_10d.set(over10)
@@ -927,6 +934,8 @@ class RisUnbilledHandler(HTTPEndpoint):
         return ok({
             'groups': [dict(r) for r in groups],
             'total_unbilled': total,
+            'group_by': group_by,
+            'buckets': buckets,
         })
 
 

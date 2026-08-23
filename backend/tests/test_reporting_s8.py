@@ -315,3 +315,119 @@ class TestTemplatePublishRollbackRealDb:
                 await conn.execute(
                     'DELETE FROM ris_report_templates WHERE id = $1',
                     tpl['id'])
+
+
+class TestReadingListPagination:
+    """D1 (GAP_AUDIT_TDD_PIPELINE.md): the reading list fetched every row
+    with no pagination — S12-05's 1000-entry p95 expectation has no chance.
+    Server-side page/per_page with total, preserving the STAT/critical
+    tier ordering ACROSS pages."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    @pytest.mark.asyncio
+    async def test_page_slice_with_total_and_stable_order(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_ids = []
+            for i in range(3):
+                exam_row = await conn.fetchrow(
+                    "INSERT INTO exams (accession_number, patient_id,"
+                    " status, modality, priority)"
+                    " VALUES ($1, $2, 'completed', 'CT', $3) RETURNING id",
+                    f'ACC-D1-{tag}-{i}', f'P-D1-{tag}',
+                    'stat' if i == 2 else 'routine',
+                )
+                exam_ids.append(exam_row['id'])
+                await Reports(conn).create(
+                    exam_row['id'],
+                    {'status': 'draft', 'findings': 'f', 'impression': ''},
+                    created_by='rad-1',
+                )
+            try:
+                # search narrows to this test's rows — the dev DB holds
+                # other completed exams from sibling suites.
+                page1, total = await Reports(conn).reading_list(
+                    search=f'D1-{tag}', page=1, per_page=2)
+                page2, total2 = await Reports(conn).reading_list(
+                    search=f'D1-{tag}', page=2, per_page=2)
+                assert total == 3 and total2 == 3
+                assert len(page1) == 2 and len(page2) == 1
+                got_ids = {r['exam_id'] for r in page1} | {
+                    r['exam_id'] for r in page2}
+                assert got_ids == set(exam_ids), (
+                    'pagination must cover every row exactly once')
+                # STAT tier ordering survives pagination: it lands on page 1.
+                assert page1[0]['priority'] == 'stat'
+            finally:
+                await conn.execute(
+                    'DELETE FROM reports WHERE exam_id = ANY($1)', exam_ids)
+                await conn.execute(
+                    'DELETE FROM exams WHERE id = ANY($1)', exam_ids)
+
+    @pytest.mark.asyncio
+    async def test_unpaged_call_returns_full_list(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id,"
+                " status, modality)"
+                " VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+                f'ACC-D1B-{tag}', f'P-D1B-{tag}',
+            )
+            await Reports(conn).create(
+                exam_row['id'],
+                {'status': 'draft', 'findings': '', 'impression': ''},
+                created_by='rad-1',
+            )
+            try:
+                items = await Reports(conn).reading_list()
+                assert isinstance(items, list)
+            finally:
+                await conn.execute('DELETE FROM reports WHERE exam_id = $1',
+                                   exam_row['id'])
+                await conn.execute('DELETE FROM exams WHERE id = $1',
+                                   exam_row['id'])
+
+    @pytest.mark.asyncio
+    async def test_unpaged_repo_call_returns_list_not_tuple(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id,"
+                " status, modality)"
+                " VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+                f'ACC-D1C-{tag}', f'P-D1C-{tag}',
+            )
+            await Reports(conn).create(
+                exam_row['id'],
+                {'status': 'draft', 'findings': '', 'impression': ''},
+                created_by='rad-1',
+            )
+            try:
+                items = await Reports(conn).reading_list()
+                assert isinstance(items, list), (
+                    'unpaged repo call must stay a plain list (legacy '
+                    'callers rely on it)')
+            finally:
+                await conn.execute('DELETE FROM reports WHERE exam_id = $1',
+                                   exam_row['id'])
+                await conn.execute('DELETE FROM exams WHERE id = $1',
+                                   exam_row['id'])

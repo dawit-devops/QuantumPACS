@@ -285,8 +285,11 @@ class TestRoleImmutabilityPolicy:
 
     def test_immutable_roles_exist_in_catalog(self):
         assert IMMUTABLE_ROLE_SLUGS <= set(BUILT_IN_ROLES)
+        # D7: ed_physician joins the anchors — the critical-results ack
+        # chain must survive facility-level role edits.
         assert IMMUTABLE_ROLE_SLUGS == {
             'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+            'ed_physician',
         }
 
     def test_platform_admin_only_roles_exist_in_catalog(self):
@@ -350,3 +353,40 @@ class TestPermissionKeys:
         }
         invalid = sorted(label_keys - set(PERMISSION_KEYS))
         assert invalid == []
+
+
+class TestEdPhysicianRuntimeRole:
+    """D7 (GAP_AUDIT_TDD_PIPELINE.md): migration 052 seeds ed_physician and
+    critical-results recipients default to that role (migration 072), but
+    the runtime catalog never carried it — it could not be assigned via the
+    roles UI. It must exist at runtime with the exact seeded grants, pinned
+    as an immutable anchor so facility edits can never break the
+    critical-results acknowledgment chain."""
+
+    SNAPSHOT = ['PATIENT_READ', 'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ',
+                'WORKLIST_READ', 'REPORT_READ', 'CRITICAL_RESULTS_WRITE',
+                'VIEWER_READ', 'STUDY_READ', 'CHART_READ', 'RESULTS_READ',
+                'ENCOUNTER_WRITE', 'NOTE_SIGN', 'MED_ORDER_READ',
+                'MED_ORDER_WRITE', 'MAR_READ']
+
+    def test_ed_physician_in_runtime_catalog(self):
+        assert 'ed_physician' in BUILT_IN_ROLES
+
+    def test_grants_match_migration_052_snapshot(self):
+        assert sorted(BUILT_IN_ROLES['ed_physician']) == sorted(self.SNAPSHOT)
+
+    def test_holds_the_critical_ack_chain_codes(self):
+        grants = set(BUILT_IN_ROLES['ed_physician'])
+        assert {'CRITICAL_RESULTS_WRITE', 'REPORT_READ',
+                'WORKLIST_READ'} <= grants
+
+    def test_is_an_immutable_anchor(self):
+        assert 'ed_physician' in IMMUTABLE_ROLE_SLUGS
+
+    def test_facility_editable_set_stays_exactly_eight(self):
+        editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
+            PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
+        assert editable == {
+            'radiologist', 'physician', 'referring_physician', 'resident',
+            'care_coordinator', 'technologist', 'receptionist', 'cashier',
+        }
