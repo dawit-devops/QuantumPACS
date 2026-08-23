@@ -15,7 +15,7 @@
 | **A** P0 defect kills (A1, A1b, A2, A3, A4) | ✅ DONE | `363e26c` | Full suite 2357 passed / 2 skipped; migrations 086+087 applied |
 | **B** Interface-engine substance (B1, B2, B3) | ✅ DONE | `9eb8f3f` | Full suite 2365 passed (+1 live-MLLP load-flake passing in isolation); integration pkg 276 green |
 | **C** Scheduling/MWL/MPPS coherence (C1–C5) | ✅ DONE | `edc69d7` | Backend 2376 passed / 2 skipped; FE touched suites 40 green. Reassign action deferred (needs a cross-resource move endpoint) |
-| **D** Reporting/billing/platform (D1–D7) | 🚧 D1 D2 D3 D4 D5 D7 done | — | D2/D3 backend 81 green; D5 middleware 34 green; ADR-031 |
+| **D** Reporting/billing/platform (D1–D7) | ✅ DONE (D1–D7) | — | D6 provisioner 12 green; adjacent 39 green |
 | **E** FHIR/portal v2.0 (E1–E3) | ⬜ pending | — | — |
 | **F** Honest gate evidence (F1–F4) | ⬜ pending | — | — |
 
@@ -238,9 +238,8 @@ Commits: `feat(scheduling): stamp station AE on MWL entries` · `feat(mpps): per
 
 ### Cycle D6: Provisioner RIS defaults + rollback hygiene
 **Evidence:** No default-data seeding (resources/templates) beyond schema; rollback marks decommissioned but leaves artifacts; rollback path untested.
-**RED:** Provision test — READY tenant contains seeded default resources + report templates; forced migration failure → registry decommissioned AND partial DB cleaned (or documented retention) ; no orphan rows in registry.
-**GREEN:** `provision()` gains RIS seeding hook (idempotent inserts after migrations, before active); `_mark_failed` extended with cleanup step; tests cover both paths.
-**REFACTOR:** Seeding functions live beside `db/ris_resources.seed_defaults` / `db/ris_templates` seeders, invoked by provisioner only.
+**GREEN (D6 commit):** `TenantProvisioner.seed_ris_defaults()` — idempotent inserts (resources via `ON CONFLICT (tenant_id, name) DO NOTHING`, templates via `NOT EXISTS` name guard) adding 3 default resources (CT/MR/CR rooms) + 3 default report templates (CT Chest, CXR 1 View, MR Brain). Called between migrations and `_mark_active` in `provision()`. `_mark_failed` gained a `db_name` param; on failure it calls `drop_database()` (best-effort, `DROP DATABASE IF EXISTS` via maintenance connection) so a retry doesn't collide with a half-migrated DB. Guarded against dropping the main database (`db_name != config['db_database']`). `drop_database()` extracted as a static method.
+**RED:** `TestProvisionerRisDefaults` (mock): `test_provision_seeds_ris_defaults` — call to seed_ris_defaults recorded after migrations; `test_seed_ris_defaults_is_idempotent` — resources use ON CONFLICT, templates use NOT EXISTS guard. `TestProvisionerRollbackCleanup` (mock): forced migration failure → decommissioned status (fetchval) + DROP DATABASE (execute).
 
 ### Cycle D7: ed_physician missing from runtime roles
 **Evidence:** Seeded in migrations (`052_trim_builtin_roles.py:56,144`) but absent from runtime `BUILT_IN_ROLES` (`api/permissions.py:386-402`) → cannot assign via UI.
