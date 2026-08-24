@@ -107,6 +107,9 @@ export interface NavItemDef {
   path?: string;
   label: string;
   icon: React.ReactNode;
+  // When present, the item renders as an action button (dispatches onClick)
+  // instead of a route Link — used for surfaces without their own route.
+  onClick?: () => void;
   // Item shows when ANY listed permission passes (or the user is admin via
   // hasPermission). An empty list means the item is never permission-gated —
   // reserved for the always-visible Files/Account entries and for children of
@@ -578,6 +581,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <TeamOutlined />,
         permissions: ["QUEUE_READ"],
       },
+      {
+        key: "fd-patient-search",
+        label: "Patient Search",
+        icon: <SearchOutlined />,
+        permissions: ["PATIENT_READ"],
+        onClick: () => {
+          window.dispatchEvent(new Event("fd.patient-search.open"));
+        },
+      },
     ],
   },
   {
@@ -681,6 +693,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fd-registration": "frontdesk",
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",
+  "fd-patient-search": "frontdesk",
   "portal-records": "portal",
   "portal-appointments": "portal",
   "portal-results": "portal",
@@ -707,12 +720,23 @@ function navItemToItem(
   item: NavItemDef,
   selectedKey: string
 ): NonNullable<MenuProps["items"]>[number] {
-  const link = (child: NavItemDef) => (
-    <Link to={child.path!}>
-      {child.icon}
-      <span className="nav-text">{child.label}</span>
-    </Link>
-  );
+  const link = (child: NavItemDef) =>
+    child.onClick ? (
+      <button
+        type="button"
+        className="nav-item-action"
+        onClick={child.onClick}
+        aria-label={child.label}
+      >
+        {child.icon}
+        <span className="nav-text">{child.label}</span>
+      </button>
+    ) : (
+      <Link to={child.path!}>
+        {child.icon}
+        <span className="nav-text">{child.label}</span>
+      </Link>
+    );
   if (item.children) {
     return {
       key: item.key,
@@ -788,7 +812,6 @@ function Sidebar() {
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
   };
-
   const handleLogout = async () => {
     try {
       await logout();
@@ -797,6 +820,12 @@ function Sidebar() {
     // endpoint blocks the cookies server-side before the navigation.
     signOut();
     navigate("/login");
+  };
+
+  // FD-07: the sidebar "Patient Search" action opens the global overlay
+  // (mounted in the withSidebar wrapper on front-desk routes) via event.
+  const openPatientSearch = () => {
+    window.dispatchEvent(new Event("fd.patient-search.open"));
   };
 
   const sidebarContent = (

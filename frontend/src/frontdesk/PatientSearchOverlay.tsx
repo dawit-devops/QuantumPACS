@@ -18,6 +18,7 @@ import {
 import "./FrontDesk.css";
 
 const RECENTS_KEY = "fd.patient-search.recents";
+const OPEN_EVENT = "fd.patient-search.open";
 
 function loadRecents(): string[] {
   try {
@@ -70,6 +71,14 @@ function PatientSearchOverlay() {
   useEffect(() => {
     if (open) runSearch();
   }, [open, runSearch]);
+
+  // The Sidebar "Patient Search" item broadcasts a custom event to open the
+  // overlay — the trigger and the nav item stay in sync.
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, handler);
+    return () => window.removeEventListener(OPEN_EVENT, handler);
+  }, []);
 
   const openPatient = useCallback(
     (patient: FrontDeskPatient) => {

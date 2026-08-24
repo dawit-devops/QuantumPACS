@@ -269,14 +269,16 @@ describe("Sidebar", () => {
         "QUEUE_READ",
         "SCHEDULE_READ",
         "SCHEDULE_WRITE",
+        "PATIENT_READ",
       ],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Front Desk")).toBeInTheDocument();
     await user.click(screen.getByText("Front Desk"));
     expect(screen.getByText("Registration")).toBeInTheDocument();
-    expect(screen.getByText("Visits & Check-In")).toBeInTheDocument();
+    expect(screen.getByText("Today's Schedule")).toBeInTheDocument();
     expect(screen.getByText("Waiting Queue")).toBeInTheDocument();
+    expect(screen.getByText("Patient Search")).toBeInTheDocument();
     // No PORTAL_READ: the patient surface stays hidden.
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });

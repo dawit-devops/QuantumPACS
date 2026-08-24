@@ -339,3 +339,16 @@
 .fd-patient-result:hover {
   background: var(--bg-hover);
 }
+
+/* ── Landing quick actions (FD landing) ──────────────────────────────── */
+
+.fd-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.fd-quick-action {
+  min-width: 150px;
+}

@@ -6,3 +6,12 @@
     background-color var(--duration-normal) var(--easing-standard),
     color var(--duration-normal) var(--easing-standard);
 }
+
+.ant-menu-item .nav-item-action {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}

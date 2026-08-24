@@ -128,7 +128,7 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByPlaceholderText(/Search name or MRN/), "Jo");
-    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
     await waitFor(() => expect(mockSearchPatients).toHaveBeenCalledWith("Jo"));
     expect(
       await screen.findByText(/No existing patient matched/),
@@ -140,7 +140,7 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByPlaceholderText(/Search name or MRN/), "Jo");
-    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("John Doe")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /use this patient/i }));
     expect(await screen.findByText(/Selected John Doe/)).toBeInTheDocument();

@@ -15,10 +15,12 @@ import {
   Space,
   Checkbox,
 } from "antd";
+import { useNavigate } from "react-router";
 import {
   SearchOutlined,
   UserAddOutlined,
   CalendarOutlined,
+  ClockCircleOutlined,
   IdcardOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
@@ -39,6 +41,7 @@ const Content = Layout.Content;
 function Registration() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Patient Registration");
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("REGISTRATION_WRITE");
   const canSchedule = hasPermission("SCHEDULE_WRITE");
@@ -183,6 +186,46 @@ function Registration() {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* FD landing: quick actions for the receptionist's common paths. */}
+      <div className="fd-quick-actions">
+        <Button
+          className="fd-quick-action"
+          icon={<UserAddOutlined />}
+          onClick={() => {
+            const el = document.getElementById("fd-registration-form");
+            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        >
+          New Registration
+        </Button>
+        <Button
+          className="fd-quick-action"
+          icon={<ClockCircleOutlined />}
+          onClick={() => navigate("/frontdesk/schedule")}
+        >
+          Check-in
+        </Button>
+        <Button
+          className="fd-quick-action"
+          icon={<CalendarOutlined />}
+          onClick={() => {
+            // FD-03: book a walk-in for an existing patient — find them first.
+            window.dispatchEvent(new Event("fd.patient-search.open"));
+          }}
+        >
+          Walk-in Book
+        </Button>
+        <Button
+          className="fd-quick-action"
+          icon={<SearchOutlined />}
+          onClick={() => {
+            window.dispatchEvent(new Event("fd.patient-search.open"));
+          }}
+        >
+          Find Patient
+        </Button>
       </div>
 
       <Card size="small" style={{ marginBottom: 16 }}>
