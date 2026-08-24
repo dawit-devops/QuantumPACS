@@ -390,6 +390,25 @@ class TestExamAssign:
         assert resp.status_code == 200
         assert exams.assign_radiologist.await_args.args == ('exam-1', 'user-77')
 
+    def test_assign_accepts_resident_user(self):
+        """RES-02: residents hold REPORT_WRITE and read from the same
+        queue — an explicit resident claim must be accepted, not rejected
+        by the radiologist-only role check."""
+        client = TestClient(_make_app(RAD))
+        def _fetchrow(q, *a):
+            if 'FROM users' in q:
+                return {'id': 'user-88', 'slug': 'resident'}
+            return _exam_row(status='completed')
+        with patch('api.reports.Exams') as exams_cls, _conn(
+                fetchrow=_fetchrow), _audit_ok():
+            exams = AsyncMock()
+            exams.get = AsyncMock(return_value=_exam_row(status='completed'))
+            exams.assign_radiologist = AsyncMock(return_value=_exam_row())
+            exams_cls.return_value = exams
+            resp = client.post('/reports/reading-list/exam-1/assign',
+                               json={'radiologist_id': 'user-88'})
+        assert resp.status_code == 200
+
 
 class TestExamReport:
     def test_get_exam_and_report(self):

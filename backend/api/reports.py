@@ -209,19 +209,21 @@ class ExamAssignHandler(HTTPEndpoint):
                 return validation_error(
                     'Only completed exams on the reading worklist can be assigned',
                 )
-            # S-7: the target must exist and hold the radiologist role —
+            # S-7: the target must exist and hold a reading role —
             # assignment is a claim on the reading worklist, so an arbitrary
             # user id must not be accepted (it would vanish from every
-            # radiologist's queue and orphan the exam).
+            # radiologist's queue and orphan the exam). RES-02: residents
+            # read from the same queue under supervision, so their slug is
+            # accepted too.
             target = await conn.fetchrow(
                 "SELECT u.id, r.slug FROM users u "
                 "JOIN roles r ON r.id = u.role_id "
                 "WHERE u.id = $1",
                 radiologist_id,
             )
-            if not target or target['slug'] != 'radiologist':
+            if not target or target['slug'] not in ('radiologist', 'resident'):
                 return validation_error(
-                    'Assigned user must be a radiologist',
+                    'Assigned user must be a radiologist or resident',
                 )
             updated = await Exams(conn).assign_radiologist(exam_id, radiologist_id)
             await AuditLog(conn).log_event(
