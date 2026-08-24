@@ -8,6 +8,7 @@ import DenialRework from "../billing/DenialRework";
 const mockListDenials = vi.hoisted(() => vi.fn());
 const mockResubmit = vi.hoisted(() => vi.fn());
 const mockHistory = vi.hoisted(() => vi.fn());
+const mockBatchResubmit = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/billing-ris", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/billing-ris")>();
@@ -16,6 +17,7 @@ vi.mock("../api/billing-ris", async (importOriginal) => {
     listDenialRework: mockListDenials,
     resubmitClaim: mockResubmit,
     getClaimHistory: mockHistory,
+    batchResubmitClaims: mockBatchResubmit,
   };
 });
 
@@ -62,18 +64,23 @@ describe("DenialRework", () => {
   });
 
   it("resubmits a corrected claim with a note", async () => {
-    const user = userEvent.setup();
+    // fireEvent (not userEvent): pointer-actionability waits blow past any
+    // timeout when the box is under sibling-agent load.
     mockListDenials.mockResolvedValue([deniedRow]);
     renderWithAuth(<DenialRework />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /rework/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("button", { name: /rework/i }));
+    // Exact match: the row-level button reads "Rework"; the B-10 group
+    // button ("Rework all (N)") would also match a bare /rework/i regex.
+    const reworkBtn = await screen.findByRole("button", { name: "Rework" });
+    fireEvent.click(reworkBtn);
 
-    const noteBox = await screen.findByRole("textbox");
-    await user.type(noteBox, "added missing contrast info");
-    await user.click(screen.getByRole("button", { name: /^submit$/i }));
+    const noteBox = await screen.findByPlaceholderText(
+      /Correction note \(required for the audit trail\)/,
+    );
+    fireEvent.change(noteBox, {
+      target: { value: "added missing contrast info" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^submit$/i }));
 
     await waitFor(() => {
       expect(mockResubmit).toHaveBeenCalledWith("clm-9", {
@@ -82,14 +89,53 @@ describe("DenialRework", () => {
     });
   });
 
+  it("reworks an entire reason-code group with one note (B-10)", async () => {
+    mockListDenials.mockResolvedValue([
+      deniedRow,
+      { ...deniedRow, id: "clm-10", claim_number: "CLM-777" },
+    ]);
+    mockBatchResubmit.mockResolvedValue({
+      resubmitted: ["clm-9", "clm-10"],
+      missing: [],
+    });
+    renderWithAuth(<DenialRework />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /rework all for CO-16/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /rework all for CO-16/i }),
+    );
+
+    // The shared-note modal opens with the group's claim count.
+    expect(await screen.findByText(/Batch rework — CO-16/)).toBeInTheDocument();
+    const noteBox = await screen.findByPlaceholderText(
+      /Shared correction note/i,
+    );
+    fireEvent.change(noteBox, { target: { value: "payer bulletin fix" } });
+
+    const okBtn = await screen.findByRole("button", {
+      name: /resubmit 2 claim/i,
+    });
+    await waitFor(() => expect(okBtn).not.toBeDisabled());
+    fireEvent.click(okBtn);
+
+    await waitFor(() => {
+      expect(mockBatchResubmit).toHaveBeenCalledWith(
+        ["clm-9", "clm-10"],
+        "payer bulletin fix",
+      );
+    });
+  });
+
   it("shows the rework history for a claim", async () => {
-    const user = userEvent.setup();
     mockListDenials.mockResolvedValue([deniedRow]);
     renderWithAuth(<DenialRework />);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /history/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("button", { name: /history/i }));
+    const historyBtn = await screen.findByRole("button", { name: /history/i });
+    fireEvent.click(historyBtn);
     await waitFor(() => {
       expect(mockHistory).toHaveBeenCalledWith("clm-9");
     });

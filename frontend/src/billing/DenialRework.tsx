@@ -21,6 +21,7 @@ import {
   listDenialRework,
   resubmitClaim,
   getClaimHistory,
+  batchResubmitClaims,
   type DenialReworkRow,
   type ClaimEvent,
 } from "../api/billing-ris";
@@ -111,6 +112,31 @@ function DenialRework() {
       setHistory([]);
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  // B-10: rework a whole reason-code group with one shared correction note.
+  const [batchGroup, setBatchGroup] = useState<{
+    code: string;
+    ids: string[];
+  } | null>(null);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+
+  const submitBatchRework = async () => {
+    if (!batchGroup) return;
+    setBatchSubmitting(true);
+    try {
+      const res = await batchResubmitClaims(batchGroup.ids, note);
+      message.success(
+        `Resubmitted ${res.resubmitted.length} claim(s) for ${batchGroup.code}`,
+      );
+      setBatchGroup(null);
+      setNote("");
+      fetchRows();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "Batch resubmit failed");
+    } finally {
+      setBatchSubmitting(false);
     }
   };
 
@@ -220,7 +246,21 @@ function DenialRework() {
       ) : (
         groups.map(([code, groupRows]) => (
           <div key={code} style={{ marginBottom: 24 }}>
-            <h3 style={{ marginBottom: 8 }}>{code}</h3>
+            <Space size="small" style={{ marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>{code}</h3>
+              <Button
+                size="small"
+                aria-label={`Rework all for ${code}`}
+                onClick={() =>
+                  setBatchGroup({
+                    code,
+                    ids: groupRows.map((r) => r.id),
+                  })
+                }
+              >
+                Rework all ({groupRows.length})
+              </Button>
+            </Space>
             <Table
               rowKey="id"
               size="small"
@@ -256,6 +296,29 @@ function DenialRework() {
             />
           </>
         )}
+      </Modal>
+
+      {/* B-10: shared correction note for the whole reason-code group. */}
+      <Modal
+        title={`Batch rework — ${batchGroup?.code || ""}`}
+        open={batchGroup !== null}
+        onOk={submitBatchRework}
+        onCancel={() => setBatchGroup(null)}
+        okText={`Resubmit ${batchGroup?.ids.length ?? 0} claim(s)`}
+        confirmLoading={batchSubmitting}
+        okButtonProps={{ disabled: !note.trim() }}
+      >
+        <p>
+          Applies one correction note to {batchGroup?.ids.length ?? 0} denied
+          claims and resubmits them all.
+        </p>
+        <Input.TextArea
+          role="textbox"
+          rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Shared correction note (required for the audit trail)"
+        />
       </Modal>
 
       <Drawer

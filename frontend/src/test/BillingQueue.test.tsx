@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { MemoryRouter } from "react-router";
@@ -11,6 +11,7 @@ vi.mock("../api/billing-ris", () => ({
   listBillingQueue: vi.fn(),
   dropCharge: vi.fn(),
   getCptSuggestions: vi.fn(),
+  batchDropCharges: vi.fn(),
 }));
 
 vi.mock("../hooks", () => ({
@@ -29,11 +30,17 @@ vi.mock("../auth/AuthContext", async (importOriginal) => {
   };
 });
 
-import { listBillingQueue, dropCharge, getCptSuggestions } from "../api/billing-ris";
+import {
+  listBillingQueue,
+  dropCharge,
+  getCptSuggestions,
+  batchDropCharges,
+} from "../api/billing-ris";
 
 const mockListBillingQueue = vi.mocked(listBillingQueue);
 const mockDropCharge = vi.mocked(dropCharge);
 const mockGetCptSuggestions = vi.mocked(getCptSuggestions);
+const mockBatchDropCharges = vi.mocked(batchDropCharges);
 
 const mockQueueData = [
   {
@@ -94,6 +101,9 @@ describe("BillingQueue", () => {
       per_page: 20,
     });
     mockDropCharge.mockResolvedValue({ id: "chg-1", status: "BILLED" });
+    mockBatchDropCharges.mockResolvedValue({
+      dropped: ["chg-1", "chg-2"], missing: [], skipped: [],
+    });
     mockGetCptSuggestions.mockResolvedValue({
       data: [
         {
@@ -126,6 +136,26 @@ describe("BillingQueue", () => {
     renderQueue();
     await waitFor(() => {
       expect(screen.getByText("$250.00")).toBeInTheDocument();
+    });
+  });
+
+  it("drops selected charges in one batch (B-05)", async () => {
+    renderQueue();
+    await waitFor(() => {
+      expect(screen.getByText("Smith^John")).toBeInTheDocument();
+    });
+
+    // Select both rows via the table checkboxes.
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /drop selected charges/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockBatchDropCharges).toHaveBeenCalledWith(["chg-1", "chg-2"]);
     });
   });
   it("passes WCAG 2.1 AA automated scan (F3)", async () => {

@@ -55,6 +55,36 @@ export const listBillingQueue = (
 export const dropCharge = (id: string): Promise<{ id: string; status: string }> =>
   request(`ris/billing/charges/${id}/drop`, { method: "POST" });
 
+// B-05: batch confirm-and-drop — best-effort per charge, server reports
+// dropped/missing/skipped so the coder sees exactly what landed.
+export interface BatchDropResult {
+  dropped: string[];
+  missing: string[];
+  skipped: string[];
+}
+
+export const batchDropCharges = (
+  chargeIds: string[],
+  overrides?: Record<string, { cpt_code?: string; icd10_code?: string }>,
+): Promise<BatchDropResult> =>
+  request<{ data: BatchDropResult }>("ris/billing/charges/batch", {
+    method: "POST",
+    data: { charge_ids: chargeIds, overrides },
+  }).then(
+    (res) =>
+      res?.data ?? { dropped: [], missing: [], skipped: [] },
+  );
+
+// B-10: batch rework of a denial reason-code group.
+export const batchResubmitClaims = (
+  claimIds: string[],
+  note: string,
+): Promise<{ resubmitted: string[]; missing: string[] }> =>
+  request<{ data: { resubmitted: string[]; missing: string[] } }>(
+    "ris/billing/claims/batch-resubmit",
+    { method: "POST", data: { claim_ids: claimIds, note } },
+  ).then((res) => res?.data ?? { resubmitted: [], missing: [] });
+
 export const getUnbilledAging = (
   query: Record<string, string> = {}
 ): Promise<UnbilledAgingReport> =>

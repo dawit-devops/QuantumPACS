@@ -36,6 +36,8 @@ def _make_billing_app(user=None):
         RisCptSuggestionsHandler,
         RisBillingQueueHandler,
         RisChargeDropHandler,
+        RisChargeBatchDropHandler,
+        RisClaimBatchResubmitHandler,
         RisUnbilledHandler,
         RisClaimSubmitHandler,
         RisDenialImportHandler,
@@ -49,6 +51,10 @@ def _make_billing_app(user=None):
             Route('/ris/billing/queue', endpoint=RisBillingQueueHandler),
             Route('/ris/billing/charges/{id}/drop',
                   endpoint=RisChargeDropHandler, methods=['POST']),
+            Route('/ris/billing/charges/batch',
+                  endpoint=RisChargeBatchDropHandler, methods=['POST']),
+            Route('/ris/billing/claims/batch-resubmit',
+                  endpoint=RisClaimBatchResubmitHandler, methods=['POST']),
             Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler),
             Route('/ris/billing/claims/{id}/submit',
                   endpoint=RisClaimSubmitHandler, methods=['POST']),
@@ -864,3 +870,73 @@ class TestCodingConfidence:
         assert resp.status_code == 200
         row = resp.json()['data'][0]
         assert row['confidence'] == 0.95
+
+
+class TestRisBillingBatch:
+    """B-05/B-10: batch charge drop and batch denial rework."""
+
+    def test_batch_drop_requires_billing_write(self, conn):
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_READ)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/charges/batch', json={})
+        assert resp.status_code == 403
+
+    def test_batch_drop_requires_charge_ids(self, conn):
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_WRITE)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/charges/batch',
+                               json={'charge_ids': []})
+        assert resp.status_code == 400
+
+    def test_batch_drops_pending_charges_with_overrides(self, conn):
+        conn.set_fetchrow({'id': 'chg-1', 'status': 'PENDING',
+                           'cpt_code': '71250', 'icd10_code': 'R91.1',
+                           'created_at': None})
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_WRITE)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/charges/batch', json={
+                'charge_ids': ['chg-1', 'chg-2'],
+                'overrides': {'chg-2': {'cpt_code': '71260'}},
+            })
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['dropped'] == ['chg-1', 'chg-2']
+        assert data['missing'] == []
+        updates = [sql for _m, sql, *_ in conn.calls
+                   if 'UPDATE ris_charges' in sql]
+        # One BILLED update per dropped charge.
+        assert len([u for u in updates if 'BILLED' in u]) == 2
+
+    def test_batch_drop_reports_missing_and_skipped(self, conn):
+        conn.set_fetchrow(None)
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_WRITE)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/charges/batch', json={
+                'charge_ids': ['nope'],
+            })
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['dropped'] == []
+        assert data['missing'] == ['nope']
+
+    def test_batch_resubmit_requires_note(self, conn):
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_WRITE)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/claims/batch-resubmit',
+                               json={'claim_ids': ['c1'], 'note': ''})
+        assert resp.status_code == 400
+
+    def test_batch_resubmit_reworks_claims(self, conn):
+        conn.set_fetchrow({'id': 'clm-1'})
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_WRITE)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.post('/ris/billing/claims/batch-resubmit', json={
+                'claim_ids': ['c1', 'c2'],
+                'note': 'Corrected modifier per payer bulletin',
+            })
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['resubmitted'] == ['c1', 'c2']
+        events = [sql for _m, sql, *_ in conn.calls
+                  if 'INSERT INTO ris_claim_events' in sql]
+        assert len(events) == 2

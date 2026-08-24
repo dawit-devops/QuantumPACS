@@ -895,6 +895,103 @@ async def _unbilled_count(tenant):
         return await RisCharges(conn).count_pending(tenant)
 
 
+class RisChargeBatchDropHandler(HTTPEndpoint):
+    """B-05: batch confirm-and-drop — POST /ris/billing/charges/batch.
+
+    {charge_ids: [...], overrides?: {<charge_id>: {cpt_code, icd10_code}}}
+    Replays the audited single-drop path per charge (override persistence,
+    telemetry, billing.charge_dropped audit); best-effort — unknown ids are
+    reported in `missing`, not fatal. Capped at 100 ids per call."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('charge_ids') or [])][:100]
+        if not ids:
+            return validation_error('charge_ids is required')
+        overrides = body.get('overrides') or {}
+        tenant = effective_tenant(request) or 'default'
+        from datetime import datetime, timezone
+        dropped, missing, skipped = [], [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            rc = RisCharges(conn)
+            from db.audit_log import AuditLog
+            from services.coding_telemetry import record_outcome
+            for charge_id in ids:
+                charge = await rc.get(charge_id, tenant)
+                if not charge:
+                    missing.append(charge_id)
+                    continue
+                if charge.get('status') != 'PENDING':
+                    skipped.append(charge_id)
+                    continue
+                ovr_src = overrides.get(charge_id) or {}
+                override = {
+                    f: str(ovr_src[f]).strip()
+                    for f in ('cpt_code', 'icd10_code')
+                    if (ovr_src.get(f) or '').strip()
+                    and str(ovr_src[f]).strip() != (charge.get(f) or '')
+                }
+                if override:
+                    await rc.apply_override(charge_id, override, tenant)
+                await rc.mark_billed(charge_id, tenant)
+                await record_outcome('overridden' if override else 'accepted')
+                await AuditLog(conn).log_event(
+                    event_type='billing.charge_dropped',
+                    resource_id=charge_id,
+                    resource_type='ris_charges',
+                    actor_id=request.user.id,
+                    tenant=tenant,
+                )
+                created = charge.get('created_at')
+                if created:
+                    from api import telemetry
+                    age = (datetime.now(timezone.utc) - created).total_seconds()
+                    telemetry.ris_charge_drop_latency_seconds.observe(max(age, 0))
+                dropped.append(charge_id)
+        from api import telemetry
+        telemetry.ris_unbilled_count.set(float(await _unbilled_count(tenant)))
+        return ok({'data': {'dropped': dropped, 'missing': missing,
+                            'skipped': skipped}})
+
+
+class RisClaimBatchResubmitHandler(HTTPEndpoint):
+    """B-10: batch denial rework by reason code — POST
+    /ris/billing/claims/batch-resubmit {claim_ids[], note}."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('claim_ids') or [])][:100]
+        note = (body.get('note') or '').strip()
+        if not ids:
+            return validation_error('claim_ids is required')
+        if not note:
+            return validation_error('a correction note is required')
+        tenant = effective_tenant(request) or 'default'
+        resubmitted, missing = [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rc = RisClaims(conn)
+            for claim_id in ids:
+                row = await rc.correct_and_resubmit(
+                    claim_id, note=note,
+                    actor=str(request.user.id), tenant_id=tenant,
+                )
+                if row:
+                    resubmitted.append(claim_id)
+                else:
+                    missing.append(claim_id)
+        return ok({'data': {'resubmitted': resubmitted, 'missing': missing}})
+
+
 class RisUnbilledHandler(HTTPEndpoint):
     """S11-07: GET /ris/billing/unbilled — aging report.
 

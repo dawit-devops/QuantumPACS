@@ -8,6 +8,7 @@ import {
   listBillingQueue,
   dropCharge,
   getCptSuggestions,
+  batchDropCharges,
   type BillingQueueEntry,
   type CptSuggestion,
 } from "../api/billing-ris";
@@ -33,6 +34,9 @@ function BillingQueue() {
   });
   const [suggestions, setSuggestions] = useState<Record<string, CptSuggestion>>({});
   const [editing, setEditing] = useState<Record<string, string>>({});
+  // B-05: batch confirm-and-drop selection.
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchDropping, setBatchDropping] = useState(false);
 
   const fetch = useCallback(() => {
     setLoading(true);
@@ -81,6 +85,28 @@ function BillingQueue() {
       fetch();
     } catch (e: any) {
       message.error(e.message || "Failed to drop charge");
+    }
+  };
+
+  // B-05: drop every selected charge in one server round-trip.
+  const handleBatchDrop = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchDropping(true);
+    try {
+      const res = await batchDropCharges(selectedRowKeys.map(String));
+      message.success(
+        `Dropped ${res.dropped.length} charge(s)` +
+          (res.missing.length ? ` — ${res.missing.length} not found` : "") +
+          (res.skipped.length
+            ? ` — ${res.skipped.length} skipped (not PENDING)`
+            : ""),
+      );
+      setSelectedRowKeys([]);
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Batch drop failed");
+    } finally {
+      setBatchDropping(false);
     }
   };
 
@@ -136,6 +162,17 @@ function BillingQueue() {
     <Content style={{ padding: 24 }} role="main">
       <div className="billing-queue-header">
         <h2>Billing Queue</h2>
+        {selectedRowKeys.length > 0 && (
+          <Button
+            type="primary"
+            icon={<DollarOutlined />}
+            loading={batchDropping}
+            onClick={handleBatchDrop}
+            aria-label="Drop selected charges"
+          >
+            Confirm & Drop ({selectedRowKeys.length})
+          </Button>
+        )}
         <Button
           icon={<ReloadOutlined />}
           onClick={fetch}
@@ -170,6 +207,10 @@ function BillingQueue() {
           columns={columns}
           dataSource={data}
           loading={loading}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+          }}
           pagination={{
             ...pagination,
             showSizeChanger: true,
