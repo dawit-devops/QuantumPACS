@@ -356,31 +356,29 @@ describe("WaitingQueue", () => {
     mockGetWaitingQueue.mockResolvedValue([
       {
         visit_id: "v1",
-        // The payload leaks a full name (a projection bug would surface it):
-        // the board must still render initials/last4 only (R4-07).
-        name: "John Smith",
-        initials: "J.S.",
-        last4: "2345",
+        patient_id: "MRN12345",
+        patient_name: "John Smith",
         status: "checked_in",
         destination: "CT1",
+        modality: "CT",
+        priority: "STAT",
         updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 12,
       },
     ]);
   });
 
-  it("renders the privacy-projected queue and the HIPAA note", async () => {
+  it("renders the staff queue with full names, priority and modality", async () => {
     renderWithAuth(<WaitingQueue />);
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
-    expect(screen.getByText(/· · · · 2345/)).toBeInTheDocument();
-    expect(screen.getByText(/HIPAA minimum necessary/)).toBeInTheDocument();
-    // Full names never appear on the board — even when the payload leaks one.
-    expect(screen.queryByText(/John Smith/)).toBeNull();
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
+    expect(screen.getByText("CT")).toBeInTheDocument();
+    expect(screen.getByText("STAT")).toBeInTheDocument();
   });
 
   it("refetches with the selected day when the date changes", async () => {
     const user = userEvent.setup();
     renderWithAuth(<WaitingQueue />);
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
 
     // Role/label query instead of the brittle .ant-picker CSS class (the
     // input carries the aria-label the component sets on the DatePicker).
@@ -411,13 +409,18 @@ describe("WaitingQueue", () => {
     mockGetWaitingQueue.mockResolvedValue([
       {
         visit_id: "v1",
-        initials: "J.S.",
-        last4: "2345",
+        patient_id: "MRN12345",
+        patient_name: "John Smith",
         status: "checked_in",
+        destination: "CT1",
+        modality: "CT",
+        priority: "ROUTINE",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: null,
       },
     ]);
     await user.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
+    expect(await screen.findByText(/John Smith/)).toBeInTheDocument();
   });
 
   it("renders the empty state for a day with no waiting patients", async () => {
@@ -431,7 +434,7 @@ describe("WaitingQueue", () => {
 
   it("fetches the queue once on mount (interval behavior lives in the hook)", async () => {
     renderWithAuth(<WaitingQueue />);
-    await screen.findByText(/J\.S\./);
+    await screen.findByText(/John Smith/);
     expect(mockGetWaitingQueue).toHaveBeenCalledTimes(1);
   });
 
@@ -439,23 +442,23 @@ describe("WaitingQueue", () => {
     // FD-05: green <15m, amber 15-30m, red >30m.
     mockGetWaitingQueue.mockResolvedValue([
       {
-        visit_id: "v1", initials: "A.B.", last4: "1111",
-        status: "checked_in", destination: "CT1",
-        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 12,
+        visit_id: "v1", patient_id: "P001", patient_name: "Alice Brown",
+        status: "checked_in", destination: "CT1", modality: "CT",
+        priority: "STAT", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 12,
       },
       {
-        visit_id: "v2", initials: "C.D.", last4: "2222",
-        status: "checked_in", destination: "MR1",
-        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 22,
+        visit_id: "v2", patient_id: "P002", patient_name: "Carol Davis",
+        status: "checked_in", destination: "MR1", modality: "MR",
+        priority: "ROUTINE", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 22,
       },
       {
-        visit_id: "v3", initials: "E.F.", last4: "3333",
-        status: "checked_in", destination: "XR1",
-        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 45,
+        visit_id: "v3", patient_id: "P003", patient_name: "Eve Foster",
+        status: "checked_in", destination: "XR1", modality: "XR",
+        priority: "URGENT", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 45,
       },
     ]);
     renderWithAuth(<WaitingQueue />);
-    await screen.findByText(/A\.B\./);
+    await screen.findByText(/Alice Brown/);
     expect(screen.getByText("12m")).toHaveClass("fd-wait-green");
     expect(screen.getByText("22m")).toHaveClass("fd-wait-amber");
     expect(screen.getByText("45m")).toHaveClass("fd-wait-red");

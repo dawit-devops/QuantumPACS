@@ -5,7 +5,7 @@ import {
 } from "../hooks";
 import React, { useCallback, useEffect, useState } from "react";
 import { Layout, Tag, Spin, Alert, Button, DatePicker } from "antd";
-import { LockOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import PageHeader from "../common/PageHeader";
 import { getWaitingQueue, type QueueEntry } from "../api/frontdesk";
@@ -68,7 +68,7 @@ function WaitingQueue() {
           hosts the date picker + refresh in `extra`. */}
       <PageHeader
         title="Waiting Queue"
-        description="Privacy-limited view — auto-refreshes every 30s"
+        description="Live queue of checked-in patients — auto-refreshes every 30s"
         extra={
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <DatePicker
@@ -83,12 +83,6 @@ function WaitingQueue() {
           </div>
         }
       />
-
-      <div className="fd-privacy-note">
-        <LockOutlined />
-        HIPAA minimum necessary: initials + MRN last 4 only — full names are
-        never shown on this board.
-      </div>
 
       {error && (
         <Alert
@@ -120,9 +114,25 @@ function WaitingQueue() {
             >
               {row.status}
             </Tag>
-            <span className="fd-queue-id">
-              {row.initials || "—"} · · · · {row.last4}
+            <span className="fd-queue-name">
+              {row.patient_name || row.patient_id || "—"}
             </span>
+            {row.priority && (
+              <Tag
+                color={
+                  row.priority === "STAT"
+                    ? "red"
+                    : row.priority === "URGENT"
+                      ? "orange"
+                      : "default"
+                }
+              >
+                {row.priority}
+              </Tag>
+            )}
+            {row.modality && (
+              <Tag color="geekblue">{row.modality}</Tag>
+            )}
             {row.destination && (
               <Tag className="fd-queue-dest" color="cyan">
                 {row.destination}

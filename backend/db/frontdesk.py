@@ -470,11 +470,9 @@ class FrontDesk:
     # ---- waiting queue ----
 
     async def waiting_queue(self, date=''):
-        """Open visits (registered/checked_in) for the day. The exams join
-        added no columns yet multiplied rows (one patient can have many
-        exams), so the destination room is fetched per-visit instead (R5-09).
-        Completed/archived visits are hidden — the queue shows patients
-        waiting to be seen. Returns wait_minutes since arrival (FD-05)."""
+        """Open visits (registered/checked_in) for the day. Returns wait
+        minutes, modality, room, and priority per FD-05. The queue shows
+        full patient names (staff-authenticated surface, QUEUE_READ)."""
         return await self.conn.fetch(
             """
             SELECT
@@ -488,6 +486,21 @@ class FrontDesk:
                       ORDER BY a.created_at LIMIT 1),
                     v.destination_room
                 ) AS destination,
+                COALESCE(
+                    (SELECT a.modality FROM appointments a
+                      WHERE a.visit_id = v.id AND a.status != 'cancelled'
+                      ORDER BY a.created_at LIMIT 1),
+                    ''
+                ) AS modality,
+                COALESCE(
+                    (SELECT MAX(CASE vo.urgency
+                       WHEN 'stat' THEN 'STAT'
+                       WHEN 'urgent' THEN 'URGENT'
+                       ELSE 'ROUTINE' END)
+                     FROM visit_orders vo
+                     WHERE vo.visit_id = v.id),
+                    ''
+                ) AS priority,
                 v.updated_at,
                 v.created_at,
                 EXTRACT(EPOCH FROM (now() - v.checked_in_at)) / 60

@@ -107,10 +107,12 @@ export interface AvailabilitySlot {
 
 export interface QueueEntry {
   visit_id: string;
-  initials: string;
-  last4: string;
+  patient_id: string;
+  patient_name: string;
   status: string;
   destination: string;
+  modality: string;
+  priority: string;
   updated_at: string;
   wait_minutes: number | null;
 }

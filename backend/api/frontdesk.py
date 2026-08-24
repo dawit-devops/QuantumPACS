@@ -790,20 +790,18 @@ class WaitingQueueHandler(HTTPEndpoint):
         date_str = request.query_params.get('date') or ''
         async with get_conn() as conn:
             rows = await FrontDesk(conn).waiting_queue(date=date_str)
-        # HIPAA minimum necessary: initials + last-4 of the MRN only —
-        # full names and MRNs never leave the server.
+        # FD-05: the queue is a staff-authenticated surface (QUEUE_READ) —
+        # it carries full patient names, wait time, priority, modality/room.
         data = []
         for r in rows:
-            name = r['patient_name'] or ''
-            pid = r['patient_id'] or ''
-            initials = ''.join(w[0].upper() + '.' for w in name.split() if w) if name else ''
-            last4 = pid[-4:] if len(pid) >= 4 else pid
             data.append({
                 'visit_id': str(r['visit_id']),
-                'initials': initials,
-                'last4': last4,
+                'patient_id': r['patient_id'] or '',
+                'patient_name': r['patient_name'] or '',
                 'status': r['status'],
                 'destination': r['destination'] or '',
+                'modality': r.get('modality') or '',
+                'priority': r.get('priority') or '',
                 'updated_at': str(r['updated_at']),
                 # FD-05: minutes-since-arrival (None for registered-only visits).
                 'wait_minutes': (round(r['wait_minutes'])

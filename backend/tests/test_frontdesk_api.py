@@ -257,14 +257,16 @@ class TestAppointmentConflict:
         assert mock_conn.fetchrow.await_count == 1
 
 
-class TestWaitingQueuePrivacy:
+class TestWaitingQueueSpec:
     def test_queue_requires_queue_read(self):
         user = User({'id': 1, 'permissions': []})
         client = TestClient(_make_app(user))
         resp = client.get('/queue')
         assert resp.status_code == 403
 
-    def test_queue_projects_privacy_fields(self):
+    def test_queue_returns_full_name_priority_and_modality(self):
+        # FD-05: the staff queue (QUEUE_READ) carries full patient names,
+        # wait time, priority, and modality — not HIPAA initials+last4.
         user = User({'id': 1, 'permissions': ['QUEUE_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
@@ -273,12 +275,16 @@ class TestWaitingQueuePrivacy:
             {
                 'visit_id': 'v1', 'patient_id': 'MRN12345',
                 'patient_name': 'John Smith', 'status': 'checked_in',
-                'destination': 'CT1', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'destination': 'CT1', 'modality': 'CT',
+                'priority': 'STAT', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': 12,
             },
             {
                 'visit_id': 'v2', 'patient_id': 'P1',
-                'patient_name': '', 'status': 'registered',
-                'destination': '', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'patient_name': 'Jane Doe', 'status': 'registered',
+                'destination': 'MR2', 'modality': 'MR',
+                'priority': 'ROUTINE', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': None,
             },
         ]
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
@@ -287,16 +293,17 @@ class TestWaitingQueuePrivacy:
         data = resp.json()['data']
         assert len(data) == 2
         row = data[0]
-        assert row['initials'] == 'J.S.'
-        assert row['last4'] == '2345'
+        assert row['patient_name'] == 'John Smith'
+        assert row['patient_id'] == 'MRN12345'
         assert row['status'] == 'checked_in'
         assert row['destination'] == 'CT1'
-        assert row['visit_id'] == 'v1'
-        assert 'patient_name' not in row
-        assert 'name' not in row
-        assert 'patient_id' not in row
-        assert data[1]['initials'] == ''
-        assert data[1]['last4'] == 'P1'
+        assert row['modality'] == 'CT'
+        assert row['priority'] == 'STAT'
+        assert row['wait_minutes'] == 12
+        assert 'initials' not in row
+        assert 'last4' not in row
+        assert data[1]['priority'] == 'ROUTINE'
+        assert data[1]['wait_minutes'] is None
 
     def test_queue_exposes_wait_minutes(self):
         # FD-05: the front-desk queue needs minutes-since-arrival so the UI
