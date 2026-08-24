@@ -420,7 +420,7 @@ describe("ReportDetail", () => {
       { initialEntries: ["/portal/results/r1"] },
     );
     expect(await screen.findByText("Dr. Smith")).toBeInTheDocument();
-    expect(screen.getByText("ACC-001")).toBeInTheDocument();
+    expect(screen.getAllByText("ACC-001").length).toBeGreaterThan(0);
   });
 
   it("shows 404 when report not found", async () => {

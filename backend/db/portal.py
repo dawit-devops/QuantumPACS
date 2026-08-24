@@ -186,6 +186,8 @@ class Portal:
             f"""
             SELECT r.id AS report_id, r.id AS id, r.exam_id, r.status,
                    e.accession_number, e.modality, e.requested_procedure_desc,
+                   e.patient_name, e.patient_birth_date, e.patient_sex,
+                   e.referring_physician, e.priority, e.protocol_name,
                    r.findings, r.impression, r.recommendations,
                    r.signed_by, r.signed_at, u.username AS signed_by_name
             FROM reports r

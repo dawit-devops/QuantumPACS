@@ -8,20 +8,16 @@ import {
   Button,
   Spin,
   Alert,
-  Tag,
-  Divider,
   Empty,
 } from "antd";
 import {
   FileTextOutlined,
   ArrowLeftOutlined,
-  CheckCircleOutlined,
-  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
-import { useAuth } from "../auth/AuthContext";
+import ReportDocument from "../common/ReportDocument";
 import {
   listScope,
   getPortalReport,
@@ -32,8 +28,8 @@ import "./Portal.css";
 const { Text, Paragraph } = Typography;
 const Content = Layout.Content;
 
-// Extended report type — backend returns fields not in the base PortalReport
-// interface (findings, recommendations, signed_by).
+// Extended report type — the backend report detail carries the exam's
+// patient/demographics/referral fields for the ACR-style letterhead.
 interface PortalReportDetail {
   report_id?: string;
   id?: string;
@@ -41,11 +37,18 @@ interface PortalReportDetail {
   accession_number?: string;
   modality?: string;
   requested_procedure_desc?: string;
+  patient_name?: string;
+  patient_birth_date?: string;
+  patient_sex?: string;
+  referring_physician?: string;
+  priority?: string;
+  protocol_name?: string;
   findings?: string;
   finding?: string;
   impression?: string;
   recommendations?: string;
   signed_by?: string;
+  signed_by_name?: string;
   signed_at?: string;
   status?: string;
 }
@@ -57,8 +60,6 @@ function ReportDetail() {
   useDocumentTitle("QuantumPACS - Report Detail");
   const navigate = useNavigate();
   const { reportId } = useParams<{ reportId: string }>();
-  const { user } = useAuth();
-  const tenantName = user?.tenant_name || "Imaging Services";
 
   const [scope, setScope] = useState<PortalScope[]>([]);
   const [loadingScope, setLoadingScope] = useState(true);
@@ -224,150 +225,26 @@ function ReportDetail() {
         </Button>
       </div>
 
-      {/* Branded letterhead + report body in one card */}
-      <Card className="portal-report-sheet" bodyStyle={{ padding: 0 }}>
-        {/* ── Letterhead: tenant + platform branding ── */}
-        <div className="portal-report-letterhead">
-          <div className="portal-report-brand">
-            <svg
-              width="34"
-              height="34"
-              viewBox="0 0 40 40"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="portal-qp-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="var(--color-primary)" />
-                  <stop offset="50%" stopColor="var(--color-secondary)" />
-                  <stop offset="100%" stopColor="var(--color-accent)" />
-                </linearGradient>
-              </defs>
-              <circle cx="20" cy="20" r="18" fill="url(#portal-qp-grad)" />
-              <path
-                d="M13 13a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H15a2 2 0 0 1-2-2V13Zm6 3a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm5 2h-8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2Zm0 4h-8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2Z"
-                fill="#fff"
-                opacity="0.92"
-              />
-            </svg>
-            <div className="portal-report-brand-text">
-              <span className="portal-report-brand-name">
-                Quantum<strong>PACS</strong>
-              </span>
-              <span className="portal-report-brand-sub">Radiology Report</span>
-            </div>
-          </div>
-
-          <div className="portal-report-tenant">
-            <span className="portal-report-tenant-label">Issued by</span>
-            <span className="portal-report-tenant-name">{tenantName}</span>
-            <span className="portal-report-tenant-secure">
-              <SafetyCertificateOutlined /> Confidential — patient records
-            </span>
-          </div>
-        </div>
-
-        {/* ── Divider with watermark ── */}
-        <div className="portal-report-rule" />
-
-        {/* ── Document title ── */}
-        <div className="portal-report-title">
-          <h3>Final Imaging Report</h3>
-          <div className="portal-report-title-meta">
-            <Tag color="green" icon={<CheckCircleOutlined />}>Signed</Tag>
-            <span>{report?.requested_procedure_desc || "Imaging study"}</span>
-          </div>
-        </div>
-
-        {/* ── Metadata grid ── */}
-        <div className="portal-report-meta-grid">
-          <div className="portal-report-meta-cell">
-            <span className="portal-report-meta-label">Accession No.</span>
-            <span className="portal-report-meta-value">
-              {report?.accession_number || "—"}
-            </span>
-          </div>
-          <div className="portal-report-meta-cell">
-            <span className="portal-report-meta-label">Modality</span>
-            <span className="portal-report-meta-value">
-              {report?.modality || "—"}
-            </span>
-          </div>
-          <div className="portal-report-meta-cell">
-            <span className="portal-report-meta-label">Signed Date</span>
-            <span className="portal-report-meta-value">
-              {report?.signed_at
-                ? new Date(report.signed_at).toLocaleDateString(undefined, {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })
-                : "—"}
-            </span>
-          </div>
-          <div className="portal-report-meta-cell">
-            <span className="portal-report-meta-label">Reading Radiologist</span>
-            <span className="portal-report-meta-value">
-              {report?.signed_by || "—"}
-            </span>
-          </div>
-        </div>
-
-        <Divider style={{ margin: "18px 0" }} />
-
-        {/* ── Body sections ── */}
-        <div className="portal-report-body-wrap">
-          <div className="portal-report-section">
-            <div className="portal-report-section-head">
-              <span className="portal-report-section-mark">FINDINGS</span>
-            </div>
-            {findings ? (
-              <Paragraph className="portal-report-body">{findings}</Paragraph>
-            ) : (
-              <Text type="secondary">No findings documented.</Text>
-            )}
-          </div>
-
-          <div className="portal-report-section">
-            <div className="portal-report-section-head">
-              <span className="portal-report-section-mark portal-report-section-mark-accent">
-                IMPRESSION
-              </span>
-            </div>
-            {impression ? (
-              <Paragraph className="portal-report-body portal-report-impression">
-                {impression}
-              </Paragraph>
-            ) : (
-              <Text type="secondary">No impression documented.</Text>
-            )}
-          </div>
-
-          {recommendations ? (
-            <div className="portal-report-section">
-              <div className="portal-report-section-head">
-                <span className="portal-report-section-mark">RECOMMENDATIONS</span>
-              </div>
-              <Paragraph className="portal-report-body">
-                {recommendations}
-              </Paragraph>
-            </div>
-          ) : null}
-        </div>
-
-        {/* ── Footer ── */}
-        <div className="portal-report-footer">
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            This report was signed by the reading radiologist and represents the
-            final interpretation of your imaging study.
-          </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            If you have questions, contact your ordering physician or the
-            radiology department.
-          </Text>
-        </div>
-      </Card>
+      {/* Branded report document — design-system REPORT-TEMPLATE.html */}
+      <ReportDocument
+        meta={{
+          patient_name: report?.patient_name,
+          patient_id: report?.exam_id,
+          patient_birth_date: report?.patient_birth_date,
+          patient_sex: report?.patient_sex,
+          accession_number: report?.accession_number,
+          modality: report?.modality,
+          requested_procedure_desc: report?.requested_procedure_desc,
+          referring_physician: report?.referring_physician,
+          priority: report?.priority,
+          protocol_name: report?.protocol_name,
+        }}
+        findings={findings}
+        impression={impression}
+        recommendations={recommendations}
+        signedBy={report?.signed_by_name || report?.signed_by}
+        signedAt={report?.signed_at}
+      />
     </Content>
   );
 }

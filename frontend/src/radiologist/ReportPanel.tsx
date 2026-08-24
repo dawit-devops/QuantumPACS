@@ -17,6 +17,7 @@ import {
   SaveOutlined,
   RollbackOutlined,
 } from "@ant-design/icons";
+import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
 
 interface ReportPanelProps {
@@ -112,30 +113,32 @@ export default function ReportPanel({
 
       <Divider />
 
-      <Card title="Patient & Exam" size="small">
-        <Descriptions size="small" column={3} bordered>
-          <Descriptions.Item label="Patient Name">
-            {exam.patient_name || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Patient ID">
-            {exam.patient_id || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="DOB">
-            {exam.patient_birth_date || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Sex">
-            {exam.patient_sex || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Accession">
-            {exam.accession_number || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Completed">
-            {exam.completed_at
-              ? new Date(exam.completed_at).toLocaleString()
-              : "—"}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
+      {!isFinal && !submitted && canWrite && (
+        <Card title="Patient & Exam" size="small">
+          <Descriptions size="small" column={3} bordered>
+            <Descriptions.Item label="Patient Name">
+              {exam.patient_name || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Patient ID">
+              {exam.patient_id || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="DOB">
+              {exam.patient_birth_date || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Sex">
+              {exam.patient_sex || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Accession">
+              {exam.accession_number || "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Completed">
+              {exam.completed_at
+                ? new Date(exam.completed_at).toLocaleString()
+                : "—"}
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
 
       {isFinal && (
         <Alert
@@ -189,7 +192,35 @@ export default function ReportPanel({
         />
       )}
 
-      {!isFinal && (
+      {/* Branded report document — read-only, submitted, or final surfaces
+          use the design-system REPORT-TEMPLATE.html layout. */}
+      {isFinal || submitted || !canWrite ? (
+        <div style={{ marginTop: 16 }}>
+          <ReportDocument
+            meta={{
+              patient_name: exam.patient_name,
+              patient_id: exam.patient_id,
+              patient_birth_date: exam.patient_birth_date,
+              patient_sex: exam.patient_sex,
+              accession_number: exam.accession_number,
+              modality: exam.modality,
+              requested_procedure_desc: exam.requested_procedure_desc,
+              referring_physician: exam.referring_physician,
+              priority: exam.priority,
+              protocol_name: exam.protocol_name,
+            }}
+            findings={findings}
+            impression={impression}
+            recommendations={recommendations}
+            signedBy={
+              report?.signed_by_name || report?.signed_by || undefined
+            }
+            signedAt={report?.signed_at}
+          />
+        </div>
+      ) : null}
+
+      {canWrite && !submitted && !isFinal && (
         <>
           {canWrite && !submitted && (
             <Card

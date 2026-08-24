@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
 
 import "./common/tokens.css";
+import "./common/report.css";
 import "./index.css";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";

@@ -224,7 +224,7 @@ describe("ReadingConsole", () => {
     fireEvent.click(screen.getByText("Sign & Finalize"));
 
     await waitFor(() => {
-      expect(screen.getByText("FINAL")).toBeInTheDocument();
+      expect(screen.getAllByText("FINAL").length).toBeGreaterThan(0);
     });
     expect(screen.getByText(/This report is FINAL/)).toBeInTheDocument();
   });
@@ -376,8 +376,10 @@ describe("ReadingConsole", () => {
     expect(
       screen.queryByPlaceholderText("Apply a template"),
     ).not.toBeInTheDocument();
-    const findings = screen.getByDisplayValue("Initial findings");
-    expect(findings).toHaveProperty("readOnly", true);
+    // Read-only surfaces render the branded report document (not a readonly
+    // textarea) — the findings text is displayed as document body.
+    expect(screen.getByText("Initial findings")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Initial findings")).not.toBeInTheDocument();
   });
 
   it("hides Sign Report for a resident without REPORT_SIGN", async () => {
