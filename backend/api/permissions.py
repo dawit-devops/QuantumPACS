@@ -223,6 +223,10 @@ MATRIX_A_TECH = {
     'WORKLIST_READ', 'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE',
     'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
     'CHART_READ', 'RESULTS_READ',
+    # R2-14 sweep re-added: the exam console is the technologist's primary
+    # surface — EXAM_READ/EXAM_WRITE belong in the canonical Matrix A row
+    # (previously only in LEGACY_TECHNOLOGIST).
+    'EXAM_READ', 'EXAM_WRITE',
 }
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
