@@ -704,6 +704,28 @@ class ReportTemplatesHandler(HTTPEndpoint):
         return created({'data': tpl})
 
 
+class PriorReportsHandler(HTTPEndpoint):
+    """R-07: prior report quick-view — GET /reports/priors.
+
+    Lists the patient's earlier preliminary/final reports (same modality by
+    default) so the radiologist can compare without leaving the console.
+    Registered before the /reports/{exam_id} catch-all."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        patient_id = request.query_params.get('patient_id')
+        if not patient_id:
+            return validation_error('patient_id is required')
+        modality = request.query_params.get('modality')
+        exclude_exam_id = request.query_params.get('exclude_exam_id')
+        async with get_conn() as conn:
+            priors = await Reports(conn).list_priors(
+                patient_id=patient_id, modality=modality,
+                exclude_exam_id=exclude_exam_id,
+            )
+        return ok({'data': priors})
+
+
 class ReportVersionRestoreHandler(HTTPEndpoint):
     """R-06: restore a prior report version.
 

@@ -619,4 +619,61 @@ describe("ReadingConsole", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("lists prior reports and previews one without leaving (R-07)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url.startsWith("reports/priors")) {
+        return Promise.resolve({
+          data: [
+            {
+              report_id: "rep-9",
+              exam_id: "exam-9",
+              accession_number: "ACC-009",
+              modality: "CT",
+              status: "final",
+              completed_at: "2025-01-15T10:00:00Z",
+              impression_excerpt: "Old impression text",
+            },
+          ],
+        });
+      }
+      if (url === "reports/exam-9") {
+        return Promise.resolve({
+          data: {
+            exam: mockExam,
+            report: {
+              ...mockReport,
+              id: "rep-9",
+              impression: "Full prior impression",
+              findings: "Full prior findings",
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /prior reports/i }));
+
+    expect(await screen.findByText(/Old impression text/)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /open prior ACC-009/i }),
+    );
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenCalledWith("reports/exam-9");
+      expect(screen.getByText(/Full prior impression/)).toBeInTheDocument();
+    });
+  });
 });

@@ -295,6 +295,38 @@ class Reports(Table):
             return items[start:start + per_page], total
         return items
 
+    async def list_priors(self, patient_id, modality=None,
+                          exclude_exam_id=None, limit=20):
+        """R-07: the patient's prior preliminary/final reports for quick
+        comparison inside the reading console — newest first, impression
+        excerpt only (full text loads via the normal report endpoint)."""
+        await self.sync_db()
+        where = ["r.status IN ('preliminary', 'final')",
+                 "e.patient_id = $1"]
+        params = [patient_id]
+        idx = 2
+        if modality:
+            where.append(f"e.modality = ${idx}")
+            params.append(modality)
+            idx += 1
+        if exclude_exam_id:
+            where.append(f"e.id::text <> ${idx}")
+            params.append(str(exclude_exam_id))
+            idx += 1
+        rows = await self.conn.fetch(
+            f"""SELECT r.id::text AS report_id,
+                       e.id::text AS exam_id,
+                       e.accession_number, e.modality, e.completed_at,
+                       r.status, r.signed_at,
+                       left(r.impression, 200) AS impression_excerpt
+                FROM reports r JOIN exams e ON e.id = r.exam_id
+                WHERE {' AND '.join(where)}
+                ORDER BY e.completed_at DESC NULLS LAST, r.signed_at DESC NULLS LAST
+                LIMIT ${idx}""",
+            *params, limit,
+        )
+        return [dict(r) for r in rows]
+
     async def _ensure_release_status(self):
         await self.conn.execute(
             "ALTER TABLE reports ADD COLUMN IF NOT EXISTS release_status "

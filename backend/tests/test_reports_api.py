@@ -1136,3 +1136,68 @@ class TestReportVersionRestore:
         assert kwargs['recommendations'] == 'Old recs'
         assert audit.log_event.await_args.kwargs['event_type'] == \
             'report.version_restored'
+
+
+class TestPriorReports:
+    """R-07: prior report quick-view — GET /reports/priors returns the
+    patient's earlier preliminary/final reports for the same modality,
+    excluding the exam being read."""
+
+    def _app(self, user=None):
+        from api.reports import PriorReportsHandler
+        return Starlette(
+            routes=[Route('/reports/priors', endpoint=PriorReportsHandler)],
+            middleware=[Middleware(_FakeAuth, user=user or RAD)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_priors_requires_report_read(self):
+        resp = TestClient(self._app(NO_PERMS)).get(
+            '/reports/priors?patient_id=P1&modality=CT')
+        assert resp.status_code == 403
+
+    def test_priors_requires_patient_id(self):
+        resp = TestClient(self._app()).get('/reports/priors')
+        assert resp.status_code == 400
+
+    def test_priors_passes_filters(self):
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.list_priors = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = TestClient(self._app()).get(
+                    '/reports/priors'
+                    '?patient_id=P1&modality=CT&exclude_exam_id=e1')
+        assert resp.status_code == 200
+        kwargs = reports.list_priors.await_args.kwargs
+        assert kwargs['patient_id'] == 'P1'
+        assert kwargs['modality'] == 'CT'
+        assert kwargs['exclude_exam_id'] == 'e1'
+
+    def test_list_priors_queries_final_or_preliminary(self):
+        captured = {}
+
+        async def fake_fetch(q, *a):
+            captured['q'] = q
+            return [{
+                'report_id': 'rep-9', 'exam_id': 'exam-9',
+                'accession_number': 'ACC9', 'modality': 'CT',
+                'status': 'final', 'completed_at': None,
+                'impression_excerpt': 'Old impression text',
+                'signed_at': None,
+            }]
+
+        with _conn(fetch=fake_fetch):
+            resp = TestClient(self._app()).get(
+                '/reports/priors?patient_id=P1&modality=CT&exclude_exam_id=e1')
+        assert resp.status_code == 200
+        q = captured['q']
+        assert "r.status IN ('preliminary', 'final')" in q
+        assert 'e.patient_id' in q and 'e.modality' in q
+        row = resp.json()['data'][0]
+        assert row['report_id'] == 'rep-9'
+        assert row['impression_excerpt'] == 'Old impression text'

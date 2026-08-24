@@ -11,6 +11,7 @@ import {
   Divider,
   Space,
   Spin,
+  Drawer,
 } from "antd";
 import {
   EditOutlined,
@@ -162,6 +163,37 @@ export default function ReportPanel({
     [onRestoreVersion],
   );
 
+  // R-07: prior reports quick-view — the patient's earlier reports for the
+  // same modality, compared without leaving the console.
+  const [showPriors, setShowPriors] = useState(false);
+  const [priorsLoading, setPriorsLoading] = useState(false);
+  const [priors, setPriors] = useState<any[]>([]);
+  const [priorDetail, setPriorDetail] = useState<any | null>(null);
+
+  const togglePriors = useCallback(() => {
+    const next = !showPriors;
+    setShowPriors(next);
+    if (next && exam?.patient_id) {
+      setPriorsLoading(true);
+      const q = new URLSearchParams({
+        patient_id: String(exam.patient_id),
+        modality: String(exam.modality || ""),
+        exclude_exam_id: String(exam.id || ""),
+      });
+      request(`reports/priors?${q.toString()}`)
+        .then((res: any) => setPriors(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setPriors([]))
+        .finally(() => setPriorsLoading(false));
+    }
+  }, [showPriors, exam?.patient_id, exam?.modality, exam?.id]);
+
+  const openPrior = useCallback((examId: string) => {
+    setPriorDetail({ loading: true });
+    request(`reports/${examId}`)
+      .then((res: any) => setPriorDetail(res?.data?.report ?? {}))
+      .catch(() => setPriorDetail({}));
+  }, []);
+
   return (
     <div className="report-panel" role="complementary" aria-label="Report">
       <Steps
@@ -175,14 +207,61 @@ export default function ReportPanel({
 
       {report?.id && (
         <div style={{ marginBottom: 12 }}>
-          <Button
-            size="small"
-            icon={<HistoryOutlined />}
-            onClick={toggleVersions}
-            aria-expanded={showVersions}
-          >
-            Version history
-          </Button>
+          <Space size="small" wrap>
+            <Button
+              size="small"
+              icon={<HistoryOutlined />}
+              onClick={toggleVersions}
+              aria-expanded={showVersions}
+            >
+              Version history
+            </Button>
+            {exam?.patient_id && (
+              <Button
+                size="small"
+                icon={<AuditOutlined />}
+                onClick={togglePriors}
+                aria-expanded={showPriors}
+              >
+                Prior reports
+              </Button>
+            )}
+          </Space>
+          {showPriors && (
+            <Card title="Prior Reports" size="small" style={{ marginTop: 8 }}>
+              <Spin spinning={priorsLoading}>
+                {priors.length === 0 && !priorsLoading && (
+                  <span className="report-template-hint">
+                    No prior reports for this patient / modality.
+                  </span>
+                )}
+                {priors.map((p: any) => (
+                  <div
+                    key={p.report_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 0",
+                    }}
+                  >
+                    <Tag>{p.status}</Tag>
+                    <strong>{p.accession_number || p.exam_id}</strong>
+                    <span style={{ flex: 1, fontSize: 12 }}>
+                      {p.impression_excerpt || "(no impression)"}
+                    </span>
+                    <Button
+                      size="small"
+                      aria-label={`Open prior ${p.accession_number || p.exam_id}`}
+                      onClick={() => openPrior(p.exam_id)}
+                    >
+                      Open
+                    </Button>
+                  </div>
+                ))}
+              </Spin>
+            </Card>
+          )}
           {showVersions && (
             <Card title="Versions" size="small" style={{ marginTop: 8 }}>
               <Spin spinning={versionsLoading}>
@@ -491,6 +570,37 @@ export default function ReportPanel({
           )}
         </>
       )}
+
+      {/* R-07: read-only preview of a prior report, in-console. */}
+      <Drawer
+        title={
+          priorDetail
+            ? `Prior report — ${exam?.accession_number || ""} comparison`
+            : null
+        }
+        width={520}
+        open={!!priorDetail}
+        onClose={() => setPriorDetail(null)}
+      >
+        {priorDetail?.loading ? (
+          <Spin />
+        ) : (
+          <div>
+            <p>
+              <strong>Impression:</strong>
+            </p>
+            <p style={{ whiteSpace: "pre-wrap" }}>
+              {priorDetail?.impression || "(no impression recorded)"}
+            </p>
+            <p>
+              <strong>Findings:</strong>
+            </p>
+            <p style={{ whiteSpace: "pre-wrap" }}>
+              {priorDetail?.findings || "(no findings recorded)"}
+            </p>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }
