@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
   Card,
   Descriptions,
@@ -9,6 +9,8 @@ import {
   Steps,
   Alert,
   Divider,
+  Space,
+  Spin,
 } from "antd";
 import {
   EditOutlined,
@@ -16,7 +18,9 @@ import {
   CheckCircleOutlined,
   SaveOutlined,
   RollbackOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
+import { request } from "../helpers";
 import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
 
@@ -42,6 +46,7 @@ interface ReportPanelProps {
   onSubmitDraft: () => void;
   onRequestSign: () => void;
   onReturnClick: () => void;
+  onRestoreVersion?: (version: number) => void;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
@@ -75,6 +80,7 @@ export default function ReportPanel({
   onSubmitDraft,
   onRequestSign,
   onReturnClick,
+  onRestoreVersion,
 }: ReportPanelProps) {
   const isFinal = status === "final";
   const isResident = role === "resident";
@@ -102,6 +108,60 @@ export default function ReportPanel({
           ? 1
           : 0;
 
+  // R-06: version history + pairwise diff, restored via the console (the
+  // console owns report state; restoring reloads it there).
+  const [showVersions, setShowVersions] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [diffV1, setDiffV1] = useState<number | undefined>();
+  const [diffV2, setDiffV2] = useState<number | undefined>();
+  const [diff, setDiff] = useState<any>(null);
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(
+    null,
+  );
+
+  const loadVersions = useCallback(() => {
+    if (!report?.id) return;
+    setVersionsLoading(true);
+    request(`reports/${report.id}/versions`)
+      .then((res: any) => {
+        setVersions(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => setVersions([]))
+      .finally(() => setVersionsLoading(false));
+  }, [report?.id]);
+
+  const toggleVersions = useCallback(() => {
+    const next = !showVersions;
+    setShowVersions(next);
+    if (next) loadVersions();
+  }, [showVersions, loadVersions]);
+
+  const compareVersions = useCallback(async () => {
+    if (!report?.id || !diffV1 || !diffV2) return;
+    setVersionsLoading(true);
+    try {
+      const res = await request(
+        `reports/${report.id}/versions?v1=${diffV1}&v2=${diffV2}`,
+      );
+      setDiff(res?.data ?? null);
+    } catch {
+      setDiff(null);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [report?.id, diffV1, diffV2]);
+
+  const restore = useCallback(
+    (version: number) => {
+      setRestoringVersion(version);
+      Promise.resolve(onRestoreVersion?.(version)).finally(() =>
+        setRestoringVersion(null),
+      );
+    },
+    [onRestoreVersion],
+  );
+
   return (
     <div className="report-panel" role="complementary" aria-label="Report">
       <Steps
@@ -112,6 +172,106 @@ export default function ReportPanel({
       />
 
       <Divider />
+
+      {report?.id && (
+        <div style={{ marginBottom: 12 }}>
+          <Button
+            size="small"
+            icon={<HistoryOutlined />}
+            onClick={toggleVersions}
+            aria-expanded={showVersions}
+          >
+            Version history
+          </Button>
+          {showVersions && (
+            <Card title="Versions" size="small" style={{ marginTop: 8 }}>
+              <Spin spinning={versionsLoading}>
+                <Space size="small" wrap style={{ marginBottom: 8 }}>
+                  <Select
+                    placeholder="From v"
+                    style={{ width: 90 }}
+                    value={diffV1}
+                    onChange={setDiffV1}
+                    options={versions.map((v: any) => ({
+                      value: v.version_number,
+                      label: `v${v.version_number}`,
+                    }))}
+                  />
+                  <Select
+                    placeholder="To v"
+                    style={{ width: 90 }}
+                    value={diffV2}
+                    onChange={setDiffV2}
+                    options={versions.map((v: any) => ({
+                      value: v.version_number,
+                      label: `v${v.version_number}`,
+                    }))}
+                  />
+                  <Button onClick={compareVersions} disabled={!diffV1 || !diffV2}>
+                    Compare
+                  </Button>
+                </Space>
+                {diff && (
+                  <div className="report-version-diff">
+                    <Tag color={diff.findings_changed ? "orange" : "default"}>
+                      findings {diff.findings_changed ? "changed" : "same"}
+                    </Tag>
+                    <Tag color={diff.impression_changed ? "orange" : "default"}>
+                      impression {diff.impression_changed ? "changed" : "same"}
+                    </Tag>
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+                      {`— v${diff.v1?.version_number} —\n${
+                        diff.v1?.impression || diff.v1?.findings || "(empty)"
+                      }\n\n+ v${diff.v2?.version_number} +\n${
+                        diff.v2?.impression || diff.v2?.findings || "(empty)"
+                      }`}
+                    </pre>
+                  </div>
+                )}
+                <div>
+                  {versions.length === 0 && !versionsLoading && (
+                    <span className="report-template-hint">
+                      No saved versions yet — every content change is
+                      snapshotted automatically.
+                    </span>
+                  )}
+                  {versions.map((v: any) => (
+                    <div
+                      key={v.version_number}
+                      className="report-version-row"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "4px 0",
+                      }}
+                    >
+                      <strong>v{v.version_number}</strong>
+                      <span style={{ flex: 1, fontSize: 12 }}>
+                        {(v.edited_by || "—") + " · "}
+                        {v.created_at
+                          ? new Date(v.created_at).toLocaleString()
+                          : ""}
+                      </span>
+                      {canWrite && !submitted && !isFinal && onRestoreVersion && (
+                        <Button
+                          size="small"
+                          icon={<RollbackOutlined />}
+                          loading={restoringVersion === v.version_number}
+                          aria-label={`Restore version ${v.version_number}`}
+                          onClick={() => restore(v.version_number)}
+                        >
+                          Restore
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Spin>
+            </Card>
+          )}
+        </div>
+      )}
 
       {!isFinal && !submitted && canWrite && (
         <Card title="Patient & Exam" size="small">

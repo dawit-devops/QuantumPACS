@@ -53,6 +53,15 @@ class RisReportVersions(Table):
         )
         return [dict(r) for r in rows]
 
+    async def get_version(self, report_id, version: int):
+        """Fetch a single version row (R-06 restore)."""
+        await self.sync_db()
+        row = await self.conn.fetchrow(
+            "SELECT * FROM ris_report_versions WHERE report_id = $1 AND version_number = $2",
+            report_id, version,
+        )
+        return dict(row) if row else None
+
     async def get_version_diff(self, report_id, v1: int, v2: int):
         """Compare two versions of a report."""
         await self.sync_db()

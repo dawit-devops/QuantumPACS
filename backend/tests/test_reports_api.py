@@ -38,6 +38,7 @@ def _make_app(user=None):
         ExamAssignHandler, ExamImagesHandler,
         ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
         PeerReviewHandler, PeerReviewSubmitHandler,
+        ReportVersionRestoreHandler,
     )
     return Starlette(
         routes=[
@@ -53,6 +54,8 @@ def _make_app(user=None):
             Route('/peer-reviews', endpoint=PeerReviewsHandler),
             Route('/peer-reviews/{id}', endpoint=PeerReviewHandler),
             Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler),
+            Route('/reports/{report_id}/versions/{version}/restore',
+                  endpoint=ReportVersionRestoreHandler, methods=['POST']),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -1048,3 +1051,88 @@ class TestPeerReviews:
             resp = client.get('/peer-reviews/rev-1')
         assert resp.status_code == 200
         assert resp.json()['data']['report']['status'] == 'final'
+
+
+class TestReportVersionRestore:
+    """R-06: restore a prior report version — POST
+    /reports/{report_id}/versions/{version}/restore. Draft/preliminary
+    only; restoring writes a NEW snapshot via Reports.update (history is
+    append-only)."""
+
+    def _app(self, user=None):
+        from api.reports import ReportVersionRestoreHandler
+        return Starlette(
+            routes=[Route(
+                '/reports/{report_id}/versions/{version}/restore',
+                endpoint=ReportVersionRestoreHandler, methods=['POST'],
+            )],
+            middleware=[Middleware(_FakeAuth, user=user or RAD)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_restore_requires_report_write(self):
+        resp = TestClient(self._app(READ_ONLY)).post(
+            '/reports/rep-1/versions/2/restore')
+        assert resp.status_code == 403
+
+    def test_restore_rejects_non_integer_version(self):
+        resp = TestClient(self._app()).post(
+            '/reports/rep-1/versions/abc/restore')
+        assert resp.status_code == 400
+
+    def test_restore_rejects_locked_report(self):
+        async def fake_fetchrow(q, *a):
+            if 'FROM reports' in q:
+                return {'id': 'rep-1', 'status': 'final'}
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = TestClient(self._app()).post(
+                '/reports/rep-1/versions/2/restore')
+        assert resp.status_code == 409
+
+    def test_restore_version_not_found(self):
+        async def fake_fetchrow(q, *a):
+            if 'FROM reports' in q:
+                return {'id': 'rep-1', 'status': 'draft'}
+            return None  # no such version row
+        with _conn(fetchrow=fake_fetchrow):
+            resp = TestClient(self._app()).post(
+                '/reports/rep-1/versions/99/restore')
+        assert resp.status_code == 404
+
+    def test_restore_success_snapshots_and_audits(self):
+        version_row = {
+            'report_id': 'rep-1', 'version_number': 2,
+            'findings': 'Old findings', 'impression': 'Old impression',
+            'recommendations': 'Old recs',
+        }
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM reports' in q:
+                return {'id': 'rep-1', 'status': 'draft'}
+            if 'version_number' in q:
+                return version_row
+            return None
+
+        with patch('api.reports.Reports') as reports_cls, \
+             patch('api.reports.AuditLog') as audit_cls, \
+             _conn(fetchrow=fake_fetchrow):
+            reports = AsyncMock()
+            updated = _report_row(impression='Old impression')
+            reports.update = AsyncMock(return_value=updated)
+            reports_cls.return_value = reports
+            audit = AsyncMock()
+            audit.log_event = AsyncMock()
+            audit_cls.return_value = audit
+            resp = TestClient(self._app()).post(
+                '/reports/rep-1/versions/2/restore')
+        assert resp.status_code == 200
+        kwargs = reports.update.await_args.args[1]
+        assert kwargs['findings'] == 'Old findings'
+        assert kwargs['impression'] == 'Old impression'
+        assert kwargs['recommendations'] == 'Old recs'
+        assert audit.log_event.await_args.kwargs['event_type'] == \
+            'report.version_restored'

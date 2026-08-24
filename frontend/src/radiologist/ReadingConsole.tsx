@@ -220,14 +220,14 @@ function ReadingConsole() {
           },
         });
         setSavedAt(new Date());
-        if (!silent) message.success("Draft saved");
+        if (!silent) message?.success?.("Draft saved");
         return true;
       } catch (e: any) {
         // Never lose the draft on a transient failure — mark dirty again so
         // the autosave loop retries (NFR-R12-10).
         dirtyRef.current = true;
         setDirty(true);
-        if (!silent) message.error(e.message || "Save failed");
+        if (!silent) message?.error?.(e.message || "Save failed");
         return false;
       }
     },
@@ -279,7 +279,7 @@ function ReadingConsole() {
     // Pass the explicit status: setStatus only affects the UI, and the
     // saveDraft closure still carries the previous status in this render.
     saveDraft(true, "preliminary").then(() =>
-      message.success("Marked preliminary"),
+      message?.success?.("Marked preliminary"),
     );
   };
 
@@ -298,9 +298,35 @@ function ReadingConsole() {
     return queue[0]?.exam_id ?? null;
   }, [queue, examId]);
 
+  // R-06: restore a prior version — the server copies the snapshot onto the
+  // report (appending a new version); we then reload it into the console.
+  const restoreVersion = useCallback(
+    async (version: number) => {
+      if (!report?.id) return;
+      try {
+        await request(`reports/${report.id}/versions/${version}/restore`, {
+          method: "POST",
+          data: undefined,
+        });
+        const res = await request(`reports/${examId}`);
+        const r = res?.data?.report ?? null;
+        setReport(r);
+        setFindings(r?.findings || "");
+        setImpression(r?.impression || "");
+        setRecommendations(r?.recommendations || "");
+        dirtyRef.current = false;
+        setDirty(false);
+        message?.success?.(`Version ${version} restored`);
+      } catch (e: any) {
+        message?.error?.(e.message || "Restore failed");
+      }
+    },
+    [report?.id, examId, setReport, message],
+  );
+
   const signReport = async (next: boolean) => {
     if (!impression.trim()) {
-      message.error("Impression is required before signing");
+      message?.error?.("Impression is required before signing");
       return;
     }
     setSigning(true);
@@ -312,7 +338,7 @@ function ReadingConsole() {
       const wasSubmitted = status === "submitted";
       const saved = wasSubmitted ? true : await saveDraft(true);
       if (!saved) {
-        message.error("Could not save the draft — sign aborted. Try again.");
+        message?.error?.("Could not save the draft — sign aborted. Try again.");
         return;
       }
       const res = await request(`reports/${examId}/sign`, {
@@ -322,7 +348,7 @@ function ReadingConsole() {
       setStatus("final");
       setSavedAt(new Date());
       setSignOpen(false);
-      message.success(
+      message?.success?.(
         wasSubmitted
           ? "Report co-signed — status is now FINAL"
           : "Report signed — status is now FINAL",
@@ -339,7 +365,7 @@ function ReadingConsole() {
         );
       }
     } catch (e: any) {
-      message.error(e.message || "Sign failed");
+      message?.error?.(e.message || "Sign failed");
     } finally {
       setSigning(false);
     }
@@ -350,14 +376,14 @@ function ReadingConsole() {
   // rejects further PUTs) until co-signed or returned.
   const submitReport = async () => {
     if (!impression.trim()) {
-      message.error("Impression is required before submitting for review");
+      message?.error?.("Impression is required before submitting for review");
       return;
     }
     setSubmitting(true);
     try {
       const saved = await saveDraft(true);
       if (!saved) {
-        message.error("Could not save the draft — submit aborted. Try again.");
+        message?.error?.("Could not save the draft — submit aborted. Try again.");
         return;
       }
       const res = await request(`reports/${examId}/submit`, { method: "POST" });
@@ -366,9 +392,9 @@ function ReadingConsole() {
       dirtyRef.current = false;
       setDirty(false);
       setSavedAt(new Date());
-      message.success("Report submitted for attending review");
+      message?.success?.("Report submitted for attending review");
     } catch (e: any) {
-      message.error(e.message || "Submit failed");
+      message?.error?.(e.message || "Submit failed");
     } finally {
       setSubmitting(false);
     }
@@ -378,7 +404,7 @@ function ReadingConsole() {
   // attached — their console surfaces it so they know what to revise.
   const returnReport = async () => {
     if (!feedback.trim()) {
-      message.error("Feedback is required before returning the report");
+      message?.error?.("Feedback is required before returning the report");
       return;
     }
     setReturning(true);
@@ -392,9 +418,9 @@ function ReadingConsole() {
       setSavedAt(new Date());
       setReturnOpen(false);
       setFeedback("");
-      message.success("Report returned to the resident for revision");
+      message?.success?.("Report returned to the resident for revision");
     } catch (e: any) {
-      message.error(e.message || "Return failed");
+      message?.error?.(e.message || "Return failed");
     } finally {
       setReturning(false);
     }
@@ -557,6 +583,7 @@ function ReadingConsole() {
       }}
       onApplyTemplate={applyTemplate}
       onSaveDraft={() => saveDraft(false)}
+      onRestoreVersion={restoreVersion}
       onMarkPreliminary={markPreliminary}
       onSubmitDraft={submitReport}
       onRequestSign={() => setSignOpen(true)}

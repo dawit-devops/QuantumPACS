@@ -9,7 +9,9 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, validation_error, forbidden
+from api.response import (
+    ok, created, not_found, validation_error, forbidden, api_error,
+)
 from api.validate import parse_body
 from api.schemas.reports import (
     SaveReportRequest, SignReportRequest, ReturnReportRequest,
@@ -700,6 +702,60 @@ class ReportTemplatesHandler(HTTPEndpoint):
             from db.ris_templates import RisReportTemplates
             tpl = await RisReportTemplates(conn).create_template(data)
         return created({'data': tpl})
+
+
+class ReportVersionRestoreHandler(HTTPEndpoint):
+    """R-06: restore a prior report version.
+
+    POST /reports/{report_id}/versions/{version}/restore — copies the
+    snapshot's findings/impression/recommendations back onto the report via
+    Reports.update, which appends a NEW version (history stays append-only).
+    Locked reports (submitted/final) cannot be restored."""
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        from db.ris_report_versions import RisReportVersions
+        report_id = request.path_params['report_id']
+        try:
+            version = int(request.path_params['version'])
+        except ValueError:
+            return validation_error('version must be an integer')
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, status FROM reports WHERE id::text = $1",
+                str(report_id),
+            )
+            if not row:
+                return not_found('Report not found')
+            if row['status'] in ('submitted', 'final'):
+                return api_error(
+                    'LOCKED',
+                    'Submitted or signed reports cannot be restored',
+                    status=409,
+                )
+            snap = await RisReportVersions(conn).get_version(
+                str(report_id), version)
+            if not snap:
+                return not_found(f'Version {version} not found')
+            updated = await Reports(conn).update(
+                str(report_id),
+                {
+                    'findings': snap.get('findings') or '',
+                    'impression': snap.get('impression') or '',
+                    'recommendations': snap.get('recommendations') or '',
+                },
+                edited_by=str(request.user.id),
+            )
+            await AuditLog(conn).log_event(
+                event_type='report.version_restored',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=str(report_id),
+                details={'version': version},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': updated})
 
 
 class ReportVersionsHandler(HTTPEndpoint):

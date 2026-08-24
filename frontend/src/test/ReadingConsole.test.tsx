@@ -539,4 +539,84 @@ describe("ReadingConsole", () => {
       screen.getAllByText(/Add comparison with prior CT/i).length,
     ).toBeGreaterThan(0);
   });
+
+  it("shows version history and restores a prior version (R-06)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/rep-1/versions") {
+        return Promise.resolve({
+          data: [
+            {
+              version_number: 1,
+              findings: "Initial findings",
+              impression: "",
+              recommendations: "",
+              edited_by: "50",
+              created_at: "2026-08-03T09:00:00Z",
+            },
+            {
+              version_number: 2,
+              findings: "Older draft text",
+              impression: "Prior impression",
+              recommendations: "",
+              edited_by: "50",
+              created_at: "2026-08-03T08:30:00Z",
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /version history/i }));
+
+    // History rows render.
+    expect(await screen.findByText(/v2/)).toBeInTheDocument();
+
+    // Restore v2 — the console reloads the report with the restored content.
+    const restoredReport = {
+      ...mockReport,
+      findings: "Older draft text",
+      impression: "Prior impression",
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/rep-1/versions/2/restore") {
+        return Promise.resolve({ data: restoredReport });
+      }
+      if (url === "reports/e1") {
+        return Promise.resolve({
+          data: { exam: mockExam, report: restoredReport },
+        });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /restore version 2/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenCalledWith(
+        "reports/rep-1/versions/2/restore",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByDisplayValue("Older draft text"),
+      ).toBeInTheDocument();
+    });
+  });
 });
