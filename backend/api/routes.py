@@ -145,7 +145,7 @@ from api.ris_orders import (
 from api.scheduling import (
     RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
     RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
-    RisChargebackHandler,
+    RisAppointmentCheckInHandler, RisChargebackHandler,
 )
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
@@ -405,6 +405,7 @@ _V1_ROUTES = [
     v2(Route('/ris/appointments', endpoint=RisAppointmentsHandler)),
     v2(Route('/ris/appointments/{id}/reschedule', endpoint=RisAppointmentRescheduleHandler)),
     v2(Route('/ris/appointments/{id}/cancel', endpoint=RisAppointmentCancelHandler)),
+    v2(Route('/ris/appointments/{id}/check-in', endpoint=RisAppointmentCheckInHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),
     v2(Route('/visits/{id}/consents/attach', endpoint=ConsentsHandler)),
     v2(Route('/schedule/availability', endpoint=AppointmentAvailabilityHandler)),

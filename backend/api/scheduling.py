@@ -24,6 +24,7 @@ from api.schemas.ris_scheduling import (
 from api.validate import parse_body
 from api.tenant_middleware import effective_tenant
 from db.conn import get_conn
+from db.audit_log import AuditLog
 from db.ris_appointments import RisAppointments
 from db.ris_resources import RisResourceSchedules, RisResources
 from services.scheduling.engine import (
@@ -205,6 +206,54 @@ class RisAppointmentCancelHandler(HTTPEndpoint):
             )
         except SchedulingNotFound as exc:
             return not_found(str(exc))
+        return ok({'data': _row_dict(row)})
+
+
+class RisAppointmentCheckInHandler(HTTPEndpoint):
+    """FD-04: staff one-click check-in — POST /ris/appointments/{id}/check-in.
+
+    The kiosk (PortalCheckInHandler) flips SCHEDULED -> ARRIVED with the
+    HMAC token as the bearer credential. Front-desk staff need the same
+    transition from an authenticated session: gated SCHEDULE_WRITE (held by
+    receptionists), audited ris.checkin_staff with the real actor. The
+    transition is idempotent for an already-ARRIVED appointment.
+    """
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        appointment_id = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisAppointments(conn)
+            current = await repo.get(appointment_id)
+            if current is None:
+                return not_found('Appointment not found')
+            if current['status'] == 'ARRIVED':
+                # Idempotent: an already-arrived appointment is a no-op — no
+                # state flip, but the staff click is still auditable.
+                await AuditLog(conn).log_event(
+                    event_type='ris.checkin_staff',
+                    actor_id=request.user.id,
+                    resource_id=appointment_id,
+                    resource_type='ris_appointments',
+                    tenant=effective_tenant(request) or 'default',
+                )
+                return ok({'data': _row_dict(current)})
+            if current['status'] != 'SCHEDULED':
+                return api_error('STATE_CONFLICT',
+                                 f'Cannot check in appointment in '
+                                 f'{current["status"]} state', status=409)
+            row = await repo.mark_checked_in(appointment_id)
+            if row is None:
+                return api_error('STATE_CONFLICT',
+                                 'Appointment not in SCHEDULED state',
+                                 status=409)
+            await AuditLog(conn).log_event(
+                event_type='ris.checkin_staff',
+                actor_id=request.user.id,
+                resource_id=appointment_id,
+                resource_type='ris_appointments',
+                tenant=effective_tenant(request) or 'default',
+            )
         return ok({'data': _row_dict(row)})
 
 class MultiSiteAvailabilityHandler(HTTPEndpoint):

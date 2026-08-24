@@ -484,6 +484,96 @@ class TestErrorContract:
         assert resp.status_code == 404
 
 
+class TestAppointmentCheckIn:
+    """FD-04: staff one-click check-in — POST /ris/appointments/{id}/check-in
+    flips SCHEDULED -> ARRIVED via RisAppointments.mark_checked_in, gated
+    SCHEDULE_WRITE, audited ris.checkin_staff (distinct from the public kiosk
+    token path ris.checkin which has no actor). Idempotent for ARRIVED."""
+
+    def _app(self, user):
+        from api.scheduling import RisAppointmentCheckInHandler
+
+        return Starlette(
+            routes=[Route('/ris/appointments/{id}/check-in',
+                          endpoint=RisAppointmentCheckInHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_requires_schedule_write(self):
+        client = TestClient(self._app(User({
+            'id': 1, 'permissions': ['SCHEDULE_READ']})))
+        resp = client.post('/ris/appointments/appt-1/check-in')
+        assert resp.status_code == 403
+
+    def test_checkin_flips_scheduled_to_arrived(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo, \
+             patch('api.scheduling.AuditLog') as audit:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'SCHEDULED'})
+            repo.return_value.mark_checked_in = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'ARRIVED'})
+            audit.return_value.log_event = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/check-in')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['data']['status'] == 'ARRIVED'
+        # F-09-style audit attribution: staff actor, not '' like the kiosk.
+        audit.return_value.log_event.assert_awaited_once()
+        args = audit.return_value.log_event.await_args
+        assert args.kwargs['event_type'] == 'ris.checkin_staff'
+        assert args.kwargs['actor_id'] == 1
+        assert args.kwargs['resource_id'] == 'appt-1'
+
+    def test_checkin_idempotent_when_already_arrived(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo, \
+             patch('api.scheduling.AuditLog') as audit:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'ARRIVED'})
+            repo.return_value.mark_checked_in = AsyncMock()
+            audit.return_value.log_event = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/check-in')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'ARRIVED'
+        # No state flip attempted, no duplicate audit.
+        repo.return_value.mark_checked_in.assert_not_awaited()
+        audit.return_value.log_event.assert_awaited_once()
+
+    def test_checkin_terminal_state_returns_409(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'CANCELLED'})
+            repo.return_value.mark_checked_in = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/check-in')
+        assert resp.status_code == 409
+        repo.return_value.mark_checked_in.assert_not_awaited()
+
+    def test_checkin_missing_appointment_returns_404(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(return_value=None)
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/nope/check-in')
+        assert resp.status_code == 404
+
+
 class TestClinicDayWindow:
     """B-10: the appointments day listing must interpret the requested
     date in the clinic's configured timezone — a UTC-only window shows
