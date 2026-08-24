@@ -168,6 +168,23 @@ describe("ReadingWorklist", () => {
     });
   });
 
+  it("passes the unread toggle through as unread=1 (R-01)", async () => {
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("JD")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Unread only"));
+
+    await waitFor(() => {
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      expect(lastCall[1].query.unread).toBe("1");
+    });
+  });
+
   it("filters by referring physician", async () => {
     mockRequest.mockResolvedValue({ data: mockItems });
     renderWorklist();

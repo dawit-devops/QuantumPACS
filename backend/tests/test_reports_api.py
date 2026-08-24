@@ -259,6 +259,44 @@ class TestReadingList:
         assert data[0]['referring_physician'] == 'Lee^Kim'
 
 
+class TestReadingListUnread:
+    """R-01: unread=1 narrows the queue to exams never opened for reading
+    (no report row yet) — the spec'd unread toggle."""
+
+    def test_unread_filter_passes_to_reading_list(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = client.get('/reports/reading-list?unread=1')
+        assert resp.status_code == 200
+        assert reports.reading_list.await_args.kwargs['unread'] == '1'
+
+    def test_unread_false_values_normalize_to_none(self):
+        client = TestClient(_make_app(RAD))
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_list = AsyncMock(return_value=[])
+            reports_cls.return_value = reports
+            with _conn():
+                resp = client.get('/reports/reading-list?unread=0')
+        assert resp.status_code == 200
+        assert reports.reading_list.await_args.kwargs['unread'] is None
+
+    def test_unread_adds_never_opened_clause(self):
+        client = TestClient(_make_app(RAD))
+
+        async def fake_fetch(q, *a):
+            assert 'r.id IS NULL' in q
+            return []
+
+        with _conn(fetch=fake_fetch):
+            resp = client.get('/reports/reading-list?unread=1')
+        assert resp.status_code == 200
+
+
 class TestExamAssign:
     def test_assign_requires_report_write(self):
         client = TestClient(_make_app(READ_ONLY))

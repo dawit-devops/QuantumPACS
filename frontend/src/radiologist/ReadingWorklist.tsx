@@ -71,6 +71,10 @@ function ReadingWorklist() {
   const [reviewFilter, setReviewFilter] = useState(
     () => searchParams.get("review") === "1",
   );
+  // R-01: unread toggle — exams never opened for reading.
+  const [unreadOnly, setUnreadOnly] = useState(
+    () => searchParams.get("unread") === "1",
+  );
   const [physicianFilter, setPhysicianFilter] = useState(
     () => searchParams.get("physician") || "",
   );
@@ -99,6 +103,7 @@ function ReadingWorklist() {
     if (assignedToMe) query.radiologist = "me";
     if (physicianFilter) query.physician = physicianFilter;
     if (reviewFilter) query.review = "1";
+    if (unreadOnly) query.unread = "1";
     // D1: server-side pagination — the queue can exceed any client page.
     query.page = String(pageRef.current);
     query.per_page = String(pageSizeRef.current);
@@ -119,6 +124,7 @@ function ReadingWorklist() {
     assignedToMe,
     physicianFilter,
     reviewFilter,
+    unreadOnly,
   ]);
 
   useEffect(() => {
@@ -275,6 +281,7 @@ function ReadingWorklist() {
     if (assignedToMe) q.radiologist = "me";
     if (physicianFilter) q.physician = physicianFilter;
     if (reviewFilter) q.review = "1";
+    if (unreadOnly) q.unread = "1";
     const s = new URLSearchParams(q).toString();
     navigate(`/reading/${examId}${s ? `?${s}` : ""}`);
   };
@@ -363,6 +370,12 @@ function ReadingWorklist() {
           onChange={(e) => setReviewFilter(e.target.checked)}
         >
           Awaiting review
+        </Checkbox>
+        <Checkbox
+          checked={unreadOnly}
+          onChange={(e) => setUnreadOnly(e.target.checked)}
+        >
+          Unread only
         </Checkbox>
       </div>
 

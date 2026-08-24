@@ -136,6 +136,10 @@ class ReadingListHandler(HTTPEndpoint):
         review = request.query_params.get('review')
         if review in ('0', 'false', ''):
             review = None
+        # R-01: unread toggle — never-opened exams only.
+        unread = request.query_params.get('unread')
+        if unread in ('0', 'false', ''):
+            unread = None
         # D1: server-side pagination (page/per_page). Absent params mean
         # "unpaged" — never coerce them to an implicit page of 1×1.
         try:
@@ -152,6 +156,7 @@ class ReadingListHandler(HTTPEndpoint):
                 status=status, modality=modality, search=search,
                 radiologist=radiologist, physician=physician,
                 date_from=date_from, date_to=date_to, review=review,
+                unread=unread,
                 page=page, per_page=per_page,
             )
             if isinstance(result, tuple):

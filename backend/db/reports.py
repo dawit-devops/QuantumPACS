@@ -190,6 +190,7 @@ class Reports(Table):
     async def reading_list(self, status=None, modality=None, search=None,
                             radiologist=None, physician=None,
                             date_from=None, date_to=None, review=None,
+                            unread=None,
                             page=None, per_page=None):
         """Exams handed off to the reading worklist that lack a final report.
 
@@ -224,6 +225,9 @@ class Reports(Table):
                 idx += 1
         if review:
             where.append("r.status = 'submitted'")
+        if unread:
+            # R-01: never opened for reading — no report row exists yet.
+            where.append('r.id IS NULL')
         if modality:
             where.append(f"e.modality = ${idx}")
             params.append(modality)
