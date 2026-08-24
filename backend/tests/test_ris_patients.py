@@ -96,6 +96,7 @@ class TestRisPatientRegistration:
     def test_post_creates_patient_with_dedup(self, frontdesk_patches):
         fd = _fd(frontdesk_patches)
         fd.find_patient_duplicate.return_value = None
+        fd.search_patients_fuzzy.return_value = []
         fd.create_patient.return_value = _patient_row()
 
         client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
@@ -105,7 +106,7 @@ class TestRisPatientRegistration:
 
         assert resp.status_code == 201
         assert resp.json()['data']['patient_id'] == 'MRN-001'
-        fd.find_patient_duplicate.assert_awaited_once_with('Jane Doe', '1980-01-01')
+        fd.find_patient_duplicate.assert_awaited_once_with('Jane Doe', '1980-01-01', '')
         fd.create_patient.assert_awaited_once()
         frontdesk_patches['audit'].instances[0].log_event.assert_awaited_once()
 
@@ -114,6 +115,7 @@ class TestRisPatientRegistration:
         # through to persistence for the portal profile.
         fd = _fd(frontdesk_patches)
         fd.find_patient_duplicate.return_value = None
+        fd.search_patients_fuzzy.return_value = []
         fd.create_patient.return_value = _patient_row()
 
         client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
@@ -126,6 +128,46 @@ class TestRisPatientRegistration:
         kwargs = fd.create_patient.call_args.args[0]
         assert kwargs['phone'] == '(555) 123-4567'
         assert kwargs['email'] == 'jane@example.com'
+
+    def test_post_phone_dedup_probes_phone_key(self, frontdesk_patches):
+        # FD-01: the dedup probe passes the submitted phone so the DB can
+        # match by phone in addition to name+DOB.
+        fd = _fd(frontdesk_patches)
+        fd.find_patient_duplicate.return_value = None
+        fd.search_patients_fuzzy.return_value = []
+        fd.create_patient.return_value = _patient_row()
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
+        resp = client.post('/ris/patients', json={
+            'name': 'Jane Doe', 'birth_date': '1980-01-01', 'sex': 'F',
+            'phone': '(555) 123-4567',
+        })
+
+        assert resp.status_code == 201
+        fd.find_patient_duplicate.assert_awaited_once_with(
+            'Jane Doe', '1980-01-01', '(555) 123-4567')
+
+    def test_post_surfaces_fuzzy_warning(self, frontdesk_patches):
+        # FD-01: when exact name+DOB misses but a similar name exists, the
+        # response carries a warning so the front desk can alert the user.
+        fd = _fd(frontdesk_patches)
+        fd.find_patient_duplicate.return_value = None
+        fd.search_patients_fuzzy.return_value = [
+            {'id': 2, 'patient_id': 'MRN-099', 'name': 'Jane Doey',
+             'birth_date': '1980-01-01', 'sex': 'F', 'sim': 0.85},
+        ]
+        fd.create_patient.return_value = _patient_row()
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
+        resp = client.post('/ris/patients', json={
+            'name': 'Jane Doey', 'birth_date': '1980-01-01', 'sex': 'F',
+        })
+
+        assert resp.status_code == 201
+        warning = resp.json()['data'].get('warning')
+        assert warning is not None
+        assert warning['existing_patient_id'] == 'MRN-099'
+        assert warning['existing_patient_name'] == 'Jane Doey'
 
     def test_post_returns_409_on_duplicate(self, frontdesk_patches):
         fd = _fd(frontdesk_patches)

@@ -53,6 +53,11 @@ function Registration() {
   const [saving, setSaving] = useState(false);
   const [bookFor, setBookFor] = useState<FrontDeskPatient | null>(null);
   const [form] = Form.useForm();
+  // FD-01: MPI soft alert — the created patient may be a duplicate of an
+  // existing record flagged by the fuzzy trigram probe.
+  const [fuzzyWarning, setFuzzyWarning] = useState<
+    FrontDeskPatient["warning"] | null
+  >(null);
 
   const runSearch = useCallback((q: string) => {
     const term = q.trim();
@@ -124,6 +129,9 @@ function Registration() {
       setQuery("");
       setResults([]);
       setSearched(false);
+      // FD-01: surface the MPI soft alert when the server flagged a similar
+      // existing patient (fuzzy name match).
+      setFuzzyWarning(patient.warning ?? null);
     } catch (e: any) {
       // The patient exists server-side; keep the form values and surface the
       // existing record through the dedup path so the next action is "open a
@@ -226,6 +234,24 @@ function Registration() {
             showIcon
             className="fd-dedup-banner"
             title="No existing patient matched — registering a new record is allowed."
+          />
+        )}
+
+        {fuzzyWarning && (
+          <Alert
+            type="warning"
+            showIcon
+            className="fd-dedup-banner"
+            title={`Similar patient exists: ${fuzzyWarning.existing_patient_name} (${fuzzyWarning.existing_patient_id})`}
+            description="The new record was created, but a probable duplicate was found. Review before proceeding."
+            action={
+              <Button
+                size="small"
+                onClick={() => setFuzzyWarning(null)}
+              >
+                Dismiss
+              </Button>
+            }
           />
         )}
 

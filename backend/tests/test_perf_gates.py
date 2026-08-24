@@ -549,6 +549,8 @@ class TestRegistrationPerf:
                 req = type('R', (), {'user': type('U', (), {'id': 1})()})()
                 with patch('db.frontdesk.FrontDesk.find_patient_duplicate',
                            AsyncMock(return_value=None)), \
+                     patch('db.frontdesk.FrontDesk.search_patients_fuzzy',
+                           AsyncMock(return_value=[])), \
                      patch('db.frontdesk.FrontDesk.create_patient',
                            new=fake_create_patient), \
                      patch('db.frontdesk.FrontDesk.create_visit',

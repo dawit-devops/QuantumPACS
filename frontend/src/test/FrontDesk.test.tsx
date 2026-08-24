@@ -168,6 +168,27 @@ describe("Registration", () => {
     });
   });
 
+  it("surfaces the MPI fuzzy duplicate warning after registration", async () => {
+    // FD-01: the backend flags a probable duplicate via the fuzzy probe.
+    mockCreatePatient.mockResolvedValue({
+      ...PATIENT,
+      name: "Jane Roe",
+      warning: {
+        existing_patient_id: "P099",
+        existing_patient_name: "Jane Roey",
+      },
+    });
+    const user = userEvent.setup();
+    renderWithAuth(<Registration />);
+    await user.type(screen.getByLabelText("Full name"), "Jane Roe");
+    await user.click(
+      screen.getByRole("button", { name: /register & open visit/i }),
+    );
+    expect(
+      await screen.findByText(/Similar patient exists: Jane Roey \(P099\)/),
+    ).toBeInTheDocument();
+  });
+
   it("hides write affordances for a read-only user", async () => {
     seedUser(["REGISTRATION_READ"]);
     renderWithAuth(<Registration />);

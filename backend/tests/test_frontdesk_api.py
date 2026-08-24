@@ -82,6 +82,8 @@ class TestPatientRegistration:
                 'birth_date': '1990-01-01', 'sex': 'F',
             },
         ]
+        # FD-01: the fuzzy MPI probe returns no similar matches.
+        mock_conn.fetch.return_value = []
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.post('/patients', json={
                 'patient_id': 'P001', 'name': 'Test Patient',
@@ -129,6 +131,8 @@ class TestPatientRegistration:
             'id': 2, 'patient_id': 'P1234567890', 'name': 'Gen Patient',
             'birth_date': '', 'sex': '',
         }
+        # FD-01: the fuzzy MPI probe returns no similar matches.
+        mock_conn.fetch.return_value = []
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.post('/patients', json={'name': 'Gen Patient'})
         assert resp.status_code == 201

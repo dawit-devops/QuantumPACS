@@ -75,7 +75,8 @@ async def _register_patient(conn, request, body):
     fd = FrontDesk(conn)
     patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
     name = body.name.strip()
-    existing = await fd.find_patient_duplicate(name, body.birth_date)
+    existing = await fd.find_patient_duplicate(
+        name, body.birth_date, (body.phone or '').strip())
     if existing:
         return api_error(
             'PATIENT_EXISTS',
@@ -95,6 +96,19 @@ async def _register_patient(conn, request, body):
         })
     except UniqueViolationError:
         return validation_error('Patient with this ID already exists')
+    # FD-01: MPI soft alert — the exact match missed, but a fuzzy trigram
+    # match on the name is a probable duplicate the front desk should flag.
+    warning = None
+    try:
+        fuzzy = await fd.search_patients_fuzzy(name, threshold=0.3, limit=1)
+    except Exception:
+        fuzzy = []
+    if fuzzy:
+        match = fuzzy[0]
+        warning = {
+            'existing_patient_id': match['patient_id'],
+            'existing_patient_name': match['name'],
+        }
     await AuditLog(conn).log_event(
         event_type='frontdesk.patient_registered',
         actor_id=request.user.id,
@@ -104,7 +118,10 @@ async def _register_patient(conn, request, body):
         tenant=effective_tenant(request),
         request_id=request_id_var.get(),
     )
-    return created({'data': _row_dict(row)})
+    data = _row_dict(row)
+    if warning:
+        data['warning'] = warning
+    return created({'data': data})
 
 
 class PatientsRegistrationHandler(HTTPEndpoint):

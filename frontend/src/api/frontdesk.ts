@@ -15,6 +15,10 @@ export interface FrontDeskPatient {
   sex?: string;
   phone?: string;
   email?: string;
+  warning?: {
+    existing_patient_id: string;
+    existing_patient_name: string;
+  };
 }
 
 export interface Visit {

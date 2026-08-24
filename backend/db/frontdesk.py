@@ -65,22 +65,34 @@ class FrontDesk:
             get_tenant_slug() or 'default',
         )
 
-    async def find_patient_duplicate(self, name, birth_date):
-        """Exact demographic match for the MPI pre-check (R5-13) — a patient
-        with the same name and date of birth is presumed to be the same
-        person regardless of the MRN seen. Only meaningful when a birth date
-        was actually captured; empty dates never match."""
-        if not birth_date:
+    async def find_patient_duplicate(self, name, birth_date, phone=''):
+        """Exact demographic match for the MPI pre-check (R5-13 / FD-01) — a
+        patient with the same name+DOB (or same phone, when provided) is
+        presumed to be the same person regardless of the MRN seen. Only
+        meaningful when a birth date was actually captured; empty dates
+        never match."""
+        # Build OR clauses: (name + birth_date) OR (phone) when phone given.
+        clauses = []
+        if birth_date:
+            clauses.append('(name = $%d AND birth_date = $%d)' % (
+                len(clauses) + 1, len(clauses) + 2))
+        if phone:
+            clauses.append('phone = $%d' % (len(clauses) + 1))
+        if not clauses:
             return None
+        params = [name, birth_date] if birth_date else []
+        if phone:
+            params.append(phone)
+        where = ' OR '.join(clauses)
         return await self.conn.fetchrow(
-            """
-            SELECT id, patient_id, name, birth_date, sex
+            f"""
+            SELECT id, patient_id, name, birth_date, sex, phone
             FROM patients
-            WHERE name = $1 AND birth_date = $2
+            WHERE {where}
             ORDER BY created_at
             LIMIT 1
             """,
-            name, birth_date,
+            *params,
         )
 
     async def get_patient(self, patient_id):
