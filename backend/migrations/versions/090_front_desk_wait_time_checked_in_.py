@@ -31,8 +31,38 @@ def upgrade() -> None:
         sa.Column('checked_in_at', sa.DateTime(timezone=True), nullable=True,
                   server_default=None),
     )
+    # FD-02: insurance coverage fields — provider/member_id/copay/deductible
+    # so eligibility returns real coverage data instead of a hardcoded stub.
+    op.add_column(
+        'insurance_records',
+        sa.Column('provider', sa.Text(), nullable=True, server_default=None),
+    )
+    op.add_column(
+        'insurance_records',
+        sa.Column('member_id', sa.Text(), nullable=True, server_default=None),
+    )
+    op.add_column(
+        'insurance_records',
+        sa.Column('copay_amount', sa.Numeric(10, 2), nullable=True,
+                  server_default=None),
+    )
+    op.add_column(
+        'insurance_records',
+        sa.Column('deductible_total', sa.Numeric(10, 2), nullable=True,
+                  server_default=None),
+    )
+    op.add_column(
+        'insurance_records',
+        sa.Column('deductible_remaining', sa.Numeric(10, 2), nullable=True,
+                  server_default=None),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column('insurance_records', 'deductible_remaining')
+    op.drop_column('insurance_records', 'deductible_total')
+    op.drop_column('insurance_records', 'copay_amount')
+    op.drop_column('insurance_records', 'member_id')
+    op.drop_column('insurance_records', 'provider')
     op.drop_column('visits', 'checked_in_at')
     op.drop_column('ris_appointments', 'checked_in_at')

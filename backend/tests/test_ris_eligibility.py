@@ -1,8 +1,8 @@
-"""S3-14 — Insurance eligibility stub.
+"""FD-02 — Insurance eligibility reads from stored policy.
 
-RIS-AC-P04-02: GET /api/ris/patients/{id}/eligibility returns
-{"status": "active"} for any patient — the stub satisfies the check-in
-flow today; real payer API integration is deferred to v1.1.
+RIS-AC-P04-02: GET /api/ris/patients/{id}/eligibility returns coverage
+data (provider, member_id, copay, deductible) from the most recent
+insurance record — not a hardcoded stub.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -73,14 +73,24 @@ def _fd(eligibility_patches):
     return fd
 
 
-class TestInsuranceEligibilityStub:
-    """S3-14 — eligibility endpoint returns active for any patient."""
+class TestInsuranceEligibility:
+    """FD-02: eligibility endpoint returns coverage data from the most
+    recent insurance record, not a hardcoded stub."""
 
-    def test_eligibility_returns_active(self, eligibility_patches):
+    def test_eligibility_returns_coverage_from_policy(self, eligibility_patches):
         fd = _fd(eligibility_patches)
         fd.get_patient.return_value = {
             'id': 1, 'patient_id': 'MRN-001', 'name': 'Jane Doe',
         }
+        fd.list_insurance.return_value = [
+            {
+                'id': 'ins-1', 'patient_id': 'MRN-001', 'policy_number': 'POL-1',
+                'provider': 'Aetna', 'member_id': 'M-123',
+                'copay_amount': 25.0, 'deductible_total': 500.0,
+                'deductible_remaining': 350.0,
+                'authorization_status': 'approved',
+            }
+        ]
 
         client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_READ']})))
         resp = client.get('/ris/patients/MRN-001/eligibility')
@@ -88,8 +98,28 @@ class TestInsuranceEligibilityStub:
         assert resp.status_code == 200
         data = resp.json()['data']
         assert data['status'] == 'active'
-        assert data['patient_id'] == 'MRN-001'
-        assert data['provider'] == 'stub'
+        assert data['provider'] == 'Aetna'
+        assert data['member_id'] == 'M-123'
+        assert data['copay_amount'] == 25.0
+        assert data['deductible_total'] == 500.0
+        assert data['deductible_remaining'] == 350.0
+        assert 'checked_at' in data
+
+    def test_eligibility_no_policy_reports_inactive(self, eligibility_patches):
+        fd = _fd(eligibility_patches)
+        fd.get_patient.return_value = {
+            'id': 1, 'patient_id': 'MRN-001', 'name': 'Jane Doe',
+        }
+        fd.list_insurance.return_value = []
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_READ']})))
+        resp = client.get('/ris/patients/MRN-001/eligibility')
+
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['status'] == 'none'
+        assert data['provider'] == ''
+        assert data['copay_amount'] is None
 
     def test_eligibility_unknown_patient_404(self, eligibility_patches):
         fd = _fd(eligibility_patches)
@@ -103,16 +133,3 @@ class TestInsuranceEligibilityStub:
         client = TestClient(_make_app(User({'id': 1, 'permissions': []})))
         resp = client.get('/ris/patients/MRN-001/eligibility')
         assert resp.status_code == 403
-
-    def test_eligibility_includes_timestamp(self, eligibility_patches):
-        fd = _fd(eligibility_patches)
-        fd.get_patient.return_value = {
-            'id': 1, 'patient_id': 'MRN-001', 'name': 'Jane Doe',
-        }
-
-        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_READ']})))
-        resp = client.get('/ris/patients/MRN-001/eligibility')
-
-        assert resp.status_code == 200
-        data = resp.json()['data']
-        assert 'checked_at' in data

@@ -317,6 +317,29 @@ class TestWaitingQueuePrivacy:
         assert data[0]['wait_minutes'] == 22
 
 
+class TestInsuranceRecordFields:
+    """FD-02: create_insurance persists coverage fields so the eligibility
+    handler can return real copay/deductible/provider data."""
+
+    def test_create_insurance_persists_coverage_fields(self):
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(return_value={'id': 'ins-1'})
+        from db.frontdesk import FrontDesk
+        fd = FrontDesk(mock_conn)
+        import asyncio
+        asyncio.run(fd.create_insurance({
+            'patient_id': 'P-1', 'policy_number': 'POL-1',
+            'provider': 'Aetna', 'member_id': 'M-123',
+            'copay_amount': 25.0, 'deductible_total': 500.0,
+            'created_by': '1',
+        }))
+        sql = mock_conn.fetchrow.call_args.args[0]
+        assert 'provider' in sql
+        assert 'member_id' in sql
+        assert 'copay_amount' in sql
+        assert 'deductible_total' in sql
+
+
 class TestVisitStatusTransitions:
     """R5-10: the server enforces the one canonical visit lifecycle —
     registered → checked_in → in_progress → complete, terminal at complete."""

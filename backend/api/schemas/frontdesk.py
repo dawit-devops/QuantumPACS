@@ -87,6 +87,13 @@ class CreateInsuranceRequest(BaseModel):
     )
     authorization_number: str = Field('', description="Pre-authorization number")
     notes: str = Field('', description="Free-form notes")
+    # FD-02: coverage fields persisted so eligibility returns real data.
+    provider: str = Field('', description="Payer/provider name")
+    member_id: str = Field('', description="Payer member ID")
+    copay_amount: float | None = Field(None, description="Per-visit copay")
+    deductible_total: float | None = Field(None, description="Annual deductible total")
+    deductible_remaining: float | None = Field(
+        None, description="Annual deductible remaining",)
 
 
 class MergePatientsRequest(BaseModel):

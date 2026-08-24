@@ -239,6 +239,37 @@ class TestRisPatientInsurance:
         assert resp.json()['data']['policy_number'] == 'POL-1'
         fd.create_insurance.assert_awaited_once()
 
+    def test_post_insurance_captures_coverage_fields(self, frontdesk_patches):
+        # FD-02: the POST schema accepts provider/member_id/copay/deductible
+        # so the eligibility endpoint can return real coverage data.
+        fd = _fd(frontdesk_patches)
+        fd.get_patient.return_value = _patient_row()
+        fd.create_insurance.return_value = {
+            'id': 5, 'patient_id': 'MRN-001', 'policy_number': 'POL-1',
+            'provider': 'Aetna', 'member_id': 'M-123',
+            'copay_amount': 25.0, 'deductible_total': 500.0,
+            'deductible_remaining': 500.0,
+            'guarantor_name': '', 'authorization_status': 'none',
+            'authorization_number': '', 'notes': '', 'created_by': '1',
+        }
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_WRITE']})))
+        resp = client.post('/ris/patients/MRN-001/insurance', json={
+            'policy_number': 'POL-1',
+            'provider': 'Aetna',
+            'member_id': 'M-123',
+            'copay_amount': 25.0,
+            'deductible_total': 500.0,
+        })
+
+        assert resp.status_code == 201
+        data = resp.json()['data']
+        assert data['provider'] == 'Aetna'
+        assert data['member_id'] == 'M-123'
+        assert data['copay_amount'] == 25.0
+        assert data['deductible_total'] == 500.0
+        fd.create_insurance.assert_awaited_once()
+
 
 class TestRisPatientCheckIn:
     def test_check_in_moves_open_visit(self, frontdesk_patches):

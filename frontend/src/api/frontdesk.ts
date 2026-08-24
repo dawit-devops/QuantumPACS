@@ -58,7 +58,23 @@ export interface InsuranceRecord {
   authorization_status?: "none" | "pending" | "approved" | "denied";
   authorization_number?: string;
   notes?: string;
+  provider?: string;
+  member_id?: string;
+  copay_amount?: number | null;
+  deductible_total?: number | null;
+  deductible_remaining?: number | null;
   created_at?: string;
+}
+
+export interface InsuranceEligibility {
+  patient_id: string;
+  status: "active" | "none" | "inactive";
+  provider: string;
+  member_id: string;
+  copay_amount: number | null;
+  deductible_total: number | null;
+  deductible_remaining: number | null;
+  checked_at: string;
 }
 
 export interface Appointment {
@@ -180,6 +196,13 @@ export const createInsurance = (
   request<{ data: InsuranceRecord }>(`patients/${patientId}/insurance`, {
     data,
   }).then((res) => res.data);
+
+export const getInsuranceEligibility = (
+  patientId: string,
+): Promise<InsuranceEligibility | null> =>
+  request<{ data: InsuranceEligibility }>(
+    `ris/patients/${patientId}/eligibility`,
+  ).then((res) => res?.data ?? null);
 
 // ---- Appointments / capacity ---------------------------------------------------
 

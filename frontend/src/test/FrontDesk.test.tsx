@@ -26,6 +26,7 @@ const mockListConsents = vi.hoisted(() => vi.fn());
 const mockAttachConsent = vi.hoisted(() => vi.fn());
 const mockListInsurance = vi.hoisted(() => vi.fn());
 const mockCreateInsurance = vi.hoisted(() => vi.fn());
+const mockGetInsuranceEligibility = vi.hoisted(() => vi.fn());
 const mockUpdateVisit = vi.hoisted(() => vi.fn());
 const mockGetWaitingQueue = vi.hoisted(() => vi.fn());
 const mockGetAvailability = vi.hoisted(() => vi.fn());
@@ -45,6 +46,7 @@ vi.mock("../api/frontdesk", () => ({
   attachConsent: mockAttachConsent,
   listInsurance: mockListInsurance,
   createInsurance: mockCreateInsurance,
+  getInsuranceEligibility: mockGetInsuranceEligibility,
   getAvailability: mockGetAvailability,
   createAppointment: mockCreateAppointment,
   cancelAppointment: vi.fn(),
@@ -193,6 +195,11 @@ describe("Visits & Check-In", () => {
     mockListOrders.mockResolvedValue([]);
     mockListConsents.mockResolvedValue([]);
     mockListInsurance.mockResolvedValue([]);
+    mockGetInsuranceEligibility.mockResolvedValue({
+      patient_id: "P001", status: "none", provider: "",
+      member_id: "", copay_amount: null, deductible_total: null,
+      deductible_remaining: null, checked_at: "2026-08-08T10:00:00Z",
+    });
     mockUpdateVisit.mockResolvedValue(undefined);
     mockCreateOrder.mockResolvedValue({});
     mockAttachConsent.mockResolvedValue({});
@@ -221,6 +228,25 @@ describe("Visits & Check-In", () => {
     expect(
       await screen.findByText(/Insurance \/ Guarantor/),
     ).toBeInTheDocument();
+  });
+
+  it("shows insurance eligibility coverage when active (FD-02)", async () => {
+    mockGetInsuranceEligibility.mockResolvedValue({
+      patient_id: "P001", status: "active", provider: "Aetna",
+      member_id: "M-123", copay_amount: 25, deductible_total: 500,
+      deductible_remaining: 350, checked_at: "2026-08-08T10:00:00Z",
+    });
+    mockListInsurance.mockResolvedValue([
+      { id: "ins-1", patient_id: "P001", policy_number: "POL-1",
+        provider: "Aetna", member_id: "M-123" },
+    ]);
+    const user = userEvent.setup();
+    renderWithAuth(<Visits />);
+    expect(await screen.findByText("P001")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /details/i }));
+    expect(await screen.findByText("Aetna")).toBeInTheDocument();
+    expect(screen.getByText(/Copay:\s*\$25/)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining:\s*\$350/)).toBeInTheDocument();
   });
 
   it("adds an order from the drawer", async () => {

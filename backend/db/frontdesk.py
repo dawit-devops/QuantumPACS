@@ -351,14 +351,18 @@ class FrontDesk:
             """
             INSERT INTO insurance_records (patient_id, policy_number, guarantor_name,
                                            authorization_status, authorization_number, notes,
+                                           provider, member_id, copay_amount,
+                                           deductible_total, deductible_remaining,
                                            created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
             """,
             data['patient_id'], data.get('policy_number', ''),
             data.get('guarantor_name', ''), data.get('authorization_status', 'none'),
             data.get('authorization_number', ''), data.get('notes', ''),
-            data.get('created_by', ''),
+            data.get('provider', ''), data.get('member_id', ''),
+            data.get('copay_amount'), data.get('deductible_total'),
+            data.get('deductible_remaining'), data.get('created_by', ''),
         )
 
     async def update_insurance(self, insurance_id, updates):

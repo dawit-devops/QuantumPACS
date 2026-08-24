@@ -44,10 +44,12 @@ import {
   attachConsent,
   listInsurance,
   createInsurance,
+  getInsuranceEligibility,
   type Visit,
   type VisitOrder,
   type ConsentDocument,
   type InsuranceRecord,
+  type InsuranceEligibility,
 } from "../api/frontdesk";
 import "./FrontDesk.css";
 
@@ -89,6 +91,7 @@ function Visits() {
   const [orders, setOrders] = useState<VisitOrder[]>([]);
   const [consents, setConsents] = useState<ConsentDocument[]>([]);
   const [insurance, setInsurance] = useState<InsuranceRecord[]>([]);
+  const [eligibility, setEligibility] = useState<InsuranceEligibility | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [orderForm] = Form.useForm();
@@ -152,18 +155,21 @@ function Visits() {
     setOrders([]);
     setConsents([]);
     setInsurance([]);
+    setEligibility(null);
     Promise.all([
       getVisit(visit.id),
       listOrders(visit.id),
       listConsents(visit.id),
       listInsurance(visit.patient_id),
+      getInsuranceEligibility(visit.patient_id),
     ])
-      .then(([v, o, c, i]) => {
+      .then(([v, o, c, i, e]) => {
         if (seq !== detailSeq.current) return;
         setVisitDetail(v);
         setOrders(o);
         setConsents(c);
         setInsurance(i);
+        setEligibility(e);
       })
       .catch((e: any) => {
         if (seq === detailSeq.current) {
@@ -678,6 +684,39 @@ function Visits() {
               <div className="fd-visit-section-title">
                 <span>Insurance / Guarantor</span>
               </div>
+              {eligibility && eligibility.status === "active" && (
+                <div className="fd-eligibility" style={{ marginBottom: 8 }}>
+                  <div>
+                    <Tag color="green">{eligibility.provider || "Active"}</Tag>
+                    <span className="fd-patient-meta">
+                      Member: {eligibility.member_id || "—"}
+                    </span>
+                  </div>
+                  <div className="fd-patient-meta">
+                    Copay:{" "}
+                    {eligibility.copay_amount != null
+                      ? `$${eligibility.copay_amount}`
+                      : "—"}{" "}
+                    · Deductible:{" "}
+                    {eligibility.deductible_total != null
+                      ? `$${eligibility.deductible_total}`
+                      : "—"}{" "}
+                    · Remaining:{" "}
+                    {eligibility.deductible_remaining != null
+                      ? `$${eligibility.deductible_remaining}`
+                      : "—"}
+                  </div>
+                </div>
+              )}
+              {eligibility && eligibility.status === "none" && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 8 }}
+                  title="No coverage on file"
+                  description="Add an insurance policy to run an eligibility check."
+                />
+              )}
               {insurance.length === 0 ? (
                 <Alert
                   type="info"
@@ -724,6 +763,33 @@ function Visits() {
                       style={{ flex: 1 }}
                     >
                       <Input placeholder="Guarantor name" />
+                    </Form.Item>
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <Form.Item name="provider" label="Provider" style={{ flex: 1 }}>
+                      <Input placeholder="Payer/provider" />
+                    </Form.Item>
+                    <Form.Item name="member_id" label="Member ID" style={{ flex: 1 }}>
+                      <Input placeholder="Member ID" />
+                    </Form.Item>
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <Form.Item name="copay_amount" label="Copay ($)" style={{ flex: 1 }}>
+                      <Input type="number" placeholder="0.00" />
+                    </Form.Item>
+                    <Form.Item
+                      name="deductible_total"
+                      label="Deductible ($)"
+                      style={{ flex: 1 }}
+                    >
+                      <Input type="number" placeholder="0.00" />
+                    </Form.Item>
+                    <Form.Item
+                      name="deductible_remaining"
+                      label="Deductible remaining ($)"
+                      style={{ flex: 1 }}
+                    >
+                      <Input type="number" placeholder="0.00" />
                     </Form.Item>
                   </div>
                   <Form.Item name="notes" label="Notes">

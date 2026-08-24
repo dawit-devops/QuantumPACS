@@ -574,6 +574,107 @@ class TestAppointmentCheckIn:
         assert resp.status_code == 404
 
 
+class TestNoShowTracking:
+    """S-13: no-show tracking — POST /ris/appointments/{id}/no-show flips
+    SCHEDULED/ARRIVED -> NO_SHOW, audited, idempotent. Only valid from
+    SCHEDULED or ARRIVED (before the scan window closes)."""
+
+    def _app(self, user):
+        from api.scheduling import RisAppointmentNoShowHandler
+
+        return Starlette(
+            routes=[Route('/ris/appointments/{id}/no-show',
+                          endpoint=RisAppointmentNoShowHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_requires_schedule_write(self):
+        client = TestClient(self._app(User({
+            'id': 1, 'permissions': ['SCHEDULE_READ']})))
+        resp = client.post('/ris/appointments/appt-1/no-show')
+        assert resp.status_code == 403
+
+    def test_noshows_flips_scheduled_to_no_show(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo, \
+             patch('api.scheduling.AuditLog') as audit:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'SCHEDULED'})
+            repo.return_value.mark_no_show = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'NO_SHOW'})
+            audit.return_value.log_event = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/no-show')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'NO_SHOW'
+        audit.return_value.log_event.assert_awaited_once()
+        args = audit.return_value.log_event.await_args
+        assert args.kwargs['event_type'] == 'ris.no_show'
+        assert args.kwargs['actor_id'] == 1
+
+    def test_noshows_flips_arrived_to_no_show(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo, \
+             patch('api.scheduling.AuditLog') as audit:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'ARRIVED'})
+            repo.return_value.mark_no_show = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'NO_SHOW'})
+            audit.return_value.log_event = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/no-show')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'NO_SHOW'
+
+    def test_noshows_terminal_state_returns_409(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'COMPLETED'})
+            repo.return_value.mark_no_show = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/no-show')
+        assert resp.status_code == 409
+        repo.return_value.mark_no_show.assert_not_awaited()
+
+    def test_noshows_missing_appointment_returns_404(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(return_value=None)
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/nope/no-show')
+        assert resp.status_code == 404
+
+    def test_noshows_already_no_show_is_idempotent(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo, \
+             patch('api.scheduling.AuditLog') as audit:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(
+                return_value={'id': 'appt-1', 'status': 'NO_SHOW'})
+            repo.return_value.mark_no_show = AsyncMock()
+            audit.return_value.log_event = AsyncMock()
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/appt-1/no-show')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'NO_SHOW'
+        repo.return_value.mark_no_show.assert_not_awaited()
+        audit.return_value.log_event.assert_awaited_once()
+
+
 class TestClinicDayWindow:
     """B-10: the appointments day listing must interpret the requested
     date in the clinic's configured timezone — a UTC-only window shows

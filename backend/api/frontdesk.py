@@ -714,24 +714,50 @@ class RisPatientsUndoMergeHandler(HTTPEndpoint):
         return ok({'data': result})
 
 
-# ---- Insurance eligibility stub (S3-14) ----
+# ---- Insurance eligibility (S3-14 / FD-02) ----
 
 
 class RisPatientEligibilityHandler(HTTPEndpoint):
+    """FD-02: return coverage data from the patient's most recent insurance
+    record — provider, member ID, copay, deductible, coverage status.
+
+    No live payer API is integrated; eligibility is derived from the stored
+    policy (the payer verification adapter is a later-phase concern).
+    A patient with no recorded policy reports status 'none'."""
+
     @requires_permission(Permission.PATIENT_READ)
     async def get(self, request):
         patient_id = request.path_params['id']
+        from datetime import datetime, timezone
         async with get_conn() as conn:
             fd = FrontDesk(conn)
             patient = await fd.get_patient(patient_id)
             if not patient:
                 return not_found('Patient not found')
-        from datetime import datetime, timezone
+            records = await fd.list_insurance(patient_id)
+        record = records[0] if records else None
+        if record is None:
+            return ok({
+                'data': {
+                    'patient_id': patient_id,
+                    'status': 'none',
+                    'provider': '',
+                    'member_id': '',
+                    'copay_amount': None,
+                    'deductible_total': None,
+                    'deductible_remaining': None,
+                    'checked_at': datetime.now(timezone.utc).isoformat(),
+                },
+            })
         return ok({
             'data': {
                 'patient_id': patient_id,
                 'status': 'active',
-                'provider': 'stub',
+                'provider': record.get('provider') or '',
+                'member_id': record.get('member_id') or '',
+                'copay_amount': record.get('copay_amount'),
+                'deductible_total': record.get('deductible_total'),
+                'deductible_remaining': record.get('deductible_remaining'),
                 'checked_at': datetime.now(timezone.utc).isoformat(),
             },
         })
