@@ -480,7 +480,7 @@ class ExamReportSignHandler(HTTPEndpoint):
                         'New imaging report available',
                         f'{exam.get("accession_number") or exam_id} — '
                         f'{exam.get("requested_procedure_desc", "")} report ready',
-                        f'/portal/results/{report.get("id") or report_id}',
+                        f'/portal/results/{report.get("id") or exam_id}',
                     )
                 except Exception:
                     log.warning('portal.report_available notify failed for %s',

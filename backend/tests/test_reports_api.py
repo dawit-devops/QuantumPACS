@@ -506,6 +506,34 @@ class TestExamReportSign:
         assert resp.status_code == 400
         assert 'Impression is required' in resp.json()['error']['message']
 
+    def test_sign_portal_notify_survives_missing_report_id(self):
+        """G-07: the portal link's `or report_id` fallback referenced an
+        undefined name — a falsy report id raised NameError inside the try,
+        silently skipping the patient notification. The fallback must be
+        exam_id and the notify must fire."""
+        client = TestClient(_make_app(RAD))
+        signed = _report_row(report_id='', impression='Normal',
+                             status='final', signed_by='50')
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row()
+            return _report_row(impression='Normal', report_id='')
+
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.Reports') as mock_reports_cls, \
+             patch('api.reports.notify_patient_scoped',
+                   new_callable=AsyncMock) as portal:
+            mock_reports = AsyncMock()
+            mock_reports.get_by_exam.return_value = _report_row(
+                impression='Normal', report_id='')
+            mock_reports.sign.return_value = signed
+            mock_reports_cls.return_value = mock_reports
+            resp = client.post('/reports/exam-1/sign', json={'confirm': True})
+        assert resp.status_code == 200
+        portal.assert_awaited_once()
+        assert portal.await_args.args[5] == '/portal/results/exam-1'
+
     def test_sign_success(self):
         client = TestClient(_make_app(RAD))
         signed = _report_row(impression='Normal', status='final', signed_by='50')
