@@ -20,6 +20,7 @@ import {
   Divider,
   Space,
 } from "antd";
+import { StarFilled, StarOutlined } from "@ant-design/icons";
 import {
   CheckCircleOutlined,
   SafetyCertificateOutlined,
@@ -149,6 +150,10 @@ function ExamConsole() {
   const [protocols, setProtocols] = useState<any[]>([]);
   const [selectedProtocol, setSelectedProtocol] = useState<string>("");
 
+  // T-06: protocol favorites + body-part narrowing on the registry picker.
+  const [favOnly, setFavOnly] = useState(false);
+  const [bodyPartFilter, setBodyPartFilter] = useState<string>("");
+
   // Acquisition state.
   const [pendingPreviews, setPendingPreviews] = useState<any[]>([]);
 
@@ -244,6 +249,46 @@ function ExamConsole() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam?.modality]);
+
+  // T-06: flip the favorite flag on one protocol; response carries the new
+  // state so no refetch is needed.
+  const toggleFavorite = useCallback(async (name: string) => {
+    const proto = protocols.find((p: any) => p.name === name);
+    if (!proto?.id) return;
+    try {
+      const res = await request(`protocols/${proto.id}/favorite`, {
+        method: "POST",
+        data: undefined,
+      });
+      const fav = !!res?.data?.is_favorite;
+      setProtocols((prev: any[]) =>
+        prev.map((p: any) => (p.id === proto.id ? { ...p, is_favorite: fav } : p)),
+      );
+    } catch {
+      /* favorite toggle is best-effort — keep current state on failure */
+    }
+  }, [protocols]);
+
+  // T-06: registry options narrowed by body part / favorites-only.
+  const protocolOptions = useMemo(() => {
+    return protocols
+      .filter((p: any) => (favOnly ? p.is_favorite : true))
+      .filter((p: any) =>
+        bodyPartFilter ? p.body_part === bodyPartFilter : true,
+      )
+      .map((p: any) => ({
+        value: p.name,
+        label: p.is_favorite ? `★ ${p.name}` : p.name,
+      }));
+  }, [protocols, favOnly, bodyPartFilter]);
+
+  const bodyParts = useMemo(
+    () =>
+      Array.from(
+        new Set(protocols.map((p: any) => p.body_part).filter(Boolean)),
+      ).sort(),
+    [protocols],
+  );
 
   const workflow = useMemo(
     () => MODALITY_WORKFLOWS[exam?.modality || ""] || null,
@@ -745,17 +790,53 @@ function ExamConsole() {
               </Descriptions>
             ) : canWrite ? (
               <>
-                <Select
-                  placeholder="Select protocol"
-                  style={{ width: 320 }}
-                  value={selectedProtocol}
-                  onChange={setSelectedProtocol}
-                  options={protocols.map((p) => ({
-                    value: p.name,
-                    label: p.name,
-                  }))}
-                  showSearch={{ optionFilterProp: "label" }}
-                />
+                <Space size="middle" wrap>
+                  <Select
+                    placeholder="Select protocol"
+                    style={{ width: 320 }}
+                    value={selectedProtocol || undefined}
+                    onChange={setSelectedProtocol}
+                    options={protocolOptions}
+                    showSearch={{ optionFilterProp: "label" }}
+                  />
+                  {/* T-06: favorite star for the highlighted protocol. */}
+                  <Button
+                    aria-label={
+                      protocols.find((p: any) => p.name === selectedProtocol)
+                        ?.is_favorite
+                        ? "Unfavorite protocol"
+                        : "Favorite protocol"
+                    }
+                    icon={
+                      protocols.find((p: any) => p.name === selectedProtocol)
+                        ?.is_favorite ? (
+                        <StarFilled />
+                      ) : (
+                        <StarOutlined />
+                      )
+                    }
+                    onClick={() =>
+                      selectedProtocol && toggleFavorite(selectedProtocol)
+                    }
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Body part"
+                    style={{ width: 140 }}
+                    value={bodyPartFilter || undefined}
+                    onChange={(v: string) => setBodyPartFilter(v || "")}
+                    options={bodyParts.map((bp: string) => ({
+                      value: bp,
+                      label: bp,
+                    }))}
+                  />
+                  <Checkbox
+                    checked={favOnly}
+                    onChange={(e) => setFavOnly(e.target.checked)}
+                  >
+                    Favorites only
+                  </Checkbox>
+                </Space>
                 <Button
                   type="primary"
                   style={{ marginLeft: 12 }}

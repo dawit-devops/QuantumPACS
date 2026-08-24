@@ -74,7 +74,7 @@ from api.exams import (
     ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
     ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
     ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
-    ProtocolsHandler,
+    ProtocolsHandler, ProtocolFavoriteHandler,
 )
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
@@ -348,6 +348,8 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler)),
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
+    v2(Route('/protocols/{id}/favorite', endpoint=ProtocolFavoriteHandler,
+             methods=['POST'])),
     v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
     v2(Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler)),
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),

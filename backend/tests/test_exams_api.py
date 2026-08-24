@@ -37,7 +37,7 @@ def _make_app(user=None):
         ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
         ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
         ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
-        ProtocolsHandler,
+        ProtocolsHandler, ProtocolFavoriteHandler,
     )
     return Starlette(
         routes=[
@@ -55,6 +55,7 @@ def _make_app(user=None):
             Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler),
             Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler),
             Route('/protocols', endpoint=ProtocolsHandler),
+            Route('/protocols/{id}/favorite', endpoint=ProtocolFavoriteHandler, methods=['POST']),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -563,3 +564,70 @@ class TestProtocols:
             resp = client.get('/protocols')
         assert resp.status_code == 200
         assert resp.json()['data'][0]['name'] == 'CT Head (Routine)'
+
+
+class TestProtocolFavorites:
+    """T-06: protocol favorites + body-part/indication filter.
+
+    GET /protocols accepts body_part/q filters and embeds per-user
+    is_favorite; POST /protocols/{id}/favorite toggles the favorite."""
+
+    def _app(self, user):
+        from api.exams import ProtocolsHandler, ProtocolFavoriteHandler
+        return Starlette(
+            routes=[
+                Route('/protocols', endpoint=ProtocolsHandler),
+                Route(
+                    '/protocols/{id}/favorite',
+                    endpoint=ProtocolFavoriteHandler, methods=['POST'],
+                ),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_list_embeds_is_favorite(self):
+        async def fake_fetchval(q, *a):
+            return 1  # already seeded
+
+        async def fake_fetch(q, *a):
+            assert 'protocol_favorites' in q  # favorites join present
+            return [{'id': 'p1', 'name': 'CT Head', 'is_favorite': True}]
+
+        with _conn(fetchval=fake_fetchval, fetch=fake_fetch):
+            resp = TestClient(self._app(TECH)).get('/protocols')
+        assert resp.status_code == 200
+        row = resp.json()['data'][0]
+        assert row['is_favorite'] is True
+
+    def test_favorite_requires_exam_write(self):
+        resp = TestClient(self._app(READ_ONLY)).post('/protocols/p1/favorite')
+        assert resp.status_code == 403
+
+    def test_favorite_toggle_roundtrip(self):
+        delete_results = iter([None, 'fav-row-id'])
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM protocols WHERE id' in q:
+                return {'id': 'p1', 'name': 'CT Head'}
+            return None
+
+        async def fake_fetchval(q, *a):
+            if 'DELETE FROM protocol_favorites' in q:
+                return next(delete_results)
+            return 1 if 'count(*)' in q else None
+
+        with patch('api.exams.AuditLog') as audit_cls:
+            audit = AsyncMock()
+            audit.log_event = AsyncMock()
+            audit_cls.return_value = audit
+            with _conn(fetchrow=fake_fetchrow, fetchval=fake_fetchval):
+                on = TestClient(self._app(TECH)).post('/protocols/p1/favorite')
+                assert on.status_code == 200
+                assert on.json()['data']['is_favorite'] is True
+                off = TestClient(self._app(TECH)).post('/protocols/p1/favorite')
+                assert off.json()['data']['is_favorite'] is False
+        assert audit.log_event.await_count == 2

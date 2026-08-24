@@ -182,6 +182,127 @@ describe("ExamConsole", () => {
     });
   });
 
+  it("favorites a protocol from the picker (T-06)", async () => {
+    const protocolsWithIds = {
+      data: [
+        {
+          id: "p1",
+          name: "CT Head (Routine)",
+          modality: "CT",
+          body_part: "Head",
+          is_default: true,
+          is_favorite: false,
+          sequences: [],
+        },
+        {
+          id: "p2",
+          name: "CT Chest (Routine)",
+          modality: "CT",
+          body_part: "Chest",
+          is_default: false,
+          is_favorite: false,
+          sequences: [],
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: readyExam });
+      if (url === "protocols") return Promise.resolve(protocolsWithIds);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    // Default selection lands on the default protocol; favorite it.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /favorite protocol/i }),
+      ).toBeInTheDocument();
+    });
+
+    let favState = false;
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "protocols/p1/favorite") {
+        favState = !favState;
+        return Promise.resolve({
+          data: { protocol_id: "p1", is_favorite: favState },
+        });
+      }
+      if (url === "exams/e1") return Promise.resolve({ data: readyExam });
+      if (url === "protocols") return Promise.resolve(protocolsWithIds);
+      return Promise.resolve({ data: [] });
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /favorite protocol/i }),
+    );
+
+    // The star flips without a refetch.
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenCalledWith(
+        "protocols/p1/favorite",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(
+        screen.getByRole("button", { name: /unfavorite protocol/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("narrows the registry with favorites-only and body part filters (T-06)", async () => {
+    const protocolsWithFav = {
+      data: [
+        {
+          id: "p1",
+          name: "CT Head (Routine)",
+          modality: "CT",
+          body_part: "Head",
+          is_default: true,
+          is_favorite: true,
+          sequences: [],
+        },
+        {
+          id: "p2",
+          name: "CT Chest (Routine)",
+          modality: "CT",
+          body_part: "Chest",
+          is_default: false,
+          is_favorite: false,
+          sequences: [],
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: readyExam });
+      if (url === "protocols") return Promise.resolve(protocolsWithFav);
+      return Promise.resolve({ data: [] });
+    });
+    const { container } = renderConsole();
+
+    // Open the registry dropdown — antd only mounts options when open.
+    const openDropdown = async () => {
+      const combos = await screen.findAllByRole("combobox");
+      fireEvent.mouseDown(combos[0]);
+    };
+    await openDropdown();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "CT Chest (Routine)" }),
+      ).toBeInTheDocument();
+    });
+
+    // Favorites-only hides the non-favorite chest protocol.
+    fireEvent.click(screen.getByRole("checkbox", { name: /favorites only/i }));
+    await openDropdown();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("option", { name: "CT Chest (Routine)" }),
+      ).toBeNull();
+      expect(
+        screen.getAllByRole("option", { name: /CT Head \(Routine\)/ })
+          .length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
   it("acquires an image and queues it for QA", async () => {
     let examState: any = { ...inProgressExam };
     mockRequest.mockImplementation((url: string) => {

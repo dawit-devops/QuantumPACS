@@ -39,6 +39,7 @@ from api.tenant_middleware import effective_tenant
 DEFAULT_PROTOCOLS = [
     {
         'name': 'CT Head (Routine)', 'modality': 'CT', 'body_part': 'Head',
+        'clinical_indication': 'Head trauma, stroke, severe headache',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial Non-Contrast', 'required': True},
@@ -49,6 +50,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'CT Chest (Routine)', 'modality': 'CT', 'body_part': 'Chest',
+        'clinical_indication': 'Cough, dyspnoea, abnormal chest X-ray',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial Diagnostic', 'required': True},
@@ -58,6 +60,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'MRI Brain (Routine)', 'modality': 'MR', 'body_part': 'Brain',
+        'clinical_indication': 'Headache, seizure, focal deficit',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial T1', 'required': True},
@@ -70,6 +73,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'PET Whole Body', 'modality': 'PET', 'body_part': 'Whole Body',
+        'clinical_indication': 'Oncology staging / restaging',
         'sequences': [
             {'name': 'Dose Calibration', 'required': True},
             {'name': 'Uptake Period', 'required': True},
@@ -80,6 +84,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'DX Chest PA/LAT', 'modality': 'DX', 'body_part': 'Chest',
+        'clinical_indication': 'Cough, dyspnoea, pre-op clearance',
         'sequences': [
             {'name': 'PA', 'required': True},
             {'name': 'Lateral', 'required': True},
@@ -89,6 +94,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'US Abdomen Complete', 'modality': 'US', 'body_part': 'Abdomen',
+        'clinical_indication': 'Abdominal pain, abnormal LFTs',
         'sequences': [
             {'name': 'Real-time Capture', 'required': True},
         ],
@@ -107,10 +113,12 @@ async def _seed_protocols(conn):
     for p in DEFAULT_PROTOCOLS:
         # asyncpg requires JSON strings for jsonb parameters.
         await conn.execute(
-            """INSERT INTO protocols (name, modality, body_part, sequences,
-               parameters, acr_benchmark_dlp, is_default, tenant_id)
-               VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8) """,
+            """INSERT INTO protocols (name, modality, body_part,
+               clinical_indication, sequences, parameters, acr_benchmark_dlp,
+               is_default, tenant_id)
+               VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9) """,
             p['name'], p['modality'], p['body_part'],
+            p.get('clinical_indication', ''),
             _json.dumps(p['sequences']), _json.dumps(p['parameters']),
             p['acr_benchmark_dlp'],
             p['is_default'],
@@ -755,7 +763,45 @@ class ProtocolsHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_READ)
     async def get(self, request):
         modality = request.query_params.get('modality')
+        # T-06: body-part / free-text narrowing + per-user favorite flag.
+        body_part = request.query_params.get('body_part')
+        q = request.query_params.get('q')
         async with get_conn() as conn:
             await _seed_protocols(conn)
-            protocols = await Protocols(conn).list_by_modality(modality)
+            protocols = await Protocols(conn).list_by_modality(
+                modality, body_part=body_part, q=q,
+                user_id=str(request.user.id),
+            )
         return ok({'data': protocols})
+
+
+class ProtocolFavoriteHandler(HTTPEndpoint):
+    """T-06: toggle the calling user's favorite flag on a protocol.
+
+    POST /protocols/{id}/favorite — idempotent flip; the response carries
+    the resulting state so the console star can render without a refetch."""
+
+    @requires_permission(Permission.EXAM_WRITE)
+    async def post(self, request):
+        protocol_id = request.path_params['id']
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id FROM protocols WHERE id = $1", str(protocol_id),
+            )
+            if not row:
+                return not_found('Protocol not found')
+            is_favorite = await Protocols(conn).toggle_favorite(
+                request.user.id, protocol_id,
+                tenant=get_tenant_slug() or 'default',
+            )
+            await AuditLog(conn).log_event(
+                event_type='exam.protocol_favorite',
+                actor_id=request.user.id,
+                resource_type='protocol',
+                resource_id=str(protocol_id),
+                details={'is_favorite': is_favorite},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': {'protocol_id': str(protocol_id),
+                            'is_favorite': is_favorite}})
