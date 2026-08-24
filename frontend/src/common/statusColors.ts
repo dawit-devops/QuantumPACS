@@ -25,6 +25,7 @@ export const TRACKING_STATUS_COLORS: Record<string, string> = {
   in_progress: "orange",
   completed: "green",
   cancelled: "red",
+  no_show: "magenta",
 };
 
 export const TRACKING_PRIORITY_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ export const SCHEDULE_CALENDAR_STATUS_COLORS: Record<string, string> = {
   IN_PROGRESS: "cyan",
   COMPLETED: "green",
   CANCELLED: "red",
+  NO_SHOW: "magenta",
 };
 
 export const SCHEDULE_BOARD_STATUS_COLORS: Record<string, string> = {

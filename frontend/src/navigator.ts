@@ -154,6 +154,11 @@ const LANDING_STEPS: LandingStep[] = [
     workspace: "frontdesk",
     permissions: ["QUEUE_READ"],
   },
+  {
+    route: "/frontdesk/schedule",
+    workspace: "frontdesk",
+    permissions: ["SCHEDULE_READ"],
+  },
   // Patient portal (R19): the patient role lands on its own scope-gated
   // records, never on the admin/clinical surfaces.
   { route: "/portal", workspace: "portal", permissions: ["PORTAL_READ"] },

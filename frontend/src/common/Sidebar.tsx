@@ -566,10 +566,10 @@ export const NAV_SECTIONS: NavSectionDef[] = [
       },
       {
         key: "fd-visits",
-        path: "/frontdesk/visits",
-        label: "Visits & Check-In",
+        path: "/frontdesk/schedule",
+        label: "Today's Schedule",
         icon: <MedicineBoxOutlined />,
-        permissions: ["REGISTRATION_READ"],
+        permissions: ["SCHEDULE_READ"],
       },
       {
         key: "fd-queue",

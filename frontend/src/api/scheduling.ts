@@ -38,7 +38,7 @@ export interface RisAppointment {
   order_id?: string | null;
   resource_id: string;
   patient_id: string;
-  status: "SCHEDULED" | "ARRIVED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  status: "SCHEDULED" | "ARRIVED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   start_time: string;
   end_time: string;
   reason?: string;
@@ -157,6 +157,22 @@ export const cancelRisAppointment = (appointmentId: string, reason = ""): Promis
   request<{ data: RisAppointment }>(`ris/appointments/${appointmentId}/cancel`, {
     data: { reason },
   }).then((res) => res.data);
+
+// S-13: mark appointment as no-show.
+export const markNoShow = (appointmentId: string): Promise<RisAppointment> =>
+  request<{ data: RisAppointment }>(`ris/appointments/${appointmentId}/no-show`, {
+    method: "POST",
+  }).then((res) => res.data);
+
+// S-03: date-range appointments for week/month calendar views.
+export const listAppointmentsDateRange = (
+  dateFrom: string,
+  dateTo: string,
+  params: { resource_id?: string } = {}
+): Promise<RisAppointment[]> =>
+  request<{ data: RisAppointment[] }>("ris/appointments", {
+    query: { date_from: dateFrom, date_to: dateTo, ...params },
+  }).then((res) => res.data ?? []);
 
 // ---- Orders (booking form patient/order search) --------------------------------
 

@@ -29,7 +29,7 @@ class RisAppointments(Table):
             end_time TIMESTAMPTZ NOT NULL,
             status TEXT NOT NULL DEFAULT 'SCHEDULED'
                 CHECK (status IN ('SCHEDULED', 'ARRIVED', 'IN_PROGRESS',
-                                  'COMPLETED', 'CANCELLED')),
+                                  'COMPLETED', 'CANCELLED', 'NO_SHOW')),
             reason TEXT DEFAULT '',
             override_reason TEXT DEFAULT '',
             created_by TEXT DEFAULT '',
@@ -97,6 +97,23 @@ class RisAppointments(Table):
              .orderby(self.table.start_time))
         return await self.fetch(q)
 
+    async def for_date_range(self, range_start, range_end):
+        """S-03: all appointments in a date range across all resources.
+        Used by the week/month calendar views."""
+        rows = await self.conn.fetch(
+            """
+            SELECT a.*, o.priority AS priority, r.name AS resource_name,
+                   r.modality AS modality
+            FROM ris_appointments a
+            LEFT JOIN ris_orders o ON o.id = a.order_id
+            LEFT JOIN ris_resources r ON r.id = a.resource_id
+            WHERE a.start_time < $2 AND a.end_time > $1
+            ORDER BY a.start_time
+            """,
+            range_start, range_end,
+        )
+        return [dict(r) for r in rows]
+
     async def for_resource(self, resource_id, day_start, day_end):
         # C4: LEFT JOIN the order's priority onto each block so the day
         # view can render STAT/URGENT badges without a second round-trip.
@@ -111,6 +128,41 @@ class RisAppointments(Table):
             ORDER BY a.start_time
             """,
             resource_id, day_start, day_end,
+        )
+        return [dict(r) for r in rows]
+
+    async def for_day(self, day_start, day_end, modality='', status=''):
+        """FD-06: cross-resource appointment listing for a day window —
+        the front-desk "Today's Schedule". Joins ris_resources for
+        modality/room and patients for display name; optional filters
+        apply before ordering."""
+        conditions = ["a.start_time < $2", "a.end_time > $1"]
+        params = [day_start, day_end]
+        idx = 3
+        if modality:
+            conditions.append(f"r.modality = ${idx}")
+            params.append(modality)
+            idx += 1
+        if status:
+            conditions.append(f"a.status = ${idx}")
+            params.append(status)
+            idx += 1
+        where = ' AND '.join(conditions)
+        rows = await self.conn.fetch(
+            f"""
+            SELECT a.*,
+                   COALESCE(r.modality, '') AS modality,
+                   COALESCE(r.location, '') AS room,
+                   COALESCE(p.name, '') AS patient_name,
+                   o.priority AS priority
+            FROM ris_appointments a
+            LEFT JOIN ris_resources r ON r.id = a.resource_id
+            LEFT JOIN ris_orders o ON o.id = a.order_id
+            LEFT JOIN patients p ON p.patient_id = a.patient_id
+            WHERE {where}
+            ORDER BY a.start_time
+            """,
+            *params,
         )
         return [dict(r) for r in rows]
 
@@ -211,6 +263,17 @@ class RisAppointments(Table):
             row['resource_id'], tenant_id, row['start_time'],
         )
         return ahead + 1
+
+    async def mark_no_show(self, appointment_id, tenant_id='default'):
+        """S-13: mark a patient as no-show. Only valid from SCHEDULED or
+        ARRIVED (before the scan window closes). Returns the row on
+        success, None when the status transition is invalid."""
+        return await self.conn.fetchrow(
+            "UPDATE ris_appointments SET status = 'NO_SHOW' "
+            "WHERE id::text = $1 AND tenant_id = $2 "
+            "AND status IN ('SCHEDULED', 'ARRIVED') "
+            "RETURNING id::text AS id, status",
+            appointment_id, tenant_id)
 
     async def stamp_requesting_tenant(self, appointment_id, home_tenant):
         """R2-03-08: record the requester's home site for chargeback."""

@@ -14,6 +14,7 @@ import Registration from "../frontdesk/Registration";
 import Visits from "../frontdesk/Visits";
 import WaitingQueue from "../frontdesk/WaitingQueue";
 import AppointmentBooking from "../frontdesk/AppointmentBooking";
+import ScheduleToday from "../frontdesk/ScheduleToday";
 
 const mockSearchPatients = vi.hoisted(() => vi.fn());
 const mockCreatePatient = vi.hoisted(() => vi.fn());
@@ -31,6 +32,7 @@ const mockUpdateVisit = vi.hoisted(() => vi.fn());
 const mockGetWaitingQueue = vi.hoisted(() => vi.fn());
 const mockGetAvailability = vi.hoisted(() => vi.fn());
 const mockCreateAppointment = vi.hoisted(() => vi.fn());
+const mockListRisAppointments = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/frontdesk", () => ({
   searchPatients: mockSearchPatients,
@@ -51,6 +53,7 @@ vi.mock("../api/frontdesk", () => ({
   createAppointment: mockCreateAppointment,
   cancelAppointment: vi.fn(),
   getWaitingQueue: mockGetWaitingQueue,
+  listRisAppointments: mockListRisAppointments,
 }));
 
 // Real antd Popconfirm renders a portal overlay that needs act() plumbing;
@@ -265,6 +268,60 @@ describe("Visits & Check-In", () => {
         expect.objectContaining({ requested_procedure: "CT CHEST W CONTRAST" }),
       );
     });
+  });
+});
+
+describe("ScheduleToday", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListRisAppointments.mockResolvedValue([
+      {
+        id: "a1", patient_id: "P001", patient_name: "John Smith",
+        resource_id: "res-1", order_id: "ord-1",
+        start_time: "2026-08-08T09:00:00+00:00",
+        end_time: "2026-08-08T09:30:00+00:00",
+        status: "SCHEDULED", modality: "CT", room: "CT-1", priority: "routine",
+      },
+      {
+        id: "a2", patient_id: "P002", patient_name: "Jane Doe",
+        resource_id: "res-2", order_id: "ord-2",
+        start_time: "2026-08-08T10:00:00+00:00",
+        end_time: "2026-08-08T10:30:00+00:00",
+        status: "ARRIVED", modality: "MR", room: "MR-1", priority: "STAT",
+      },
+    ]);
+  });
+
+  it("renders the schedule with time, patient, modality, room, status", async () => {
+    renderWithAuth(<ScheduleToday />);
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.getAllByText("CT").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("MR").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("CT-1")).toBeInTheDocument();
+    expect(screen.getAllByText("SCHEDULED").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("ARRIVED")).toBeInTheDocument();
+  });
+
+  it("shows STAT badge for high-priority appointments", async () => {
+    renderWithAuth(<ScheduleToday />);
+    expect(await screen.findByText("STAT")).toBeInTheDocument();
+  });
+
+  it("fetches with modality and status filters", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ScheduleToday />);
+    await screen.findByText("John Smith");
+    // Click the CT modality chip (antd Segmented renders a hidden radio
+    // input with pointer-events:none — click the label element instead).
+    const ctLabel = screen.getByTitle("CT");
+    await user.click(ctLabel);
+    await waitFor(() =>
+      expect(mockListRisAppointments).toHaveBeenCalledWith(
+        expect.objectContaining({ modality: "CT" }),
+      ),
+    );
   });
 });
 

@@ -1,4 +1,5 @@
 import { request } from "./client";
+import type { RisAppointment } from "./scheduling";
 
 // ---------------------------------------------------------------------------
 // R08 Front Desk API client — patient registration, visits + check-in, order
@@ -227,6 +228,14 @@ export const createAppointment = (
     (res) => res.data,
   );
 
+// ---- RIS appointments (today schedule, FD-06) ---------------------------------
+
+export const listRisAppointments = (
+  query: Record<string, string> = {},
+): Promise<RisAppointment[]> =>
+  request<{ data: RisAppointment[] }>("ris/appointments", { query }).then(
+    (res) => res.data ?? [],
+  );
 export const cancelAppointment = (id: string): Promise<void> =>
   request(`appointments/${id}`, { data: undefined, method: "DELETE" });
 

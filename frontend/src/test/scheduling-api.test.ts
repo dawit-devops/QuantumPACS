@@ -11,6 +11,7 @@ import {
   bookAppointment,
   rescheduleAppointment,
   cancelRisAppointment,
+  markNoShow,
   searchRisOrders,
   dayOfWeekLabel,
 } from "../api/scheduling";
@@ -171,5 +172,15 @@ describe("scheduling api client", () => {
     expect(dayOfWeekLabel(0)).toBe("Monday");
     expect(dayOfWeekLabel(6)).toBe("Sunday");
     expect(dayOfWeekLabel(9)).toBe("9");
+  });
+
+  // S-13: no-show tracking
+  it("markNoShow posts to the no-show path", async () => {
+    mockRequest.mockResolvedValue({ data: { id: "a1", status: "NO_SHOW" } });
+    const appt = await markNoShow("a1");
+    expect(mockRequest).toHaveBeenCalledWith("ris/appointments/a1/no-show", {
+      method: "POST",
+    });
+    expect(appt.status).toBe("NO_SHOW");
   });
 });

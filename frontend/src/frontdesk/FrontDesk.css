@@ -203,6 +203,40 @@
   background: var(--bg-muted);
 }
 
+/* ── Today's Schedule (FD-06) ────────────────────────────────────────── */
+
+.fd-schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fd-schedule-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.fd-schedule-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: var(--font-size-body);
+}
+
+.fd-schedule-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fd-schedule-table tr:hover {
+  background: var(--bg-hover);
+}
+
 
 .fd-privacy-note {
   display: flex;

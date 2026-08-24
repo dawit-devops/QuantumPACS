@@ -91,5 +91,26 @@ class RescheduleRequest(BaseModel):
         return self
 
 
+class ScheduleSlot(BaseModel):
+    day_of_week: int = Field(..., ge=0, le=6)
+    start_time: str = Field(..., min_length=8, max_length=8)
+    end_time: str = Field(..., min_length=8, max_length=8)
+
+    @model_validator(mode='after')
+    def _end_after_start(self):
+        if self.end_time <= self.start_time:
+            raise ValueError('end_time must be after start_time')
+        return self
+
+
+class CreateTemplateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    slots: list[ScheduleSlot] = Field(..., min_length=1)
+
+
+class ApplyTemplateRequest(BaseModel):
+    resource_id: str = Field(..., min_length=1, max_length=64)
+
+
 class CancelRequest(BaseModel):
     reason: str = Field(..., min_length=1)

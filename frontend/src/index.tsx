@@ -89,6 +89,7 @@ const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
+const FrontDeskSchedule = React.lazy(() => import("./frontdesk/ScheduleToday"));
 const PatientPortal = React.lazy(() => import("./portal/PortalHome"));
 const PatientProfile = React.lazy(() => import("./portal/PatientProfile"));
 const AppointmentList = React.lazy(() => import("./portal/AppointmentList"));
@@ -526,6 +527,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="QUEUE_READ">
                           <FrontDeskQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/schedule"
+                      element={
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <FrontDeskSchedule />
                         </ClinicalRoute>
                       }
                     />

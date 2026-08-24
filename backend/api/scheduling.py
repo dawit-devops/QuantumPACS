@@ -18,8 +18,9 @@ from api.rbac import requires_permission
 from api.permissions import Permission
 from api.response import api_error, created, not_found, ok
 from api.schemas.ris_scheduling import (
-    CancelRequest, CreateAppointmentRequest, CreateResourceRequest,
-    CreateScheduleRequest, RescheduleRequest,
+    ApplyTemplateRequest, CancelRequest, CreateAppointmentRequest,
+    CreateResourceRequest, CreateScheduleRequest, CreateTemplateRequest,
+    RescheduleRequest,
 )
 from api.validate import parse_body
 from api.tenant_middleware import effective_tenant
@@ -116,9 +117,40 @@ class RisAppointmentsHandler(HTTPEndpoint):
     @requires_permission(Permission.SCHEDULE_READ)
     async def get(self, request):
         params = request.query_params
+        tz = ZoneInfo(_config.get('clinic_timezone', 'UTC'))
+        # S-03: support both single-day (date) and range (date_from/date_to)
+        # queries. Range mode returns all appointments across all resources
+        # for the week/month calendar views.
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
         day = params.get('date')
+        resource_id = params.get('resource_id')
+
+        if date_from and date_to:
+            # Range mode (S-03 week/month views)
+            try:
+                from_parsed = date.fromisoformat(date_from)
+                to_parsed = date.fromisoformat(date_to)
+            except ValueError:
+                return api_error('VALIDATION',
+                                 'Invalid date format', status=422)
+            range_start = datetime.combine(from_parsed, time.min, tzinfo=tz)
+            range_end = datetime.combine(to_parsed + timedelta(days=1),
+                                         time.min, tzinfo=tz)
+            async with get_conn() as conn:
+                repo = RisAppointments(conn)
+                if resource_id:
+                    rows = await repo.for_resource(
+                        resource_id, range_start, range_end)
+                else:
+                    rows = await repo.for_date_range(
+                        range_start, range_end)
+            return ok({'data': [_row_dict(r) for r in rows]})
+
+        # Single-day mode (existing behavior)
         if not day:
-            return api_error('VALIDATION', 'date query parameter is required', status=422)
+            return api_error('VALIDATION',
+                             'date query parameter is required', status=422)
         # F-06: validate date format before it reaches the engine
         try:
             day_parsed = date.fromisoformat(day)
@@ -127,12 +159,21 @@ class RisAppointmentsHandler(HTTPEndpoint):
         # B-10: the day window must be interpreted in the clinic's
         # configured timezone — a naive UTC window shows a UTC+8 clinic
         # its slots on the wrong calendar day.
-        tz = ZoneInfo(_config.get('clinic_timezone', 'UTC'))
         day_start = datetime.combine(day_parsed, time.min, tzinfo=tz)
         day_end = day_start + timedelta(days=1)
         async with get_conn() as conn:
-            rows = await RisAppointments(conn).for_resource(
-                params['resource_id'], day_start, day_end)
+            repo = RisAppointments(conn)
+            if resource_id:
+                rows = await repo.for_resource(
+                    resource_id, day_start, day_end)
+            else:
+                # FD-06: no resource_id → cross-resource "today" aggregate
+                # for the front-desk schedule, with modality/status filters.
+                rows = await repo.for_day(
+                    day_start, day_end,
+                    modality=params.get('modality') or '',
+                    status=params.get('status') or '',
+                )
         return ok({'data': [_row_dict(r) for r in rows]})
 
     @requires_permission(Permission.SCHEDULE_WRITE)
@@ -255,6 +296,116 @@ class RisAppointmentCheckInHandler(HTTPEndpoint):
                 tenant=effective_tenant(request) or 'default',
             )
         return ok({'data': _row_dict(row)})
+
+
+class RisScheduleTemplatesHandler(HTTPEndpoint):
+    """S-05: schedule templates — list (GET) + create (POST).
+
+    Templates are named sets of weekly windows that can be applied to any
+    resource. Gated SCHEDULE_READ (list) / SCHEDULE_WRITE (create).
+    """
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        from db.ris_schedule_templates import RisScheduleTemplates
+        async with get_conn() as conn:
+            rows = await RisScheduleTemplates(conn).list_for_tenant()
+        return ok({'data': [_row_dict(r) for r in rows]})
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        from db.ris_schedule_templates import RisScheduleTemplates
+        body = await parse_body(CreateTemplateRequest, request)
+        async with get_conn() as conn:
+            row = await RisScheduleTemplates(conn).create({
+                'name': body.name,
+                'slots': [s.model_dump() for s in body.slots],
+                'created_by': str(request.user.id),
+            })
+        return created({'data': _row_dict(row)})
+
+
+class RisScheduleTemplateApplyHandler(HTTPEndpoint):
+    """S-05: apply a template to a resource — batch-create schedules.
+
+    POST /ris/schedule-templates/{id}/apply {resource_id: '...'}
+    Reads the template's slots, deletes existing schedules for the
+    resource (clean slate), then batch-inserts new ris_resource_schedules.
+    Gated SCHEDULE_WRITE.
+    """
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        from db.ris_schedule_templates import RisScheduleTemplates
+        body = await parse_body(ApplyTemplateRequest, request)
+        template_id = request.path_params['id']
+        async with get_conn() as conn:
+            tpl = await RisScheduleTemplates(conn).get(template_id)
+            if tpl is None:
+                return not_found(f'Template {template_id} not found')
+            # Clean slate: remove existing schedules for the target resource.
+            existing = await RisResourceSchedules(conn).for_resource(
+                body.resource_id)
+            for s in existing:
+                await RisResourceSchedules(conn).delete(s['id'])
+            # Batch-insert template slots as new schedules.
+            created_count = 0
+            for slot in (tpl.get('slots') or []):
+                await RisResourceSchedules(conn).create({
+                    'resource_id': body.resource_id,
+                    'day_of_week': slot['day_of_week'],
+                    'start_time': slot['start_time'],
+                    'end_time': slot['end_time'],
+                })
+                created_count += 1
+        return ok({'data': {'created': created_count}})
+
+
+class RisAppointmentNoShowHandler(HTTPEndpoint):
+    """S-13: mark appointment as no-show — POST /ris/appointments/{id}/no-show.
+
+    Flips SCHEDULED/ARRIVED -> NO_SHOW via RisAppointments.mark_no_show,
+    gated SCHEDULE_WRITE, audited ris.no_show. Only valid from SCHEDULED
+    or ARRIVED (terminal states like COMPLETED/CANCELLED reject with 409).
+    Idempotent for already-NO_SHOW.
+    """
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        appointment_id = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisAppointments(conn)
+            current = await repo.get(appointment_id)
+            if current is None:
+                return not_found('Appointment not found')
+            if current['status'] == 'NO_SHOW':
+                # Idempotent: already marked no-show is a no-op.
+                await AuditLog(conn).log_event(
+                    event_type='ris.no_show',
+                    actor_id=request.user.id,
+                    resource_id=appointment_id,
+                    resource_type='ris_appointments',
+                    tenant=effective_tenant(request) or 'default',
+                )
+                return ok({'data': _row_dict(current)})
+            if current['status'] not in ('SCHEDULED', 'ARRIVED'):
+                return api_error('STATE_CONFLICT',
+                                 f'Cannot mark no-show in '
+                                 f'{current["status"]} state', status=409)
+            row = await repo.mark_no_show(appointment_id)
+            if row is None:
+                return api_error('STATE_CONFLICT',
+                                 'Appointment not in SCHEDULED/ARRIVED state',
+                                 status=409)
+            await AuditLog(conn).log_event(
+                event_type='ris.no_show',
+                actor_id=request.user.id,
+                resource_id=appointment_id,
+                resource_type='ris_appointments',
+                tenant=effective_tenant(request) or 'default',
+            )
+        return ok({'data': _row_dict(row)})
+
 
 class MultiSiteAvailabilityHandler(HTTPEndpoint):
     """R2-03-05: GET /ris/scheduling/multisite-availability?date=YYYY-MM-DD

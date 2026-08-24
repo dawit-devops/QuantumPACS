@@ -188,6 +188,47 @@ class TestAppointments:
             '/ris/appointments')
         assert resp.status_code == 422
 
+    def test_list_appointments_today_aggregate_without_resource(self):
+        # FD-06: the front-desk "Today's Schedule" lists every resource's
+        # appointments for the day — resource_id must not be required.
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo = AsyncMock()
+            repo.for_day = AsyncMock(return_value=[
+                {'id': 'appt-1', 'resource_id': 'res-1', 'order_id': 'ord-1',
+                 'modality': 'CT', 'room': 'CT-1',
+                 'start_time': '2026-08-20 09:00:00+00',
+                 'end_time': '2026-08-20 09:30:00+00', 'status': 'SCHEDULED',
+                 'patient_name': 'Smith^John'},
+            ])
+            repo_cls.return_value = repo
+            client = TestClient(self._app(['SCHEDULE_READ']))
+            resp = client.get('/ris/appointments?date=2026-08-20')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data[0]['id'] == 'appt-1'
+        assert data[0]['modality'] == 'CT'
+        assert data[0]['patient_name'] == 'Smith^John'
+        repo.for_resource.assert_not_awaited()
+
+    def test_list_appointments_today_filters_by_modality_and_status(self):
+        # FD-06: quick-filter chips by modality and status.
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.RisAppointments') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo = AsyncMock()
+            repo.for_day = AsyncMock(return_value=[])
+            repo_cls.return_value = repo
+            client = TestClient(self._app(['SCHEDULE_READ']))
+            resp = client.get(
+                '/ris/appointments?date=2026-08-20&modality=CT&status=ARRIVED')
+        assert resp.status_code == 200
+        call = repo.for_day.await_args
+        kwargs = call.kwargs
+        assert kwargs['modality'] == 'CT'
+        assert kwargs['status'] == 'ARRIVED'
+
     def test_reschedule_requires_schedule_write(self):
         resp = TestClient(self._app([])).post(
             '/ris/appointments/appt-1/reschedule', json={})
@@ -576,12 +617,10 @@ class TestAppointmentCheckIn:
 
 class TestNoShowTracking:
     """S-13: no-show tracking — POST /ris/appointments/{id}/no-show flips
-    SCHEDULED/ARRIVED -> NO_SHOW, audited, idempotent. Only valid from
-    SCHEDULED or ARRIVED (before the scan window closes)."""
+    SCHEDULED/ARRIVED -> NO_SHOW, audited, idempotent."""
 
     def _app(self, user):
         from api.scheduling import RisAppointmentNoShowHandler
-
         return Starlette(
             routes=[Route('/ris/appointments/{id}/no-show',
                           endpoint=RisAppointmentNoShowHandler)],
@@ -673,6 +712,116 @@ class TestNoShowTracking:
         assert resp.json()['data']['status'] == 'NO_SHOW'
         repo.return_value.mark_no_show.assert_not_awaited()
         audit.return_value.log_event.assert_awaited_once()
+
+
+class TestScheduleTemplates:
+    """S-05: provider schedule templates — CRUD + apply to resource."""
+
+    def _app(self, user):
+        from api.scheduling import (
+            RisScheduleTemplatesHandler, RisScheduleTemplateApplyHandler)
+        return Starlette(
+            routes=[
+                Route('/ris/schedule-templates',
+                      endpoint=RisScheduleTemplatesHandler),
+                Route('/ris/schedule-templates/{id}/apply',
+                      endpoint=RisScheduleTemplateApplyHandler),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_list_requires_schedule_read(self):
+        client = TestClient(self._app(User({
+            'id': 1, 'permissions': []})))
+        resp = client.get('/ris/schedule-templates')
+        assert resp.status_code == 403
+
+    def test_create_requires_schedule_write(self):
+        client = TestClient(self._app(User({
+            'id': 1, 'permissions': ['SCHEDULE_READ']})))
+        resp = client.post('/ris/schedule-templates', json={})
+        assert resp.status_code == 403
+
+    def test_create_template(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_schedule_templates.RisScheduleTemplates') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.create = AsyncMock(return_value={
+                'id': 'tpl-1', 'name': 'Dr. Smith MWF',
+                'tenant_id': 'default',
+                'slots': [
+                    {'day_of_week': 0, 'start_time': '08:00:00', 'end_time': '16:00:00'},
+                ],
+            })
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/schedule-templates', json={
+                'name': 'Dr. Smith MWF',
+                'slots': [
+                    {'day_of_week': 0, 'start_time': '08:00:00', 'end_time': '16:00:00'},
+                    {'day_of_week': 2, 'start_time': '08:00:00', 'end_time': '16:00:00'},
+                    {'day_of_week': 4, 'start_time': '08:00:00', 'end_time': '16:00:00'},
+                ],
+            })
+        assert resp.status_code == 201
+        assert resp.json()['data']['name'] == 'Dr. Smith MWF'
+
+    def test_list_templates(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_schedule_templates.RisScheduleTemplates') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.list_for_tenant = AsyncMock(return_value=[
+                {'id': 'tpl-1', 'name': 'Dr. Smith MWF'},
+            ])
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_READ']})))
+            resp = client.get('/ris/schedule-templates')
+        assert resp.status_code == 200
+        assert len(resp.json()['data']) == 1
+
+    def test_apply_requires_schedule_write(self):
+        client = TestClient(self._app(User({
+            'id': 1, 'permissions': ['SCHEDULE_READ']})))
+        resp = client.post('/ris/schedule-templates/tpl-1/apply',
+                           json={'resource_id': 'res-1'})
+        assert resp.status_code == 403
+
+    def test_apply_template_to_resource(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_schedule_templates.RisScheduleTemplates') as repo, \
+             patch('api.scheduling.RisResourceSchedules') as sched_repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(return_value={
+                'id': 'tpl-1', 'name': 'Dr. Smith MWF',
+                'slots': [
+                    {'day_of_week': 0, 'start_time': '08:00:00', 'end_time': '16:00:00'},
+                ],
+            })
+            sched_repo.return_value.create = AsyncMock(return_value={
+                'id': 'sch-1', 'resource_id': 'res-1',
+            })
+            sched_repo.return_value.for_resource = AsyncMock(return_value=[])
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/schedule-templates/tpl-1/apply',
+                               json={'resource_id': 'res-1'})
+        assert resp.status_code == 200
+        assert resp.json()['data']['created'] == 1
+
+    def test_apply_missing_template_returns_404(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_schedule_templates.RisScheduleTemplates') as repo:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo.return_value.get = AsyncMock(return_value=None)
+            client = TestClient(self._app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/schedule-templates/nope/apply',
+                               json={'resource_id': 'res-1'})
+        assert resp.status_code == 404
 
 
 class TestClinicDayWindow:

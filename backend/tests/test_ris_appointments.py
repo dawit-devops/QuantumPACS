@@ -300,3 +300,83 @@ class TestForResourcePriority:
                     reset_tenant_slug()
 
         asyncio.run(run())
+
+
+class TestForDayAggregate:
+    """FD-06: for_day lists every resource's appointments for a day window
+    with modality/room/patient-name joins and optional filters — the data
+    behind the front-desk "Today's Schedule"."""
+
+    @staticmethod
+    async def _schema(conn):
+        from db.ris_appointments import RisAppointments
+        from db.ris_resources import RisResources
+        await RisResources(conn).sync_db()
+        await RisAppointments(conn).sync_db()
+
+    @staticmethod
+    async def _resource(conn, tag, modality):
+        from db.ris_resources import RisResources
+        return await RisResources(conn).create({
+            'name': f'{modality} Room {tag}',
+            'resource_type': 'ROOM',
+            'modality': modality,
+            'location': f'{modality}-1',
+        })
+
+    def test_for_day_aggregates_resources_with_joins_and_filters(self):
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            tag = uuid.uuid4().hex[:6]
+            from db.conn import get_conn
+            from db.ris_appointments import RisAppointments
+
+            set_tenant_slug('default')
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        await self._schema(conn)
+                        ct = await self._resource(conn, tag, 'CT')
+                        mr = await self._resource(conn, tag, 'MR')
+                        await conn.execute(
+                            'INSERT INTO ris_appointments '
+                            '(tenant_id, resource_id, patient_id, start_time, end_time) '
+                            "VALUES ($1, $2, 'MRN-A', '2026-09-01 09:00+00', "
+                            "'2026-09-01 09:30+00')",
+                            'default', ct['id'],
+                        )
+                        await conn.execute(
+                            'INSERT INTO ris_appointments '
+                            '(tenant_id, resource_id, patient_id, start_time, end_time) '
+                            "VALUES ($1, $2, 'MRN-B', '2026-09-01 10:00+00', "
+                            "'2026-09-01 10:30+00')",
+                            'default', mr['id'],
+                        )
+                        repo = RisAppointments(conn)
+                        day_start = datetime.fromisoformat(
+                            '2026-09-01T00:00:00+00:00')
+                        day_end = datetime.fromisoformat(
+                            '2026-09-02T00:00:00+00:00')
+                        rows = await repo.for_day(day_start, day_end)
+                        assert len(rows) == 2, 'both resources must appear'
+                        modalities = {r['modality'] for r in rows}
+                        assert modalities == {'CT', 'MR'}
+                        assert all(r['room'] for r in rows)
+                        # modality filter narrows to CT only
+                        ct_rows = await repo.for_day(
+                            day_start, day_end, modality='CT')
+                        assert len(ct_rows) == 1
+                        assert ct_rows[0]['modality'] == 'CT'
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())
