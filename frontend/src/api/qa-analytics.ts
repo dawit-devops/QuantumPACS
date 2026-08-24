@@ -126,3 +126,38 @@ export async function getQATrends(
   const res = await request("qa/trends", { query: { granularity } });
   return res;
 }
+
+// ---- QA-08: Export ----
+
+export type QAReportType =
+  | "reject-analysis"
+  | "dose-tracking"
+  | "tech-metrics"
+  | "protocol-compliance"
+  | "trends";
+
+export async function exportQAReport(report: QAReportType): Promise<void> {
+  const API_URL = import.meta.env.VITE_API_URL || "/api";
+  const resp = await fetch(`${API_URL}/qa/export?report=${report}`, {
+    credentials: "include",
+  });
+  if (!resp.ok) {
+    let message = `Export failed (${resp.status})`;
+    try {
+      const err = await resp.json();
+      message = err?.error?.message || message;
+    } catch {
+      // keep status-based message
+    }
+    throw new Error(message);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `qa-${report}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

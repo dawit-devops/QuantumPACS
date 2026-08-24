@@ -95,7 +95,7 @@ from api.qa import (
     QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
     QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
     QARejectAnalysisHandler, QADoseTrackingHandler, QATechMetricsHandler,
-    QAProtocolComplianceHandler, QATrendsHandler,
+    QAProtocolComplianceHandler, QATrendsHandler, QAExportHandler,
 )
 from api.billing import (
     BillingPricingHandler, BillingInvoicesHandler, BillingInvoiceHandler,
@@ -407,6 +407,7 @@ _V1_ROUTES = [
     v2(Route('/qa/tech-metrics', endpoint=QATechMetricsHandler)),
     v2(Route('/qa/protocol-compliance', endpoint=QAProtocolComplianceHandler)),
     v2(Route('/qa/trends', endpoint=QATrendsHandler)),
+    v2(Route('/qa/export', endpoint=QAExportHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),

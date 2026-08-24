@@ -13,7 +13,7 @@ import {
   Select,
   Space,
 } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
 import {
@@ -22,6 +22,8 @@ import {
   getTechMetrics,
   getProtocolCompliance,
   getQATrends,
+  exportQAReport,
+  type QAReportType,
   type RejectAnalysisData,
   type DoseTrackingData,
   type TechMetric,
@@ -31,6 +33,31 @@ import {
 import "./QAAnalyticsDashboard.css";
 
 const Content = Layout.Content;
+
+// QA-08: Reusable CSV export button
+function ExportButton({ report }: { report: QAReportType }) {
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportQAReport(report);
+    } catch {
+      // error is thrown but we don't block the UI
+    } finally {
+      setExporting(false);
+    }
+  };
+  return (
+    <Button
+      size="small"
+      icon={<DownloadOutlined />}
+      loading={exporting}
+      onClick={handleExport}
+    >
+      Export CSV
+    </Button>
+  );
+}
 
 function RejectAnalysisPanel() {
   const [data, setData] = useState<RejectAnalysisData | null>(null);
@@ -76,7 +103,10 @@ function RejectAnalysisPanel() {
     <PageState error={error} onRetry={fetch} loading={loading}>
       {data && (
         <>
-          <h3>Reject Rate by Modality</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>Reject Rate by Modality</h3>
+            <ExportButton report="reject-analysis" />
+          </div>
           <Table rowKey="modality" columns={modCols}
             dataSource={data.by_modality} pagination={false}
             size="small" style={{ marginBottom: 16 }} />
@@ -133,7 +163,10 @@ function DoseTrackingPanel() {
     <PageState error={error} onRetry={fetch} loading={loading}>
       {data && (
         <>
-          <h3>Dose Metrics by Modality</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>Dose Metrics by Modality</h3>
+            <ExportButton report="dose-tracking" />
+          </div>
           <Table rowKey="modality" columns={modCols}
             dataSource={data.by_modality} pagination={false}
             size="small" style={{ marginBottom: 16 }} />
@@ -203,6 +236,9 @@ function TechMetricsPanel() {
 
   return (
     <PageState error={error} onRetry={fetch} loading={loading}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton report="tech-metrics" />
+      </div>
       <Table rowKey="tech" columns={cols} dataSource={data}
         pagination={false} size="small" />
     </PageState>
@@ -241,15 +277,17 @@ function ProtocolCompliancePanel() {
       render: (v: number) => v > 0 ? `${v} mGy·cm` : "—" },
     { title: "ACR DLP", dataIndex: "acr_benchmark_dlp", key: "bench",
       render: (v: number | null) => v != null ? `${v} mGy·cm` : "—" },
-  ];
-
-  return (
+  ];  return (
     <PageState error={error} onRetry={fetch} loading={loading}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton report="protocol-compliance" />
+      </div>
       <Table rowKey="protocol_id" columns={cols} dataSource={data}
         pagination={false} size="small" />
     </PageState>
   );
 }
+
 
 function TrendsPanel() {
   const [data, setData] = useState<TrendPoint[]>([]);
@@ -285,17 +323,20 @@ function TrendsPanel() {
 
   return (
     <PageState error={error} onRetry={fetch} loading={loading}>
-      <Space style={{ marginBottom: 12 }}>
-        <span>Granularity:</span>
-        <Select value={granularity} onChange={setGranularity}
-          style={{ width: 120 }}
-          options={[
-            { value: "daily", label: "Daily" },
-            { value: "weekly", label: "Weekly" },
-            { value: "monthly", label: "Monthly" },
-          ]} />
-        <ReloadOutlined onClick={fetch} style={{ cursor: "pointer" }} />
-      </Space>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <Space>
+          <span>Granularity:</span>
+          <Select value={granularity} onChange={setGranularity}
+            style={{ width: 120 }}
+            options={[
+              { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" },
+              { value: "monthly", label: "Monthly" },
+            ]} />
+          <ReloadOutlined onClick={fetch} style={{ cursor: "pointer" }} />
+        </Space>
+        <ExportButton report="trends" />
+      </div>
       <Table rowKey="period" columns={cols} dataSource={data}
         pagination={{ pageSize: 30 }} size="small" />
     </PageState>

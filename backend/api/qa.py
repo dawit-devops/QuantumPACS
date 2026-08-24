@@ -5,6 +5,7 @@ registry CRUD (FR-R05-03), corrective-action inbox (FR-R05-05), incident
 logging + resolution (FR-R05-06), and a personal compliance dashboard feed.
 Reads are gated on QA_READ; mutations on QA_WRITE / PROTOCOL_MANAGE.
 """
+from datetime import date
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
@@ -669,3 +670,146 @@ class QATrendsHandler(HTTPEndpoint):
                    LIMIT 90""",
             )
         return ok({'data': [dict(r) for r in trends], 'granularity': granularity})
+
+
+# ---------------------------------------------------------------------------
+# QA Export endpoint (QA-08)
+# CSV export for any QA analytics report type.
+# ---------------------------------------------------------------------------
+
+import csv as _csv
+import io
+from starlette.responses import Response
+
+# Map of report type -> (SQL query builder, column names)
+# Each builder receives a connection and returns rows.
+EXPORT_REPORTS = {
+    'reject-analysis': {
+        'filename': 'qa-reject-analysis',
+        'columns': ['modality', 'total', 'fails', 'reject_rate'],
+    },
+    'dose-tracking': {
+        'filename': 'qa-dose-tracking',
+        'columns': ['modality', 'n', 'avg_dlp', 'max_dlp', 'avg_ctdivol',
+                     'max_ctdivol', 'dlp_exceedances'],
+    },
+    'tech-metrics': {
+        'filename': 'qa-tech-metrics',
+        'columns': ['tech', 'total_reviewed', 'passed', 'failed',
+                     'reject_rate', 'avg_dlp', 'protocol_adherence_pct'],
+    },
+    'protocol-compliance': {
+        'filename': 'qa-protocol-compliance',
+        'columns': ['protocol_name', 'modality', 'body_part', 'total_reviews',
+                     'passed', 'failed', 'compliance_pct', 'avg_dlp',
+                     'avg_ctdivol'],
+    },
+    'trends': {
+        'filename': 'qa-trends',
+        'columns': ['period', 'total', 'passed', 'failed', 'reject_rate',
+                     'avg_dlp', 'avg_ctdivol'],
+    },
+}
+
+# Reuse the exact SQL from the analytics handlers so export data matches the
+# dashboard view 1:1.
+_EXPORT_SQL = {
+    'reject-analysis': (
+        """SELECT e.modality, COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                        / NULLIF(COUNT(*), 0), 1) AS reject_rate
+           FROM qa_scores q JOIN exams e ON e.id = q.exam_id
+           GROUP BY e.modality ORDER BY reject_rate DESC"""
+    ),
+    'dose-tracking': (
+        """SELECT e.modality, COUNT(*) AS n,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(MAX(q.dose_dlp), 1) AS max_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol,
+                  ROUND(MAX(q.dose_ctdivol), 1) AS max_ctdivol,
+                  COUNT(*) FILTER (
+                    WHERE q.dose_dlp > 0 AND p.acr_benchmark_dlp IS NOT NULL
+                    AND q.dose_dlp > p.acr_benchmark_dlp
+                  ) AS dlp_exceedances
+           FROM qa_scores q
+           JOIN exams e ON e.id = q.exam_id
+           LEFT JOIN protocols p ON p.id = q.protocol_id
+           WHERE q.dose_dlp > 0 OR q.dose_ctdivol > 0
+           GROUP BY e.modality ORDER BY e.modality"""
+    ),
+    'tech-metrics': (
+        'SELECT e.assigned_technologist AS tech,'
+        ' COUNT(*) AS total_reviewed,'
+        ' COUNT(*) FILTER (WHERE q.pass_fail = $1) AS passed,'
+        ' COUNT(*) FILTER (WHERE q.pass_fail = $2) AS failed,'
+        ' ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = $2)'
+        ' / NULLIF(COUNT(*), 0), 1) AS reject_rate,'
+        ' ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,'
+        ' ROUND(100.0 * COUNT(*) FILTER ('
+        "  WHERE jsonb_array_length(q.sequence_compliance) > 0)"
+        ' / NULLIF(COUNT(*), 0), 1) AS protocol_adherence_pct'
+        ' FROM qa_scores q JOIN exams e ON e.id = q.exam_id'
+        ' WHERE e.assigned_technologist != $3'
+        ' GROUP BY e.assigned_technologist ORDER BY reject_rate DESC'
+    ),
+    'protocol-compliance': (
+        """SELECT p.name AS protocol_name, p.modality, p.body_part,
+                  COUNT(q.id) AS total_reviews,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'pass')
+                        / NULLIF(COUNT(q.id), 0), 1) AS compliance_pct,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+           FROM protocols p LEFT JOIN qa_scores q ON q.protocol_id = p.id
+           GROUP BY p.id, p.name, p.modality, p.body_part
+           HAVING COUNT(q.id) > 0 ORDER BY compliance_pct ASC"""
+    ),
+    'trends': (
+        """SELECT date_trunc('day', q.reviewed_at) AS period,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                        / NULLIF(COUNT(*), 0), 1) AS reject_rate,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+           FROM qa_scores q WHERE q.reviewed_at IS NOT NULL
+           GROUP BY period ORDER BY period DESC LIMIT 90"""
+    ),
+}
+
+
+class QAExportHandler(HTTPEndpoint):
+    """QA-08: Export QA analytics report as CSV."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        report = request.query_params.get('report', '')
+        if report not in EXPORT_REPORTS:
+            return validation_error(
+                f'Invalid report type. Choose from: {sorted(EXPORT_REPORTS.keys())}'
+            )
+        meta = EXPORT_REPORTS[report]
+        sql = _EXPORT_SQL[report]
+        async with get_conn() as conn:
+            if report == 'tech-metrics':
+                rows = await conn.fetch(sql, 'pass', 'fail', '')
+            else:
+                rows = await conn.fetch(sql)
+        # Build CSV
+        buf = io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(meta['columns'])
+        for row in rows:
+            writer.writerow([row.get(col, '') for col in meta['columns']])
+        today = date.today().isoformat()
+        filename = f"{meta['filename']}-{today}.csv"
+        return Response(
+            content='\ufeff'.encode('utf-8') + buf.getvalue().encode('utf-8'),
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+            },
+        )
