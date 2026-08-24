@@ -20,6 +20,7 @@ from api.schemas.exams import (
     CreateExamRequest, IdentityConfirmRequest, StartProtocolRequest,
     CreateAcquisitionRequest, AcquisitionDecisionRequest, SafetyCheckRequest,
     CompleteExamRequest, IncidentRequest, OverrideRequest, CriticalFlagRequest,
+    ClaimExamRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -377,11 +378,33 @@ class ExamClaimHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_WRITE)
     async def post(self, request):
         exam_id = request.path_params['id']
+        body = await parse_body(ClaimExamRequest, request)
         async with get_conn() as conn:
             exam = await Exams(conn).get(exam_id)
             if not exam:
                 return not_found('Exam not found')
             current = exam.get('assigned_technologist') or ''
+            if body.release:
+                # T-02: release back to the pool — only the current owner may.
+                if not current or current != str(request.user.id):
+                    return validation_error(
+                        'Only the assigned technologist can release this exam',
+                    )
+                await conn.execute(
+                    "UPDATE exams SET assigned_technologist = '', "
+                    "updated_at = now() WHERE id = $1",
+                    exam_id,
+                )
+                await AuditLog(conn).log_event(
+                    event_type='exam.unclaimed',
+                    actor_id=request.user.id,
+                    resource_type='exam',
+                    resource_id=exam_id,
+                    details={'accession_number': exam.get('accession_number') or ''},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
+                return ok({'data': {'claimed': False}})
             if current and current != str(request.user.id):
                 return validation_error(
                     'Exam already claimed by another technologist',

@@ -516,6 +516,41 @@ class TestClaim:
         assert resp.status_code == 200
         assert resp.json()['data']['claimed'] is True
 
+    def test_release_clears_technologist(self):
+        # T-02: releasing an owned exam returns it to the unassigned pool.
+        client = TestClient(_make_app(TECH))
+        executed = []
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'accession_number': 'A1',
+                    'assigned_technologist': '42'}
+        conn = AsyncMock()
+        conn.fetchrow = fake_fetchrow
+        conn.execute = AsyncMock(side_effect=lambda q, *a: executed.append(q))
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        with patch('api.exams.get_conn', return_value=conn), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 200
+        assert resp.json()['data']['claimed'] is False
+        assert any("assigned_technologist = ''" in q for q in executed)
+
+    def test_release_by_non_owner_conflicts(self):
+        # T-02: only the current owner may release back to the pool.
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'assigned_technologist': 'OTHER_USER'}
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 400
+
+    def test_release_missing_exam_404(self):
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 404
+
 
 class TestProtocols:
     def test_protocols_list(self):

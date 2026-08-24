@@ -98,3 +98,9 @@ class CriticalFlagRequest(BaseModel):
         if v not in ('low', 'medium', 'high', 'critical'):
             raise ValueError('severity must be low/medium/high/critical')
         return v
+
+
+class ClaimExamRequest(BaseModel):
+    """T-02: claim (default) or release an exam. release=true returns the
+    exam to the unassigned pool by clearing assigned_technologist."""
+    release: bool = Field(False, description="Release back to the pool")

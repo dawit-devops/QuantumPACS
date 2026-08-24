@@ -100,14 +100,14 @@ function TechnologistWorklist() {
   const { user } = useAuth();
   const myId = user?.id != null ? String(user.id) : "";
 
-  const claimExam = async (examId: string, accession: string) => {
+  const claimExam = async (examId: string, accession: string, release = false) => {
     setClaimingId(examId);
     try {
-      await request(`exams/${examId}/claim`, { data: {} });
-      message.success("Exam claimed");
+      await request(`exams/${examId}/claim`, { data: { release } });
+      message.success(release ? "Exam released to pool" : "Exam claimed");
       fetchExams();
     } catch (e: any) {
-      message.error(e.message || "Claim failed");
+      message.error(e.message || (release ? "Release failed" : "Claim failed"));
     } finally {
       setClaimingId(null);
     }
@@ -335,6 +335,16 @@ function TechnologistWorklist() {
               aria-label={`Claim exam ${r.accession_number || r.id}`}
             >
               Claim
+            </Button>
+          )}
+          {r.assigned_technologist === myId && (
+            <Button
+              size="small"
+              loading={claimingId === r.id}
+              onClick={() => claimExam(r.id, r.accession_number, true)}
+              aria-label={`Release exam ${r.accession_number || r.id}`}
+            >
+              Release
             </Button>
           )}
           <Button
