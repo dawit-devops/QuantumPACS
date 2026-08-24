@@ -802,3 +802,65 @@ class TestPriorAuthBillingLinkageRealDb:
                         'DELETE FROM ris_orders WHERE tenant_id = $1', tag)
         finally:
             reset_tenant_slug()
+
+
+class TestCodingConfidence:
+    """B-12: ranked suggestions carry a confidence score — exact map-key
+    match outranks loose substring matches, and the queue's coding banner
+    can render how much to trust the default."""
+
+    @pytest.mark.asyncio
+    async def test_rank_suggestions_orders_by_confidence(self):
+        from db.ris_coding import CodingService
+
+        conn = _Conn()
+        conn.set_fetch([
+            {'procedure_code': 'CT CHEST', 'cpt_code': '71250',
+             'cpt_description': 'CT chest without contrast',
+             'icd10_code': 'R91.1', 'icd10_description': 'Lung opacity'},
+            {'procedure_code': 'PET CT', 'cpt_code': '78815',
+             'cpt_description': 'PET/CT tumor imaging',
+             'icd10_code': 'C80.1', 'icd10_description': 'Neoplasm'},
+        ])
+        service = CodingService(conn)
+        got = await service.rank_suggestions('CT CHEST')
+        assert got[0]['cpt_code'] == '71250'
+        assert got[0]['confidence'] == 0.95
+        assert got[1]['confidence'] < got[0]['confidence']
+
+    @pytest.mark.asyncio
+    async def test_rank_suggestions_empty_query_returns_empty(self):
+        from db.ris_coding import CodingService
+
+        conn = _Conn()
+        got = await CodingService(conn).rank_suggestions('')
+        assert got == []
+
+    @pytest.mark.asyncio
+    async def test_get_suggestions_keeps_dict_shape_with_confidence(self):
+        """Back-compat: drop_charge consumes get_suggestions as a dict."""
+        from db.ris_coding import CodingService
+
+        conn = _Conn()
+        conn.set_fetch([{'procedure_code': 'CT CHEST', 'cpt_code': '71250',
+                         'cpt_description': 'CT chest without contrast',
+                         'icd10_code': 'R91.1',
+                         'icd10_description': 'Lung opacity'}])
+        got = await CodingService(conn).get_suggestions('CT CHEST')
+        assert isinstance(got, dict)
+        assert got['cpt_code'] == '71250'
+        assert got['confidence'] == 0.95
+
+    def test_api_returns_ranked_list_with_confidence(self, conn):
+        conn.set_fetch([
+            {'procedure_code': 'CT CHEST', 'cpt_code': '71250',
+             'cpt_description': 'CT chest without contrast',
+             'icd10_code': 'R91.1', 'icd10_description': 'Lung opacity'},
+        ])
+        client = TestClient(_make_billing_app(_user(Permission.BILLING_READ)))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.get(
+                '/ris/billing/cpt-suggestions?procedure=CT CHEST')
+        assert resp.status_code == 200
+        row = resp.json()['data'][0]
+        assert row['confidence'] == 0.95

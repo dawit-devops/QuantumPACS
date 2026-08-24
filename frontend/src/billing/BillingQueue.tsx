@@ -61,10 +61,12 @@ function BillingQueue() {
   }, [fetch]);
 
   const loadSuggestions = async (entry: BillingQueueEntry) => {
-    if (!entry.accession_number) return;
-    // The queue row carries no procedure text; ask the coding map for the
-    // suggestion by the exam's procedure so the coder has a default to edit.
-    const res = await getCptSuggestions(entry.accession_number).catch(() => ({
+    // B-12 fix: the coding map keys on procedure descriptions — pass the
+    // charge's resolved CPT description (falls back to accession only when
+    // the drop left the description empty).
+    const procedureKey = entry.cpt_description || entry.accession_number;
+    if (!procedureKey) return;
+    const res = await getCptSuggestions(procedureKey).catch(() => ({
       data: [] as CptSuggestion[],
     }));
     if (res.data && res.data.length > 0) {
@@ -146,7 +148,14 @@ function BillingQueue() {
         <Alert
           type="info"
           showIcon
-          title="CPT/ICD-10 suggestions loaded from the coding map — confirm each charge to drop it to billing."
+          title={
+            <>
+              CPT/ICD-10 suggestions loaded from the coding map — confirm each
+              charge to drop it to billing.{" "}
+              {Object.values(suggestions).some((s) => s.confidence != null) &&
+                "Confidence reflects match quality (95% exact, 75% partial)."}
+            </>
+          }
           style={{ marginBottom: 16 }}
         />
       )}

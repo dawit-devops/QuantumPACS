@@ -109,15 +109,45 @@ class CodingService(Table):
         )
         return dict(rows[0]) if rows else {}
 
+    async def rank_suggestions(self, procedure_desc, tenant_id='default',
+                               limit=3):
+        """B-12: ranked CPT/ICD-10 candidates with a confidence score.
+
+        Exact map-key match scores 0.95; the SQL's containment prefilter
+        (query contains the procedure_code) scores 0.75. Sorted best-first
+        so coders see how far to trust the default."""
+        key = (procedure_desc or '').strip().upper()
+        if not key:
+            return []
+        rows = await self.conn.fetch(
+            "SELECT procedure_code, cpt_code, cpt_description, icd10_code,"
+            " icd10_description"
+            " FROM ris_coding_map"
+            " WHERE tenant_id = $1 AND active AND $2 ILIKE '%' || procedure_code || '%'"
+            " ORDER BY procedure_code",
+            tenant_id, key,
+        )
+        scored = []
+        for r in rows:
+            code = (r['procedure_code'] or '').strip().upper()
+            confidence = 0.95 if code == key else 0.75
+            scored.append({**dict(r), 'confidence': confidence})
+        scored.sort(key=lambda d: (-d['confidence'], d['procedure_code']))
+        return scored[:limit]
+
     async def get_suggestions(self, procedure_desc, tenant_id='default'):
-        """CPT + ICD-10 suggestion pair for a procedure (S11-06)."""
-        cpt = await self.suggest_cpt(procedure_desc, tenant_id)
-        if not cpt:
+        """CPT + ICD-10 suggestion pair for a procedure (S11-06). Keeps the
+        dict shape consumed by drop_charge; carries the winner's confidence."""
+        ranked = await self.rank_suggestions(procedure_desc, tenant_id,
+                                             limit=1)
+        if not ranked:
             return {}
+        best = ranked[0]
         return {
-            'procedure_code': cpt.get('procedure_code', ''),
-            'cpt_code': cpt.get('cpt_code', ''),
-            'cpt_description': cpt.get('cpt_description', ''),
-            'icd10_code': cpt.get('icd10_code', ''),
-            'icd10_description': cpt.get('icd10_description', ''),
+            'procedure_code': best.get('procedure_code', ''),
+            'cpt_code': best.get('cpt_code', ''),
+            'cpt_description': best.get('cpt_description', ''),
+            'icd10_code': best.get('icd10_code', ''),
+            'icd10_description': best.get('icd10_description', ''),
+            'confidence': best.get('confidence', 0.0),
         }

@@ -26,6 +26,8 @@ export interface CptSuggestion {
   cpt_description: string;
   icd10_code: string;
   icd10_description: string;
+  // B-12: match quality of the coding-map hit (0.95 exact key, 0.75 substring).
+  confidence?: number;
 }
 
 export interface UnbilledAgingGroup {

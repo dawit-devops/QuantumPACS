@@ -792,7 +792,10 @@ async def _expected_totals(conn, shift_date, cashier_id=None):
 # =========================================================================
 
 class RisCptSuggestionsHandler(HTTPEndpoint):
-    """S11-06: GET /ris/billing/cpt-suggestions?procedure=CT CHEST"""
+    """S11-06: GET /ris/billing/cpt-suggestions?procedure=CT CHEST
+
+    B-12: returns a ranked candidate list (best-first) with confidence so
+    the coding banner can show how much to trust each default."""
 
     @requires_permission(Permission.BILLING_READ)
     async def get(self, request):
@@ -803,8 +806,8 @@ class RisCptSuggestionsHandler(HTTPEndpoint):
         async with get_conn() as conn:
             from db.ris_coding import CodingService
             await CodingService(conn).seed_defaults(tenant)
-            suggestion = await CodingService(conn).get_suggestions(procedure, tenant)
-        return ok({'data': [suggestion] if suggestion else []})
+            ranked = await CodingService(conn).rank_suggestions(procedure, tenant)
+        return ok({'data': ranked})
 
 
 class RisBillingQueueHandler(HTTPEndpoint):
