@@ -81,7 +81,7 @@ from api.reports import (
     ExamReportSubmitHandler, ExamReportReturnHandler,
     ExamAssignHandler, ExamImagesHandler,
     ReportTemplatesHandler, ReportVersionsHandler, ReportVersionRestoreHandler,
-    PriorReportsHandler,
+    PriorReportsHandler, ReadingStatsHandler,
     PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
     TemplateVersionsHandler, TemplatePublishHandler,
@@ -356,6 +356,8 @@ _V1_ROUTES = [
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
     # R-07: priors must register before the /reports/{exam_id} catch-all.
     v2(Route('/reports/priors', endpoint=PriorReportsHandler)),
+    # R-17/RES-04: same catch-all constraint.
+    v2(Route('/reports/reading-stats', endpoint=ReadingStatsHandler)),
     v2(Route('/reports/{report_id}/versions', endpoint=ReportVersionsHandler)),
     v2(Route('/reports/{report_id}/versions/{version}/restore',
              endpoint=ReportVersionRestoreHandler, methods=['POST'])),

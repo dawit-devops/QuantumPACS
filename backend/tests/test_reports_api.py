@@ -1201,3 +1201,74 @@ class TestPriorReports:
         row = resp.json()['data'][0]
         assert row['report_id'] == 'rep-9'
         assert row['impression_excerpt'] == 'Old impression text'
+
+
+class TestReadingStats:
+    """R-17/RES-04: personal reading statistics — GET /reports/reading-stats
+    scoped to the requesting radiologist/resident."""
+
+    def _app(self, user=None):
+        from api.reports import ReadingStatsHandler
+        return Starlette(
+            routes=[
+                Route('/reports/reading-stats', endpoint=ReadingStatsHandler),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user or RAD)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_stats_requires_report_read(self):
+        resp = TestClient(self._app(NO_PERMS)).get('/reports/reading-stats')
+        assert resp.status_code == 403
+
+    def test_stats_scoped_to_requesting_user(self):
+        stats = {
+            'signed_today': 2,
+            'avg_tat_seconds': {'stat': None},
+            'stat_compliance_pct': None,
+            'trend': [],
+            'feedback_received': 1,
+        }
+        with patch('api.reports.Reports') as reports_cls:
+            reports = AsyncMock()
+            reports.reading_stats = AsyncMock(return_value=stats)
+            reports_cls.return_value = reports
+            with _conn():
+                resp = TestClient(self._app()).get(
+                    '/reports/reading-stats?days=14')
+        assert resp.status_code == 200
+        kwargs = reports.reading_stats.await_args.kwargs
+        assert kwargs['user_id'] == '50'
+        assert kwargs['days'] == 14
+        assert resp.json()['data']['signed_today'] == 2
+
+    def test_reading_stats_runs_aggregate_queries(self):
+        captured = []
+
+        async def fake_fetch(q, *a):
+            captured.append(q)
+            return []
+
+        async def fake_fetchval(q, *a):
+            captured.append(q)
+            return 0
+
+        async def fake_fetchrow(q, *a):
+            captured.append(q)
+            return {'stat': None, 'urgent': None, 'routine': None,
+                    'stat_total': 0, 'stat_within_sla': 0}
+
+        with _conn(fetch=fake_fetch, fetchval=fake_fetchval,
+                   fetchrow=fake_fetchrow):
+            resp = TestClient(self._app()).get('/reports/reading-stats')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['signed_today'] == 0
+        assert 'feedback_received' in data
+        joined = ' '.join(captured)
+        assert 'signed_by' in joined
+        assert 'review_feedback' in joined
+        assert 'GROUP BY' in joined or 'group by' in joined

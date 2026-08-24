@@ -704,6 +704,23 @@ class ReportTemplatesHandler(HTTPEndpoint):
         return created({'data': tpl})
 
 
+class ReadingStatsHandler(HTTPEndpoint):
+    """R-17/RES-04: personal reading statistics for the signed-in
+    radiologist/resident — GET /reports/reading-stats."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        try:
+            days = int(request.query_params.get('days', 14))
+        except (TypeError, ValueError):
+            days = 14
+        days = max(1, min(days, 90))
+        async with get_conn() as conn:
+            stats = await Reports(conn).reading_stats(
+                user_id=str(request.user.id), days=days)
+        return ok({'data': stats})
+
+
 class PriorReportsHandler(HTTPEndpoint):
     """R-07: prior report quick-view — GET /reports/priors.
 

@@ -185,6 +185,28 @@ describe("ReadingWorklist", () => {
     });
   });
 
+  it("shows personal reading stats in the header (R-17)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/reading-list") {
+        return Promise.resolve({ data: mockItems });
+      }
+      if (url.startsWith("reports/reading-stats")) {
+        return Promise.resolve({
+          data: {
+            signed_today: 3,
+            avg_tat_seconds: { stat: 1800 },
+            stat_compliance_pct: 87.5,
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderWorklist();
+
+    expect(await screen.findByText(/Signed today.*3/i)).toBeInTheDocument();
+    expect(screen.getByText(/STAT compliance.*87\.5%/i)).toBeInTheDocument();
+  });
+
   it("filters by referring physician", async () => {
     mockRequest.mockResolvedValue({ data: mockItems });
     renderWorklist();

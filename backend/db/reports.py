@@ -327,6 +327,77 @@ class Reports(Table):
         )
         return [dict(r) for r in rows]
 
+    async def reading_stats(self, user_id, days=14):
+        """R-17/RES-04: personal reading statistics for the signed-in
+        radiologist/resident — signed-today count, average turnaround per
+        priority, STAT compliance (signed within 60 min of handoff), a
+        per-day trend over the trailing window, and attending feedback
+        received on their reports."""
+        await self.sync_db()
+        uid = str(user_id)
+        signed_today = await self.conn.fetchval(
+            """SELECT count(*) FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text
+                 AND r.status = 'final'
+                 AND r.signed_at >= date_trunc('day', now())""",
+            uid,
+        )
+        tat_rows = await self.conn.fetch(
+            """SELECT e.priority AS priority,
+                      avg(extract(epoch FROM (r.signed_at - e.completed_at))) AS avg_tat,
+                      count(*) FILTER (WHERE e.priority = 'stat') AS stat_total,
+                      count(*) FILTER (WHERE e.priority = 'stat'
+                         AND r.signed_at - e.completed_at < interval '60 minutes')
+                          AS stat_within_sla
+               FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text AND r.status = 'final'
+                 AND r.signed_at >= now() - ($2 || ' days')::interval
+               GROUP BY e.priority""",
+            uid, int(days),
+        )
+        avg_tat = {r['priority']: float(r['avg_tat'])
+                   if r['avg_tat'] is not None else None for r in tat_rows}
+        stat_total = sum(int(r['stat_total'] or 0) for r in tat_rows)
+        stat_ok = sum(int(r['stat_within_sla'] or 0) for r in tat_rows)
+        compliance = round(100.0 * stat_ok / stat_total, 1) \
+            if stat_total else None
+        trend_rows = await self.conn.fetch(
+            """SELECT date_trunc('day', r.signed_at)::date AS day,
+                      count(*) AS count,
+                      avg(extract(epoch FROM (r.signed_at - e.completed_at)))
+                          AS avg_tat
+               FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text AND r.status = 'final'
+                 AND r.signed_at >= now() - ($2 || ' days')::interval
+               GROUP BY day ORDER BY day""",
+            uid, int(days),
+        )
+        feedback_received = await self.conn.fetchval(
+            """SELECT count(*) FROM reports
+               WHERE created_by::text = $1::text
+                 AND review_feedback <> ''""",
+            uid,
+        )
+        return {
+            'signed_today': int(signed_today or 0),
+            'avg_tat_seconds': {
+                'stat': avg_tat.get('stat'),
+                'urgent': avg_tat.get('urgent'),
+                'routine': avg_tat.get('routine'),
+            },
+            'stat_compliance_pct': compliance,
+            'trend': [
+                {
+                    'date': str(r['day']),
+                    'count': int(r['count']),
+                    'avg_tat_seconds': float(r['avg_tat'])
+                    if r['avg_tat'] is not None else None,
+                }
+                for r in trend_rows
+            ],
+            'feedback_received': int(feedback_received or 0),
+        }
+
     async def _ensure_release_status(self):
         await self.conn.execute(
             "ALTER TABLE reports ADD COLUMN IF NOT EXISTS release_status "

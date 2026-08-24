@@ -133,6 +133,14 @@ function ReadingWorklist() {
     return () => clearInterval(timer);
   }, [fetchList]);
 
+  // R-17: personal stats — one fetch on mount (not part of the poll loop).
+  const [stats, setStats] = useState<any>(null);
+  useEffect(() => {
+    request("reports/reading-stats?days=14")
+      .then((res: any) => setStats(res?.data ?? null))
+      .catch(() => {});
+  }, []);
+
   // Tenant switch → refetch immediately (interval may be up to 30s away).
   useTenantRefetch(fetchList);
 
@@ -387,6 +395,19 @@ function ReadingWorklist() {
           showIcon
           style={{ marginBottom: 16 }}
         />
+      )}
+
+      {/* R-17: personal reading stats — one fetch on mount. */}
+      {stats && (
+        <div className="reading-wl-stats" style={{ marginBottom: 12, fontSize: 13 }}>
+          Signed today: {stats.signed_today}
+          {typeof stats.avg_tat_seconds?.stat === "number" && (
+            <> · Avg STAT turnaround: {Math.round(stats.avg_tat_seconds.stat / 60)} min</>
+          )}
+          {typeof stats.stat_compliance_pct === "number" && (
+            <> · STAT compliance: {stats.stat_compliance_pct}%</>
+          )}
+        </div>
       )}
 
       {loading && !data.length ? (

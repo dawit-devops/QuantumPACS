@@ -100,6 +100,9 @@ const TechnologistWorklist = React.lazy(() => import("./technologist/Technologis
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
 const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
 const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
+const ResidentProgress = React.lazy(
+  () => import("./radiologist/ResidentProgress"),
+);
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
 const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
 const CriticalResultsList = React.lazy(() => import("./radiologist/CriticalResults"));
@@ -404,6 +407,15 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="REPORT_READ">
                           <ResidentHome />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* RES-04: must register before /reading/:examId. */}
+                    <Route
+                      path="/reading/progress"
+                      element={
+                        <ClinicalRoute permission="REPORT_READ">
+                          <ResidentProgress />
                         </ClinicalRoute>
                       }
                     />

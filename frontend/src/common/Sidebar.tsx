@@ -158,6 +158,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         roles: ["resident"],
       },
       {
+        // RES-04: personal progress metrics (resident-only).
+        key: "res-progress",
+        path: "/reading/progress",
+        label: "My Progress",
+        icon: <FileDoneOutlined />,
+        permissions: ["REPORT_READ"],
+        roles: ["resident"],
+      },
+      {
         // Distinct from the section key: antd Menu rejects duplicate keys
         // (warns "Duplicated key 'reading' used in Menu by path [reading]"
         // and breaks item selection/open-state tracking).
