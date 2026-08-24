@@ -23,6 +23,7 @@ import {
   CheckCircleOutlined,
   CalendarOutlined,
   TableOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { mapLimit } from "../helpers";
@@ -34,6 +35,7 @@ import {
   updateWorklistEntry,
   deleteWorklistEntry,
   markWorklistPerformed,
+  syncWorklist,
   type WorklistEntry,
 } from "../api/worklist";
 import { PageState } from "../common/PageState";
@@ -87,6 +89,10 @@ function Worklist() {
   const [stationOptions, setStationOptions] = useState<string[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [tabTotals, setTabTotals] = useState<Record<string, number>>({});
+  // T-05: MWL sync status — last sync time + manual trigger.
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
   const [batchLoading, setBatchLoading] = useState(false);
   const [form] = Form.useForm();
@@ -176,6 +182,31 @@ function Worklist() {
     fetch({ page: 1, per_page: 20 });
     fetchTabTotals();
   });
+
+  // T-05: manual MWL sync — replay dirty entries to the archive, then
+  // refresh so the badge reflects the latest mwl_synced_at.
+  const runSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const stats = await syncWorklist();
+      if (stats.synced) {
+        message.success(`MWL synced (${stats.pushed} pushed, ${stats.failed} failed)`);
+        setLastSync(new Date().toISOString());
+      } else {
+        message.info(stats.reason === "disabled"
+          ? "MWL sync is not enabled"
+          : "MWL sync returned no changes");
+      }
+      fetch();
+      fetchTabTotals();
+    } catch (e: any) {
+      setSyncError(e.message || "MWL sync failed");
+      message.error(e.message || "MWL sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetch, fetchTabTotals, message]);
 
   const stationOptionsFromEntries = useMemo(() => {
     const stations = new Set(
@@ -529,6 +560,29 @@ function Worklist() {
             Create Entry
           </Button>
         )}
+        {/* T-05: MWL sync status + manual trigger. */}
+        <Tooltip title="Push dirty worklist entries to the archive">
+          <Button
+            icon={syncing ? <SyncOutlined spin /> : <SyncOutlined />}
+            onClick={runSync}
+            loading={syncing}
+            disabled={!canWrite}
+            aria-label="Sync MWL"
+          >
+            {lastSync ? (
+              <>
+                <CheckCircleOutlined /> Synced{" "}
+                {new Date(lastSync).toLocaleTimeString()}
+              </>
+            ) : syncError ? (
+              <>
+                <CloseCircleOutlined /> Sync failed
+              </>
+            ) : (
+              "MWL Pending"
+            )}
+          </Button>
+        </Tooltip>
         <Radio.Group
           value={viewMode}
           onChange={(e) => setViewMode(e.target.value)}

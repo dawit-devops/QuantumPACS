@@ -13,8 +13,11 @@ from api.schemas.worklist import CreateWorklistRequest, UpdateWorklistRequest
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.worklist import Worklist
-from log import request_id_var
+from log import request_id_var, get_logger
 from api.tenant_middleware import effective_tenant
+from api.mwl_sync import MwlSyncer
+
+log = get_logger(__name__)
 
 
 class WorklistHandler(HTTPEndpoint):
@@ -414,3 +417,24 @@ class TrackingStatusHandler(HTTPEndpoint):
             )
 
         return ok({'data': {'status': new_status}})
+
+
+class WorklistSyncHandler(HTTPEndpoint):
+    """T-05: manual MWL sync trigger — POST /worklist/sync.
+
+    Replays dirty entries to the DICOM archive via MwlSyncer.run_once() and
+    returns the outcome counts so the UI can render a "MWL Synced ✓ /
+    Pending ⏳" status with a last-sync time. Gated WORKLIST_WRITE."""
+
+    @requires_permission(Permission.WORKLIST_WRITE)
+    async def post(self, request):
+        try:
+            stats = await MwlSyncer().run_once()
+        except Exception as e:  # sync worker failure — surface, don't 500-crash
+            from api.response import api_error
+            log.warning('Manual MWL sync failed: %s', e)
+            return api_error('SYNC_FAILED', 'MWL sync failed', status=500)
+        if stats is None:
+            # DICOM proxy disabled — nothing to sync to.
+            return ok({'data': {'synced': False, 'reason': 'disabled'}})
+        return ok({'data': {**stats, 'synced': True}})

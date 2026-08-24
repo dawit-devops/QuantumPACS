@@ -65,6 +65,7 @@ from api.hl7 import Hl7Receiver
 from api.mpps_events import MppsEventsHandler
 from api.worklist import (
     WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler,
+    WorklistSyncHandler,
     TrackingHandler, TrackingKpiHandler, TrackingTimelineHandler,
     TrackingStatusHandler,
 )
@@ -293,6 +294,7 @@ _V1_ROUTES = [
     v2(Route('/mpps/events', endpoint=MppsEventsHandler)),
     v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
     v2(Route('/worklist', endpoint=WorklistHandler)),
+    v2(Route('/worklist/sync', endpoint=WorklistSyncHandler, methods=['POST'])),
     v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
     # S6-13..16: Tracking board APIs
     v2(Route('/ris/tracking', endpoint=TrackingHandler)),

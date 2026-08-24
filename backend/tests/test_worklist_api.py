@@ -158,3 +158,41 @@ class TestWorklistCancel:
             with patch('api.worklist.get_conn'):
                 resp = client.delete('/worklist/entry-id')
         assert resp.status_code == 200
+
+
+class TestWorklistSync:
+    """T-05: manual MWL sync trigger — POST /worklist/sync calls
+    MwlSyncer.run_once() and returns stats."""
+
+    def _app(self, user):
+        from api.worklist import WorklistSyncHandler
+        return Starlette(
+            routes=[Route('/worklist/sync', endpoint=WorklistSyncHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_requires_worklist_write(self):
+        resp = TestClient(
+            self._app(User({'id': 1, 'permissions': ['WORKLIST_READ']}))
+        ).post('/worklist/sync')
+        assert resp.status_code == 403
+
+    def test_sync_returns_stats(self):
+        with patch('api.worklist.MwlSyncer') as syncer_cls:
+            syncer = AsyncMock()
+            syncer.run_once = AsyncMock(return_value={
+                'pushed': 3, 'status': 0, 'removed': 0, 'failed': 1,
+            })
+            syncer_cls.return_value = syncer
+            client = TestClient(
+                self._app(User({'id': 1, 'permissions': ['WORKLIST_WRITE']}))
+            )
+            resp = client.post('/worklist/sync')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['pushed'] == 3
+        assert data['failed'] == 1
