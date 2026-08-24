@@ -136,6 +136,7 @@ const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
 const InterfaceDashboard = React.lazy(() => import("./admin/InterfaceDashboard"));
 const RisDashboard = React.lazy(() => import("./admin/RISDashboard"));
+const StaffSchedule = React.lazy(() => import("./admin/StaffSchedule"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
 const CheckIn = React.lazy(() => import("./kiosk/CheckIn"));
 
@@ -239,6 +240,14 @@ function ThemedApp() {
                       element={
                         <AdminConsoleRoute permission="REPORT_READ">
                           <RisDashboard />
+                        </AdminConsoleRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/staff-schedule"
+                      element={
+                        <AdminConsoleRoute permission="SCHEDULE_READ">
+                          <StaffSchedule />
                         </AdminConsoleRoute>
                       }
                     />

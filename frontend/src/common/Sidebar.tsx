@@ -394,8 +394,7 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <DashboardOutlined />,
         permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
         adminOnly: true,
-      },
-{
+      },      {
         // S12-35: department-manager dashboard — TAT, utilization, unbilled
         // aging, volume. REPORT_READ matches the route gate; adminOnly keeps
         // the Admin section from leaking to clinical roles (radiologist etc.)
@@ -405,6 +404,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "RIS Dashboard",
         icon: <FundOutlined />,
         permissions: ["REPORT_READ"],
+        adminOnly: true,
+      },
+      {
+        // DM-07: staff schedule management — view/create shift assignments.
+        // SCHEDULE_READ matches the route gate; adminOnly keeps it in the
+        // Admin section for the department manager role.
+        key: "staff-schedule",
+        path: "/admin/staff-schedule",
+        label: "Staff Schedule",
+        icon: <ScheduleOutlined />,
+        permissions: ["SCHEDULE_READ"],
         adminOnly: true,
       },
       {
@@ -700,6 +710,8 @@ const SECTION_OF_KEY: Record<string, string> = {
   "dicomweb-store": "admin",
   "dicomweb-browser": "admin",
   integrations: "admin",
+  "ris-dashboard": "admin",
+  "staff-schedule": "admin",
   worklist: "acquisition",
   tracking: "acquisition",
   exams: "acquisition",
