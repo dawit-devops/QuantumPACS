@@ -132,11 +132,15 @@ class RisPatientsHandler(HTTPEndpoint):
 class RisPatientsSearchHandler(HTTPEndpoint):
     @requires_permission(Permission.PATIENT_READ)
     async def get(self, request):
+        # FD-07: search by name/MRN (q), DOB, or phone — the quick-search
+        # overlay fires whichever field the user filled.
         q = (request.query_params.get('q') or '').strip()
-        if len(q) < 2:
+        dob = (request.query_params.get('dob') or '').strip()
+        phone = (request.query_params.get('phone') or '').strip()
+        if len(q) < 2 and not dob and not phone:
             return ok({'data': []})
         async with get_conn() as conn:
-            rows = await FrontDesk(conn).search_patients(q)
+            rows = await FrontDesk(conn).search_patients(q, dob=dob, phone=phone)
         return ok({'data': [_row_dict(r) for r in rows]})
 
 

@@ -18,17 +18,34 @@ class FrontDesk:
 
     # ---- patients ----
 
-    async def search_patients(self, q, limit=50):
-        like = f'%{q}%'
+    async def search_patients(self, q, dob='', phone='', limit=50):
+        # FD-07: quick search matches by name/MRN (q), DOB (full or partial
+        # like '1980'), or phone — each optional, combined with AND.
+        clauses = []
+        params = []
+        if q:
+            like = f'%{q}%'
+            clauses.append('(name ILIKE $%d OR patient_id ILIKE $%d)' % (
+                len(params) + 1, len(params) + 2))
+            params.extend([like, like])
+        if dob:
+            dob_like = f'%{dob}%'
+            clauses.append(f'birth_date ILIKE ${len(params) + 1}')
+            params.append(dob_like)
+        if phone:
+            phone_like = f'%{phone}%'
+            clauses.append(f'phone ILIKE ${len(params) + 1}')
+            params.append(phone_like)
+        where = ' AND '.join(clauses) if clauses else '1=1'
         rows = await self.conn.fetch(
-            """
-            SELECT id, patient_id, name, birth_date, sex
+            f"""
+            SELECT id, patient_id, name, birth_date, sex, phone, email
             FROM patients
-            WHERE name ILIKE $1 OR patient_id ILIKE $1
+            WHERE {where}
             ORDER BY name
-            LIMIT $2
+            LIMIT ${len(params) + 1}
             """,
-            like, limit,
+            *params, limit,
         )
         return rows
 

@@ -1,10 +1,12 @@
 import { Layout, Grid } from "antd";
 import React from "react";
+import { useLocation } from "react-router";
 
 import MaintenanceBanner from "./MaintenanceBanner";
 import MobileNav from "./MobileNav";
 import Sidebar from "./Sidebar";
 import { useTheme } from "./ThemeProvider";
+import PatientSearchOverlay from "../frontdesk/PatientSearchOverlay";
 
 const { useBreakpoint } = Grid;
 
@@ -14,6 +16,8 @@ function withSidebar(Comp: React.ComponentType<any>) {
     const isMobile = !screens.lg;
     const tempKey = sessionStorage.getItem("tempKey");
     const { isDark } = useTheme();
+    const location = useLocation();
+    const onFrontDesk = location.pathname.startsWith("/frontdesk");
     return (
       <Layout
         style={{
@@ -70,6 +74,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
           <Comp {...props} />
         </div>
         {isMobile && !tempKey && <MobileNav />}
+        {onFrontDesk && <PatientSearchOverlay />}
       </Layout>
     );
   }

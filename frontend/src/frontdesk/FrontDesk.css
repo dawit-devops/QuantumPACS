@@ -299,3 +299,43 @@
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
+
+/* ── Patient Quick Search (FD-07) ────────────────────────────────────── */
+
+.fd-global-search {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.18));
+}
+
+.fd-search-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fd-search-recents {
+  margin-bottom: 12px;
+}
+
+.fd-search-recents-label {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.fd-search-recents-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fd-patient-result:hover {
+  background: var(--bg-hover);
+}

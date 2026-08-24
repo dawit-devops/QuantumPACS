@@ -15,6 +15,7 @@ import Visits from "../frontdesk/Visits";
 import WaitingQueue from "../frontdesk/WaitingQueue";
 import AppointmentBooking from "../frontdesk/AppointmentBooking";
 import ScheduleToday from "../frontdesk/ScheduleToday";
+import PatientSearchOverlay from "../frontdesk/PatientSearchOverlay";
 
 const mockSearchPatients = vi.hoisted(() => vi.fn());
 const mockCreatePatient = vi.hoisted(() => vi.fn());
@@ -33,6 +34,7 @@ const mockGetWaitingQueue = vi.hoisted(() => vi.fn());
 const mockGetAvailability = vi.hoisted(() => vi.fn());
 const mockCreateAppointment = vi.hoisted(() => vi.fn());
 const mockListRisAppointments = vi.hoisted(() => vi.fn());
+const mockSearchRisPatients = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/frontdesk", () => ({
   searchPatients: mockSearchPatients,
@@ -54,6 +56,7 @@ vi.mock("../api/frontdesk", () => ({
   cancelAppointment: vi.fn(),
   getWaitingQueue: mockGetWaitingQueue,
   listRisAppointments: mockListRisAppointments,
+  searchRisPatients: mockSearchRisPatients,
 }));
 
 // Real antd Popconfirm renders a portal overlay that needs act() plumbing;
@@ -573,6 +576,49 @@ describe("AppointmentBooking", () => {
       expect(screen.getByRole("gridcell", { name: /09:00/ })).toHaveAttribute(
         "aria-pressed",
         "false",
+      ),
+    );
+  });
+});
+
+describe("PatientSearchOverlay", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["PATIENT_READ"]);
+    mockSearchRisPatients.mockResolvedValue([
+      { id: 1, patient_id: "P001", name: "Jane Doe", birth_date: "1980-05-04",
+        sex: "F", phone: "555-0100" },
+    ]);
+    localStorage.clear();
+  });
+
+  it("searches by name and opens patient detail on click", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PatientSearchOverlay />);
+    await user.click(screen.getByRole("button", { name: /patient search/i }));
+    await user.type(
+      await screen.findByPlaceholderText(/search patients/i),
+      "Jane",
+    );
+    await waitFor(() =>
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "Jane" }),
+      ),
+    );
+    expect(await screen.findByText("Jane Doe")).toBeInTheDocument();
+  });
+
+  it("searches by phone and records recent searches", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PatientSearchOverlay />);
+    await user.click(screen.getByRole("button", { name: /patient search/i }));
+    await user.type(
+      await screen.findByLabelText(/search by phone/i),
+      "555",
+    );
+    await waitFor(() =>
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(
+        expect.objectContaining({ phone: "555" }),
       ),
     );
   });

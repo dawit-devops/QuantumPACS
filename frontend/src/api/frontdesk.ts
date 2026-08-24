@@ -13,6 +13,8 @@ export interface FrontDeskPatient {
   name: string;
   birth_date?: string;
   sex?: string;
+  phone?: string;
+  email?: string;
 }
 
 export interface Visit {
@@ -121,6 +123,23 @@ export interface VisitPage {
 export const searchPatients = (q: string): Promise<FrontDeskPatient[]> =>
   request<{ data: FrontDeskPatient[] }>("patients/search", {
     query: { q },
+  }).then((res) => res.data ?? []);
+
+export interface PatientSearchQuery {
+  q?: string;
+  dob?: string;
+  phone?: string;
+}
+
+export const searchRisPatients = (
+  query: PatientSearchQuery = {},
+): Promise<FrontDeskPatient[]> =>
+  request<{ data: FrontDeskPatient[] }>("ris/patients/search", {
+    query: {
+      q: query.q ?? "",
+      dob: query.dob ?? "",
+      phone: query.phone ?? "",
+    },
   }).then((res) => res.data ?? []);
 
 export const createPatient = (

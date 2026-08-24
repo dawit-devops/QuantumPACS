@@ -340,6 +340,23 @@ class TestInsuranceRecordFields:
         assert 'deductible_total' in sql
 
 
+class TestSearchPatientsFields:
+    """FD-07: search_patients matches by name/MRN plus DOB and phone so the
+    quick-search overlay can look up by any identifier."""
+
+    def test_search_matches_dob_and_phone_columns(self):
+        mock_conn = MagicMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        from db.frontdesk import FrontDesk
+        fd = FrontDesk(mock_conn)
+        import asyncio
+        asyncio.run(fd.search_patients('', dob='1980', phone='555'))
+        sql = mock_conn.fetch.call_args.args[0]
+        assert 'birth_date' in sql
+        assert 'phone' in sql
+        assert 'ILIKE' in sql
+
+
 class TestVisitStatusTransitions:
     """R5-10: the server enforces the one canonical visit lifecycle —
     registered → checked_in → in_progress → complete, terminal at complete."""

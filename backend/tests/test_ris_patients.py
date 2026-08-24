@@ -154,7 +154,7 @@ class TestRisPatientSearch:
 
         assert resp.status_code == 200
         assert resp.json()['data'][0]['name'] == 'Jane Doe'
-        fd.search_patients.assert_awaited_once_with('jane')
+        fd.search_patients.assert_awaited_once_with('jane', dob='', phone='')
 
     def test_search_short_query_returns_empty(self, frontdesk_patches):
         fd = _fd(frontdesk_patches)
@@ -163,6 +163,28 @@ class TestRisPatientSearch:
         assert resp.status_code == 200
         assert resp.json()['data'] == []
         fd.search_patients.assert_not_awaited()
+
+    def test_search_by_dob(self, frontdesk_patches):
+        # FD-07: quick search supports DOB (full or partial, e.g. '1980').
+        fd = _fd(frontdesk_patches)
+        fd.search_patients.return_value = [_patient_row()]
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_READ']})))
+        resp = client.get('/ris/patients/search?dob=1980')
+
+        assert resp.status_code == 200
+        fd.search_patients.assert_awaited_once_with('', dob='1980', phone='')
+
+    def test_search_by_phone(self, frontdesk_patches):
+        # FD-07: quick search supports phone.
+        fd = _fd(frontdesk_patches)
+        fd.search_patients.return_value = [_patient_row()]
+
+        client = TestClient(_make_app(User({'id': 1, 'permissions': ['PATIENT_READ']})))
+        resp = client.get('/ris/patients/search?phone=555')
+
+        assert resp.status_code == 200
+        fd.search_patients.assert_awaited_once_with('', dob='', phone='555')
 
 
 class TestRisPatientDetail:
