@@ -98,6 +98,17 @@ class RisCharges(Table):
         RETURNING id, status
         """, charge_id, tenant_id)
 
+    async def patient_charges_summary(self, patient_id, tenant_id='default'):
+        """B-03: open (unpaid, non-void) RIS charge totals for one patient."""
+        row = await self.conn.fetchrow(
+            """SELECT count(*) AS open_count,
+                      COALESCE(SUM(charge_amount), 0) AS open_total
+               FROM ris_charges
+               WHERE tenant_id = $1 AND patient_id = $2
+                 AND status IN ('PENDING', 'BILLED', 'DENIED')
+            """, tenant_id, str(patient_id))
+        return dict(row) if row else {'open_count': 0, 'open_total': 0.0}
+
     async def list_pending(self, tenant_id='default', limit=200, offset=0):
         """Signed-but-unbilled queue (S11-04) with coding attached."""
         from db.billing import money

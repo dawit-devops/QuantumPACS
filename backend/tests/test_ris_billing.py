@@ -40,6 +40,7 @@ def _make_billing_app(user=None):
         RisClaimBatchResubmitHandler,
         RisClaimsHandler,
         RisClaimBatchSubmitHandler,
+        RisPatientResponsibilityHandler,
         RisUnbilledHandler,
         RisClaimSubmitHandler,
         RisDenialImportHandler,
@@ -60,6 +61,8 @@ def _make_billing_app(user=None):
             Route('/ris/billing/claims', endpoint=RisClaimsHandler),
             Route('/ris/billing/claims/batch-submit',
                   endpoint=RisClaimBatchSubmitHandler, methods=['POST']),
+            Route('/ris/billing/patients/{id}/responsibility',
+                  endpoint=RisPatientResponsibilityHandler),
             Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler),
             Route('/ris/billing/claims/{id}/submit',
                   endpoint=RisClaimSubmitHandler, methods=['POST']),
@@ -1002,3 +1005,71 @@ class TestRisBillingClaims:
                                json={'charge_ids': ['ghost']})
         assert resp.status_code == 200
         assert resp.json()['data']['missing'] == ['ghost']
+
+
+class _BranchConn(_Conn):
+    """_Conn variant that branches canned rows per table."""
+
+    async def fetchrow(self, sql, *args):
+        self.calls.append(('fetchrow', sql, args))
+        if 'FROM patients' in sql:
+            return {'id': 'P1', 'patient_name': 'A^B'}
+        if 'ris_charges' in sql:
+            return {'open_count': 2, 'open_total': 430.0}
+        if 'FROM invoice' in sql:
+            return {'bal': 75.0, 'n': 1}
+        return None
+
+    async def fetch(self, sql, *args):
+        self.calls.append(('fetch', sql, args))
+        if 'insurance_records' in sql:
+            return [{'provider': 'Aetna', 'member_id': 'M-1',
+                     'copay_amount': 30, 'deductible_total': 1000,
+                     'deductible_remaining': 400}]
+        return []
+
+
+class TestPatientResponsibility:
+    """B-03: GET /ris/billing/patients/{id}/responsibility — insurance
+    coverage + open charge total + outstanding invoice balance in one call."""
+
+    def test_requires_billing_read(self, conn):
+        client = TestClient(_make_billing_app(_user()))
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = client.get('/ris/billing/patients/P1/responsibility')
+        assert resp.status_code == 403
+
+    def test_unknown_patient_returns_404(self):
+        from api.billing import RisPatientResponsibilityHandler
+        app = Starlette(
+            routes=[Route('/ris/billing/patients/{id}/responsibility',
+                          endpoint=RisPatientResponsibilityHandler)],
+            middleware=[Middleware(_FakeAuth, user=_user(Permission.BILLING_READ))],
+        )
+
+        class NoPatientConn(_BranchConn):
+            async def fetchrow(self, sql, *args):
+                if 'FROM patients' in sql:
+                    return None
+                return await super().fetchrow(sql, *args)
+
+        with patch('api.billing.get_conn', return_value=NoPatientConn()):
+            resp = TestClient(app).get('/ris/billing/patients/PX/responsibility')
+        assert resp.status_code == 404
+
+    def test_composes_coverage_charges_and_invoices(self):
+        from api.billing import RisPatientResponsibilityHandler
+        app = Starlette(
+            routes=[Route('/ris/billing/patients/{id}/responsibility',
+                          endpoint=RisPatientResponsibilityHandler)],
+            middleware=[Middleware(_FakeAuth, user=_user(Permission.BILLING_READ))],
+        )
+        with patch('api.billing.get_conn', return_value=_BranchConn()):
+            resp = TestClient(app).get('/ris/billing/patients/P1/responsibility')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['coverage_status'] == 'active'
+        assert data['copay_amount'] == 30
+        assert data['deductible_remaining'] == 400
+        assert data['open_charges_total'] == 430.0
+        assert data['invoice_balance'] == 75.0

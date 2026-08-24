@@ -1070,6 +1070,52 @@ class RisClaimSubmitHandler(HTTPEndpoint):
         return ok({'id': result['id'], 'claim_number': claim_number, 'status': result['status']})
 
 
+class RisPatientResponsibilityHandler(HTTPEndpoint):
+    """B-03: GET /ris/billing/patients/{id}/responsibility — one call that
+    composes the patient's financial picture: insurance coverage (copay /
+    deductible from the latest policy), open RIS charge total, and the
+    outstanding v2 invoice balance. Coinsurance stays a named null until a
+    payer adapter supplies it."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        from db.ris_charges import RisCharges
+        from db.frontdesk import FrontDesk
+        patient_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            records = await fd.list_insurance(patient_id)
+            record = records[0] if records else None
+            charges = await RisCharges(conn).patient_charges_summary(
+                patient_id, tenant)
+            inv = await conn.fetchrow(
+                """SELECT COALESCE(SUM(balance), 0) AS bal, count(*) AS n
+                   FROM invoice
+                   WHERE patient_id = $1
+                     AND status IN ('open', 'partially_paid')""",
+                str(patient_id),
+            )
+        rec = record or {}
+        return ok({'data': {
+            'patient_id': str(patient_id),
+            'coverage_status': 'active' if record else 'none',
+            'provider': rec.get('provider') or '',
+            'member_id': rec.get('member_id') or '',
+            'copay_amount': rec.get('copay_amount'),
+            'deductible_total': rec.get('deductible_total'),
+            'deductible_remaining': rec.get('deductible_remaining'),
+            'coinsurance_pct': None,
+            'open_charges_count': int((charges or {}).get('open_count') or 0),
+            'open_charges_total': float((charges or {}).get('open_total') or 0),
+            'open_invoices': int((inv or {}).get('n') or 0),
+            'invoice_balance': float((inv or {}).get('bal') or 0),
+        }})
+
+
 class RisClaimsHandler(HTTPEndpoint):
     """B-06: GET /ris/billing/claims — full claim lifecycle list with
     payer/status/date filters for the tracking dashboard."""
