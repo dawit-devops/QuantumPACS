@@ -19,6 +19,8 @@ import {
   Grid,
   Badge,
   Input,
+  Form,
+  Select,
 } from "antd";
 import {
   FileTextOutlined,
@@ -27,6 +29,7 @@ import {
   DashboardOutlined,
   RollbackOutlined,
   AlertOutlined,
+  BookOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -122,6 +125,10 @@ function ReadingConsole() {
   // CR-6: "Flag Critical" opens the S10 critical-results modal for the
   // exam currently loaded in the console.
   const [criticalOpen, setCriticalOpen] = useState(false);
+  // R-11: teaching file submission from the console.
+  const [teachOpen, setTeachOpen] = useState(false);
+  const [teachSaving, setTeachSaving] = useState(false);
+  const [teachForm] = Form.useForm();
   const [FlagCriticalModal, setFlagCriticalModal] = useState<React.ComponentType<any> | null>(null);
   useEffect(() => {
     if (!criticalOpen) return;
@@ -325,6 +332,39 @@ function ReadingConsole() {
     },
     [report?.id, examId, setReport, message],
   );
+
+  // R-11: submit the current case to the teaching file library.
+  const submitTeachingFile = async () => {
+    try {
+      const values = await teachForm.validateFields();
+      setTeachSaving(true);
+      await request("teaching-files", {
+        method: "POST",
+        data: {
+          exam_id: examId,
+          title: values.title,
+          diagnosis: values.diagnosis || "",
+          difficulty: values.difficulty || "medium",
+          teaching_points: (values.teaching_points || "")
+            .split("\n")
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+          differential_diagnosis: (values.differential_diagnosis || "")
+            .split("\n")
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+        },
+      });
+      message?.success?.("Case submitted to the teaching library");
+      setTeachOpen(false);
+      teachForm.resetFields();
+    } catch (e: any) {
+      if (e?.errorFields) return; // form validation, modal stays open
+      message?.error?.(e.message || "Teaching file submission failed");
+    } finally {
+      setTeachSaving(false);
+    }
+  };
 
   const signReport = async (next: boolean) => {
     if (!impression.trim()) {
@@ -710,9 +750,60 @@ function ReadingConsole() {
                 Flag Critical
               </Button>
             )}
+            {canWrite && (
+              <Button
+                icon={<BookOutlined />}
+                onClick={() => setTeachOpen(true)}
+              >
+                Submit to Teaching File
+              </Button>
+            )}
           </Space>
         </header>
       )}
+
+      {/* R-11: submit this case to the teaching file library. */}
+      <Modal
+        title="Submit to Teaching File"
+        open={teachOpen}
+        onCancel={() => setTeachOpen(false)}
+        onOk={submitTeachingFile}
+        confirmLoading={teachSaving}
+        okText="Submit case"
+      >
+        <Form form={teachForm} layout="vertical">
+          <Form.Item
+            name="title"
+            label="Case title"
+            rules={[{ required: true, message: "A title is required" }]}
+          >
+            <Input placeholder="e.g. Classic subdural hematoma" />
+          </Form.Item>
+          <Form.Item name="diagnosis" label="Teaching diagnosis">
+            <Input placeholder="Primary diagnosis" />
+          </Form.Item>
+          <Form.Item name="difficulty" label="Difficulty" initialValue="medium">
+            <Select
+              options={["easy", "medium", "hard"].map((d) => ({
+                value: d,
+                label: d,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="teaching_points"
+            label="Teaching points (one per line)"
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item
+            name="differential_diagnosis"
+            label="Differential diagnosis (one per line)"
+          >
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {FlagCriticalModal && (
         <FlagCriticalModal

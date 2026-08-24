@@ -742,4 +742,35 @@ describe("ReadingConsole", () => {
       expect(screen.getByText(/Full prior impression/)).toBeInTheDocument();
     });
   });
+
+  it("submits the case to the teaching library (R-11)", async () => {
+    mockNoImaging();
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /submit to teaching file/i }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("Case title"), {
+      target: { value: "Classic subdural" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /submit case/i }));
+
+    await waitFor(() => {
+      expect(mockRequest).toHaveBeenCalledWith(
+        "teaching-files",
+        expect.objectContaining({
+          method: "POST",
+          data: expect.objectContaining({
+            exam_id: "e1",
+            title: "Classic subdural",
+          }),
+        }),
+      );
+    });
+  });
 });

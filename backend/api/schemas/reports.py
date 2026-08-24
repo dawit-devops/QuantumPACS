@@ -70,3 +70,26 @@ class ReleaseActionRequest(BaseModel):
         if v not in ('hold', 'release', 'auto'):
             raise ValueError('action must be hold/release/auto')
         return v
+
+
+class TeachingFileRequest(BaseModel):
+    """R-11: submit a completed case to the teaching file library."""
+    exam_id: str = Field(..., description='Source exam (completed)')
+    title: str = Field(..., min_length=1, description='Case title')
+    diagnosis: str = Field('', description='Primary teaching diagnosis')
+    body_part: str = Field('', description='Body part, for curriculum filters')
+    difficulty: str = Field('medium', description='easy / medium / hard')
+
+    @field_validator('difficulty')
+    @classmethod
+    def _valid_difficulty(cls, v):
+        if v not in ('easy', 'medium', 'hard'):
+            raise ValueError('difficulty must be easy/medium/hard')
+        return v
+
+    teaching_points: list[str] = Field(default_factory=list)
+    differential_diagnosis: list[str] = Field(default_factory=list)
+    annotations: object = Field(default=None,
+                                description='Viewer annotation state')
+    findings_text: str = Field('',
+                               description='Optional findings narrative')

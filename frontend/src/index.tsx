@@ -103,6 +103,9 @@ const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
 const ResidentProgress = React.lazy(
   () => import("./radiologist/ResidentProgress"),
 );
+const TeachingLibrary = React.lazy(
+  () => import("./radiologist/TeachingLibrary"),
+);
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
 const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
 const CriticalResultsList = React.lazy(() => import("./radiologist/CriticalResults"));
@@ -416,6 +419,15 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="REPORT_READ">
                           <ResidentProgress />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* R-11/RES-03: teaching file library. */}
+                    <Route
+                      path="/teaching"
+                      element={
+                        <ClinicalRoute permission="REPORT_READ">
+                          <TeachingLibrary />
                         </ClinicalRoute>
                       }
                     />

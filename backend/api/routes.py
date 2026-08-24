@@ -82,6 +82,7 @@ from api.reports import (
     ExamAssignHandler, ExamImagesHandler,
     ReportTemplatesHandler, ReportVersionsHandler, ReportVersionRestoreHandler,
     PriorReportsHandler, ReadingStatsHandler,
+    TeachingFilesHandler, TeachingFileHandler,
     PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
     TemplateVersionsHandler, TemplatePublishHandler,
@@ -358,6 +359,10 @@ _V1_ROUTES = [
     v2(Route('/reports/priors', endpoint=PriorReportsHandler)),
     # R-17/RES-04: same catch-all constraint.
     v2(Route('/reports/reading-stats', endpoint=ReadingStatsHandler)),
+    # R-11/RES-03: teaching file library.
+    v2(Route('/teaching-files', endpoint=TeachingFilesHandler,
+             methods=['GET', 'POST'])),
+    v2(Route('/teaching-files/{id}', endpoint=TeachingFileHandler)),
     v2(Route('/reports/{report_id}/versions', endpoint=ReportVersionsHandler)),
     v2(Route('/reports/{report_id}/versions/{version}/restore',
              endpoint=ReportVersionRestoreHandler, methods=['POST'])),

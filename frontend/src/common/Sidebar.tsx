@@ -167,6 +167,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         roles: ["resident"],
       },
       {
+        // R-11/RES-03: curated teaching cases — both reading personas.
+        key: "teaching-library",
+        path: "/teaching",
+        label: "Teaching Library",
+        icon: <BookOutlined />,
+        permissions: ["REPORT_READ"],
+      },
+      {
         // Distinct from the section key: antd Menu rejects duplicate keys
         // (warns "Duplicated key 'reading' used in Menu by path [reading]"
         // and breaks item selection/open-state tracking).

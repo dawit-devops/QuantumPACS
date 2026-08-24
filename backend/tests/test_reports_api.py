@@ -1291,3 +1291,113 @@ class TestReadingStats:
         assert 'signed_by' in joined
         assert 'review_feedback' in joined
         assert 'GROUP BY' in joined or 'group by' in joined
+
+
+class TestTeachingFiles:
+    """R-11/RES-03: teaching file library — POST /teaching-files submits a
+    completed case from the reading console (REPORT_WRITE); GET lists the
+    curated library with modality/body-part/diagnosis/difficulty filters."""
+
+    def _app(self, user=None):
+        from api.reports import (
+            TeachingFilesHandler, TeachingFileHandler,
+        )
+        return Starlette(
+            routes=[
+                Route('/teaching-files',
+                      endpoint=TeachingFilesHandler,
+                      methods=['GET', 'POST']),
+                Route('/teaching-files/{id}',
+                      endpoint=TeachingFileHandler),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user or RAD)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_create_requires_report_write(self):
+        resp = TestClient(self._app(READ_ONLY)).post('/teaching-files', json={})
+        assert resp.status_code == 403
+
+    def test_list_requires_report_read(self):
+        resp = TestClient(self._app(NO_PERMS)).get('/teaching-files')
+        assert resp.status_code == 403
+
+    def test_create_rejects_bad_difficulty(self):
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row(status='completed')
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = TestClient(self._app()).post('/teaching-files', json={
+                'exam_id': 'exam-1', 'title': 'Case',
+                'difficulty': 'impossible',
+            })
+        assert resp.status_code in (400, 422)
+
+    def test_create_success_audits_submission(self):
+        async def fake_fetchrow(q, *a):
+            if 'FROM exams' in q:
+                return _exam_row(status='completed')
+            return {'id': 'tf-1'}
+
+        with patch('api.reports.AuditLog') as audit_cls, \
+             _conn(fetchrow=fake_fetchrow):
+            audit = AsyncMock()
+            audit.log_event = AsyncMock()
+            audit_cls.return_value = audit
+
+            class FakeTF:
+                def __init__(self, c):
+                    pass
+
+                async def create(self, data):
+                    data['id'] = 'tf-1'
+                    return data
+
+                async def get(self, tf_id):
+                    return {'id': tf_id}
+
+            with patch('api.reports.TeachingFiles', FakeTF):
+                resp = TestClient(self._app()).post('/teaching-files', json={
+                    'exam_id': 'exam-1', 'title': 'Classic CT head',
+                    'diagnosis': 'Subdural hematoma',
+                    'difficulty': 'easy',
+                })
+        assert resp.status_code == 201
+        assert resp.json()['data']['title'] == 'Classic CT head'
+        assert audit.log_event.await_args.kwargs['event_type'] == \
+            'teaching.submitted'
+
+    def test_list_passes_filters(self):
+        seen = {}
+
+        class FakeTF:
+            def __init__(self, c):
+                pass
+
+            async def list_files(self, **kw):
+                seen.update(kw)
+                return []
+
+        with patch('api.reports.TeachingFiles', FakeTF), _conn():
+            resp = TestClient(self._app()).get(
+                '/teaching-files?modality=CT&body_part=Head&difficulty=easy')
+        assert resp.status_code == 200
+        assert seen['modality'] == 'CT'
+        assert seen['body_part'] == 'Head'
+        assert seen['difficulty'] == 'easy'
+
+    def test_get_detail_not_found(self):
+        class FakeTF:
+            def __init__(self, c):
+                pass
+
+            async def get(self, tf_id):
+                return None
+
+        with patch('api.reports.TeachingFiles', FakeTF), _conn():
+            resp = TestClient(self._app()).get('/teaching-files/nope')
+        assert resp.status_code == 404

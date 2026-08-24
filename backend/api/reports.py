@@ -16,10 +16,12 @@ from api.validate import parse_body
 from api.schemas.reports import (
     SaveReportRequest, SignReportRequest, ReturnReportRequest,
     AssignRadiologistRequest, CreatePeerReviewRequest, SubmitPeerReviewRequest,
+    TeachingFileRequest,
 )
 from db.audit_log import AuditLog
-from db.conn import get_conn
+from db.conn import get_conn, get_tenant_slug
 from db.exams import Exams
+from db.teaching_files import TeachingFiles
 from db.patient import Patient
 from db.reports import Reports, ReportTemplates, PeerReviews
 from api.notify import notify_patient_scoped, notify_role, notify_user
@@ -704,6 +706,64 @@ class ReportTemplatesHandler(HTTPEndpoint):
             from db.ris_templates import RisReportTemplates
             tpl = await RisReportTemplates(conn).create_template(data)
         return created({'data': tpl})
+
+
+class TeachingFilesHandler(HTTPEndpoint):
+    """R-11/RES-03: teaching file library — GET browse (REPORT_READ),
+    POST submit a case from the reading console (REPORT_WRITE)."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            files = await TeachingFiles(conn).list_files(
+                modality=request.query_params.get('modality'),
+                body_part=request.query_params.get('body_part'),
+                diagnosis=request.query_params.get('diagnosis'),
+                difficulty=request.query_params.get('difficulty'),
+            )
+        return ok({'data': files})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        body = await parse_body(TeachingFileRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(body.exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            tf = await TeachingFiles(conn).create({
+                'exam_id': body.exam_id,
+                'title': body.title,
+                'diagnosis': body.diagnosis,
+                'body_part': body.body_part or exam.get('body_part') or '',
+                'difficulty': body.difficulty,
+                'teaching_points': body.teaching_points,
+                'differential_diagnosis': body.differential_diagnosis,
+                'annotations': body.annotations,
+                'findings_text': body.findings_text,
+                'submitted_by': str(request.user.id),
+                'tenant_id': get_tenant_slug() or 'default',
+            })
+            await AuditLog(conn).log_event(
+                event_type='teaching.submitted',
+                actor_id=request.user.id,
+                resource_type='teaching_file',
+                resource_id=str(tf.get('id')),
+                details={'exam_id': body.exam_id, 'title': body.title},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return created({'data': tf})
+
+
+class TeachingFileHandler(HTTPEndpoint):
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        tf_id = request.path_params['id']
+        async with get_conn() as conn:
+            tf = await TeachingFiles(conn).get(tf_id)
+        if not tf:
+            return not_found('Teaching file not found')
+        return ok({'data': tf})
 
 
 class ReadingStatsHandler(HTTPEndpoint):
