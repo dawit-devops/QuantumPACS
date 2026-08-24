@@ -94,6 +94,8 @@ from api.qa import (
     QAQueueHandler, QAReviewHandler, QAProtocolsHandler, QAProtocolHandler,
     QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
     QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
+    QARejectAnalysisHandler, QADoseTrackingHandler, QATechMetricsHandler,
+    QAProtocolComplianceHandler, QATrendsHandler,
 )
 from api.billing import (
     BillingPricingHandler, BillingInvoicesHandler, BillingInvoiceHandler,
@@ -101,11 +103,15 @@ from api.billing import (
     BillingClaimHandler, BillingRefundsHandler, BillingRefundHandler,
     BillingQuotesHandler, BillingPaymentPlansHandler, BillingReconciliationHandler,
     RisCptSuggestionsHandler, RisBillingQueueHandler, RisChargeDropHandler,
+    RisChargeBatchDropHandler, RisClaimBatchResubmitHandler,
     RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
     RisDenialQueueHandler, RisClaimResubmitHandler, RisClaimHistoryHandler,
     RisReconciliationHandler,
 )
-from api.ris_dashboard import RisDashboardKpiHandler
+from api.ris_dashboard import (
+    RisDashboardKpiHandler, DeptWorkloadHandler, DeptTatDrilldownHandler,
+    DeptEquipmentUtilHandler, DeptStaffScheduleHandler,
+)
 from api.prior_auth import (
     PriorAuthHandler,
     PriorAuthDecisionHandler,
@@ -307,6 +313,8 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/cpt-suggestions', endpoint=RisCptSuggestionsHandler)),
     v2(Route('/ris/billing/queue', endpoint=RisBillingQueueHandler)),
     v2(Route('/ris/billing/charges/{id}/drop', endpoint=RisChargeDropHandler, methods=['POST'])),
+    v2(Route('/ris/billing/charges/batch', endpoint=RisChargeBatchDropHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/batch-resubmit', endpoint=RisClaimBatchResubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
     v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
@@ -327,6 +335,11 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
     # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
     v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
+    # Department Manager analytics (DM-01, DM-02, DM-04, DM-07)
+    v2(Route('/ris/analytics/workload', endpoint=DeptWorkloadHandler)),
+    v2(Route('/ris/analytics/tat-drilldown', endpoint=DeptTatDrilldownHandler)),
+    v2(Route('/ris/analytics/equipment-util', endpoint=DeptEquipmentUtilHandler)),
+    v2(Route('/ris/staff-schedule', endpoint=DeptStaffScheduleHandler)),
     # R2-01: Prior authorization — request lifecycle + payer decisions.
     v2(Route('/ris/scheduling/chargeback', endpoint=RisChargebackHandler)),
     v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
@@ -388,6 +401,12 @@ _V1_ROUTES = [
     v2(Route('/qa/corrective-actions/{id}/resolve', endpoint=QACorrectiveActionHandler)),
     v2(Route('/qa/dashboard', endpoint=QADashboardHandler)),
     v2(Route('/qa/reviewers', endpoint=QAReviewersHandler)),
+    # QA Analytics endpoints (QA-02 through QA-07)
+    v2(Route('/qa/reject-analysis', endpoint=QARejectAnalysisHandler)),
+    v2(Route('/qa/dose-tracking', endpoint=QADoseTrackingHandler)),
+    v2(Route('/qa/tech-metrics', endpoint=QATechMetricsHandler)),
+    v2(Route('/qa/protocol-compliance', endpoint=QAProtocolComplianceHandler)),
+    v2(Route('/qa/trends', endpoint=QATrendsHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),

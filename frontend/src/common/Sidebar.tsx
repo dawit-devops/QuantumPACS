@@ -298,6 +298,13 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <CheckCircleOutlined />,
         permissions: ["QA_READ"],
       },
+      {
+        key: "qa-analytics",
+        path: "/qa/analytics",
+        label: "QA Analytics",
+        icon: <FundOutlined />,
+        permissions: ["QA_READ"],
+      },
     ],
   },
   {
@@ -707,6 +714,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "qa-protocols": "qa",
   "qa-incidents": "qa",
   "qa-actions": "qa",
+  "qa-analytics": "qa",
   "fd-registration": "frontdesk",
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",

@@ -36,6 +36,8 @@ def _make_app(user=None):
         QAQueueHandler, QAReviewHandler, QAProtocolsHandler, QAProtocolHandler,
         QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
         QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
+        QARejectAnalysisHandler, QADoseTrackingHandler, QATechMetricsHandler,
+        QAProtocolComplianceHandler, QATrendsHandler,
     )
     return Starlette(
         routes=[
@@ -50,6 +52,11 @@ def _make_app(user=None):
             Route('/qa/corrective-actions/{id}/resolve', endpoint=QACorrectiveActionHandler),
             Route('/qa/dashboard', endpoint=QADashboardHandler),
             Route('/qa/reviewers', endpoint=QAReviewersHandler),
+            Route('/qa/reject-analysis', endpoint=QARejectAnalysisHandler),
+            Route('/qa/dose-tracking', endpoint=QADoseTrackingHandler),
+            Route('/qa/tech-metrics', endpoint=QATechMetricsHandler),
+            Route('/qa/protocol-compliance', endpoint=QAProtocolComplianceHandler),
+            Route('/qa/trends', endpoint=QATrendsHandler),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -428,3 +435,130 @@ def test_qa_reviewers_returns_radiologists():
             r = client.get('/qa/reviewers')
             assert r.status_code == 200
             assert r.json()['data'][0]['username'] == 'dr_smith'
+
+
+# ---------------------------------------------------------------------------
+# QA Analytics endpoint tests (QA-02 through QA-07)
+# ---------------------------------------------------------------------------
+
+QA_ANALYTICS = User({'id': 1, 'permissions': ['QA_READ', 'QA_WRITE',
+                                               'PROTOCOL_MANAGE', 'QA_ANALYTICS_READ']})
+
+
+def test_reject_analysis_requires_permission():
+    app = _make_app(NO_PERMS)
+    with TestClient(app) as client:
+        r = client.get('/qa/reject-analysis')
+        assert r.status_code == 403
+
+
+def test_reject_analysis_returns_data():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[
+                {'modality': 'CT', 'total': 10, 'fails': 2, 'reject_rate': 20.0},
+            ])
+            r = client.get('/qa/reject-analysis')
+            assert r.status_code == 200
+            data = r.json()['data']
+            assert 'by_modality' in data
+            assert 'by_technologist' in data
+            assert 'by_protocol' in data
+            assert 'by_discrepancy' in data
+
+
+def test_dose_tracking_requires_permission():
+    app = _make_app(NO_PERMS)
+    with TestClient(app) as client:
+        r = client.get('/qa/dose-tracking')
+        assert r.status_code == 403
+
+
+def test_dose_tracking_returns_data():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[
+                {'modality': 'CT', 'n': 5, 'avg_dlp': 450.0},
+            ])
+            r = client.get('/qa/dose-tracking')
+            assert r.status_code == 200
+            data = r.json()['data']
+            assert 'by_modality' in data
+            assert 'exceedances' in data
+
+
+def test_tech_metrics_requires_permission():
+    app = _make_app(NO_PERMS)
+    with TestClient(app) as client:
+        r = client.get('/qa/tech-metrics')
+        assert r.status_code == 403
+
+
+def test_tech_metrics_returns_data():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[
+                {'tech': 'tech_a', 'total_reviewed': 20, 'reject_rate': 5.0},
+            ])
+            r = client.get('/qa/tech-metrics')
+            assert r.status_code == 200
+            assert len(r.json()['data']) == 1
+
+
+def test_protocol_compliance_requires_permission():
+    app = _make_app(NO_PERMS)
+    with TestClient(app) as client:
+        r = client.get('/qa/protocol-compliance')
+        assert r.status_code == 403
+
+
+def test_protocol_compliance_returns_data():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[
+                {'protocol_id': 'p1', 'protocol_name': 'CT Chest',
+                 'compliance_pct': 92.0},
+            ])
+            r = client.get('/qa/protocol-compliance')
+            assert r.status_code == 200
+            assert len(r.json()['data']) == 1
+
+
+def test_trends_requires_permission():
+    app = _make_app(NO_PERMS)
+    with TestClient(app) as client:
+        r = client.get('/qa/trends')
+        assert r.status_code == 403
+
+
+def test_trends_returns_data():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[
+                {'period': '2026-08-01', 'total': 15, 'reject_rate': 10.0},
+            ])
+            r = client.get('/qa/trends?granularity=daily')
+            assert r.status_code == 200
+            assert r.json()['granularity'] == 'daily'
+            assert len(r.json()['data']) == 1
+
+
+def test_trends_defaults_to_daily():
+    app = _make_app(QA_ANALYTICS)
+    with TestClient(app) as client:
+        with patch('api.qa.get_conn') as gc:
+            conn = gc.return_value.__aenter__.return_value
+            conn.fetch = AsyncMock(return_value=[])
+            r = client.get('/qa/trends')
+            assert r.status_code == 200
+            assert r.json()['granularity'] == 'daily'

@@ -30,10 +30,19 @@ class _FakeAuth(BaseHTTPMiddleware):
 
 
 def _make_dashboard_app(user=None):
-    from api.ris_dashboard import RisDashboardKpiHandler
+    from api.ris_dashboard import (
+        RisDashboardKpiHandler, DeptWorkloadHandler, DeptTatDrilldownHandler,
+        DeptEquipmentUtilHandler, DeptStaffScheduleHandler,
+    )
 
     return Starlette(
-        routes=[Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)],
+        routes=[
+            Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler),
+            Route('/ris/analytics/workload', endpoint=DeptWorkloadHandler),
+            Route('/ris/analytics/tat-drilldown', endpoint=DeptTatDrilldownHandler),
+            Route('/ris/analytics/equipment-util', endpoint=DeptEquipmentUtilHandler),
+            Route('/ris/staff-schedule', endpoint=DeptStaffScheduleHandler),
+        ],
         middleware=[Middleware(_FakeAuth, user=user or User({'id': 1, 'permissions': []}))],
     )
 
@@ -185,3 +194,102 @@ class TestPriorAuthDashboardMix:
         body = resp.json()
         assert body['prior_auth']['mix'] == mix
         assert body['prior_auth']['approval_rate'] == 0.955
+
+
+class TestDeptWorkload:
+    """DM-01: Department workload distribution endpoint."""
+
+    def test_requires_report_read(self, conn):
+        client = TestClient(_make_dashboard_app(_user()))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/workload')
+        assert resp.status_code == 403
+
+    def test_returns_workload_structure(self, conn):
+        conn.set_fetch([])
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.REPORT_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/workload')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert 'by_provider' in body
+        assert 'by_modality' in body
+        assert 'by_room' in body
+
+
+class TestDeptTatDrilldown:
+    """DM-02: TAT drill-down by provider."""
+
+    def test_requires_report_read(self, conn):
+        client = TestClient(_make_dashboard_app(_user()))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/tat-drilldown')
+        assert resp.status_code == 403
+
+    def test_returns_tat_structure(self, conn):
+        conn.set_fetch([])
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.REPORT_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/tat-drilldown')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert 'by_provider' in body
+        assert 'drill_down' in body
+
+    def test_provider_drill_down(self, conn):
+        calls = {'n': 0}
+
+        async def _fetch(sql, *args):
+            calls['n'] += 1
+            return [{'provider': 'dr_jones', 'tat_seconds': 1200.0}]
+
+        conn.fetch = _fetch
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.REPORT_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/tat-drilldown?provider=dr_jones')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert len(body['drill_down']) == 1
+
+
+class TestDeptEquipmentUtil:
+    """DM-04: Equipment utilization endpoint."""
+
+    def test_requires_equipment_read(self, conn):
+        client = TestClient(_make_dashboard_app(_user()))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/equipment-util')
+        assert resp.status_code == 403
+
+    def test_returns_utilization_structure(self, conn):
+        conn.set_fetch([])
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.EQUIPMENT_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/analytics/equipment-util')
+        assert resp.status_code == 200
+        body = resp.json()['data']
+        assert 'utilization' in body
+        assert 'recent_downtime' in body
+
+
+class TestDeptStaffSchedule:
+    """DM-07: Staff schedule management endpoint."""
+
+    def test_requires_schedule_read(self, conn):
+        client = TestClient(_make_dashboard_app(_user()))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/staff-schedule')
+        assert resp.status_code == 403
+
+    def test_returns_schedule_list(self, conn):
+        conn.set_fetch([])
+        client = TestClient(_make_dashboard_app(
+            _user(Permission.SCHEDULE_READ)))
+        with patch('api.ris_dashboard.get_conn', return_value=conn):
+            resp = client.get('/ris/staff-schedule')
+        assert resp.status_code == 200
+        assert resp.json()['data'] == []

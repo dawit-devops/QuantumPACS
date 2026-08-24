@@ -464,3 +464,208 @@ class QAReviewersHandler(HTTPEndpoint):
         return ok({'data': [
             {'id': str(r['id']), 'username': r['username']} for r in rows
         ]})
+
+
+# ---------------------------------------------------------------------------
+# QA Analytics endpoints (QA-02 through QA-07)
+# Gated on QA_ANALYTICS_READ — read-only aggregations of existing QA data.
+# ---------------------------------------------------------------------------
+
+
+class QARejectAnalysisHandler(HTTPEndpoint):
+    """QA-02: Reject analysis — fail rate by modality, tech, protocol, reason."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        modality = request.query_params.get('modality')
+        async with get_conn() as conn:
+            # Reject rate by modality
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   GROUP BY e.modality
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by technologist
+            by_tech = await conn.fetch(
+                """SELECT e.assigned_technologist AS tech,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   WHERE e.assigned_technologist != ''
+                   GROUP BY e.assigned_technologist
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by protocol
+            by_protocol = await conn.fetch(
+                """SELECT p.name AS protocol_name, p.modality,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN protocols p ON p.id = q.protocol_id
+                   GROUP BY p.name, p.modality
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by discrepancy level
+            by_discrepancy = await conn.fetch(
+                """SELECT discrepancy_level, COUNT(*) AS n
+                   FROM qa_scores
+                   WHERE pass_fail = 'fail'
+                   GROUP BY discrepancy_level
+                   ORDER BY n DESC""",
+            )
+        return ok({
+            'data': {
+                'by_modality': [dict(r) for r in by_modality],
+                'by_technologist': [dict(r) for r in by_tech],
+                'by_protocol': [dict(r) for r in by_protocol],
+                'by_discrepancy': [dict(r) for r in by_discrepancy],
+            },
+        })
+
+
+class QADoseTrackingHandler(HTTPEndpoint):
+    """QA-03: Dose tracking — metrics by modality/protocol vs ACR benchmarks."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            # Dose metrics by modality with ACR benchmarks
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COUNT(*) AS n,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(MAX(q.dose_dlp), 1) AS max_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol,
+                          ROUND(MAX(q.dose_ctdivol), 1) AS max_ctdivol,
+                          p.acr_benchmark_dlp,
+                          p.acr_benchmark_ctdivol,
+                          COUNT(*) FILTER (
+                            WHERE q.dose_dlp > 0 AND p.acr_benchmark_dlp IS NOT NULL
+                            AND q.dose_dlp > p.acr_benchmark_dlp
+                          ) AS dlp_exceedances
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   LEFT JOIN protocols p ON p.id = q.protocol_id
+                   WHERE q.dose_dlp > 0 OR q.dose_ctdivol > 0
+                   GROUP BY e.modality, p.acr_benchmark_dlp, p.acr_benchmark_ctdivol
+                   ORDER BY e.modality""",
+            )
+            # Dose exceedances by protocol
+            exceedances = await conn.fetch(
+                """SELECT p.name AS protocol_name, p.modality,
+                          p.acr_benchmark_dlp,
+                          q.dose_dlp,
+                          q.dose_ctdivol,
+                          e.accession_number,
+                          q.reviewed_at
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   JOIN protocols p ON p.id = q.protocol_id
+                   WHERE q.dose_dlp > 0
+                     AND p.acr_benchmark_dlp IS NOT NULL
+                     AND q.dose_dlp > p.acr_benchmark_dlp
+                   ORDER BY q.dose_dlp DESC
+                   LIMIT 50""",
+            )
+        return ok({
+            'data': {
+                'by_modality': [dict(r) for r in by_modality],
+                'exceedances': [dict(r) for r in exceedances],
+            },
+        })
+
+
+class QATechMetricsHandler(HTTPEndpoint):
+    """QA-05: Technologist performance metrics -- reject rate, dose, protocol adherence."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            # protocol_adherence_pct: share of reviews where sequence_compliance
+            # has at least one entry (non-empty JSONB = protocol was evaluated).
+            # We avoid the literal '{}' pattern in triple-quoted strings due to
+            # Python 3.14 parsing strictness; use jsonb_typeof instead.
+            sql = (
+                'SELECT e.assigned_technologist AS tech, '
+                'COUNT(*) AS total_reviewed, '
+                'COUNT(*) FILTER (WHERE q.pass_fail = $1) AS passed, '
+                'COUNT(*) FILTER (WHERE q.pass_fail = $2) AS failed, '
+                'ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = $2) '
+                '/ NULLIF(COUNT(*), 0), 1) AS reject_rate, '
+                'ROUND(AVG(q.dose_dlp), 1) AS avg_dlp, '
+                'ROUND(100.0 * COUNT(*) FILTER (WHERE jsonb_array_length(q.sequence_compliance) > 0) '
+                '/ NULLIF(COUNT(*), 0), 1) AS protocol_adherence_pct '
+                'FROM qa_scores q '
+                'JOIN exams e ON e.id = q.exam_id '
+                'WHERE e.assigned_technologist != $3 '
+                'GROUP BY e.assigned_technologist '
+                'ORDER BY reject_rate DESC'
+            )
+            metrics = await conn.fetch(sql, 'pass', 'fail', '')
+        return ok({'data': [dict(r) for r in metrics]})
+
+
+class QAProtocolComplianceHandler(HTTPEndpoint):
+    """QA-06: Protocol compliance rate — adherence % by protocol."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            compliance = await conn.fetch(
+                """SELECT p.id AS protocol_id, p.name AS protocol_name,
+                          p.modality, p.body_part,
+                          p.acr_benchmark_dlp, p.acr_benchmark_ctdivol,
+                          COUNT(q.id) AS total_reviews,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'pass')
+                                / NULLIF(COUNT(q.id), 0), 1) AS compliance_pct,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+                   FROM protocols p
+                   LEFT JOIN qa_scores q ON q.protocol_id = p.id
+                   GROUP BY p.id, p.name, p.modality, p.body_part,
+                            p.acr_benchmark_dlp, p.acr_benchmark_ctdivol
+                   HAVING COUNT(q.id) > 0
+                   ORDER BY compliance_pct ASC""",
+            )
+        return ok({'data': [dict(r) for r in compliance]})
+
+
+class QATrendsHandler(HTTPEndpoint):
+    """QA-07: Trending — daily reject rate and dose trends."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        granularity = request.query_params.get('granularity', 'daily')
+        if granularity not in ('daily', 'weekly', 'monthly'):
+            granularity = 'daily'
+        date_trunc = {'daily': 'day', 'weekly': 'week', 'monthly': 'month'}[granularity]
+        async with get_conn() as conn:
+            trends = await conn.fetch(
+                f"""SELECT date_trunc('{date_trunc}', q.reviewed_at) AS period,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+                   FROM qa_scores q
+                   WHERE q.reviewed_at IS NOT NULL
+                   GROUP BY period
+                   ORDER BY period DESC
+                   LIMIT 90""",
+            )
+        return ok({'data': [dict(r) for r in trends], 'granularity': granularity})

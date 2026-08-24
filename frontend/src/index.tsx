@@ -114,6 +114,7 @@ const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
 const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
 const Incidents = React.lazy(() => import("./qa/Incidents"));
 const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
+const QAAnalyticsDashboard = React.lazy(() => import("./qa/QAAnalyticsDashboard"));
 const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
 const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
@@ -527,6 +528,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="QA_READ">
                           <CorrectiveActions />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/qa/analytics"
+                      element={
+                        <ClinicalRoute permission="QA_READ">
+                          <QAAnalyticsDashboard />
                         </ClinicalRoute>
                       }
                     />

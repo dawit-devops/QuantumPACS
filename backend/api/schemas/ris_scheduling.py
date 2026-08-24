@@ -114,3 +114,15 @@ class ApplyTemplateRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     reason: str = Field(..., min_length=1)
+
+
+class StaffScheduleRequest(BaseModel):
+    """DM-07: Create a staff schedule assignment."""
+    patient_name: str = Field('', max_length=200)
+    accession_number: str = Field('', max_length=64)
+    modality: str = Field(..., min_length=1, max_length=10)
+    scheduled_date: str = Field(..., description='YYYY-MM-DD')
+    scheduled_time: str = Field('', max_length=8)
+    station_ae: str = Field('', max_length=64)
+    technologist: str = Field('', max_length=128)
+    tenant_id: str = Field('default', max_length=128)

@@ -41,6 +41,7 @@ class Permission(str, Enum):
     QA_READ = 'QA_READ'
     QA_WRITE = 'QA_WRITE'
     PROTOCOL_MANAGE = 'PROTOCOL_MANAGE'
+    QA_ANALYTICS_READ = 'QA_ANALYTICS_READ'
     DICOMWEB_READ = 'DICOMWEB_READ'
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
     ROUTING_READ = 'ROUTING_READ'
@@ -174,7 +175,7 @@ PERMISSION_GROUPS = {
     'Reports': ['REPORT_READ', 'REPORT_WRITE', 'REPORT_SIGN',
                 'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN'],
     'Peer Review': ['PEER_REVIEW_READ', 'PEER_REVIEW_WRITE'],
-    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE'],
+    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE', 'QA_ANALYTICS_READ'],
     'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
     'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
     'Metrics': ['METRICS_READ'],
@@ -327,6 +328,13 @@ MATRIX_C_DEPTMGR = {
     'WORKLIST_READ', 'REPORT_READ', 'BILLING_READ',
     'ANALYTICS_READ', 'METRICS_READ', 'CHART_READ', 'RESULTS_READ',
     'AUDIT_READ',
+    # DM-04: equipment utilization report — dept manager oversees modality
+    # operations and needs equipment visibility (read-only).
+    'EQUIPMENT_READ',
+    # DM-07: staff schedule management — dept manager creates/edits staff
+    # schedules; SCHEDULE_WRITE also enables appointment booking but the
+    # dept manager is a senior role that should have full scheduling authority.
+    'SCHEDULE_WRITE',
 }
 MATRIX_C_TENANT_ADMIN = {
     'TENANT_READ', 'TENANT_ADMIN', 'METERING_READ',

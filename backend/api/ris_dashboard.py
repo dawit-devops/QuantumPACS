@@ -15,10 +15,218 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok
+from api.response import ok, created
 from datetime import date, datetime
 from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
+
+
+# ---------------------------------------------------------------------------
+# Department Manager analytics endpoints (DM-01, DM-02, DM-04, DM-07)
+# ---------------------------------------------------------------------------
+
+
+class DeptWorkloadHandler(HTTPEndpoint):
+    """DM-01: Department workload distribution by provider/room/modality."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            # Workload by provider (radiologist reading load)
+            by_provider = await conn.fetch(
+                """SELECT r.signed_by AS provider,
+                          COUNT(*) AS total_reports,
+                          COUNT(*) FILTER (WHERE r.signed_at IS NULL) AS in_progress,
+                          COUNT(*) FILTER (
+                            WHERE r.signed_at IS NOT NULL
+                            AND e.priority = 'stat'
+                          ) AS stat_completed
+                   FROM reports r
+                   JOIN exams e ON e.id = r.exam_id
+                   WHERE e.tenant_id = $1
+                   GROUP BY r.signed_by
+                   ORDER BY total_reports DESC""",
+                tenant,
+            )
+            # Workload by modality
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE e.status = 'completed') AS completed,
+                          COUNT(*) FILTER (WHERE e.status IN ('scheduled', 'arrived')) AS pending
+                   FROM exams e
+                   WHERE e.tenant_id = $1
+                     AND e.scheduled_date = current_date
+                   GROUP BY e.modality
+                   ORDER BY total DESC""",
+                tenant,
+            )
+            # Workload by room/resource
+            by_room = await conn.fetch(
+                """SELECT a.room AS room,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (
+                            WHERE a.status IN ('ARRIVED', 'IN_PROGRESS')
+                          ) AS active,
+                          COUNT(*) FILTER (
+                            WHERE a.status = 'COMPLETED'
+                          ) AS completed
+                   FROM ris_appointments a
+                   WHERE a.tenant_id = $1
+                     AND a.start_time >= current_date
+                     AND a.start_time < current_date + interval '1 day'
+                   GROUP BY a.room
+                   ORDER BY active DESC""",
+                tenant,
+            )
+        return ok({
+            'data': {
+                'by_provider': [dict(r) for r in by_provider],
+                'by_modality': [dict(r) for r in by_modality],
+                'by_room': [dict(r) for r in by_room],
+            },
+        })
+
+
+class DeptTatDrilldownHandler(HTTPEndpoint):
+    """DM-02: TAT drill-down by provider with individual exam details."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        provider = request.query_params.get('provider')
+        async with get_conn() as conn:
+            # TAT summary by provider
+            by_provider = await conn.fetch(
+                """SELECT r.signed_by AS provider,
+                          e.priority,
+                          COUNT(*) AS n,
+                          ROUND(AVG(EXTRACT(EPOCH FROM (r.signed_at - r.created_at))), 0)
+                            AS avg_tat_seconds,
+                          percentile_cont(0.95) WITHIN GROUP (
+                            ORDER BY EXTRACT(EPOCH FROM (r.signed_at - r.created_at))
+                          )::float AS p95_tat_seconds
+                   FROM reports r
+                   JOIN exams e ON e.id = r.exam_id
+                   WHERE r.signed_at IS NOT NULL AND e.tenant_id = $1
+                   GROUP BY r.signed_by, e.priority
+                   ORDER BY r.signed_by, e.priority""",
+                tenant,
+            )
+            # Drill-down: individual exams for a specific provider
+            drill_rows = []
+            if provider:
+                drill_rows = await conn.fetch(
+                    """SELECT r.exam_id, e.accession_number, e.priority,
+                              e.modality, r.signed_by AS provider,
+                              EXTRACT(EPOCH FROM (r.signed_at - r.created_at))
+                                AS tat_seconds,
+                              r.created_at, r.signed_at
+                       FROM reports r
+                       JOIN exams e ON e.id = r.exam_id
+                       WHERE r.signed_at IS NOT NULL
+                         AND e.tenant_id = $1
+                         AND r.signed_by = $2
+                       ORDER BY r.signed_at DESC
+                       LIMIT 50""",
+                    tenant, provider,
+                )
+        return ok({
+            'data': {
+                'by_provider': [dict(r) for r in by_provider],
+                'drill_down': [dict(r) for r in drill_rows],
+            },
+        })
+
+
+class DeptEquipmentUtilHandler(HTTPEndpoint):
+    """DM-04: Equipment utilization — modality uptime, downtime events."""
+
+    @requires_permission(Permission.EQUIPMENT_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            # Equipment utilization by modality
+            utilization = await conn.fetch(
+                """SELECT modality,
+                          COUNT(*) AS total_units,
+                          COUNT(*) FILTER (WHERE status = 'operational') AS operational,
+                          COUNT(*) FILTER (WHERE status = 'maintenance') AS in_maintenance,
+                          COUNT(*) FILTER (WHERE status = 'out_of_service') AS out_of_service,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'operational')
+                                / NULLIF(COUNT(*), 0), 1) AS uptime_pct
+                   FROM equipment
+                   GROUP BY modality
+                   ORDER BY modality""",
+            )
+            # Recent downtime events
+            downtime = await conn.fetch(
+                """SELECT de.*, e.name AS equipment_name, e.modality
+                   FROM equipment_downtime de
+                   JOIN equipment e ON e.id = de.equipment_id
+                   WHERE de.started_at >= now() - interval '30 days'
+                   ORDER BY de.started_at DESC
+                   LIMIT 50""",
+            )
+        return ok({
+            'data': {
+                'utilization': [dict(r) for r in utilization],
+                'recent_downtime': [dict(r) for r in downtime],
+            },
+        })
+
+
+class DeptStaffScheduleHandler(HTTPEndpoint):
+    """DM-07: Staff schedule management — view and create shift assignments."""
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        async with get_conn() as conn:
+            where = []
+            params = []
+            idx = 1
+            if start_date:
+                where.append(f"scheduled_date >= ${idx}")
+                params.append(start_date)
+                idx += 1
+            if end_date:
+                where.append(f"scheduled_date <= ${idx}")
+                params.append(end_date)
+                idx += 1
+            clause = f"WHERE {' AND '.join(where)}" if where else ''
+            rows = await conn.fetch(
+                f"""SELECT w.id, w.patient_name, w.accession_number,
+                          w.modality, w.scheduled_date, w.scheduled_time,
+                          w.assigned_station_ae, w.status,
+                          w.assigned_technologist
+                   FROM worklist_entries w
+                   {clause}
+                   ORDER BY w.scheduled_date, w.scheduled_time""",
+                *params,
+            )
+        return ok({'data': [dict(r) for r in rows]})
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.scheduling import StaffScheduleRequest
+        body = await parse_body(StaffScheduleRequest, request)
+        async with get_conn() as conn:
+            # Create a worklist entry for the staff schedule assignment
+            row = await conn.fetchrow(
+                """INSERT INTO worklist_entries
+                   (patient_name, accession_number, modality, scheduled_date,
+                    scheduled_time, assigned_station_ae, assigned_technologist,
+                    status, tenant_id)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)
+                   RETURNING id""",
+                body.patient_name, body.accession_number, body.modality,
+                body.scheduled_date, body.scheduled_time,
+                body.station_ae, body.technologist, body.tenant_id,
+            )
+        return created({'data': {'id': str(row['id'])}})
 
 
 class RisDashboardKpiHandler(HTTPEndpoint):
