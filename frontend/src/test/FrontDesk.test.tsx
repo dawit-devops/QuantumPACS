@@ -327,6 +327,32 @@ describe("WaitingQueue", () => {
     await screen.findByText(/J\.S\./);
     expect(mockGetWaitingQueue).toHaveBeenCalledTimes(1);
   });
+
+  it("color-codes the wait badge by minutes since check-in", async () => {
+    // FD-05: green <15m, amber 15-30m, red >30m.
+    mockGetWaitingQueue.mockResolvedValue([
+      {
+        visit_id: "v1", initials: "A.B.", last4: "1111",
+        status: "checked_in", destination: "CT1",
+        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 12,
+      },
+      {
+        visit_id: "v2", initials: "C.D.", last4: "2222",
+        status: "checked_in", destination: "MR1",
+        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 22,
+      },
+      {
+        visit_id: "v3", initials: "E.F.", last4: "3333",
+        status: "checked_in", destination: "XR1",
+        updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 45,
+      },
+    ]);
+    renderWithAuth(<WaitingQueue />);
+    await screen.findByText(/A\.B\./);
+    expect(screen.getByText("12m")).toHaveClass("fd-wait-green");
+    expect(screen.getByText("22m")).toHaveClass("fd-wait-amber");
+    expect(screen.getByText("45m")).toHaveClass("fd-wait-red");
+  });
 });
 
 describe("AppointmentBooking", () => {

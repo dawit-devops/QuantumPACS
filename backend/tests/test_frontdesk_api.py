@@ -294,6 +294,28 @@ class TestWaitingQueuePrivacy:
         assert data[1]['initials'] == ''
         assert data[1]['last4'] == 'P1'
 
+    def test_queue_exposes_wait_minutes(self):
+        # FD-05: the front-desk queue needs minutes-since-arrival so the UI
+        # can color-code by wait time (green <15m, amber 15-30m, red >30m).
+        user = User({'id': 1, 'permissions': ['QUEUE_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = [
+            {
+                'visit_id': 'v1', 'patient_id': 'MRN12345',
+                'patient_name': 'John Smith', 'status': 'checked_in',
+                'destination': 'CT1', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': 22,
+            },
+        ]
+        with patch('api.frontdesk.get_conn', return_value=mock_conn):
+            resp = client.get('/queue?date=2026-08-04')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert len(data) == 1
+        assert data[0]['wait_minutes'] == 22
+
 
 class TestVisitStatusTransitions:
     """R5-10: the server enforces the one canonical visit lifecycle —

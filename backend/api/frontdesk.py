@@ -758,5 +758,9 @@ class WaitingQueueHandler(HTTPEndpoint):
                 'status': r['status'],
                 'destination': r['destination'] or '',
                 'updated_at': str(r['updated_at']),
+                # FD-05: minutes-since-arrival (None for registered-only visits).
+                'wait_minutes': (round(r['wait_minutes'])
+                                 if r.get('wait_minutes') is not None
+                                 else None),
             })
         return ok({'data': data})

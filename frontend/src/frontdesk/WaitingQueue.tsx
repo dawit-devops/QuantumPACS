@@ -21,6 +21,13 @@ const STATUS_COLORS: Record<string, string> = {
   complete: "green",
 };
 
+function waitBadgeClass(minutes: number | null): string {
+  if (minutes === null) return "fd-wait-none";
+  if (minutes < 15) return "fd-wait-green";
+  if (minutes < 30) return "fd-wait-amber";
+  return "fd-wait-red";
+}
+
 // US-R08-07: the queue board in a shared waiting area shows ONLY initials +
 // MRN last-4 (the backend projects these server-side and never sends full
 // names/MRNs). Full PHI stays behind authenticated screens.
@@ -121,6 +128,9 @@ function WaitingQueue() {
                 {row.destination}
               </Tag>
             )}
+            <Tag className={waitBadgeClass(row.wait_minutes)}>
+              {row.wait_minutes != null ? `${row.wait_minutes}m` : "—"}
+            </Tag>
             <span className="fd-queue-time">
               {row.updated_at
                 ? new Date(row.updated_at).toLocaleTimeString([], {

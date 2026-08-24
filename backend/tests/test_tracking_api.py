@@ -166,6 +166,35 @@ class TestTrackingBoardAPI:
         assert data['page'] == 2
         assert data['per_page'] == 10
 
+    def test_arrived_rows_include_checkin_timestamp_and_wait(self):
+        # FD-05: an arrived row carries the appointment's checked_in_at and a
+        # computed wait_minutes so the queue can color-code by wait time.
+        user = User({'id': 1, 'permissions': ['WORKLIST_READ']})
+        client = TestClient(_make_tracking_app(user))
+        row = {
+            'id': 'ex-1', 'accession_number': 'ACC001',
+            'patient_id': 'P001', 'patient_name': 'Smith^John',
+            'modality': 'CT', 'status': 'arrived', 'priority': 'routine',
+            'station_ae_title': 'CT01', 'scheduled_date': '2026-08-20',
+            'scheduled_time': '09:00', 'checked_in_at': '2026-08-20T09:00:00+00:00',
+        }
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
+        mock_conn.fetch = AsyncMock(return_value=[row])
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        with patch('api.worklist.get_conn', return_value=mock_conn):
+            resp = client.get('/ris/tracking?status=arrived')
+        assert resp.status_code == 200
+        data = resp.json()['data'][0]
+        assert data['checked_in_at'] == '2026-08-20T09:00:00+00:00'
+        assert isinstance(data['wait_minutes'], (int, float))
+        assert data['wait_minutes'] >= 0
+        # The handler must select the arrival column from ris_appointments.
+        calls = [str(c) for c in mock_conn.fetch.call_args.args[0:1]]
+        assert 'checked_in_at' in calls[0]
+        assert 'ris_appointments' in calls[0]
+
 
 # ---------------------------------------------------------------------------
 # S6-14: KPI strip API tests
@@ -211,8 +240,8 @@ class TestKpiStripAPI:
         mock_conn = AsyncMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=None)
-        # fetchval returns counts in order: volume, in_progress, awaiting, overdue, stat
-        mock_conn.fetchval = AsyncMock(side_effect=[42, 5, 8, 2, 3])
+        # fetchval returns counts in order: volume, in_progress, awaiting, overdue, stat, overdue_wait
+        mock_conn.fetchval = AsyncMock(side_effect=[42, 5, 8, 2, 3, 4])
         with patch('api.worklist.get_conn', return_value=mock_conn):
             resp = client.get('/ris/tracking/kpi')
         assert resp.status_code == 200
@@ -222,6 +251,7 @@ class TestKpiStripAPI:
         assert data['awaiting_read'] == 8
         assert data['overdue'] == 2
         assert data['stat_count'] == 3
+        assert data['overdue_wait_count'] == 4
 
 
 # ---------------------------------------------------------------------------

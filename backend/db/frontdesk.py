@@ -142,6 +142,11 @@ class FrontDesk:
         now = datetime.now(timezone.utc)
         keys = list(updates.keys()) + ['updated_at']
         values = list(updates.values()) + [now]
+        # FD-05: stamp the arrival time when a visit first checks in so the
+        # front-desk queue can compute minutes-since-arrival.
+        if updates.get('status') == 'checked_in':
+            keys.append('checked_in_at')
+            values.append(now)
         set_clause = ', '.join(f"{k} = ${i + 2}" for i, k in enumerate(keys))
         await self.conn.execute(
             f"UPDATE visits SET {set_clause} WHERE id = $1",
@@ -436,7 +441,7 @@ class FrontDesk:
         added no columns yet multiplied rows (one patient can have many
         exams), so the destination room is fetched per-visit instead (R5-09).
         Completed/archived visits are hidden — the queue shows patients
-        waiting to be seen."""
+        waiting to be seen. Returns wait_minutes since arrival (FD-05)."""
         return await self.conn.fetch(
             """
             SELECT
@@ -451,12 +456,15 @@ class FrontDesk:
                     v.destination_room
                 ) AS destination,
                 v.updated_at,
-                v.created_at
+                v.created_at,
+                EXTRACT(EPOCH FROM (now() - v.checked_in_at)) / 60
+                    AS wait_minutes
             FROM visits v
             LEFT JOIN patients p ON p.patient_id = v.patient_id
             WHERE v.status IN ('registered', 'checked_in')
               AND ($1 = '' OR v.visit_date = $1::date)
-            ORDER BY v.created_at
+            ORDER BY v.checked_in_at IS NOT NULL DESC NULLS LAST,
+                     v.checked_in_at, v.created_at
             """,
             date,
         )

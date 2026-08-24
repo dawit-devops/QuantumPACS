@@ -73,6 +73,10 @@ class RisAppointments(Table):
         await self.conn.execute(
             "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
             "consent_at TIMESTAMPTZ")
+        # S2 (FD-05): wait-time stamp, mirrors migration 090.
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "checked_in_at TIMESTAMPTZ")
 
     async def create(self, data):
         now = datetime.now(timezone.utc)
@@ -162,9 +166,11 @@ class RisAppointments(Table):
             appointment_id, tenant_id)
 
     async def mark_checked_in(self, appointment_id, tenant_id='default'):
-        """Kiosk confirm: SCHEDULED -> ARRIVED; None when not schedulable."""
+        """Kiosk confirm: SCHEDULED -> ARRIVED; stamps checked_in_at for
+        wait-time computation (FD-05). None when not schedulable."""
         return await self.conn.fetchrow(
-            "UPDATE ris_appointments SET status = 'ARRIVED' "
+            "UPDATE ris_appointments SET status = 'ARRIVED',"
+            " checked_in_at = now() "
             "WHERE id::text = $1 AND tenant_id = $2 AND status = 'SCHEDULED' "
             "RETURNING id::text AS id, status",
             appointment_id, tenant_id)

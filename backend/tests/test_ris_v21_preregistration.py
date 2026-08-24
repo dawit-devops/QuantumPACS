@@ -201,6 +201,28 @@ class TestKioskCheckIn:
         assert ok.json()['status'] == 'ARRIVED'
         assert dup.status_code == 409
 
+    def test_mark_checked_in_records_arrival_timestamp(self):
+        # FD-05: the SCHEDULED -> ARRIVED transition must stamp checked_in_at
+        # so the tracking board/queue can compute wait time since arrival.
+        from db.ris_appointments import RisAppointments
+
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(
+            return_value={'id': 'appt-1', 'status': 'ARRIVED'})
+        repo = RisAppointments(mock_conn)
+        await_result = None
+
+        async def _run():
+            nonlocal await_result
+            await_result = await repo.mark_checked_in('appt-1', 'main-hospital')
+
+        import asyncio
+        asyncio.run(_run())
+        sql = mock_conn.fetchrow.call_args.args[0]
+        assert 'checked_in_at = now()' in sql
+        assert "status = 'ARRIVED'" in sql
+        assert await_result['status'] == 'ARRIVED'
+
 
 class TestKioskConsent:
     """K-03: the kiosk digital consent form's signature + refusal are

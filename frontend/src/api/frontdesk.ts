@@ -89,6 +89,7 @@ export interface QueueEntry {
   status: string;
   destination: string;
   updated_at: string;
+  wait_minutes: number | null;
 }
 
 export interface VisitPage {

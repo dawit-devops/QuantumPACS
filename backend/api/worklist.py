@@ -228,13 +228,14 @@ class TrackingHandler(HTTPEndpoint):
                 f" (EXISTS (SELECT 1 FROM ris_critical_results cr"
                 f"   WHERE cr.accession_number = w.accession_number"
                 f"   AND cr.status = 'flagged')) AS has_critical,"
-                f" appt.id AS appointment_id, appt.resource_id AS resource_id"
+                f" appt.id AS appointment_id, appt.resource_id AS resource_id,"
+                f" appt.checked_in_at AS checked_in_at"
                 f" FROM worklist_entries w"
                 f" LEFT JOIN exams e ON e.accession_number = w.accession_number"
-                f" LEFT JOIN LATERAL (SELECT a.id, a.resource_id"
+                f" LEFT JOIN LATERAL (SELECT a.id, a.resource_id, a.checked_in_at"
                 f"   FROM ris_appointments a"
                 f"   WHERE a.order_id = w.ris_order_id"
-                f"     AND a.status = 'SCHEDULED'"
+                f"     AND a.status IN ('SCHEDULED', 'ARRIVED')"
                 f"   ORDER BY a.start_time LIMIT 1) appt ON true"
                 f" WHERE {where}"
                 f" ORDER BY"
@@ -251,8 +252,24 @@ class TrackingHandler(HTTPEndpoint):
                 *params,
             )
 
+        now = datetime.now(timezone.utc)
+        data = []
+        for r in rows:
+            row = dict(r)
+            # FD-05: minutes-since-arrival so the queue can color-code by
+            # wait time. None when the appointment has no arrival stamp.
+            ck = row.get('checked_in_at')
+            if ck is not None:
+                if isinstance(ck, str):
+                    ck = datetime.fromisoformat(ck)
+                row['wait_minutes'] = max(
+                    0, int((now - ck).total_seconds() // 60))
+            else:
+                row['wait_minutes'] = None
+            data.append(row)
+
         return ok({
-            'data': [dict(r) for r in rows],
+            'data': data,
             'total': total or 0,
             'page': page,
             'per_page': per_page,
@@ -290,6 +307,13 @@ class TrackingKpiHandler(HTTPEndpoint):
                 " AND scheduled_date = current_date"
                 " AND status NOT IN ('cancelled','performed')"
             ) or 0
+            # FD-05: patients waiting >30 minutes in the queue.
+            overdue_wait = await conn.fetchval(
+                "SELECT count(*) FROM ris_appointments"
+                " WHERE status = 'ARRIVED'"
+                " AND checked_in_at < now() - interval '30 minutes'"
+                " AND start_time >= date_trunc('day', now())"
+            ) or 0
 
         return ok({
             'volume': volume,
@@ -297,6 +321,7 @@ class TrackingKpiHandler(HTTPEndpoint):
             'awaiting_read': awaiting_read,
             'overdue': overdue,
             'stat_count': stat_count,
+            'overdue_wait_count': overdue_wait,
         })
 
 
