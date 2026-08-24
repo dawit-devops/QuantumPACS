@@ -48,6 +48,7 @@ interface ReportPanelProps {
   onRequestSign: () => void;
   onReturnClick: () => void;
   onRestoreVersion?: (version: number) => void;
+  distribution?: any[] | null;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
@@ -82,6 +83,7 @@ export default function ReportPanel({
   onRequestSign,
   onReturnClick,
   onRestoreVersion,
+  distribution,
 }: ReportPanelProps) {
   const isFinal = status === "final";
   const isResident = role === "resident";
@@ -391,6 +393,46 @@ export default function ReportPanel({
             report?.signed_at ? new Date(report.signed_at).toLocaleString() : ""
           }`}
         />
+      )}
+
+      {/* R-16: distribution confirmation — per-recipient ORU receipts. */}
+      {isFinal && distribution && (
+        <Card title="Distribution" size="small" style={{ marginTop: 12 }}>
+          {distribution.length === 0 ? (
+            <span className="report-template-hint">
+              No distribution records yet — the results engine delivers the
+              signed report to the ordering physician.
+            </span>
+          ) : (
+            <>
+              <div style={{ marginBottom: 6, fontSize: 13 }}>
+                Report distributed to {distribution.length} recipient
+                {distribution.length === 1 ? "" : "s"}:
+              </div>
+              {distribution.map((d: any) => (
+                <div
+                  key={d.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "2px 0",
+                  }}
+                >
+                  <Tag color={d.status === "SENT" ? "green" : "red"}>
+                    {d.status}
+                  </Tag>
+                  <span style={{ fontSize: 12 }}>
+                    {d.accession_number || d.report_id}
+                    {d.delivered_at
+                      ? ` · delivered ${new Date(d.delivered_at).toLocaleTimeString()}`
+                      : ` · ${d.attempts ?? 1} attempt(s) — retry pending`}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </Card>
       )}
 
       {submitted && (

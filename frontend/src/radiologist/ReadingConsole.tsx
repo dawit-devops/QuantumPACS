@@ -111,6 +111,8 @@ function ReadingConsole() {
   const [dirty, setDirty] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [signing, setSigning] = useState(false);
+  // R-16: per-recipient ORU delivery receipts fetched after signing.
+  const [distribution, setDistribution] = useState<any[] | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [returning, setReturning] = useState(false);
@@ -353,6 +355,14 @@ function ReadingConsole() {
           ? "Report co-signed — status is now FINAL"
           : "Report signed — status is now FINAL",
       );
+      // R-16: distribution confirmation — receipt rows from the ORU engine.
+      if (!next && res.data?.id) {
+        request(
+          `notifications/delivery-status?report_id=${res.data.id}`,
+        )
+          .then((d: any) => setDistribution(Array.isArray(d.data) ? d.data : []))
+          .catch(() => setDistribution([]));
+      }
       if (next) {
         // Sign & next: jump to the next unread exam in the same filtered
         // queue, preserving the worklist filters for the next console. When
@@ -566,6 +576,7 @@ function ReadingConsole() {
       templates={templates}
       dirty={dirty}
       reviewFeedback={report?.review_feedback}
+      distribution={distribution}
       onFindingsChange={(v) => {
         setFindings(v);
         dirtyRef.current = true;

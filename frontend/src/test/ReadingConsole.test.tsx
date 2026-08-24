@@ -229,6 +229,72 @@ describe("ReadingConsole", () => {
     expect(screen.getByText(/This report is FINAL/)).toBeInTheDocument();
   });
 
+  it("shows the distribution confirmation after signing (R-16)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({ data: { imaging: false } });
+      }
+      if (url === "reports/e1/sign") {
+        return Promise.resolve({
+          data: {
+            ...mockReport,
+            status: "final",
+            signed_by: "50",
+            signed_at: "2026-08-03T12:00:00Z",
+          },
+        });
+      }
+      if (url.startsWith("notifications/delivery-status")) {
+        return Promise.resolve({
+          data: [
+            {
+              id: "d1",
+              report_id: "rep-1",
+              accession_number: "ACC-001",
+              status: "SENT",
+              attempts: 1,
+              delivered_at: "2026-08-03T12:00:05Z",
+            },
+            {
+              id: "d2",
+              report_id: "rep-1",
+              accession_number: "ACC-001",
+              status: "FAILED",
+              attempts: 3,
+              delivered_at: null,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
+      target: { value: "Normal." },
+    });
+    const signBtn = screen
+      .getAllByRole("button", { name: /sign report/i })
+      .find((b) => (b as HTMLButtonElement).disabled === false);
+    fireEvent.click(signBtn!);
+    fireEvent.click(await screen.findByText("Sign & Finalize"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Report distributed to 2 recipient/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText("SENT")).toBeInTheDocument();
+      expect(screen.getByText("FAILED")).toBeInTheDocument();
+    });
+  });
+
   it("Sign & Next jumps to the next exam in the filtered queue", async () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
