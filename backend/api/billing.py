@@ -1070,6 +1070,74 @@ class RisClaimSubmitHandler(HTTPEndpoint):
         return ok({'id': result['id'], 'claim_number': claim_number, 'status': result['status']})
 
 
+class RisClaimsHandler(HTTPEndpoint):
+    """B-06: GET /ris/billing/claims — full claim lifecycle list with
+    payer/status/date filters for the tracking dashboard."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        from db.ris_charges import RisClaims
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await RisClaims(conn).list_claims(
+                tenant,
+                status=request.query_params.get('status'),
+                payer=request.query_params.get('payer'),
+                date_from=request.query_params.get('date_from'),
+                date_to=request.query_params.get('date_to'),
+            )
+        return ok({'data': [dict(r) for r in rows]})
+
+
+class RisClaimBatchSubmitHandler(HTTPEndpoint):
+    """B-02: batch 837 submission — POST /ris/billing/claims/batch-submit.
+
+    {charge_ids: [...]} creates one claim per charge via the same stub path
+    as the single submit (837 serialization remains integration-dependent).
+    Best-effort: unknown charges land in `missing`."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('charge_ids') or [])][:100]
+        if not ids:
+            return validation_error('charge_ids is required')
+        tenant = effective_tenant(request) or 'default'
+        submitted, missing = [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges, RisClaims
+            from db.audit_log import AuditLog
+            import random
+            rc = RisCharges(conn)
+            claims = RisClaims(conn)
+            for charge_id in ids:
+                charge = await rc.get(charge_id, tenant)
+                if not charge:
+                    missing.append(charge_id)
+                    continue
+                claim_number = f'CLM-{random.randint(100000, 999999)}'
+                result = await claims.submit(
+                    charge_id, claim_number, tenant_id=tenant,
+                    prior_auth_id=charge.get('prior_auth_id') or None,
+                )
+                await AuditLog(conn).log_event(
+                    event_type='billing.claim_submitted',
+                    resource_id=charge_id,
+                    resource_type='ris_claims',
+                    actor_id=request.user.id,
+                    tenant=tenant,
+                )
+                submitted.append({
+                    'charge_id': charge_id,
+                    'claim_number': claim_number,
+                    'status': result['status'],
+                })
+        return ok({'data': {'submitted': submitted, 'missing': missing}})
+
+
 class RisDenialQueueHandler(HTTPEndpoint):
     """R2-02-01: GET /ris/billing/denials — the coder's rework queue."""
 

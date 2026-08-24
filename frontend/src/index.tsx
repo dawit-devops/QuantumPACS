@@ -116,6 +116,7 @@ const Incidents = React.lazy(() => import("./qa/Incidents"));
 const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const QAAnalyticsDashboard = React.lazy(() => import("./qa/QAAnalyticsDashboard"));
 const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
+const ClaimsStatus = React.lazy(() => import("./billing/ClaimsStatus"));
 const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
@@ -473,6 +474,15 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="BILLING_READ">
                           <BillingQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* B-06: claim lifecycle tracking. */}
+                    <Route
+                      path="/billing/claims"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <ClaimsStatus />
                         </ClinicalRoute>
                       }
                     />

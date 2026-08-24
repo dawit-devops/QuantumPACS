@@ -357,6 +357,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["BILLING_READ"],
       },
       {
+        // B-06: claim lifecycle tracking dashboard.
+        key: "billing-claims",
+        path: "/billing/claims",
+        label: "Claims",
+        icon: <AccountBookOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
         key: "billing-unbilled",
         path: "/billing/unbilled",
         label: "Unbilled Aging",

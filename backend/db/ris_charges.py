@@ -316,6 +316,43 @@ class RisClaims(Table):
         LIMIT $2
         """, tenant_id, max(limit, 1))
 
+    async def list_claims(self, tenant_id='default', status=None, payer=None,
+                          date_from=None, date_to=None, limit=200):
+        """B-06: full claim lifecycle dashboard — every claim (not just
+        denials) with charge context, filterable by payer/status/date."""
+        where = ["c.tenant_id = $1"]
+        params = [tenant_id]
+        idx = 2
+        if status:
+            where.append(f"c.status = ${idx}")
+            params.append(status)
+            idx += 1
+        if payer:
+            where.append(f"c.payer_name ILIKE ${idx}")
+            params.append(f'%{payer}%')
+            idx += 1
+        if date_from:
+            where.append(f"c.created_at >= ${idx}::timestamptz")
+            params.append(f'{date_from}T00:00:00+00:00')
+            idx += 1
+        if date_to:
+            where.append(f"c.created_at <= ${idx}::timestamptz")
+            params.append(f'{date_to}T23:59:59.999+00:00')
+            idx += 1
+        return await self.conn.fetch(
+            f"""SELECT c.id, c.claim_number, c.payer_name, c.status,
+                       c.rejection_code, c.rejection_reason,
+                       c.correction_count, c.prior_auth_number,
+                       c.created_at,
+                       ch.patient_name, ch.accession_number, ch.cpt_code,
+                       ch.charge_amount
+                FROM ris_claims c
+                JOIN ris_charges ch ON ch.id = c.charge_id
+                WHERE {' AND '.join(where)}
+                ORDER BY c.updated_at DESC
+                LIMIT {max(int(limit), 1)}
+            """, *params)
+
     async def correct_and_resubmit(self, claim_id, note='', actor='',
                                    tenant_id='default'):
         """R2-02-03: apply a coder's correction and push the claim back

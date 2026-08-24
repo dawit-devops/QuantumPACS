@@ -148,3 +148,44 @@ export const getClaimHistory = (id: string): Promise<ClaimEvent[]> =>
   request<{ data: ClaimEvent[] }>(`ris/billing/claims/${id}/history`).then(
     (res) => res.data ?? [],
   );
+
+// B-06: full claim lifecycle dashboard.
+export interface ClaimRow {
+  id: string;
+  claim_number: string;
+  payer_name: string;
+  status: string;
+  rejection_code?: string;
+  rejection_reason?: string;
+  correction_count?: number;
+  prior_auth_number?: string;
+  created_at?: string;
+  patient_name: string;
+  accession_number: string;
+  cpt_code: string;
+  charge_amount: number;
+}
+
+export const listClaims = (
+  query: Record<string, string> = {},
+): Promise<ClaimRow[]> =>
+  request<{ data: ClaimRow[] }>("ris/billing/claims", { query }).then(
+    (res) => res?.data ?? [],
+  );
+
+// B-02: batch submission — one claim per prepared charge.
+export const batchSubmitClaims = (
+  chargeIds: string[],
+): Promise<{
+  submitted: { charge_id: string; claim_number: string; status: string }[];
+  missing: string[];
+}> =>
+  request<{
+    data: {
+      submitted: { charge_id: string; claim_number: string; status: string }[];
+      missing: string[];
+    };
+  }>("ris/billing/claims/batch-submit", {
+    method: "POST",
+    data: { charge_ids: chargeIds },
+  }).then((res) => res?.data ?? { submitted: [], missing: [] });
