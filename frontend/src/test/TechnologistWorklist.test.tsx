@@ -313,4 +313,36 @@ describe("TechnologistWorklist", () => {
       expect(call![1].data).toEqual({ release: true });
     });
   });
+
+  it("defaults to My Exams and toggles to the unassigned pool", async () => {
+    // T-01: the worklist defaults to assigned=mine, and the toggle switches
+    // to assigned=pool so the tech can work the shared pool.
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams") return Promise.resolve({ data: mockExams });
+      return Promise.resolve({ data: {} });
+    });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    // Default fetch is assigned=mine.
+    const defaultCall = mockRequest.mock.calls.find(
+      (c: any) => c[0] === "exams",
+    );
+    expect(defaultCall![1].query.assigned).toBe("mine");
+
+    fireEvent.click(screen.getByRole("button", { name: /Unassigned Pool/ }));
+    await waitFor(() => {
+      const poolCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "exams" && c[1].query.assigned === "pool",
+      );
+      expect(poolCall).toBeTruthy();
+    });
+    // The pool subtitle explains the claim action.
+    expect(
+      screen.getByText(/Unassigned pool — claim exams to take ownership/),
+    ).toBeInTheDocument();
+  });
 });
