@@ -300,6 +300,12 @@ MATRIX_B_COORD = {
     # management surface (create / submit-for-review / decide / override)
     # and reminder send+config — previously held by no staff role.
     'PRIOR_AUTH_WRITE',
+    # G3 (human-approved 2026-08-25, round 5 §2.11): NURSING_READ/WRITE make
+    # the coordinator the holder of the previously dead nursing grants,
+    # formalizing migration 052's nurse→care_coordinator remap. Writes gate
+    # the exam-linked vitals/checklist/consent/notes surfaces; reads also
+    # pass via EXAM_READ on tech/rad matrices, so no other matrix changes.
+    'NURSING_READ', 'NURSING_WRITE',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
     # Care-coordinator review (P0-1/P1-1): WORKLIST_READ (read-only) unlocks
     # the Schedule Board's day data (GET /api/worklist) — the SCHEDULE_READ
