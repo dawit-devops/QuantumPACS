@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { MemoryRouter } from "react-router";
@@ -92,5 +92,29 @@ describe("UnbilledAging", () => {
     await waitFor(() => {
       expect(screen.getByText("11d")).toBeInTheDocument();
     });
+  });
+
+  it("exports the current groups as CSV (B-11)", async () => {
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    const createSpy = vi
+      .spyOn(globalThis.URL, "createObjectURL")
+      .mockReturnValue("blob:mock");
+    renderAging();
+    await waitFor(() => {
+      expect(screen.getByText("2026-08-10")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /export unbilled aging csv/i }),
+    );
+
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+    });
+    clickSpy.mockRestore();
+    createSpy.mockRestore();
   });
 });

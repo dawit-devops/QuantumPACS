@@ -259,6 +259,14 @@ describe("landingRouteFor", () => {
     ).toBe("/qa/queue");
   });
 
+  it("lands the billing persona on the billing queue (§2.6)", () => {
+    expect(
+      landingRouteFor(
+        user({ role: "cashier", permissions: ["BILLING_READ"] }),
+      ),
+    ).toBe("/billing/queue");
+  });
+
   it("lands the clinical workspace roles on the reading worklist", () => {
     // physician / referring_physician hold REPORT_READ (Matrix A/B): the
     // clinical landing is /reading, never the DICOMweb console even when the
@@ -275,12 +283,14 @@ describe("landingRouteFor", () => {
     }
   });
 
-  it("lands EMR-only custom roles on /account until EMR surfaces exist", () => {
-    // Cashier / facility EMR roles hold only billing/EMR grants that have no
-    // PACS surface — /account is the terminal.
+  it("lands the billing persona on the billing queue; EMR-only roles still terminate on /account", () => {
+    // §2.6: BILLING_READ now maps to the billing-queue workspace, so the
+    // cashier no longer falls through to /account.
     expect(
       landingRouteFor(user({ role: "cashier", permissions: ["BILLING_READ"] })),
-    ).toBe("/account");
+    ).toBe("/billing/queue");
+    // Facility EMR roles with grants that still have no surface remain
+    // terminal on /account.
     expect(
       landingRouteFor(
         user({ role: "care_assistant", permissions: ["RESULTS_READ"] }),

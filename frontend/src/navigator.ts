@@ -33,6 +33,7 @@ export type Workspace =
   | "clinical"
   | "coordination"
   | "frontdesk"
+  | "billing"
   | "portal"
   | "files"
   | "platform"
@@ -170,6 +171,13 @@ const LANDING_STEPS: LandingStep[] = [
     workspace: "coordination",
     permissions: ["ORDER_READ"],
   },
+  // Billing (§2.6): the coder/cashier persona lands on the billing queue —
+  // previously unmapped, falling through to /account.
+  {
+    route: "/billing/queue",
+    workspace: "billing",
+    permissions: ["BILLING_READ"],
+  },
   // The clinical workspace (physician, referring_physician) lands on the
   // reading worklist: reports are the shared clinical read surface for both
   // (REPORT_READ on Matrix A/B).
@@ -232,6 +240,8 @@ const ROLE_WORKSPACE: Record<string, Workspace> = {
   // coordination surface (Orders), not the shared clinical reading worklist.
   care_coordinator: "coordination",
   receptionist: "frontdesk",
+  // §2.6: the cashier/biller persona's workspace is the billing queue.
+  cashier: "billing",
   patient: "portal",
   super_admin: "platform",
   tenant_admin: "platform",

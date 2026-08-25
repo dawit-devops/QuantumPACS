@@ -1,7 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import { App, Layout, Table, Tag, Button, Alert, Statistic, Row, Col, Select } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
 import {
@@ -27,6 +27,28 @@ function UnbilledAging() {
   const [error, setError] = useState<string | null>(null);
   // D2: dimension switch — date (default), site or payer.
   const [groupBy, setGroupBy] = useState<"date" | "site" | "payer">("date");
+
+  // B-11: export the current groups for offline reconciliation.
+  const exportCsv = () => {
+    if (groups.length === 0) return;
+    const keys = Object.keys(groups[0]);
+    const esc = (v: unknown) =>
+      typeof v === "string" && v.includes(",") ? `"${v}"` : String(v ?? "");
+    const csv = [
+      keys.join(","),
+      ...groups.map((g) => keys.map((k) => esc((g as any)[k])).join(",")),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `unbilled-aging-${groupBy}-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    message.success("Unbilled aging exported");
+  };
 
   const fetch = useCallback(() => {
     setLoading(true);
@@ -103,6 +125,14 @@ function UnbilledAging() {
               { value: "payer", label: "By payer" },
             ]}
           />
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={exportCsv}
+            disabled={groups.length === 0}
+            aria-label="Export unbilled aging CSV"
+          >
+            Export CSV
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={fetch}>
             Refresh
           </Button>
