@@ -24,8 +24,11 @@ import {
   listReminderConfig,
   saveReminderConfig,
   sendReminder,
+  listPatientOptOuts,
+  setPatientOptOut,
   type MessageLogEntry,
   type ReminderConfig,
+  type PatientOptOutEntry,
 } from "../api/reminders";
 import "./Reminders.css";
 
@@ -56,19 +59,22 @@ function Reminders() {
   useDocumentTitle("QuantumPACS - Reminders");
   const [config, setConfig] = useState<ReminderConfig[]>([]);
   const [log, setLog] = useState<MessageLogEntry[]>([]);
+  const [optOuts, setOptOuts] = useState<PatientOptOutEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [optOutOpen, setOptOutOpen] = useState(false);
 
   const fetch = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([listReminderConfig(), listReminderLog()])
-      .then(([cfg, lg]) => {
+    Promise.all([listReminderConfig(), listReminderLog(), listPatientOptOuts()])
+      .then(([cfg, lg, outs]) => {
         setLoading(false);
         setConfig(cfg.data);
         setLog(lg.data);
+        setOptOuts(outs.data || []);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -117,6 +123,35 @@ function Reminders() {
       fetch();
     } catch (e: any) {
       message.error(e.message || "Send failed");
+    }
+  };
+
+  const handleOptOut = async (values: any) => {
+    try {
+      await setPatientOptOut({
+        patient_id: values.patient_id,
+        event_type: values.event_type || null,
+        opted_out: true,
+      });
+      message.success("Opt-out recorded");
+      setOptOutOpen(false);
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Save failed");
+    }
+  };
+
+  const handleOptIn = async (row: PatientOptOutEntry) => {
+    try {
+      await setPatientOptOut({
+        patient_id: row.patient_id,
+        event_type: row.event_type || null,
+        opted_out: false,
+      });
+      message.success("Opt-out removed");
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Update failed");
     }
   };
 
@@ -186,6 +221,58 @@ function Reminders() {
     },
   ];
 
+  const optOutColumns: any[] = [
+    { title: "Patient", dataIndex: "patient_id", width: "25%" },
+    {
+      title: "Event",
+      dataIndex: "event_type",
+      width: "30%",
+      render: (v: string | null) => (v ? v : <Tag color="orange">All events</Tag>),
+    },
+    {
+      title: "Since",
+      dataIndex: "created_at",
+      width: "20%",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "-"),
+    },
+    {
+      title: "",
+      key: "action",
+      width: "25%",
+      render: (_: unknown, row: PatientOptOutEntry) => (
+        <Button size="small" onClick={() => handleOptIn(row)}>
+          Remove
+        </Button>
+      ),
+    },
+  ];
+
+  const optOutTab = (
+    <PageState
+      error={error}
+      onRetry={() => fetch()}
+      empty={!loading && !error && optOuts.length === 0}
+      emptyMessage="No patients have opted out"
+    >
+      <Button
+        onClick={() => setOptOutOpen(true)}
+        style={{ marginBottom: 16 }}
+      >
+        Add Opt-Out
+      </Button>
+      <Table
+        rowKey={(r: PatientOptOutEntry) =>
+          `${r.patient_id}|${r.event_type || "*"}`
+        }
+        columns={optOutColumns}
+        dataSource={optOuts}
+        loading={loading}
+        pagination={false}
+        size="middle"
+      />
+    </PageState>
+  );
+
   const configTab = (
     <div>
       <Button
@@ -243,6 +330,7 @@ function Reminders() {
         items={[
           { key: "config", label: "Config", children: configTab },
           { key: "log", label: "Delivery Log", children: logTab },
+          { key: "optouts", label: "Patient Opt-Outs", children: optOutTab },
         ]}
       />
 
@@ -330,6 +418,35 @@ function Reminders() {
           </Form.Item>
           <Button type="primary" htmlType="submit" block>
             Send
+          </Button>
+        </Form>
+      </Modal>
+      <Modal
+        title="Add Patient Opt-Out"
+        open={optOutOpen}
+        onCancel={() => setOptOutOpen(false)}
+        footer={null}
+      >
+        <Form layout="vertical" onFinish={handleOptOut}>
+          <Form.Item
+            name="patient_id"
+            label="Patient ID"
+            rules={[{ required: true, message: "Patient ID is required" }]}
+          >
+            <Input placeholder="e.g. 8675309" />
+          </Form.Item>
+          <Form.Item
+            name="event_type"
+            label="Event Type (leave empty for all events)"
+          >
+            <Select
+              allowClear
+              placeholder="All events"
+              options={EVENT_OPTIONS}
+            />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>
+            Record Opt-Out
           </Button>
         </Form>
       </Modal>

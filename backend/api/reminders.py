@@ -98,3 +98,45 @@ class ReminderConfigHandler(HTTPEndpoint):
                 tenant=tenant,
             )
         return ok({'event_type': body.event_type, 'status': 'updated'})
+
+
+class ReminderOptOutHandler(HTTPEndpoint):
+    """CS4/CC-12: per-patient opt-out registry.
+
+    GET  /ris/reminders/optouts        — list (PRIOR_AUTH_READ)
+    POST {patient_id, event_type?, opted_out} — toggle (PRIOR_AUTH_WRITE).
+    A null event_type opts the patient out of ALL reminder events."""
+
+    @requires_permission(Permission.PRIOR_AUTH_READ)
+    async def get(self, request):
+        from db.ris_message_log import PatientOptOut
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await PatientOptOut(conn).list_all(tenant)
+        return ok({'data': rows})
+
+    @requires_permission(Permission.PRIOR_AUTH_WRITE)
+    async def post(self, request):
+        from db.ris_message_log import PatientOptOut
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        patient_id = str(body.get('patient_id') or '').strip()
+        if not patient_id:
+            return validation_error('patient_id is required')
+        event_type = body.get('event_type') or None
+        opted_out = bool(body.get('opted_out', True))
+        by = str(request.user.id)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            po = PatientOptOut(conn)
+            if opted_out:
+                await po.opt_out(patient_id=patient_id, event_type=event_type,
+                                 by=by, tenant_id=tenant)
+            else:
+                await po.remove_opt_out(patient_id=patient_id,
+                                        event_type=event_type, tenant_id=tenant)
+        return ok({'data': {'patient_id': patient_id,
+                            'event_type': event_type,
+                            'opted_out': opted_out}})

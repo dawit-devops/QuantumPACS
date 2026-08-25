@@ -378,3 +378,99 @@ class TestReminderE2E:
                 await teardown()
 
         _asyncio.run(run())
+
+
+class TestPatientOptOut:
+    """CS4/CC-12: per-patient reminder opt-out registry + dispatch gate."""
+
+    @pytest.mark.asyncio
+    async def test_patient_optout_blocks_send(self, conn):
+        from services.reminders.service import ReminderDeliveryError, ReminderService
+
+        # Config active; patient-level opt-out row present.
+        conn.set_fetchrow({'id': 'cfg-1', 'active': True})
+
+        class OptConn(_Conn):
+            async def fetchval(self, sql, *args):
+                self.calls.append(('fetchval', sql, args))
+                if 'patient_reminder_optouts' in sql:
+                    return 1
+                return self._fetchval
+
+        svc = ReminderService()
+        oc = OptConn()
+        with patch('services.reminders.service.get_conn', return_value=oc):
+            with pytest.raises(ReminderDeliveryError) as exc:
+                await svc.send(
+                    event_type='reminder.appointment',
+                    recipient='p@example.com', channel='email',
+                    tenant_id='default', patient_id='P1',
+                )
+        assert 'opted out' in str(exc.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_no_optout_sends(self, conn):
+        from services.reminders.service import ReminderService
+
+        conn.set_fetchrow({'id': 'cfg-1', 'active': True})
+        conn.set_fetch([{'id': 'msg-1'}])
+        # fetchval default 0 → falsy → is_opted_out returns False
+        svc = ReminderService()
+
+        with patch('services.reminders.service.get_conn', return_value=conn):
+            result = await svc.send(
+                event_type='reminder.appointment',
+                recipient='p@example.com', channel='email',
+                tenant_id='default', patient_id='P1',
+            )
+        assert result['status'] == 'SENT'
+
+    def test_optout_list_requires_read(self, conn):
+        from api.reminders import ReminderOptOutHandler
+        client = TestClient(_make_app(
+            _user(), [('/ris/reminders/optouts', ReminderOptOutHandler,
+                      ['GET', 'POST'])],
+        ))
+        with patch('api.reminders.get_conn', return_value=conn):
+            resp = client.get('/ris/reminders/optouts')
+        assert resp.status_code == 403
+
+    def test_optout_toggle_requires_write(self, conn):
+        from api.reminders import ReminderOptOutHandler
+        client = TestClient(_make_app(
+            _user(Permission.PRIOR_AUTH_READ),
+            [('/ris/reminders/optouts', ReminderOptOutHandler,
+              ['GET', 'POST'])],
+        ))
+        with patch('api.reminders.get_conn', return_value=conn):
+            resp = client.post('/ris/reminders/optouts',
+                               json={'patient_id': 'P1'})
+        assert resp.status_code == 403
+
+    def test_optout_toggle_roundtrip(self, conn):
+        from api.reminders import ReminderOptOutHandler
+        client = TestClient(_make_app(
+            _user(Permission.PRIOR_AUTH_WRITE),
+            [('/ris/reminders/optouts', ReminderOptOutHandler,
+              ['GET', 'POST'])],
+        ))
+        with patch('api.reminders.get_conn', return_value=conn):
+            on = client.post('/ris/reminders/optouts', json={
+                'patient_id': 'P1', 'event_type': None, 'opted_out': True})
+            off = client.post('/ris/reminders/optouts', json={
+                'patient_id': 'P1', 'opted_out': False})
+        assert on.status_code == 200
+        assert on.json()['data']['opted_out'] is True
+        assert off.status_code == 200
+        assert off.json()['data']['opted_out'] is False
+
+    def test_optout_requires_patient_id(self, conn):
+        from api.reminders import ReminderOptOutHandler
+        client = TestClient(_make_app(
+            _user(Permission.PRIOR_AUTH_WRITE),
+            [('/ris/reminders/optouts', ReminderOptOutHandler,
+              ['GET', 'POST'])],
+        ))
+        with patch('api.reminders.get_conn', return_value=conn):
+            resp = client.post('/ris/reminders/optouts', json={})
+        assert resp.status_code == 400

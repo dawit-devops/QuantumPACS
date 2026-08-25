@@ -16,7 +16,7 @@ ris_message_log FAILED rows feed the <= 5-minute failure alert (R2-01-13).
 import asyncio
 
 from db.conn import get_conn
-from db.ris_message_log import MessageLog, ReminderConfig
+from db.ris_message_log import MessageLog, ReminderConfig, PatientOptOut
 
 
 class ReminderDeliveryError(Exception):
@@ -77,13 +77,23 @@ class ReminderService:
         self.max_attempts = int(max_attempts or 3)
 
     async def send(self, *, event_type, recipient, channel='email',
-                   subject='', body='', tenant_id='default'):
+                   subject='', body='', tenant_id='default',
+                   patient_id=None):
         """Send one reminder, honoring opt-out; returns the log row.
 
         Raises ReminderDeliveryError when opt-out is active (nothing sent).
+        CS4: when the reminder is patient-scoped (patient_id supplied), a
+        per-patient opt-out — event-specific or all-events — also blocks.
         """
         if not await self._opt_out_allowed(event_type, tenant_id):
             raise ReminderDeliveryError(f'Opted out of {event_type} reminders')
+        if patient_id is not None:
+            async with get_conn() as conn:
+                opted = await PatientOptOut(conn).is_opted_out(
+                    patient_id, event_type, tenant_id)
+            if opted:
+                raise ReminderDeliveryError(
+                    f'Patient {patient_id} opted out of {event_type} reminders')
         channel_svc = CHANNELS.get(channel)
         if channel_svc is None:
             raise ReminderDeliveryError(f'Unknown channel: {channel}')

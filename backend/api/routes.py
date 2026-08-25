@@ -125,6 +125,7 @@ from api.reminders import (
     ReminderSendHandler,
     ReminderLogHandler,
     ReminderConfigHandler,
+    ReminderOptOutHandler,
 )
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
@@ -360,6 +361,7 @@ _V1_ROUTES = [
     v2(Route('/ris/reminders/send', endpoint=ReminderSendHandler, methods=['POST'])),
     v2(Route('/ris/reminders/log', endpoint=ReminderLogHandler)),
     v2(Route('/ris/reminders/config', endpoint=ReminderConfigHandler)),
+    v2(Route('/ris/reminders/optouts', endpoint=ReminderOptOutHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),

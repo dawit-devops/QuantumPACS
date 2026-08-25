@@ -146,3 +146,74 @@ class ReminderConfig(Table):
             " ORDER BY event_type",
             tenant_id,
         )
+
+
+class PatientOptOut(Table):
+    """CS4/CC-12: per-patient reminder opt-out registry.
+
+    A row with event_type NULL opts the patient out of ALL events; a typed
+    row covers one event. The COALESCE unique index keeps either shape
+    single-instance per (tenant, patient)."""
+
+    name = 'patient_reminder_optouts'
+
+    async def sync_db(self):
+        await self.exec("""
+        CREATE TABLE IF NOT EXISTS patient_reminder_optouts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            patient_id TEXT NOT NULL,
+            event_type TEXT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMPTZ DEFAULT now(),
+            created_by TEXT DEFAULT ''
+        )
+        """)
+        await self.exec("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_patient_optout
+        ON patient_reminder_optouts (tenant_id, patient_id,
+                                     COALESCE(event_type, ''))
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_patient_optout_patient
+        ON patient_reminder_optouts(patient_id)
+        """)
+
+    async def opt_out(self, *, patient_id, event_type=None, by='',
+                      tenant_id='default'):
+        await self.sync_db()
+        await self.conn.execute(
+            """INSERT INTO patient_reminder_optouts
+               (patient_id, event_type, tenant_id, created_by)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT DO NOTHING""",
+            str(patient_id), event_type, tenant_id, str(by or ''),
+        )
+
+    async def remove_opt_out(self, *, patient_id, event_type=None,
+                             tenant_id='default'):
+        await self.conn.execute(
+            """DELETE FROM patient_reminder_optouts
+               WHERE tenant_id = $1 AND patient_id = $2
+                 AND COALESCE(event_type, '') = COALESCE($3, '')""",
+            tenant_id, str(patient_id), event_type,
+        )
+
+    async def is_opted_out(self, patient_id, event_type,
+                           tenant_id='default'):
+        """True when the patient declined this event or all events."""
+        row = await self.conn.fetchval(
+            """SELECT 1 FROM patient_reminder_optouts
+               WHERE tenant_id = $1 AND patient_id = $2
+                 AND (event_type IS NULL OR event_type = $3)
+               LIMIT 1""",
+            tenant_id, str(patient_id), event_type,
+        )
+        return bool(row)
+
+    async def list_all(self, tenant_id='default', limit=200):
+        rows = await self.conn.fetch(
+            "SELECT * FROM patient_reminder_optouts"
+            " WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2",
+            tenant_id, max(int(limit), 1),
+        )
+        return [dict(r) for r in rows]

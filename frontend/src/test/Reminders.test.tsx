@@ -12,6 +12,8 @@ vi.mock("../api/reminders", () => ({
   listReminderLog: vi.fn(),
   saveReminderConfig: vi.fn(),
   sendReminder: vi.fn(),
+  listPatientOptOuts: vi.fn(),
+  setPatientOptOut: vi.fn(),
 }));
 
 vi.mock("../hooks", () => ({
@@ -27,9 +29,10 @@ vi.mock("../auth/AuthContext", async (importOriginal) => {
   };
 });
 
-import { listReminderConfig, listReminderLog } from "../api/reminders";
+import { listReminderConfig, listReminderLog, listPatientOptOuts } from "../api/reminders";
 const mockListCfg = vi.mocked(listReminderConfig);
 const mockListLog = vi.mocked(listReminderLog);
+const mockListOptOuts = vi.mocked(listPatientOptOuts);
 
 function renderReminders() {
   localStorage.setItem("userId", "1");
@@ -82,6 +85,18 @@ describe("Reminders", () => {
       page: 1,
       per_page: 20,
     });
+    mockListOptOuts.mockResolvedValue({
+      data: [
+        {
+          id: "oo-1",
+          patient_id: "8675309",
+          event_type: null,
+          tenant_id: "default",
+          created_at: "2026-08-22T09:00:00Z",
+          created_by: "1",
+        },
+      ],
+    });
   });
 
   it("renders reminder config", async () => {
@@ -104,5 +119,17 @@ describe("Reminders", () => {
     await waitFor(() => {
       expect(screen.getByText("Send Reminder")).toBeInTheDocument();
     });
+  });
+
+  it("renders patient opt-outs on the opt-out tab", async () => {
+    renderReminders();
+    await waitFor(() => {
+      expect(screen.getByText("reminder.appointment")).toBeInTheDocument();
+    });
+    screen.getByRole("tab", { name: "Patient Opt-Outs" }).click();
+    await waitFor(() => {
+      expect(screen.getByText("8675309")).toBeInTheDocument();
+    });
+    expect(screen.getByText("All events")).toBeInTheDocument();
   });
 });
