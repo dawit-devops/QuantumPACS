@@ -26,7 +26,7 @@ from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
-    UsersHandler, UsersDeactivate, UsersNewPassword, UserRoleUpdate,
+    UsersHandler, UsersDeactivate, UsersBatchStatus, UsersNewPassword, UserRoleUpdate,
 )
 from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
@@ -218,6 +218,7 @@ _V1_ROUTES = [
     v2(Route('/account/profile', endpoint=ProfileHandler)),
     v2(Route('/users', endpoint=UsersHandler)),
     v2(Route('/users/deactivate', endpoint=UsersDeactivate)),
+    v2(Route('/users/batch-status', endpoint=UsersBatchStatus)),
     v2(Route('/users/new_password', endpoint=UsersNewPassword)),
     v2(Route('/users/role', endpoint=UserRoleUpdate)),
     v2(Route('/patients/search', endpoint=PatientsSearchHandler)),

@@ -23,6 +23,7 @@ import {
   listUsers,
   assignRole,
   deactivateUser,
+  batchSetUserStatus,
   resetPassword,
   type User,
 } from "../api/users";
@@ -44,8 +45,14 @@ function Users() {
   // reset password, deactivate, create — is a USER_WRITE action and is hidden
   // for read-only holders (backend /api/users guards match).
   const canWrite = hasPermission("USER_WRITE");
+  // Bulk activate/deactivate is gated on USER_DELETE server-side — it
+  // subsumes the destructive single-user deactivate — so the bulk bar keys
+  // off that grant, not USER_WRITE.
+  const canBulkStatus = hasPermission("USER_DELETE");
 
   const [data, setData] = useState<User[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [bulkApplying, setBulkApplying] = useState(false);
   const [pagination, setPagination] = useState<any>({
     current: 1,
     pageSize: 10,
@@ -143,10 +150,7 @@ function Users() {
           <span>
             <a onClick={() => handleResetPassword(record.id)}>Reset password</a>
             <Divider orientation="vertical" />
-            <Popconfirm
-              title="Sure to deactivate?"
-              onConfirm={() => deactivate(record.id)}
-            >
+            <Popconfirm title="Sure to deactivate?" onConfirm={() => deactivate(record.id)}>
               <a>Deactivate</a>
             </Popconfirm>
           </span>
@@ -207,6 +211,32 @@ function Users() {
       .catch((e: any) => message.error(e.message));
   };
 
+  const applyBulkStatus = (targetStatus: "active" | "deactivated") => {
+    setBulkApplying(true);
+    batchSetUserStatus(selectedRowKeys.map(Number), targetStatus)
+      .then((res) => {
+        setBulkApplying(false);
+        setSelectedRowKeys([]);
+        if (res.failed.length) {
+          // Per-id failures never abort the batch — surface a compact
+          // summary; the full detail stays in the audit log.
+          message.warning(
+            `${res.changed.length} updated, ${res.failed.length} failed: ` +
+              res.failed.map((f) => `${f.id} (${f.error})`).join(", ")
+          );
+        } else {
+          message.success(
+            `${res.changed.length} user(s) ${targetStatus === "active" ? "activated" : "deactivated"}`
+          );
+        }
+        fetch();
+      })
+      .catch((e: any) => {
+        setBulkApplying(false);
+        message.error(e.message);
+      });
+  };
+
   const handleResetPassword = (id: number) => {
     resetPassword(id).then((res) => {
       setPassword(res.password);
@@ -258,10 +288,7 @@ function Users() {
             Copy
           </Button>
         </div>
-        <Text
-          type="secondary"
-          style={{ display: "block", marginTop: 12, fontSize: 12 }}
-        >
+        <Text type="secondary" style={{ display: "block", marginTop: 12, fontSize: 12 }}>
           Share this password with the user. It will not be shown again.
         </Text>
       </Modal>
@@ -276,6 +303,35 @@ function Users() {
           </RequirePermission>
         }
       >
+        {canBulkStatus && selectedRowKeys.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <Text>{`${selectedRowKeys.length} selected`}</Text>
+            <Popconfirm
+              title={`Activate ${selectedRowKeys.length} user(s)?`}
+              onConfirm={() => applyBulkStatus("active")}
+            >
+              <Button size="small" type="default" loading={bulkApplying}>
+                Activate
+              </Button>
+            </Popconfirm>
+            <Popconfirm
+              title={`Deactivate ${selectedRowKeys.length} user(s)?`}
+              onConfirm={() => applyBulkStatus("deactivated")}
+            >
+              <Button size="small" danger loading={bulkApplying}>
+                Deactivate
+              </Button>
+            </Popconfirm>
+            <a onClick={() => setSelectedRowKeys([])}>Clear</a>
+          </div>
+        )}
         <Table
           scroll={{ x: 600 }}
           columns={columns}
@@ -284,6 +340,14 @@ function Users() {
           pagination={pagination}
           loading={loading}
           onChange={handleTableChange}
+          rowSelection={
+            canBulkStatus
+              ? {
+                  selectedRowKeys,
+                  onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+                }
+              : undefined
+          }
         />
       </PageState>
     </Content>

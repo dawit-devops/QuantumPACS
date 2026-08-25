@@ -206,6 +206,18 @@ class Users(Table):
         await self.exec(q)
         await self.increment_token_version(user_id)
 
+    async def activate(self, user_id):
+        """Reactivate a previously deactivated account. No token bump: the
+        account had no live sessions while deactivated, so there is nothing
+        to invalidate."""
+        exists = await self.fetchval(
+            self.select(self.table.id).where(self.table.id == user_id)
+        )
+        if not exists:
+            raise ApiException('User not found')
+        q = self.update().where(self.table.id == user_id).set(self.table.status, 'active')
+        await self.exec(q)
+
     async def new_pswd(self, user_id):
         exists = await self.fetchval(self.select(self.table.id).where(self.table.id == user_id))
         if not exists:

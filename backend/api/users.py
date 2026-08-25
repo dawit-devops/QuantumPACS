@@ -14,7 +14,9 @@ from api.validate import parse_body, read_body, _BodyTooLargeException
 from api.schemas.auth import LoginRequest
 from api.schemas.account import ChangePasswordRequestV2
 from api.schemas.auth_refresh import RefreshTokenRequest, RevokeTokenRequest
-from api.schemas.users import CreateUserRequest, UserActionRequest, UpdateUserRoleRequest
+from api.schemas.users import (
+    BatchUserStatusRequest, CreateUserRequest, UserActionRequest, UpdateUserRoleRequest,
+)
 from db.audit_log import AuditLog
 import asyncpg
 
@@ -368,6 +370,51 @@ class UsersDeactivate(HTTPEndpoint):
         resp.headers['X-API-Sunset'] = 'v3.0'
         resp.headers['X-API-Replacement'] = 'DELETE /api/users/{id}'
         return resp
+
+
+class UsersBatchStatus(HTTPEndpoint):
+    """ADM-02 bulk operations (§2.10): activate/deactivate many users in one
+    audited call. Deactivation routes through Users.deactivate() so the
+    last-active-admin lockout applies per id; a failing id is reported and
+    never aborts the remaining ones."""
+
+    @requires_permission(Permission.USER_DELETE)
+    async def post(self, request):
+        body = await parse_body(BatchUserStatusRequest, request)
+        # Deactivating the operator's own account would lock them out
+        # mid-session; single-user deactivate has the same exposure but the
+        # batch makes the mistake easier, so it is rejected outright.
+        if body.target_status == 'deactivated' and request.user.id in body.user_ids:
+            return api_error(
+                'FORBIDDEN', 'Cannot deactivate your own account', status=403,
+            )
+
+        changed: list[int] = []
+        failed: list[dict] = []
+        async with get_conn() as conn:
+            users = Users(conn)
+            op = users.deactivate if body.target_status == 'deactivated' else users.activate
+            for uid in body.user_ids:
+                try:
+                    await op(uid)
+                    changed.append(uid)
+                except ApiException as e:
+                    failed.append({'id': uid, 'error': str(e)})
+            await AuditLog(conn).log_event(
+                event_type='user.batch_status_changed',
+                actor_id=request.user.id,
+                resource_type='user',
+                resource_id=f'batch:{len(body.user_ids)}',
+                details={
+                    'target_status': body.target_status,
+                    'requested': body.user_ids,
+                    'changed': changed,
+                    'failed': failed,
+                },
+                request_id=request_id_var.get(),
+            )
+
+        return ok({'changed': changed, 'failed': failed})
 
 
 class UsersNewPassword(HTTPEndpoint):
