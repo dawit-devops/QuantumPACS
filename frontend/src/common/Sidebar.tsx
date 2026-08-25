@@ -38,6 +38,7 @@ import {
   FileTextOutlined,
   CarryOutOutlined,
   PhoneOutlined,
+  HeartOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Grid, Drawer, Button } from "antd";
 import React, { useState, useEffect } from "react";
@@ -361,6 +362,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["PATIENT_READ"],
       },
       {
+        // §2.11 nursing prep queue — the minimal nursing surface the spec
+        // asks for: a queue that deep-links into exam consoles where the
+        // NursingPanel charts vitals/checklist/consent/notes. NURSING_READ
+        // rides on care_coordinator (G3).
+        key: "nursing-prep",
+        path: "/nursing",
+        label: "Nursing Prep",
+        icon: <HeartOutlined />,
+        permissions: ["NURSING_READ"],
+      },
+      {
         // CC-13: patient quick search — opens the global overlay (same
         // mount that serves front desk, extended to this workspace).
         key: "coord-patient-search",
@@ -441,7 +453,8 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <DashboardOutlined />,
         permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
         adminOnly: true,
-      },      {
+      },
+      {
         // S12-35: department-manager dashboard — TAT, utilization, unbilled
         // aging, volume. REPORT_READ matches the route gate; adminOnly keeps
         // the Admin section from leaking to clinical roles (radiologist etc.)

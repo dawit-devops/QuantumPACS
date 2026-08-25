@@ -72,11 +72,7 @@ export const CLINICAL_SCOPED_ROLES: ReadonlyArray<string> = [
 ];
 
 /** Workspaces whose surfaces are clinical (queues, exams, QA review). */
-export const CLINICAL_WORKSPACES: ReadonlySet<string> = new Set([
-  "reading",
-  "acquisition",
-  "qa",
-]);
+export const CLINICAL_WORKSPACES: ReadonlySet<string> = new Set(["reading", "acquisition", "qa"]);
 
 /**
  * Workspaces whose surfaces belong to non-admin staff / patient roles —
@@ -138,7 +134,15 @@ interface LandingStep {
 
 const LANDING_STEPS: LandingStep[] = [
   { route: "/reading", workspace: "reading", permissions: ["REPORT_READ"] },
-  { route: "/exams", workspace: "acquisition", permissions: ["EXAM_READ"] },
+  {
+    route: "/exams",
+    workspace: "acquisition",
+    // §2.11: NURSING_READ holders (care_coordinator per G3) may land on the
+    // exam list when their primary coordination surfaces are unavailable.
+    // ROLE_WORKSPACE still pins care_coordinator to /orders first, so this
+    // is fallback-only — the same any-of gate /exams itself uses.
+    permissions: ["EXAM_READ", "NURSING_READ"],
+  },
   { route: "/qa/queue", workspace: "qa", permissions: ["QA_READ"] },
   { route: "/replicas", workspace: "admin", permissions: ["REPLICA_READ"] },
   // Front Desk (R08): registration is the front-office home for the
@@ -265,8 +269,7 @@ function hasAnyPermission(user: WorkspaceUser, permissions: string[]): boolean {
 function landingStepsFor(user: WorkspaceUser): LandingStep[] {
   if (isAdminScopedRole(user.role)) {
     return LANDING_STEPS.filter(
-      (s) =>
-        !NON_ADMIN_WORKSPACES.has(s.workspace) && s.workspace !== "clinical",
+      (s) => !NON_ADMIN_WORKSPACES.has(s.workspace) && s.workspace !== "clinical"
     );
   }
   if (isClinicalScopedRole(user.role)) {
@@ -279,10 +282,7 @@ export function landingRouteFor(user: WorkspaceUser): string {
   // Admin-scoped roles land on the dashboard first: it is their operational
   // home, ahead of any single admin surface their role mapping grants
   // (platform -> /users, admin -> /replicas).
-  if (
-    isAdminScopedRole(user.role) &&
-    hasAnyPermission(user, DASHBOARD_STEP.permissions)
-  ) {
+  if (isAdminScopedRole(user.role) && hasAnyPermission(user, DASHBOARD_STEP.permissions)) {
     return DASHBOARD_STEP.route;
   }
   // R13 radiology resident: land on the Resident Home instead of the shared
@@ -303,18 +303,14 @@ export function landingRouteFor(user: WorkspaceUser): string {
   // Role surface blocked (or unmapped): take the first permitted route in
   // priority order, degrading to the auth-only `/account` terminal.
   return (
-    landingStepsFor(user).find((s) => hasAnyPermission(user, s.permissions))
-      ?.route ?? "/account"
+    landingStepsFor(user).find((s) => hasAnyPermission(user, s.permissions))?.route ?? "/account"
   );
 }
 
 export function workspaceFor(user: WorkspaceUser): Workspace {
   // Mirrors landingRouteFor: admin-scoped roles with dashboard access resolve
   // to the dashboard workspace (the sidebar maps it onto the Admin section).
-  if (
-    isAdminScopedRole(user.role) &&
-    hasAnyPermission(user, DASHBOARD_STEP.permissions)
-  ) {
+  if (isAdminScopedRole(user.role) && hasAnyPermission(user, DASHBOARD_STEP.permissions)) {
     return DASHBOARD_STEP.workspace;
   }
   const roleWorkspace = ROLE_WORKSPACE[user.role ?? ""];
@@ -327,8 +323,7 @@ export function workspaceFor(user: WorkspaceUser): Workspace {
   // First permitted workspace in priority order; `files` is the default
   // because its landing chain degrades to the always-allowed `/account`.
   return (
-    landingStepsFor(user).find(
-      (s) => hasAnyPermission(user, s.permissions) && s.workspace,
-    )?.workspace ?? "files"
+    landingStepsFor(user).find((s) => hasAnyPermission(user, s.permissions) && s.workspace)
+      ?.workspace ?? "files"
   );
 }

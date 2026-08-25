@@ -197,7 +197,10 @@ class ExamsHandler(HTTPEndpoint):
             return 'urgent'
         return 'routine'
 
-    @requires_permission(Permission.EXAM_READ)
+    # §2.11 (G3): NURSING_READ holders reach the exam list — the prep queue
+    # deep-links into exam consoles, so the read gate mirrors the any-of
+    # record-read contract. Writes stay EXAM_WRITE.
+    @requires_permission([Permission.EXAM_READ, Permission.NURSING_READ])
     async def get(self, request):
         status = request.query_params.get('status')
         modality = request.query_params.get('modality')
@@ -281,7 +284,9 @@ class ExamsHandler(HTTPEndpoint):
 
 
 class ExamHandler(HTTPEndpoint):
-    @requires_permission(Permission.EXAM_READ)
+    # §2.11 (G3): same any-of read gate as the list — the NursingPanel and
+    # the prep queue both open individual exams. Writes stay EXAM_WRITE.
+    @requires_permission([Permission.EXAM_READ, Permission.NURSING_READ])
     async def get(self, request):
         exam_id = request.path_params['id']
         async with get_conn() as conn:

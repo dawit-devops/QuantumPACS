@@ -87,6 +87,7 @@ const Orders = React.lazy(() => import("./coordinator/Orders"));
 const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
+const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
 const Communications = React.lazy(
   () => import("./coordinator/Communications"),
 );
@@ -371,7 +372,7 @@ function ThemedApp() {
                     <Route
                       path="/exams"
                       element={
-                        <ClinicalRoute permission="EXAM_READ">
+                        <ClinicalRoute permission={["EXAM_READ", "NURSING_READ"]}>
                           <TechnologistWorklist />
                         </ClinicalRoute>
                       }
@@ -379,8 +380,18 @@ function ThemedApp() {
                     <Route
                       path="/exams/:id"
                       element={
-                        <ClinicalRoute permission="EXAM_READ">
+                        <ClinicalRoute permission={["EXAM_READ", "NURSING_READ"]}>
                           <ExamConsole />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* §2.11 nursing prep queue: the coordinator/nurse entry
+                        surface that deep-links into exam consoles. */}
+                    <Route
+                      path="/nursing"
+                      element={
+                        <ClinicalRoute permission="NURSING_READ">
+                          <NursingPrepList />
                         </ClinicalRoute>
                       }
                     />
