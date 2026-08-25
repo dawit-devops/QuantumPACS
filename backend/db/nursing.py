@@ -5,6 +5,11 @@ The 037 tables (`vitals`, `prep_checklists`) predate this module; migration
 new tables (`contrast_consents`, `exam_notes`) mirror that migration's DDL so
 sync-only databases and migrated databases cannot diverge.
 
+Self-heal contract (care_plans precedent): every entry point calls
+`sync_db()` first, so databases provisioned without `alembic upgrade head`
+still work — on migrated ones each statement is a no-op IF NOT EXISTS /
+ADD COLUMN IF NOT EXISTS.
+
 All rows are stamped with `tenant_id` following the encounters/care_plans
 convention: pool isolation stays authoritative for tenant separation, the
 tag keeps rows attributable in shared dev databases and analytics queries.
@@ -45,11 +50,15 @@ class ExamVitals:
             "ALTER TABLE vitals ADD COLUMN IF NOT EXISTS tenant_id "
             "TEXT NOT NULL DEFAULT 'default'"
         )
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_vitals_exam ON vitals(exam_id)"
+        )
 
     async def record(self, *, exam_id, patient_id, bp_systolic=None,
                      bp_diastolic=None, heart_rate=None, spo2=None,
                      temperature_c=None, respiration=None, weight_kg=None,
                      height_cm=None, by='', tenant_id='default'):
+        await self.sync_db()
         return await self.conn.fetchrow(
             """
             INSERT INTO vitals (
@@ -67,6 +76,7 @@ class ExamVitals:
         )
 
     async def list_for_exam(self, exam_id, tenant_id='default', limit=50):
+        await self.sync_db()
         return await self.conn.fetch(
             """
             SELECT * FROM vitals
@@ -99,9 +109,14 @@ class PrepChecklists:
             "ALTER TABLE prep_checklists ADD COLUMN IF NOT EXISTS tenant_id "
             "TEXT NOT NULL DEFAULT 'default'"
         )
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_prep_checklists_exam "
+            "ON prep_checklists(exam_id)"
+        )
 
     async def get_or_create(self, *, exam_id, patient_id,
                             procedure_type='', tenant_id='default'):
+        await self.sync_db()
         row = await self.conn.fetchrow(
             """
             SELECT * FROM prep_checklists
@@ -173,6 +188,7 @@ class NursingPrepList:
         )
 
     async def list(self, tenant_id='default', limit=100):
+        await self.sync_db()
         return await self.conn.fetch(
             """
             SELECT e.id AS exam_id, e.patient_id, e.patient_name,
@@ -235,6 +251,11 @@ class ContrastConsents:
                      signature_png='', declined_reason='',
                      consent_text_version='', witnessed_by='', by='',
                      tenant_id='default'):
+        await self.sync_db()
+        # Both reads of this table project explicit columns excluding
+        # signature_png: up to ~280 KB of base64 that no consumer renders
+        # (the panel shows decision/timestamp only). Fetch it explicitly if
+        # a signature viewer is ever built.
         return await self.conn.fetchrow(
             """
             INSERT INTO contrast_consents (
@@ -243,16 +264,22 @@ class ContrastConsents:
                 signed_by, signed_at, tenant_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), $9)
-            RETURNING *
+            RETURNING id, exam_id, patient_id, accepted, declined_reason,
+                      consent_text_version, witnessed_by, signed_by,
+                      signed_at, created_at, tenant_id
             """,
             exam_id, patient_id, accepted, signature_png, declined_reason,
             consent_text_version, witnessed_by, by, tenant_id,
         )
 
     async def get_for_exam(self, exam_id, tenant_id='default'):
+        await self.sync_db()
         return await self.conn.fetchrow(
             """
-            SELECT * FROM contrast_consents
+            SELECT id, exam_id, patient_id, accepted, declined_reason,
+                   consent_text_version, witnessed_by, signed_by,
+                   signed_at, created_at, tenant_id
+            FROM contrast_consents
             WHERE exam_id = $1 AND tenant_id = $2
             ORDER BY signed_at DESC
             LIMIT 1
@@ -288,6 +315,7 @@ class ExamNotes:
 
     async def add(self, *, exam_id, patient_id, note, author_id='',
                   author_role='nurse', tenant_id='default'):
+        await self.sync_db()
         return await self.conn.fetchrow(
             """
             INSERT INTO exam_notes (
@@ -300,6 +328,7 @@ class ExamNotes:
         )
 
     async def list_for_exam(self, exam_id, tenant_id='default', limit=100):
+        await self.sync_db()
         return await self.conn.fetch(
             """
             SELECT * FROM exam_notes

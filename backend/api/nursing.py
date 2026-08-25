@@ -75,28 +75,31 @@ class VitalsHandler(HTTPEndpoint):
             exam = await _exam_or_404(conn, request)
             if exam is None:
                 return not_found('Exam not found')
-            row = await ExamVitals(conn).record(
-                exam_id=exam['id'],
-                patient_id=exam['patient_id'],
-                bp_systolic=body.bp_systolic,
-                bp_diastolic=body.bp_diastolic,
-                heart_rate=body.heart_rate,
-                spo2=body.spo2,
-                temperature_c=body.temperature_c,
-                respiration=body.respiration,
-                weight_kg=body.weight_kg,
-                height_cm=body.height_cm,
-                by=str(request.user.id),
-                tenant_id=_tenant(request),
-            )
-            await AuditLog(conn).log_event(
-                event_type='nursing.vitals_recorded',
-                actor_id=request.user.id,
-                resource_type='vitals',
-                resource_id=exam['id'],
-                details={'patient_id': exam['patient_id']},
-                request_id=request_id_var.get(),
-            )
+            # Record + audit commit atomically: a clinical record must never
+            # exist without its nursing.* audit event.
+            async with conn.transaction():
+                row = await ExamVitals(conn).record(
+                    exam_id=exam['id'],
+                    patient_id=exam['patient_id'],
+                    bp_systolic=body.bp_systolic,
+                    bp_diastolic=body.bp_diastolic,
+                    heart_rate=body.heart_rate,
+                    spo2=body.spo2,
+                    temperature_c=body.temperature_c,
+                    respiration=body.respiration,
+                    weight_kg=body.weight_kg,
+                    height_cm=body.height_cm,
+                    by=str(request.user.id),
+                    tenant_id=_tenant(request),
+                )
+                await AuditLog(conn).log_event(
+                    event_type='nursing.vitals_recorded',
+                    actor_id=request.user.id,
+                    resource_type='vitals',
+                    resource_id=exam['id'],
+                    details={'patient_id': exam['patient_id']},
+                    request_id=request_id_var.get(),
+                )
         return created({'data': dict(row) if row else None})
 
 
@@ -130,13 +133,17 @@ class PrepChecklistHandler(HTTPEndpoint):
                 patient_id=exam['patient_id'],
                 tenant_id=_tenant(request),
             )
-            # Merge posted items over the stored set by key: a client that
-            # echoes only part of the checklist must never erase (or silently
-            # skip) the remaining required items.
+            # Merge posted checkbox state over the stored set by key: a
+            # client that echoes only part of the checklist must never erase
+            # (or silently skip) the remaining required items. Only `checked`
+            # is taken from the client — label/required stay authoritative
+            # from the server-stored catalog, otherwise a crafted PUT could
+            # relax `required` to false and confirm an unverified checklist
+            # (the N-02 safety interlock).
             existing_items = list(existing.get('items') or [])
-            posted = {i.key: i.model_dump() for i in body.items}
+            posted = {i.key: i.checked for i in body.items}
             items = [
-                {**stored, **posted[stored['key']]}
+                {**stored, 'checked': posted[stored['key']]}
                 if stored.get('key') in posted else stored
                 for stored in existing_items
             ]
@@ -151,29 +158,32 @@ class PrepChecklistHandler(HTTPEndpoint):
                     'Required checklist items are not checked: '
                     + ', '.join(unmet)
                 )
-            # Always persist the merged state — confirm must not silently
-            # drop the submitted checkbox progress.
-            row = await checklists.update_items(existing['id'], items)
-            if body.confirmed:
-                row = await checklists.confirm(
-                    existing['id'], by=str(request.user.id),
-                )
-                await AuditLog(conn).log_event(
-                    event_type='nursing.checklist_confirmed',
-                    actor_id=request.user.id,
-                    resource_type='prep_checklist',
-                    resource_id=exam['id'],
-                    details={'patient_id': exam['patient_id']},
-                    request_id=request_id_var.get(),
-                )
-            else:
-                await AuditLog(conn).log_event(
-                    event_type='nursing.checklist_updated',
-                    actor_id=request.user.id,
-                    resource_type='prep_checklist',
-                    resource_id=exam['id'],
-                    request_id=request_id_var.get(),
-                )
+            # Persist + audit atomically, for the same reason as the other
+            # nursing writes: state changes must never outrun their events.
+            async with conn.transaction():
+                # Always persist the merged state — confirm must not
+                # silently drop the submitted checkbox progress.
+                row = await checklists.update_items(existing['id'], items)
+                if body.confirmed:
+                    row = await checklists.confirm(
+                        existing['id'], by=str(request.user.id),
+                    )
+                    await AuditLog(conn).log_event(
+                        event_type='nursing.checklist_confirmed',
+                        actor_id=request.user.id,
+                        resource_type='prep_checklist',
+                        resource_id=exam['id'],
+                        details={'patient_id': exam['patient_id']},
+                        request_id=request_id_var.get(),
+                    )
+                else:
+                    await AuditLog(conn).log_event(
+                        event_type='nursing.checklist_updated',
+                        actor_id=request.user.id,
+                        resource_type='prep_checklist',
+                        resource_id=exam['id'],
+                        request_id=request_id_var.get(),
+                    )
         return ok({'data': dict(row) if row else None})
 
 
@@ -198,28 +208,29 @@ class ConsentHandler(HTTPEndpoint):
             exam = await _exam_or_404(conn, request)
             if exam is None:
                 return not_found('Exam not found')
-            row = await ContrastConsents(conn).create(
-                exam_id=exam['id'],
-                patient_id=exam['patient_id'],
-                accepted=body.accepted,
-                signature_png=body.signature_png,
-                declined_reason=body.declined_reason,
-                consent_text_version=body.consent_text_version,
-                witnessed_by=body.witnessed_by,
-                by=str(request.user.id),
-                tenant_id=_tenant(request),
-            )
-            await AuditLog(conn).log_event(
-                event_type=(
-                    'nursing.consent_signed' if body.accepted
-                    else 'nursing.consent_declined'
-                ),
-                actor_id=request.user.id,
-                resource_type='contrast_consent',
-                resource_id=exam['id'],
-                details={'patient_id': exam['patient_id']},
-                request_id=request_id_var.get(),
-            )
+            async with conn.transaction():
+                row = await ContrastConsents(conn).create(
+                    exam_id=exam['id'],
+                    patient_id=exam['patient_id'],
+                    accepted=body.accepted,
+                    signature_png=body.signature_png,
+                    declined_reason=body.declined_reason,
+                    consent_text_version=body.consent_text_version,
+                    witnessed_by=body.witnessed_by,
+                    by=str(request.user.id),
+                    tenant_id=_tenant(request),
+                )
+                await AuditLog(conn).log_event(
+                    event_type=(
+                        'nursing.consent_signed' if body.accepted
+                        else 'nursing.consent_declined'
+                    ),
+                    actor_id=request.user.id,
+                    resource_type='contrast_consent',
+                    resource_id=exam['id'],
+                    details={'patient_id': exam['patient_id']},
+                    request_id=request_id_var.get(),
+                )
         return created({'data': dict(row) if row else None})
 
 
@@ -244,21 +255,22 @@ class NurseNotesHandler(HTTPEndpoint):
             exam = await _exam_or_404(conn, request)
             if exam is None:
                 return not_found('Exam not found')
-            row = await ExamNotes(conn).add(
-                exam_id=exam['id'],
-                patient_id=exam['patient_id'],
-                note=body.note,
-                author_id=str(request.user.id),
-                tenant_id=_tenant(request),
-            )
-            await AuditLog(conn).log_event(
-                event_type='nursing.note_added',
-                actor_id=request.user.id,
-                resource_type='exam_note',
-                resource_id=exam['id'],
-                details={'patient_id': exam['patient_id']},
-                request_id=request_id_var.get(),
-            )
+            async with conn.transaction():
+                row = await ExamNotes(conn).add(
+                    exam_id=exam['id'],
+                    patient_id=exam['patient_id'],
+                    note=body.note,
+                    author_id=str(request.user.id),
+                    tenant_id=_tenant(request),
+                )
+                await AuditLog(conn).log_event(
+                    event_type='nursing.note_added',
+                    actor_id=request.user.id,
+                    resource_type='exam_note',
+                    resource_id=exam['id'],
+                    details={'patient_id': exam['patient_id']},
+                    request_id=request_id_var.get(),
+                )
         return created({'data': dict(row) if row else None})
 
 

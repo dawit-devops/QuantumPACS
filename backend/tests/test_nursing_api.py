@@ -57,6 +57,11 @@ def _make_app(routes, user):
 
 
 def _conn_ctx(mock_conn):
+    # Handlers hit the real db-layer classes, whose entry points self-heal
+    # schema via sync_db() -> conn.execute; default that to an AsyncMock so
+    # MagicMock-only fixtures don't break on the DDL statements.
+    if not isinstance(mock_conn.execute, AsyncMock):
+        mock_conn.execute = AsyncMock(return_value='OK')
     return patch(
         'api.nursing.get_conn',
         return_value=MagicMock(
@@ -223,6 +228,31 @@ class TestPrepChecklistEndpoint:
         # The unmet item was NOT in the payload — the merge against the
         # stored checklist must still catch it (live-smoke regression: a
         # partial echo used to confirm with the rest unchecked).
+        assert 'ID band verified' in resp.json()['error']['message']
+        checklists.confirm.assert_not_awaited()
+
+    def test_put_cannot_relax_required_flags_to_bypass_confirm(self):
+        """Server-authoritative catalog: posting required=false for every
+        item must not let confirmed=true pass with nothing checked — the
+        merge once copied the client's required flags wholesale, so a
+        crafted PUT skipped the N-02 pre-procedure safety interlock."""
+        p, checklists, conn = self._patches()
+        pe, _ = _patch_exam()
+        with pe, p, _conn_ctx(conn):
+            client = TestClient(self._app(WRITER()))
+            resp = client.put(
+                '/exams/e-1/pre-procedure-checklist',
+                json={
+                    'items': [
+                        {'key': 'allergy_verification', 'label': 'x',
+                         'required': False, 'checked': False},
+                        {'key': 'id_band_verified', 'label': 'y',
+                         'required': False, 'checked': False},
+                    ],
+                    'confirmed': True,
+                },
+            )
+        assert resp.status_code == 400
         assert 'ID band verified' in resp.json()['error']['message']
         checklists.confirm.assert_not_awaited()
 

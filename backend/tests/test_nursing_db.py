@@ -1,6 +1,7 @@
 """NS1 substrate tests: migration 100 DDL/grant content plus the
 db/nursing.py CRUD layer (fake-conn harness mirroring test_encounters)."""
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,10 +52,13 @@ class TestMigration100NursingSurfaces:
     def _load(self):
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location(
-            'mig100',
-            'migrations/versions/100_nursing_surfaces.py',
+        # __file__-relative (test_migrations convention): CWD-relative
+        # paths break when pytest runs from the repo root.
+        migration = (
+            Path(__file__).resolve().parents[1]
+            / 'migrations' / 'versions' / '100_nursing_surfaces.py'
         )
+        spec = importlib.util.spec_from_file_location('mig100', migration)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
@@ -214,6 +218,10 @@ class TestDbVitals:
         sql = _last_sql(conn, 'SELECT')
         assert 'FROM vitals' in sql
         assert 'ORDER BY recorded_at DESC' in sql
+        # Isolation predicates the suite previously never asserted —
+        # deleting either one would have passed CI.
+        assert 'exam_id = $1' in sql
+        assert 'tenant_id = $2' in sql
 
 
 class TestDbPrepChecklists:
@@ -279,6 +287,25 @@ class TestDbContrastConsentsAndNotes:
         assert 'signature_png' in sql and 'consent_text_version' in sql
 
     @pytest.mark.asyncio
+    async def test_consent_read_projects_columns_without_signature(self):
+        """The consent read once did SELECT *, shipping the ~280 KB base64
+        signature to every console viewer though nothing renders it — the
+        read must project explicit columns excluding signature_png."""
+        from db.nursing import ContrastConsents
+
+        conn = _RecordingConn()
+        conn.set_fetchrow({'id': 'k1', 'accepted': True})
+        row = await ContrastConsents(conn).get_for_exam(
+            'e-1', tenant_id='t-a',
+        )
+        assert row['id'] == 'k1'
+        sql = _last_sql(conn, 'FROM contrast_consents')
+        assert 'signature_png' not in sql
+        assert 'exam_id = $1' in sql
+        assert 'tenant_id = $2' in sql
+        assert 'ORDER BY signed_at DESC' in sql
+
+    @pytest.mark.asyncio
     async def test_note_add_inserts_with_author(self):
         from db.nursing import ExamNotes
 
@@ -302,6 +329,56 @@ class TestDbContrastConsentsAndNotes:
         assert rows == []
         sql = _last_sql(conn, 'FROM exam_notes')
         assert 'ORDER BY created_at DESC' in sql
+        assert 'exam_id = $1' in sql
+        assert 'tenant_id = $2' in sql
+
+
+class TestDbNursingPrepList:
+    @pytest.mark.asyncio
+    async def test_prep_list_query_shape_is_pinned(self):
+        """The LATERAL/jsonb queue query is the round's most complex SQL and
+        this suite has no live-DB harness — pin its structure so drift
+        (a dropped COALESCE over the nullable lateral row, a broken
+        ::boolean cast, a lost tenant filter) fails loudly here instead of
+        500-ing /nursing/prep-list in production with CI green."""
+        from db.nursing import NursingPrepList
+
+        conn = _RecordingConn()
+        conn.set_fetch([{'exam_id': 'e-1', 'checked_count': 2}])
+        rows = await NursingPrepList(conn).list(
+            tenant_id='hospital-a', limit=50,
+        )
+        assert rows
+        sql = _last_sql(conn, 'FROM exams')
+        # Driving set + the gating statuses...
+        assert "IN ('ready', 'in_progress')" in sql
+        # ...the newest-checklist LATERAL join, scoped to the tenant...
+        assert 'LEFT JOIN LATERAL' in sql
+        assert 'pc.exam_id = e.id' in sql
+        assert 'pc.tenant_id = $1' in sql
+        assert 'ORDER BY pc.created_at DESC' in sql
+        # ...and per-exam counts that tolerate a NULL lateral row.
+        assert sql.count('jsonb_array_elements(p.items)') == 2
+        assert sql.count('COALESCE') >= 2
+        assert "(it->>'checked')::boolean" in sql
+        assert "(it->>'required')::boolean" in sql
+        assert 'LIMIT $2' in sql
+
+    @pytest.mark.asyncio
+    async def test_prep_list_binds_tenant_and_limit_params(self):
+        from db.nursing import NursingPrepList
+
+        captured = {}
+        conn = _RecordingConn()
+
+        async def fetch(sql, *args):
+            conn.queries.append(sql)
+            captured['args'] = args
+            return [{'exam_id': 'e-1'}]
+
+        conn.fetch = fetch
+        await NursingPrepList(conn).list(tenant_id='hospital-a', limit=25)
+        assert captured['args'] == ('hospital-a', 25)
 
 
 class TestChecklistJsonbDecoding:
@@ -323,6 +400,9 @@ class TestChecklistJsonbDecoding:
         }
 
         class _Conn:
+            async def execute(self, sql, *args):
+                pass
+
             async def fetchrow(self, sql, *args):
                 return dict(stored)
 

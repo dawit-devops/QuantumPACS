@@ -7,7 +7,7 @@ import withSidebar from "../common/base";
 import PageHeader from "../common/PageHeader";
 import { PageState } from "../common/PageState";
 import { getPrepList, type PrepListRow } from "../api/nursing";
-import { EXAM_PRIORITY_COLORS } from "../common/statusColors";
+import { EXAM_PRIORITY_COLORS, EXAM_STATUS_COLORS } from "../common/statusColors";
 
 const Content = Layout.Content;
 
@@ -60,7 +60,8 @@ function NursingPrepList() {
       title: "Exam status",
       dataIndex: "status",
       width: 120,
-      render: (s?: string) => (s ? <Tag>{s.toUpperCase()}</Tag> : null),
+      render: (s?: string) =>
+        s ? <Tag color={EXAM_STATUS_COLORS[s] || "default"}>{s.toUpperCase()}</Tag> : null,
     },
     {
       title: "Pre-procedure checklist",

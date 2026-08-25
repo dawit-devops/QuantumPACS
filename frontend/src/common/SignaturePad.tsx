@@ -20,19 +20,26 @@ interface Props {
  * Reusable signature capture (spec §2.12 lists this as a shared component).
  * Drawing handlers are cloned from the kiosk consent pad (CheckIn.tsx):
  * the drawing flag lives in a ref so a rapid mouseDown -> mouseMove reads
- * it synchronously, and has-signature is marked optimistically so submit
- * stays reachable in jsdom where getContext() returns null.
+ * it synchronously.
+ *
+ * has-signature is only reported once a real segment reaches the canvas —
+ * a bare click must not count as a signature, because toDataURL() of a
+ * blank canvas yields a perfectly valid PNG data URL that would defeat any
+ * downstream "signature present" check (consent integrity, spec N-03).
  */
 const SignaturePad = forwardRef<SignaturePadHandle, Props>(
   ({ onSignatureChange, width = 420, height = 140 }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef(false);
-    const dirtyRef = useRef(false);
+    // Count of segments actually drawn since the last clear; 0 == blank pad.
+    const strokesRef = useRef(0);
 
-    const report = (has: boolean) => {
-      if (dirtyRef.current !== has) {
-        dirtyRef.current = has;
-        onSignatureChange?.(has);
+    /** Update the stroke count, reporting empty<->drawn transitions once. */
+    const setStrokes = (count: number) => {
+      const was = strokesRef.current > 0;
+      strokesRef.current = count;
+      if (was !== count > 0) {
+        onSignatureChange?.(count > 0);
       }
     };
 
@@ -49,7 +56,6 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
       const canvas = canvasRef.current;
       if (!canvas) return;
       drawingRef.current = true;
-      report(true);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       const pos = getPos(e);
@@ -62,7 +68,6 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
       const canvas = canvasRef.current;
       if (!canvas) return;
       e.preventDefault();
-      report(true);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       const pos = getPos(e);
@@ -71,6 +76,7 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
       ctx.lineWidth = 2;
       ctx.lineCap = "round";
       ctx.stroke();
+      setStrokes(strokesRef.current + 1);
     };
 
     const endDraw = () => {
@@ -82,12 +88,12 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-      report(false);
+      setStrokes(0);
     };
 
     useImperativeHandle(ref, () => ({
       capture: () =>
-        dirtyRef.current && canvasRef.current ? canvasRef.current.toDataURL("image/png") : "",
+        strokesRef.current > 0 && canvasRef.current ? canvasRef.current.toDataURL("image/png") : "",
       clear,
     }));
 

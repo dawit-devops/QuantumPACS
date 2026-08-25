@@ -135,6 +135,23 @@ class TestQuotaOverrideJustification:
         assert resp.status_code == 200
         audit.log_event.assert_not_awaited()
 
+    def test_negative_quota_rejected_with_422(self):
+        """storage_quota_bytes once accepted negatives, which enforcement
+        treats as unlimited — throttling could be switched off through the
+        audited flow. ge=0 on both schemas rejects them at validation."""
+        patches, tenants, _ = _patch_deps()
+        with patches[0], patches[1], patches[2], patches[3]:
+            client = TestClient(self._app())
+            resp = client.put(
+                '/tenants/t-1',
+                json={
+                    'storage_quota_bytes': -1,
+                    'quota_justification': 'disable limits entirely',
+                },
+            )
+        assert resp.status_code == 422
+        tenants.patch.assert_not_awaited()
+
 
 class TestTenantsListQuotaFields:
     def test_list_carries_storage_used_and_pct(self):
