@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { MemoryRouter } from "react-router";
+import { App as AntdApp } from "antd";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import UnbilledAging from "../billing/UnbilledAging";
@@ -56,13 +57,15 @@ function renderAging() {
   localStorage.setItem("tenant_id", "t1");
   localStorage.setItem("tenant_name", "Test");
   return render(
-    <MemoryRouter>
-      <AuthProvider>
-        <ThemeProvider>
-          <UnbilledAging />
-        </ThemeProvider>
-      </AuthProvider>
-    </MemoryRouter>,
+    <AntdApp>
+      <MemoryRouter>
+        <AuthProvider>
+          <ThemeProvider>
+            <UnbilledAging />
+          </ThemeProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    </AntdApp>,
   );
 }
 
