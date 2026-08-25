@@ -1401,3 +1401,43 @@ class TestTeachingFiles:
         with patch('api.reports.TeachingFiles', FakeTF), _conn():
             resp = TestClient(self._app()).get('/teaching-files/nope')
         assert resp.status_code == 404
+
+
+class TestPriorReportsRecommendations:
+    """CS3/CC-10: the priors payload carries a recommendations excerpt so
+    the patient chart can summarize both clinical fields."""
+
+    def test_list_priors_includes_recommendations_excerpt(self):
+        captured = {}
+
+        async def fake_fetch(q, *a):
+            captured['q'] = q
+            return [{
+                'report_id': 'rep-9', 'exam_id': 'exam-9',
+                'accession_number': 'ACC9', 'modality': 'CT',
+                'status': 'final', 'completed_at': None,
+                'impression_excerpt': 'Impression text',
+                'recommendations_excerpt': 'Follow-up in 6 weeks',
+                'signed_at': None,
+            }]
+
+        with _conn(fetch=fake_fetch):
+            from api.reports import PriorReportsHandler
+            app = Starlette(
+                routes=[Route('/reports/priors',
+                              endpoint=PriorReportsHandler)],
+                middleware=[Middleware(_FakeAuth, user=RAD)],
+                exception_handlers={
+                    HTTPException: _http_exception,
+                    _ValidationException: validation_exception_handler,
+                },
+            )
+            resp = TestClient(app).get(
+                '/reports/priors?patient_id=P1&modality=CT')
+        assert resp.status_code == 200
+        import re as _re
+        flat = _re.sub(r'\s+', ' ', captured['q'])
+        assert 'left(r.recommendations, 200) AS recommendations_excerpt' \
+            in flat
+        row = resp.json()['data'][0]
+        assert row['recommendations_excerpt'] == 'Follow-up in 6 weeks'

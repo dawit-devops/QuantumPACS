@@ -318,7 +318,9 @@ class Reports(Table):
                        e.id::text AS exam_id,
                        e.accession_number, e.modality, e.completed_at,
                        r.status, r.signed_at,
-                       left(r.impression, 200) AS impression_excerpt
+                       left(r.impression, 200) AS impression_excerpt,
+                       left(r.recommendations, 200)
+                           AS recommendations_excerpt
                 FROM reports r JOIN exams e ON e.id = r.exam_id
                 WHERE {' AND '.join(where)}
                 ORDER BY e.completed_at DESC NULLS LAST, r.signed_at DESC NULLS LAST
