@@ -45,7 +45,7 @@ function renderKiosk(token = "test-token-123") {
           <CheckIn />
         </MemoryRouter>
       </ThemeProvider>
-    </AntdApp>,
+    </AntdApp>
   );
 }
 
@@ -63,11 +63,30 @@ beforeEach(() => {
 });
 
 describe("CheckIn (enhanced kiosk)", () => {
+  // Consent now flows through the shared SignaturePad, which only counts
+  // real strokes (a bare click must not sign) — stub the 2d context jsdom
+  // lacks so the fireEvent draw sequences below drive the actual path.
+  let getContextSpy: ReturnType<typeof vi.spyOn>;
+  let toDataURLSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    const ctxStub = {
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      clearRect: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctxStub);
+    toDataURLSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+      .mockReturnValue("data:image/png;base64,AAAA");
   });
 
   afterEach(() => {
+    getContextSpy.mockRestore();
+    toDataURLSpy.mockRestore();
     Object.defineProperty(window, "location", {
       value: originalLocation,
       writable: true,
@@ -86,9 +105,7 @@ describe("CheckIn (enhanced kiosk)", () => {
   it("shows error when API fails", async () => {
     mockGetCheckIn.mockRejectedValue(new Error("Invalid token"));
     renderKiosk();
-    expect(
-      await screen.findByText("Cannot check in"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Cannot check in")).toBeInTheDocument();
   });
 
   // --- Prep instructions phase ---
@@ -96,17 +113,13 @@ describe("CheckIn (enhanced kiosk)", () => {
   it("shows prep instructions after loading", async () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
-    expect(
-      await screen.findByText(/Preparation Instructions/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Preparation Instructions/)).toBeInTheDocument();
   });
 
   it("displays patient name in welcome message", async () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
-    expect(
-      await screen.findByText(/Welcome, Jane Smith/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Welcome, Jane Smith/)).toBeInTheDocument();
   });
 
   it("shows modality badge", async () => {
@@ -128,9 +141,7 @@ describe("CheckIn (enhanced kiosk)", () => {
   it("displays prep instructions from backend", async () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
-    expect(
-      await screen.findByText(/Fast for 4 hours/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Fast for 4 hours/)).toBeInTheDocument();
   });
 
   it("falls back to default prep instructions when backend provides none", async () => {
@@ -139,9 +150,7 @@ describe("CheckIn (enhanced kiosk)", () => {
       prep_instructions: "",
     });
     renderKiosk();
-    expect(
-      await screen.findByText(/Do not eat or drink for 4 hours/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Do not eat or drink for 4 hours/)).toBeInTheDocument();
   });
 
   it("navigates to consent phase on continue button click", async () => {
@@ -149,12 +158,8 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
-    expect(
-      screen.getByText("Consent for Imaging"),
-    ).toBeInTheDocument();
+    await user.click(screen.getByText(/I understand — continue to consent/));
+    expect(screen.getByText("Consent for Imaging")).toBeInTheDocument();
   });
 
   // --- Consent form phase ---
@@ -164,11 +169,9 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     expect(
-      screen.getByText(/I understand that I am here for an imaging examination/),
+      screen.getByText(/I understand that I am here for an imaging examination/)
     ).toBeInTheDocument();
   });
 
@@ -177,9 +180,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     expect(screen.getByTestId("signature-canvas")).toBeInTheDocument();
   });
 
@@ -188,9 +189,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     expect(screen.getByTestId("consent-checkbox")).toBeInTheDocument();
   });
 
@@ -199,9 +198,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     const submitBtn = screen.getByTestId("consent-submit");
     expect(submitBtn).toBeDisabled();
   });
@@ -211,13 +208,9 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     await user.click(screen.getByText(/Back to preparation instructions/));
-    expect(
-      screen.getByText(/Preparation Instructions/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Preparation Instructions/)).toBeInTheDocument();
   });
 
   // --- Ready phase ---
@@ -227,9 +220,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     // Draw on signature pad — use fireEvent sequence
     const canvas = screen.getByTestId("signature-canvas");
     fireEvent.mouseDown(canvas, { clientX: 10, clientY: 10 });
@@ -253,9 +244,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockConfirmCheckIn.mockResolvedValue({ id: "a1", status: "ARRIVED" });
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     // Draw signature
     const canvas = screen.getByTestId("signature-canvas");
     fireEvent.mouseDown(canvas, { clientX: 10, clientY: 10 });
@@ -284,9 +273,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockConfirmCheckIn.mockRejectedValue({ status: 409, message: "Already" });
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     const canvas = screen.getByTestId("signature-canvas");
     fireEvent.mouseDown(canvas, { clientX: 10, clientY: 10 });
     fireEvent.mouseMove(canvas, { clientX: 50, clientY: 50 });
@@ -294,9 +281,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     await user.click(screen.getByTestId("consent-checkbox"));
     await user.click(screen.getByTestId("consent-submit"));
     await user.click(screen.getByTestId("checkin-confirm"));
-    expect(
-      await screen.findByText(/already checked in/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/already checked in/)).toBeInTheDocument();
   });
 
   // --- Default prep for unknown modality ---
@@ -308,9 +293,7 @@ describe("CheckIn (enhanced kiosk)", () => {
       prep_instructions: "",
     });
     renderKiosk();
-    expect(
-      await screen.findByText(/Bring your insurance card/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Bring your insurance card/)).toBeInTheDocument();
   });
 
   it("decline requires a reason and submits decline consent", async () => {
@@ -318,9 +301,7 @@ describe("CheckIn (enhanced kiosk)", () => {
     mockGetCheckIn.mockResolvedValue(SUMMARY);
     renderKiosk();
     await screen.findByText(/Preparation Instructions/);
-    await user.click(
-      screen.getByText(/I understand — continue to consent/),
-    );
+    await user.click(screen.getByText(/I understand — continue to consent/));
     // Submit must be disabled before a reason is typed.
     await user.click(screen.getByTestId("decline-consent"));
     expect(screen.getByTestId("decline-submit")).toBeDisabled();

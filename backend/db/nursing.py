@@ -30,6 +30,15 @@ DEFAULT_CHECKLIST_ITEMS = [
     {'key': 'id_band_verified', 'label': 'ID band verified', 'required': True},
 ]
 
+# Newest checklist per exam+tenant — shared by the seed probe and the
+# lost-race read-back in get_or_create.
+_NEWEST_CHECKLIST_SQL = """
+    SELECT * FROM prep_checklists
+    WHERE exam_id = $1 AND tenant_id = $2
+    ORDER BY created_at DESC
+    LIMIT 1
+"""
+
 
 class ExamVitals:
     """N-01 — timestamped vitals recorded before a procedure."""
@@ -104,7 +113,29 @@ class PrepChecklists:
             return dict(row, items=json.loads(row['items']))
         return row
 
+    @staticmethod
+    def _union_defaults(row):
+        """Spec evolution: items added to DEFAULT_CHECKLIST_ITEMS must reach
+        exams whose checklist row predates them — append any default keys
+        missing from the stored catalog so a newly required item shows in
+        the UI and blocks confirmation."""
+        if not row:
+            return row
+        stored = row.get('items') or []
+        keys = {i.get('key') for i in stored}
+        extra = [
+            {**d, 'checked': False}
+            for d in DEFAULT_CHECKLIST_ITEMS if d['key'] not in keys
+        ]
+        if not extra:
+            return row
+        return dict(row, items=list(stored) + extra)
+
     async def sync_db(self):
+        # The unique seeding arbiter arrives via migration 101 only — it
+        # needs a dedupe pass first, which is data work this idempotent
+        # DDL path must not repeat per call. On sync-only databases the
+        # target-less ON CONFLICT below degrades safely instead.
         await self.conn.execute(
             "ALTER TABLE prep_checklists ADD COLUMN IF NOT EXISTS tenant_id "
             "TEXT NOT NULL DEFAULT 'default'"
@@ -118,28 +149,32 @@ class PrepChecklists:
                             procedure_type='', tenant_id='default'):
         await self.sync_db()
         row = await self.conn.fetchrow(
-            """
-            SELECT * FROM prep_checklists
-            WHERE exam_id = $1 AND tenant_id = $2
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            exam_id, tenant_id,
+            _NEWEST_CHECKLIST_SQL, exam_id, tenant_id,
         )
         if row:
-            return self._decode_items(row)
+            return self._union_defaults(self._decode_items(row))
         import json
 
-        return self._decode_items(await self.conn.fetchrow(
+        # Target-less ON CONFLICT DO NOTHING: on migrated databases the
+        # migration-101 unique index makes concurrent seeds race-safe (the
+        # loser falls through to a read-back of the winner); on sync-only
+        # databases without that index it is a plain insert, never an error.
+        inserted = await self.conn.fetchrow(
             """
             INSERT INTO prep_checklists (
                 exam_id, patient_id, procedure_type, items, status, tenant_id
             )
             VALUES ($1, $2, $3, $4::jsonb, 'in_progress', $5)
+            ON CONFLICT DO NOTHING
             RETURNING *
             """,
             exam_id, patient_id, procedure_type,
             json.dumps(DEFAULT_CHECKLIST_ITEMS), tenant_id,
+        )
+        if inserted:
+            return self._decode_items(inserted)
+        return self._union_defaults(self._decode_items(
+            await self.conn.fetchrow(_NEWEST_CHECKLIST_SQL, exam_id, tenant_id)
         ))
 
     async def confirm(self, checklist_id, by=''):
@@ -171,6 +206,36 @@ class PrepChecklists:
         ))
 
 
+# Hoisted so tests can prepare (parse+plan) it against the live schema —
+# the fake-conn harness pins the text, only Postgres catches bad casts,
+# missing columns and SRF-over-NULL mistakes.
+PREP_LIST_SQL = """
+    SELECT e.id AS exam_id, e.patient_id, e.patient_name,
+           e.modality, e.priority, e.status,
+           p.id AS checklist_id,
+           p.status AS checklist_status,
+           COALESCE((
+               SELECT COUNT(1) FROM jsonb_array_elements(p.items) it
+               WHERE (it->>'checked')::boolean
+           ), 0) AS checked_count,
+           COALESCE((
+               SELECT COUNT(1) FROM jsonb_array_elements(p.items) it
+               WHERE (it->>'required')::boolean
+           ), 0) AS required_count
+    FROM exams e
+    LEFT JOIN LATERAL (
+        SELECT pc.id, pc.status, pc.items
+        FROM prep_checklists pc
+        WHERE pc.exam_id = e.id AND pc.tenant_id = $1
+        ORDER BY pc.created_at DESC
+        LIMIT 1
+    ) p ON TRUE
+    WHERE e.status IN ('ready', 'in_progress')
+    ORDER BY e.created_at DESC
+    LIMIT $2
+"""
+
+
 class NursingPrepList:
     """Today's exams awaiting nursing prep with their checklist state.
 
@@ -189,34 +254,7 @@ class NursingPrepList:
 
     async def list(self, tenant_id='default', limit=100):
         await self.sync_db()
-        return await self.conn.fetch(
-            """
-            SELECT e.id AS exam_id, e.patient_id, e.patient_name,
-                   e.modality, e.priority, e.status,
-                   p.id AS checklist_id,
-                   p.status AS checklist_status,
-                   COALESCE((
-                       SELECT COUNT(1) FROM jsonb_array_elements(p.items) it
-                       WHERE (it->>'checked')::boolean
-                   ), 0) AS checked_count,
-                   COALESCE((
-                       SELECT COUNT(1) FROM jsonb_array_elements(p.items) it
-                       WHERE (it->>'required')::boolean
-                   ), 0) AS required_count
-            FROM exams e
-            LEFT JOIN LATERAL (
-                SELECT pc.id, pc.status, pc.items
-                FROM prep_checklists pc
-                WHERE pc.exam_id = e.id AND pc.tenant_id = $1
-                ORDER BY pc.created_at DESC
-                LIMIT 1
-            ) p ON TRUE
-            WHERE e.status IN ('ready', 'in_progress')
-            ORDER BY e.created_at DESC
-            LIMIT $2
-            """,
-            tenant_id, limit,
-        )
+        return await self.conn.fetch(PREP_LIST_SQL, tenant_id, limit)
 
 
 class ContrastConsents:

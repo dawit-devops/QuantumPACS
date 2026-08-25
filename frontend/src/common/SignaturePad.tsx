@@ -14,6 +14,12 @@ interface Props {
   onSignatureChange?: (hasSignature: boolean) => void;
   width?: number;
   height?: number;
+  /** Helper line under the pad (kiosk uses patient-facing copy). */
+  hint?: string;
+  /** Label for the built-in clear button. */
+  clearLabel?: string;
+  /** data-testid for the canvas, for suites that drive real strokes. */
+  testId?: string;
 }
 
 /**
@@ -28,7 +34,17 @@ interface Props {
  * downstream "signature present" check (consent integrity, spec N-03).
  */
 const SignaturePad = forwardRef<SignaturePadHandle, Props>(
-  ({ onSignatureChange, width = 420, height = 140 }, ref) => {
+  (
+    {
+      onSignatureChange,
+      width = 420,
+      height = 140,
+      hint = "Draw the signature above",
+      clearLabel = "Clear",
+      testId,
+    },
+    ref
+  ) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef(false);
     // Count of segments actually drawn since the last clear; 0 == blank pad.
@@ -105,6 +121,7 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
           height={height}
           role="img"
           aria-label="Signature capture area"
+          data-testid={testId}
           style={{
             border: "1px solid #d9d9d9",
             borderRadius: 6,
@@ -123,10 +140,10 @@ const SignaturePad = forwardRef<SignaturePadHandle, Props>(
         />
         <Space style={{ marginTop: 4 }}>
           <Text type="secondary" style={{ fontSize: 11 }}>
-            Draw the signature above
+            {hint}
           </Text>
           <Button size="small" onClick={clear}>
-            Clear
+            {clearLabel}
           </Button>
         </Space>
       </div>

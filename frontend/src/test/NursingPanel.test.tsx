@@ -232,6 +232,57 @@ describe("NursingPanel consent (N-03)", () => {
   });
 });
 
+describe("NursingPanel load failures", () => {
+  it("surfaces a retryable error when the checklist fetch fails", async () => {
+    mockGetChecklist.mockRejectedValue(new Error("backend down"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("tab", { name: /pre-procedure/i }));
+    const banner = await screen.findByTestId("nursing-checklist-load-error");
+    expect(banner).toHaveTextContent(/failed to load/i);
+
+    // Retry recovers once the API answers again.
+    mockGetChecklist.mockResolvedValue({
+      id: "c1",
+      status: "in_progress",
+      items: DEFAULT_ITEMS,
+    });
+    await user.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByText("Allergy verification")).toBeInTheDocument();
+    expect(screen.queryByTestId("nursing-checklist-load-error")).not.toBeInTheDocument();
+  });
+
+  it("flags vitals load failures instead of rendering an empty record", async () => {
+    mockVitals.mockRejectedValue(new Error("timeout"));
+    renderPanel();
+
+    // Vitals is the initial tab — no click needed.
+    expect(await screen.findByTestId("nursing-vitals-load-error")).toBeInTheDocument();
+    // The empty-table message must NOT imply "no vitals exist".
+    expect(screen.queryByText(/No vitals recorded for this exam yet/)).not.toBeInTheDocument();
+  });
+
+  it("flags consent load failures above the consent form", async () => {
+    mockGetConsent.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("tab", { name: /contrast consent/i }));
+    expect(await screen.findByTestId("nursing-consent-load-error")).toBeInTheDocument();
+  });
+
+  it("flags nurse notes load failures instead of the empty-state copy", async () => {
+    mockGetNotes.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("tab", { name: /^notes$/i }));
+    expect(await screen.findByTestId("nursing-notes-load-error")).toBeInTheDocument();
+    expect(screen.queryByText(/No nurse notes on this exam yet/)).not.toBeInTheDocument();
+  });
+});
+
 describe("NursingPanel notes (N-04)", () => {
   it("lists existing notes and posts new ones", async () => {
     const user = userEvent.setup();

@@ -1,15 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Button,
-  Result,
-  Spin,
-  Typography,
-  Checkbox,
-  Card,
-  Divider,
-  Alert,
-  Input,
-} from "antd";
+import { Button, Result, Spin, Typography, Checkbox, Card, Divider, Alert, Input } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -18,20 +8,14 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import { confirmCheckIn, getCheckIn, submitConsent, CheckInSummary } from "../api/checkin";
+import SignaturePad, { type SignaturePadHandle } from "../common/SignaturePad";
 import CoPayPrompt from "./CoPayPrompt";
 import WaitTime from "./WaitTime";
 import "./CheckIn.css";
 
 const { Title, Text, Paragraph } = Typography;
 
-type Phase =
-  | "loading"
-  | "prep"
-  | "consent"
-  | "ready"
-  | "copay"
-  | "done"
-  | "error";
+type Phase = "loading" | "prep" | "consent" | "ready" | "copay" | "done" | "error";
 
 // K-04: default co-pay amount presented at the kiosk (configurable per
 // tenant later; today a fixed placeholder derived from the modality).
@@ -101,13 +85,9 @@ const CheckIn: React.FC = () => {
   const [consentChecked, setConsentChecked] = useState(false);
   const [consentSigned, setConsentSigned] = useState(false);
 
-  // Signature pad state
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Drawing flag lives in a ref, not state: `draw` must observe it
-  // synchronously. setState only applies on the next render, so a rapid
-  // mouseDown → mouseMove (finger on the pad) would read the stale
-  // `false` closure and never draw — the consent submit stays disabled.
-  const drawingRef = useRef(false);
+  // Shared signature pad (spec §2.12) — drawing handlers live inside the
+  // component; the imperative handle exposes capture()/clear().
+  const padRef = useRef<SignaturePadHandle>(null);
   const [hasSignature, setHasSignature] = useState(false);
 
   const token = new URLSearchParams(window.location.search).get("token");
@@ -136,7 +116,7 @@ const CheckIn: React.FC = () => {
     };
   }, [token]);
 
-const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [submittingConsent, setSubmittingConsent] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   const [declining, setDeclining] = useState(false);
@@ -152,7 +132,7 @@ const [confirming, setConfirming] = useState(false);
       setError(
         e?.status === 409
           ? "You are already checked in."
-          : e?.message || "Check-in failed — please see the front desk.",
+          : e?.message || "Check-in failed — please see the front desk."
       );
       setPhase("error");
     } finally {
@@ -161,9 +141,7 @@ const [confirming, setConfirming] = useState(false);
   }, [token]);
 
   const captureSignature = (): string => {
-    const canvas = canvasRef.current;
-    if (!canvas) return "";
-    return canvas.toDataURL("image/png");
+    return padRef.current?.capture() || "";
   };
 
   const handleConsentSubmit = async () => {
@@ -205,70 +183,10 @@ const [confirming, setConfirming] = useState(false);
     }
   };
 
-  const getPos = (e: React.TouchEvent | React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
-  };
-
-  const startDraw = (e: React.TouchEvent | React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    drawingRef.current = true;
-    // A down-event on the pad is a signature attempt regardless of whether
-    // the 2d context is available (jsdom returns null for getContext("2d"),
-    // but the real kiosk always has one). Marking the signature here keeps
-    // the consent submit reachable in tests and on devices where the
-    // context probe fails early.
-    setHasSignature(true);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-  };
-
-  const draw = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!drawingRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    e.preventDefault();
-    setHasSignature(true);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const pos = getPos(e);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.strokeStyle = "#1A1A2E";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.stroke();
-  };
-
-  const endDraw = () => {
-    drawingRef.current = false;
-  };
-
-  const clearSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasSignature(false);
-  };
-
   // Get prep instructions
   const getPrepInstructions = (): string[] => {
     if (summary?.prep_instructions) {
-      return summary.prep_instructions
-        .split("\n")
-        .filter((l) => l.trim());
+      return summary.prep_instructions.split("\n").filter((l) => l.trim());
     }
     if (summary?.modality && DEFAULT_PREP[summary.modality]) {
       return DEFAULT_PREP[summary.modality];
@@ -409,35 +327,15 @@ const [confirming, setConfirming] = useState(false);
             Your Signature
           </Text>
           <div className="kiosk-signature-wrapper">
-            <canvas
-              ref={canvasRef}
+            <SignaturePad
+              ref={padRef}
+              onSignatureChange={setHasSignature}
               width={400}
               height={120}
-              className="kiosk-signature"
-              onMouseDown={startDraw}
-              onMouseMove={draw}
-              onMouseUp={endDraw}
-              onMouseLeave={endDraw}
-              onTouchStart={startDraw}
-              onTouchMove={draw}
-              onTouchEnd={endDraw}
-              data-testid="signature-canvas"
+              hint="Sign above with your finger or stylus"
+              clearLabel="Clear signature"
+              testId="signature-canvas"
             />
-            {!hasSignature && (
-              <Text type="secondary" className="kiosk-signature-hint">
-                Sign above with your finger or stylus
-              </Text>
-            )}
-            {hasSignature && (
-              <Button
-                size="small"
-                type="link"
-                onClick={clearSignature}
-                style={{ marginTop: 4 }}
-              >
-                Clear signature
-              </Button>
-            )}
           </div>
 
           {/* Consent checkbox */}
@@ -515,11 +413,7 @@ const [confirming, setConfirming] = useState(false);
             </div>
           )}
 
-          <Button
-            type="link"
-            onClick={() => setPhase("prep")}
-            style={{ marginTop: 8 }}
-          >
+          <Button type="link" onClick={() => setPhase("prep")} style={{ marginTop: 8 }}>
             ← Back to preparation instructions
           </Button>
         </div>

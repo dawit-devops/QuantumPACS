@@ -71,27 +71,78 @@ function NursingPanel({ exam }: { exam: any }) {
   // Notes (N-04)
   const [notes, setNotes] = useState<NurseNoteRow[]>([]);
   const [newNote, setNewNote] = useState("");
+  // Per-surface load failures: a swallowed error once rendered an
+  // apparently-empty record clinicians could chart against.
+  const [loadErrors, setLoadErrors] = useState<Record<string, boolean>>({});
+
+  const markLoadError = (key: string, failed: boolean) =>
+    setLoadErrors((prev) => ({ ...prev, [key]: failed }));
 
   useEffect(() => {
     if (!exam?.id) return;
     if (!hasPermission("NURSING_READ") && !hasPermission("EXAM_READ")) return;
+    setLoadErrors({});
     getExamVitals(exam.id)
-      .then(setVitals)
-      .catch(() => {});
+      .then((rows) => {
+        setVitals(rows);
+        markLoadError("vitals", false);
+      })
+      .catch(() => markLoadError("vitals", true));
     getChecklist(exam.id)
       .then((row) => {
         setItems(row.items || []);
         setChecklistStatus(row.status || "in_progress");
+        markLoadError("checklist", false);
       })
-      .catch(() => {});
+      .catch(() => markLoadError("checklist", true));
     getConsent(exam.id)
-      .then(setConsent)
-      .catch(() => {});
+      .then((row) => {
+        setConsent(row);
+        markLoadError("consent", false);
+      })
+      .catch(() => markLoadError("consent", true));
     getNurseNotes(exam.id)
-      .then(setNotes)
-      .catch(() => {});
+      .then((rows) => {
+        setNotes(rows);
+        markLoadError("notes", false);
+      })
+      .catch(() => markLoadError("notes", true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam?.id]);
+
+  const reload = (key: "vitals" | "checklist" | "consent" | "notes") => {
+    if (!exam?.id) return;
+    markLoadError(key, false);
+    const fail = () => markLoadError(key, true);
+    if (key === "vitals") getExamVitals(exam.id).then(setVitals).catch(fail);
+    else if (key === "checklist")
+      getChecklist(exam.id)
+        .then((row) => {
+          setItems(row.items || []);
+          setChecklistStatus(row.status || "in_progress");
+        })
+        .catch(fail);
+    else if (key === "consent") getConsent(exam.id).then(setConsent).catch(fail);
+    else getNurseNotes(exam.id).then(setNotes).catch(fail);
+  };
+
+  /** Inline retryable banner shown at the top of a tab whose load failed. */
+  const loadErrorBanner = (key: "vitals" | "checklist" | "consent" | "notes", label: string) =>
+    loadErrors[key] ? (
+      <div data-testid={`nursing-${key}-load-error`}>
+        <Alert
+          type="error"
+          showIcon
+          message={`Failed to load ${label}`}
+          action={
+            <Button size="small" danger onClick={() => reload(key)}>
+              Retry
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      </div>
+    ) : null;
 
   // Mount rule mirrors the API's record-read gate: NURSING_READ holders work
   // here; EXAM_READ-only viewers (tech, radiologist) see the same records
@@ -184,13 +235,19 @@ function NursingPanel({ exam }: { exam: any }) {
 
   const vitalsTab = (
     <div>
+      {loadErrorBanner("vitals", "vitals")}
       <Table
         rowKey="id"
         size="small"
         pagination={false}
         dataSource={vitals}
         columns={vitalColumns}
-        locale={{ emptyText: "No vitals recorded for this exam yet" }}
+        locale={{
+          // A failed load must not read as "no vitals exist".
+          emptyText: loadErrors.vitals
+            ? "Could not load vitals."
+            : "No vitals recorded for this exam yet",
+        }}
         style={{ marginBottom: 16 }}
       />
       <RequirePermission permission="NURSING_WRITE">
@@ -233,6 +290,7 @@ function NursingPanel({ exam }: { exam: any }) {
 
   const checklistTab = (
     <div>
+      {loadErrorBanner("checklist", "the pre-procedure checklist")}
       {checklistStatus === "complete" && (
         <Alert
           type="success"
@@ -289,6 +347,7 @@ function NursingPanel({ exam }: { exam: any }) {
 
   const consentTab = (
     <div>
+      {loadErrorBanner("consent", "the consent record")}
       {consent ? (
         <Descriptions size="small" column={2} bordered style={{ marginBottom: 12 }}>
           <Descriptions.Item label="Decision">
@@ -357,6 +416,7 @@ function NursingPanel({ exam }: { exam: any }) {
 
   const notesTab = (
     <div>
+      {loadErrorBanner("notes", "nurse notes")}
       <Timeline
         style={{ marginBottom: 12 }}
         items={notes.map((n) => ({
@@ -372,7 +432,9 @@ function NursingPanel({ exam }: { exam: any }) {
           ),
         }))}
       />
-      {notes.length === 0 && <Text type="secondary">No nurse notes on this exam yet.</Text>}
+      {notes.length === 0 && !loadErrors.notes && (
+        <Text type="secondary">No nurse notes on this exam yet.</Text>
+      )}
       {canWrite && (
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <Input.TextArea

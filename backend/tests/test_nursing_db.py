@@ -183,6 +183,60 @@ class TestMigration100NursingSurfaces:
         assert 'DROP TABLE IF EXISTS contrast_consents' in sql
 
 
+class TestMigration101PrepChecklistArbiter:
+    def _load(self):
+        import importlib.util
+
+        migration = (
+            Path(__file__).resolve().parents[1]
+            / 'migrations' / 'versions' / '101_prep_checklist_arbiter.py'
+        )
+        spec = importlib.util.spec_from_file_location('mig101', migration)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_revision_chain_follows_100(self):
+        mod = self._load()
+        assert mod.revision == '101'
+        assert mod.down_revision == '100'
+
+    def test_upgrade_dedupes_before_building_arbiter(self):
+        """Order matters: building the unique index on a database holding
+        pre-arbiter duplicates fails unless the dedupe runs first."""
+        mod = self._load()
+        executed = []
+
+        class _FakeOp:
+            def execute(self, stmt):
+                executed.append(str(stmt))
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(mod, 'op', _FakeOp())
+            mod.upgrade()
+        assert len(executed) == 2
+        dedupe, arbiter = executed
+        assert 'DELETE FROM prep_checklists' in dedupe
+        assert '(b.created_at, b.id)' in dedupe
+        assert 'CREATE UNIQUE INDEX' in arbiter
+        assert 'ux_prep_checklists_exam_tenant' in arbiter
+
+    def test_downgrade_drops_index_only(self):
+        mod = self._load()
+        executed = []
+
+        class _FakeOp:
+            def execute(self, stmt):
+                executed.append(str(stmt))
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(mod, 'op', _FakeOp())
+            mod.downgrade()
+        sql = '\n'.join(executed)
+        assert 'DROP INDEX IF EXISTS ux_prep_checklists_exam_tenant' in sql
+        assert 'DELETE FROM' not in sql
+
+
 # ---------------------------------------------------------------------------
 # db/nursing.py CRUD layer
 # ---------------------------------------------------------------------------
@@ -269,6 +323,72 @@ class TestDbPrepChecklists:
         sql = _last_sql(conn, "SET status")
         assert "'complete'" in sql.replace('"complete"', "'complete'")
         assert 'confirmed_by' in sql and 'confirmed_at' in sql
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_insert_conflicts_away_and_reads_back_winner(self):
+        """Migration 101's unique arbiter makes concurrent seeds race-safe:
+        when another request won the insert, ON CONFLICT suppresses ours and
+        the loser reads back the winner instead of returning None."""
+        from db.nursing import PrepChecklists
+
+        winner = {
+            'id': 'c2', 'status': 'in_progress',
+            'items': [
+                {'key': 'allergy_verification', 'label': 'Allergy verification',
+                 'required': True, 'checked': False},
+            ],
+        }
+        selects = {'count': 0}
+
+        class _RacyConn:
+            async def execute(self, sql, *args):
+                pass
+
+            async def fetchrow(self, sql, *args):
+                if 'INSERT INTO' in sql:
+                    return None  # arbiter suppressed our duplicate seed
+                selects['count'] += 1
+                if selects['count'] == 1:
+                    return None  # initial probe missed the winner
+                return dict(winner)
+
+        row = await PrepChecklists(_RacyConn()).get_or_create(
+            exam_id='e-1', patient_id='P-1', tenant_id='default',
+        )
+        assert row['id'] == 'c2'
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_unions_new_defaults_into_legacy_rows(self):
+        """Spec evolution: an item added to DEFAULT_CHECKLIST_ITEMS must
+        reach exams whose stored catalog predates it — appended required on
+        read, so it renders in the UI and blocks confirmation."""
+        from db.nursing import DEFAULT_CHECKLIST_ITEMS, PrepChecklists
+
+        legacy = {
+            'id': 'c1', 'status': 'in_progress',
+            'items': [
+                {'key': 'allergy_verification', 'label': 'Allergy verification',
+                 'required': True, 'checked': True},
+            ],
+        }
+
+        class _Conn:
+            async def execute(self, sql, *args):
+                pass
+
+            async def fetchrow(self, sql, *args):
+                return dict(legacy)
+
+        row = await PrepChecklists(_Conn()).get_or_create(
+            exam_id='e-1', patient_id='P-1',
+        )
+        keys = {i['key'] for i in row['items']}
+        assert keys == {i['key'] for i in DEFAULT_CHECKLIST_ITEMS}
+        added = next(i for i in row['items'] if i['key'] == 'npo_status')
+        assert added['required'] is True and added['checked'] is False
+        # Existing checked state survives the union untouched.
+        kept = next(i for i in row['items'] if i['key'] == 'allergy_verification')
+        assert kept['checked'] is True
 
 
 class TestDbContrastConsentsAndNotes:
@@ -411,3 +531,33 @@ class TestChecklistJsonbDecoding:
         )
         assert isinstance(row['items'], list)
         assert row['items'][0]['key'] == 'npo_status'
+
+
+class TestLiveSchemaSqlPreparation:
+    """CR-002 backstop: the fake-conn harness pins query text, but only
+    Postgres catches bad casts, missing columns and SRF-over-NULL mistakes —
+    at prepare() time against the real schema, without executing anything.
+    Skipped where no database is reachable (CI unit jobs)."""
+
+    @pytest.mark.asyncio
+    async def test_prep_list_sql_prepares_against_live_schema(self):
+        import asyncpg
+
+        from config import config
+        from db.nursing import PREP_LIST_SQL
+
+        try:
+            conn = await asyncpg.connect(
+                user=config['db_user'],
+                password=config['db_password'],
+                database=config['db_database'],
+                host=config['db_host'],
+                port=int(config.get('db_port', '5432')),
+                timeout=3,
+            )
+        except Exception as exc:
+            pytest.skip(f'live Postgres not reachable: {exc}')
+        try:
+            await conn.prepare(PREP_LIST_SQL)
+        finally:
+            await conn.close()
