@@ -506,13 +506,28 @@ function Patient(props: any) {
                       }
                       extra={
                         canWriteEncounters && (
-                          <Button
-                            size="small"
-                            icon={<PlusOutlined />}
-                            onClick={() => setEncOpen(true)}
-                          >
-                            Log Encounter
-                          </Button>
+                          <Space>
+                            {/* CC-04 quick-log: jump to the comms log
+                                prefilled with this patient. */}
+                            <Button
+                              size="small"
+                              icon={<PhoneOutlined />}
+                              onClick={() =>
+                                navigate(
+                                  `/communications?patient=${patientId}`,
+                                )
+                              }
+                            >
+                              Log Communication
+                            </Button>
+                            <Button
+                              size="small"
+                              icon={<PlusOutlined />}
+                              onClick={() => setEncOpen(true)}
+                            >
+                              Log Encounter
+                            </Button>
+                          </Space>
                         )
                       }
                     >

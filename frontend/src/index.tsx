@@ -87,6 +87,9 @@ const Orders = React.lazy(() => import("./coordinator/Orders"));
 const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
+const Communications = React.lazy(
+  () => import("./coordinator/Communications"),
+);
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
@@ -420,6 +423,16 @@ function ThemedApp() {
                         // create/edit gates on CARE_PLAN_WRITE in the UI.
                         <ClinicalRoute permission="PATIENT_READ">
                           <CarePlans />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/communications"
+                      element={
+                        // CC-04: communication log — patient-scoped search;
+                        // logging gates on ENCOUNTER_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <Communications />
                         </ClinicalRoute>
                       }
                     />

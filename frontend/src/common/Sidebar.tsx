@@ -37,6 +37,7 @@ import {
   ScheduleOutlined,
   FileTextOutlined,
   CarryOutOutlined,
+  PhoneOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Grid, Drawer, Button } from "antd";
 import React, { useState, useEffect } from "react";
@@ -348,6 +349,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/care-plans",
         label: "Care Plans",
         icon: <CarryOutOutlined />,
+        permissions: ["PATIENT_READ"],
+      },
+      {
+        // CC-04: communication log — inbound/outbound correspondence trail
+        // per patient (append-only audit surface).
+        key: "communications",
+        path: "/communications",
+        label: "Communications",
+        icon: <PhoneOutlined />,
         permissions: ["PATIENT_READ"],
       },
       {
