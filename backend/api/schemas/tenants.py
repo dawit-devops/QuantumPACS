@@ -31,4 +31,10 @@ class UpdateTenantRequest(BaseModel):
     db_password: str | None = Field(None, description="Updated DB password")
     status: str | None = Field(None, description="Tenant status (active/suspended/quarantined/decommissioned)")
     storage_quota_bytes: int | None = Field(None, description="Updated storage quota")
+    # ADM-17: a quota override is only auditable with its reason — required
+    # by the handler whenever storage_quota_bytes actually changes.
+    quota_justification: str | None = Field(
+        None, max_length=1000,
+        description="Required when changing the storage quota; stored in the audit event",
+    )
     plan: str | None = Field(None, description="Updated subscription plan slug")
