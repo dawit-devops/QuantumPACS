@@ -213,6 +213,4 @@ export interface RisOrderDetail {
 }
 
 export const getRisOrder = (orderId: string): Promise<RisOrderDetail> =>
-  request<{ data: RisOrderDetail }>(`ris/orders/${orderId}`).then(
-    (res) => res.data
-  );
+  request<{ data: RisOrderDetail }>(`ris/orders/${orderId}`).then((res) => res.data);

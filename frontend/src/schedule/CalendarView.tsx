@@ -255,10 +255,9 @@ function CalendarView() {
         day={day}
         slots={
           rescheduleFor
-            ? (resources.find((x) => x.id === rescheduleFor.resource_id)
-                ? (freeSlots[rescheduleFor.resource_id] ?? [])
-                : []
-              )
+            ? resources.find((x) => x.id === rescheduleFor.resource_id)
+              ? (freeSlots[rescheduleFor.resource_id] ?? [])
+              : []
             : []
         }
         onClose={() => setRescheduleFor(null)}
