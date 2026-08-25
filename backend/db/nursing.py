@@ -84,6 +84,16 @@ class PrepChecklists:
     def __init__(self, conn):
         self.conn = conn
 
+    @staticmethod
+    def _decode_items(row):
+        """asyncpg returns jsonb as a raw string unless a codec is set —
+        decode so handlers/clients always see a list."""
+        if row and isinstance(row.get('items'), str):
+            import json
+
+            return dict(row, items=json.loads(row['items']))
+        return row
+
     async def sync_db(self):
         await self.conn.execute(
             "ALTER TABLE prep_checklists ADD COLUMN IF NOT EXISTS tenant_id "
@@ -102,10 +112,10 @@ class PrepChecklists:
             exam_id, tenant_id,
         )
         if row:
-            return row
+            return self._decode_items(row)
         import json
 
-        return await self.conn.fetchrow(
+        return self._decode_items(await self.conn.fetchrow(
             """
             INSERT INTO prep_checklists (
                 exam_id, patient_id, procedure_type, items, status, tenant_id
@@ -115,12 +125,12 @@ class PrepChecklists:
             """,
             exam_id, patient_id, procedure_type,
             json.dumps(DEFAULT_CHECKLIST_ITEMS), tenant_id,
-        )
+        ))
 
     async def confirm(self, checklist_id, by=''):
         """Mark complete + attribute. The API layer enforces the
         all-required-items-checked rule before calling this."""
-        return await self.conn.fetchrow(
+        return self._decode_items(await self.conn.fetchrow(
             """
             UPDATE prep_checklists
             SET status = 'complete', confirmed_by = $2, confirmed_at = now(),
@@ -129,13 +139,13 @@ class PrepChecklists:
             RETURNING *
             """,
             checklist_id, by,
-        )
+        ))
 
     async def update_items(self, checklist_id, items):
         """Persist intermediate checkbox progress without confirming."""
         import json
 
-        return await self.conn.fetchrow(
+        return self._decode_items(await self.conn.fetchrow(
             """
             UPDATE prep_checklists
             SET items = $2::jsonb, updated_at = now()
@@ -143,7 +153,7 @@ class PrepChecklists:
             RETURNING *
             """,
             checklist_id, json.dumps(items),
-        )
+        ))
 
 
 class NursingPrepList:

@@ -302,3 +302,32 @@ class TestDbContrastConsentsAndNotes:
         assert rows == []
         sql = _last_sql(conn, 'FROM exam_notes')
         assert 'ORDER BY created_at DESC' in sql
+
+
+class TestChecklistJsonbDecoding:
+    @pytest.mark.asyncio
+    async def test_items_jsonb_string_is_decoded(self):
+        """asyncpg returns jsonb as a raw string without a type codec — the
+        db layer must hand handlers/clients a list (live-smoke regression:
+        the API returned a 387-char string where the item array belonged)."""
+        import json as _json
+
+        from db.nursing import PrepChecklists
+
+        stored = {
+            'id': 'c1', 'status': 'in_progress',
+            'items': _json.dumps([
+                {'key': 'npo_status', 'label': 'NPO status verified',
+                 'required': True, 'checked': True},
+            ]),
+        }
+
+        class _Conn:
+            async def fetchrow(self, sql, *args):
+                return dict(stored)
+
+        row = await PrepChecklists(_Conn()).get_or_create(
+            exam_id='e-1', patient_id='P-1',
+        )
+        assert isinstance(row['items'], list)
+        assert row['items'][0]['key'] == 'npo_status'

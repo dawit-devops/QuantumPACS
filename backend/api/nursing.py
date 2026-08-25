@@ -48,7 +48,7 @@ def _tenant(request):
 
 
 async def _exam_or_404(conn, request):
-    exam = await Exams(conn).get(request.path_params['exam_id'])
+    exam = await Exams(conn).get(request.path_params['id'])
     if not exam:
         return None
     return exam
@@ -66,7 +66,7 @@ class VitalsHandler(HTTPEndpoint):
             rows = await ExamVitals(conn).list_for_exam(
                 exam['id'], tenant_id=_tenant(request),
             )
-        return ok({'data': rows})
+        return ok({'data': [dict(r) for r in rows]})
 
     @requires_permission(Permission.NURSING_WRITE)
     async def post(self, request):
@@ -97,7 +97,7 @@ class VitalsHandler(HTTPEndpoint):
                 details={'patient_id': exam['patient_id']},
                 request_id=request_id_var.get(),
             )
-        return created({'data': row})
+        return created({'data': dict(row) if row else None})
 
 
 class PrepChecklistHandler(HTTPEndpoint):
@@ -115,7 +115,7 @@ class PrepChecklistHandler(HTTPEndpoint):
                 patient_id=exam['patient_id'],
                 tenant_id=_tenant(request),
             )
-        return ok({'data': row})
+        return ok({'data': dict(row) if row else None})
 
     @requires_permission(Permission.NURSING_WRITE)
     async def put(self, request):
@@ -130,7 +130,16 @@ class PrepChecklistHandler(HTTPEndpoint):
                 patient_id=exam['patient_id'],
                 tenant_id=_tenant(request),
             )
-            items = [item.model_dump() for item in body.items]
+            # Merge posted items over the stored set by key: a client that
+            # echoes only part of the checklist must never erase (or silently
+            # skip) the remaining required items.
+            existing_items = list(existing.get('items') or [])
+            posted = {i.key: i.model_dump() for i in body.items}
+            items = [
+                {**stored, **posted[stored['key']]}
+                if stored.get('key') in posted else stored
+                for stored in existing_items
+            ]
             unmet = [
                 i['label'] for i in items
                 if i.get('required') and not i.get('checked')
@@ -142,6 +151,9 @@ class PrepChecklistHandler(HTTPEndpoint):
                     'Required checklist items are not checked: '
                     + ', '.join(unmet)
                 )
+            # Always persist the merged state — confirm must not silently
+            # drop the submitted checkbox progress.
+            row = await checklists.update_items(existing['id'], items)
             if body.confirmed:
                 row = await checklists.confirm(
                     existing['id'], by=str(request.user.id),
@@ -155,7 +167,6 @@ class PrepChecklistHandler(HTTPEndpoint):
                     request_id=request_id_var.get(),
                 )
             else:
-                row = await checklists.update_items(existing['id'], items)
                 await AuditLog(conn).log_event(
                     event_type='nursing.checklist_updated',
                     actor_id=request.user.id,
@@ -163,7 +174,7 @@ class PrepChecklistHandler(HTTPEndpoint):
                     resource_id=exam['id'],
                     request_id=request_id_var.get(),
                 )
-        return ok({'data': row})
+        return ok({'data': dict(row) if row else None})
 
 
 class ConsentHandler(HTTPEndpoint):
@@ -178,7 +189,7 @@ class ConsentHandler(HTTPEndpoint):
             row = await ContrastConsents(conn).get_for_exam(
                 exam['id'], tenant_id=_tenant(request),
             )
-        return ok({'data': row})
+        return ok({'data': dict(row) if row else None})
 
     @requires_permission(Permission.NURSING_WRITE)
     async def post(self, request):
@@ -209,7 +220,7 @@ class ConsentHandler(HTTPEndpoint):
                 details={'patient_id': exam['patient_id']},
                 request_id=request_id_var.get(),
             )
-        return created({'data': row})
+        return created({'data': dict(row) if row else None})
 
 
 class NurseNotesHandler(HTTPEndpoint):
@@ -224,7 +235,7 @@ class NurseNotesHandler(HTTPEndpoint):
             rows = await ExamNotes(conn).list_for_exam(
                 exam['id'], tenant_id=_tenant(request),
             )
-        return ok({'data': rows})
+        return ok({'data': [dict(r) for r in rows]})
 
     @requires_permission(Permission.NURSING_WRITE)
     async def post(self, request):
@@ -248,7 +259,7 @@ class NurseNotesHandler(HTTPEndpoint):
                 details={'patient_id': exam['patient_id']},
                 request_id=request_id_var.get(),
             )
-        return created({'data': row})
+        return created({'data': dict(row) if row else None})
 
 
 class NursingPrepListHandler(HTTPEndpoint):
@@ -259,4 +270,4 @@ class NursingPrepListHandler(HTTPEndpoint):
     async def get(self, request):
         async with get_conn() as conn:
             rows = await NursingPrepList(conn).list(tenant_id=_tenant(request))
-        return ok({'data': rows})
+        return ok({'data': [dict(r) for r in rows]})

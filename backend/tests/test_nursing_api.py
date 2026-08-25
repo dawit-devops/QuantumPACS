@@ -93,7 +93,7 @@ OUTSIDER = lambda: User({'id': 4, 'permissions': ['PATIENT_READ']})  # noqa: E73
 class TestVitalsEndpoint:
     def _app(self, user):
         return _make_app(
-            [Route('/exams/{exam_id}/vitals', endpoint=VitalsHandler)], user,
+            [Route('/exams/{id}/vitals', endpoint=VitalsHandler)], user,
         )
 
     def test_get_visible_with_exam_read_only(self):
@@ -164,7 +164,7 @@ class TestVitalsEndpoint:
 class TestPrepChecklistEndpoint:
     def _app(self, user):
         return _make_app(
-            [Route('/exams/{exam_id}/pre-procedure-checklist',
+            [Route('/exams/{id}/pre-procedure-checklist',
                    endpoint=PrepChecklistHandler)],
             user,
         )
@@ -215,14 +215,40 @@ class TestPrepChecklistEndpoint:
                     'items': [
                         {'key': 'allergy_verification', 'label': 'Allergy verification',
                          'required': True, 'checked': True},
-                        {'key': 'id_band_verified', 'label': 'ID band verified',
-                         'required': True, 'checked': False},
                     ],
                     'confirmed': True,
                 },
             )
         assert resp.status_code == 400
+        # The unmet item was NOT in the payload — the merge against the
+        # stored checklist must still catch it (live-smoke regression: a
+        # partial echo used to confirm with the rest unchecked).
+        assert 'ID band verified' in resp.json()['error']['message']
         checklists.confirm.assert_not_awaited()
+
+    def test_put_confirm_persists_merged_items(self):
+        p, checklists, conn = self._patches()
+        pe, _ = _patch_exam()
+        pa, audit = _patch_audit()
+        with pe, pa, p, _conn_ctx(conn):
+            client = TestClient(self._app(WRITER()))
+            resp = client.put(
+                '/exams/e-1/pre-procedure-checklist',
+                json={
+                    'items': [
+                        {'key': 'allergy_verification', 'label': 'Allergy verification',
+                         'required': True, 'checked': True},
+                        {'key': 'id_band_verified', 'label': 'ID band verified',
+                         'required': True, 'checked': True},
+                    ],
+                    'confirmed': True,
+                },
+            )
+        assert resp.status_code == 200
+        checklists.update_items.assert_awaited_once()
+        merged = checklists.update_items.await_args.args[1]
+        assert len(merged) == 2 and all(i['checked'] for i in merged)
+        checklists.confirm.assert_awaited_once()
 
     def test_put_confirm_succeeds_when_required_items_checked(self):
         p, checklists, conn = self._patches()
@@ -251,8 +277,8 @@ class TestPrepChecklistEndpoint:
 class TestConsentAndNotesEndpoints:
     def _app(self, user):
         return _make_app([
-            Route('/exams/{exam_id}/consent', endpoint=ConsentHandler),
-            Route('/exams/{exam_id}/nurse-notes', endpoint=NurseNotesHandler),
+            Route('/exams/{id}/consent', endpoint=ConsentHandler),
+            Route('/exams/{id}/nurse-notes', endpoint=NurseNotesHandler),
         ], user)
 
     def test_consent_accept_stores_signature(self):
