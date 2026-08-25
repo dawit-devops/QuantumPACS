@@ -340,6 +340,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <MessageOutlined />,
         permissions: ["PRIOR_AUTH_READ"],
       },
+      {
+        // CC-13: patient quick search — opens the global overlay (same
+        // mount that serves front desk, extended to this workspace).
+        key: "coord-patient-search",
+        label: "Patient Search",
+        icon: <SearchOutlined />,
+        permissions: ["PATIENT_READ"],
+        onClick: () => {
+          window.dispatchEvent(new Event("fd.patient-search.open"));
+        },
+      },
     ],
   },
   {
@@ -747,6 +758,7 @@ const SECTION_OF_KEY: Record<string, string> = {
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",
   "fd-patient-search": "frontdesk",
+  "coord-patient-search": "coordination",
   "portal-records": "portal",
   "portal-appointments": "portal",
   "portal-results": "portal",
