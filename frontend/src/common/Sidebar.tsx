@@ -36,6 +36,7 @@ import {
   SettingOutlined,
   ScheduleOutlined,
   FileTextOutlined,
+  CarryOutOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Grid, Drawer, Button } from "antd";
 import React, { useState, useEffect } from "react";
@@ -339,6 +340,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Reminders",
         icon: <MessageOutlined />,
         permissions: ["PRIOR_AUTH_READ"],
+      },
+      {
+        // CC-02: care plans — coordinator board of per-patient plans
+        // (title, tasks, status, follow-up). Browse gated on PATIENT_READ.
+        key: "care-plans",
+        path: "/care-plans",
+        label: "Care Plans",
+        icon: <CarryOutOutlined />,
+        permissions: ["PATIENT_READ"],
       },
       {
         // CC-13: patient quick search — opens the global overlay (same

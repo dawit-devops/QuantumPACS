@@ -86,6 +86,7 @@ const CalendarView = React.lazy(() => import("./schedule/CalendarView"));
 const Orders = React.lazy(() => import("./coordinator/Orders"));
 const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const Reminders = React.lazy(() => import("./coordinator/Reminders"));
+const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
@@ -408,6 +409,17 @@ function ThemedApp() {
                         // R2-02: reminders — config, delivery log, manual send.
                         <ClinicalRoute permission="PRIOR_AUTH_READ">
                           <Reminders />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/care-plans"
+                      element={
+                        // CC-02: care-plan board. Browse is PATIENT_READ so
+                        // coordinator (and any chart-reader) can see plans;
+                        // create/edit gates on CARE_PLAN_WRITE in the UI.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <CarePlans />
                         </ClinicalRoute>
                       }
                     />
