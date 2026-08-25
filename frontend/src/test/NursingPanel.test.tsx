@@ -105,10 +105,12 @@ beforeEach(() => {
 });
 
 describe("NursingPanel visibility", () => {
-  it("renders nothing for holders of neither NURSING_READ nor EXAM_READ", async () => {
+  it("renders nothing for holders of neither NURSING_READ nor EXAM_READ", () => {
     setSession(["PATIENT_READ"]);
     const { queryByTestId } = renderPanel();
-    await waitFor(() => expect(queryByTestId("nursing-panel")).not.toBeInTheDocument());
+    // The permission gate is synchronous — a waitFor here would pass
+    // vacuously on the first tick even if the panel leaked through.
+    expect(queryByTestId("nursing-panel")).not.toBeInTheDocument();
   });
 
   it("shows records read-only for EXAM_READ-only holders (spec N-04)", async () => {

@@ -254,6 +254,26 @@ describe("Tenants", () => {
     expect(await screen.findByText(/Storage above 90%/)).toBeInTheDocument();
   });
 
+  it("raises the warn-tier alert exactly at the 80% boundary (ADM-17)", async () => {
+    mockListTenants.mockResolvedValue([
+      {
+        id: "1",
+        name: "Warming Tenant",
+        slug: "warming",
+        status: "active",
+        storage_used_bytes: 8 * 1024 ** 3,
+        storage_quota_bytes: 10 * 1024 ** 3,
+      },
+    ]);
+    renderWithAuth(<Tenants />);
+    await screen.findByText("Warming Tenant");
+
+    expect(await screen.findByText(/Storage above 80%/)).toBeInTheDocument();
+    // Ladder precedence: the boundary must not leak into higher tiers' copy.
+    expect(screen.queryByText(/Storage above 90%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Storage quota exhausted/)).not.toBeInTheDocument();
+  });
+
   it("raises an exhausted-quota error alert at 100% (ADM-17)", async () => {
     mockListTenants.mockResolvedValue([
       {

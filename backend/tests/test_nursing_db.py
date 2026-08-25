@@ -258,6 +258,11 @@ class TestDbVitals:
         sql = _last_sql(conn, 'INSERT INTO vitals')
         assert 'weight_kg' in sql and 'height_cm' in sql
         assert 'tenant_id' in sql
+        # Server-side timestamps by contract: no client timestamp param
+        # exists, and the placeholder that once read COALESCE(NULL, now())
+        # is gone.
+        assert 'now()' in sql
+        assert 'COALESCE' not in sql
 
     @pytest.mark.asyncio
     async def test_list_scopes_by_tenant_and_exam(self):

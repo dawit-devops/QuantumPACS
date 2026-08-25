@@ -76,7 +76,7 @@ class ExamVitals:
                 operator_id, recorded_at, tenant_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                    COALESCE(NULL, now()), $12)
+                    now(), $12)
             RETURNING *
             """,
             exam_id, patient_id, bp_systolic, bp_diastolic, heart_rate,
@@ -242,6 +242,12 @@ class NursingPrepList:
     A thin read over the existing `exams` rows — deliberately NOT a second
     worklist model: one row per ready/in-progress exam, LEFT JOINed to the
     newest checklist so the queue shows what still needs prepping.
+
+    Tenancy: `exams` carries no tenant tag (the table predates the pool+tag
+    convention) — pool isolation stays authoritative per ADR-029, and the
+    $1 filter only scopes the checklist side for attribution in shared dev
+    databases. Do not copy this shape into a domain where the tag IS
+    authoritative without scoping its base table as well.
     """
 
     def __init__(self, conn):

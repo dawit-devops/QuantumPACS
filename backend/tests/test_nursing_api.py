@@ -364,6 +364,63 @@ class TestConsentAndNotesEndpoints:
             )
         assert resp.status_code == 422
 
+    def test_consent_get_returns_stored_decision(self):
+        mock_conn = MagicMock()
+        mock_consents = MagicMock()
+        mock_consents.get_for_exam = AsyncMock(
+            return_value={'id': 'k1', 'accepted': True, 'signed_at': 't1'},
+        )
+        pe, _ = _patch_exam()
+        with (
+            pe, _conn_ctx(mock_conn),
+            patch('api.nursing.ContrastConsents', return_value=mock_consents),
+        ):
+            client = TestClient(self._app(READER()))
+            resp = client.get('/exams/e-1/consent')
+        assert resp.status_code == 200
+        assert resp.json()['data']['id'] == 'k1'
+        mock_consents.get_for_exam.assert_awaited_once()
+
+    def test_consent_decline_success_audits_declined_event(self):
+        """The decline path emits its own audit event — distinct from the
+        signed event, compliance relies on telling the two apart."""
+        mock_conn = MagicMock()
+        mock_consents = MagicMock()
+        mock_consents.create = AsyncMock(
+            return_value={'id': 'k2', 'accepted': False},
+        )
+        pe, _ = _patch_exam()
+        pa, audit = _patch_audit()
+        with (
+            pe, pa, _conn_ctx(mock_conn),
+            patch('api.nursing.ContrastConsents', return_value=mock_consents),
+        ):
+            client = TestClient(self._app(WRITER()))
+            resp = client.post(
+                '/exams/e-1/consent',
+                json={'accepted': False, 'declined_reason': 'Contrast allergy'},
+            )
+        assert resp.status_code == 201
+        event = audit.log_event.await_args.kwargs['event_type']
+        assert event == 'nursing.consent_declined'
+
+    def test_notes_get_lists_records(self):
+        mock_conn = MagicMock()
+        mock_notes = MagicMock()
+        mock_notes.list_for_exam = AsyncMock(
+            return_value=[{'id': 'n1', 'note': 'IV placed.'}],
+        )
+        pe, _ = _patch_exam()
+        with (
+            pe, _conn_ctx(mock_conn),
+            patch('api.nursing.ExamNotes', return_value=mock_notes),
+        ):
+            client = TestClient(self._app(READER()))
+            resp = client.get('/exams/e-1/nurse-notes')
+        assert resp.status_code == 200
+        assert resp.json()['data'][0]['note'] == 'IV placed.'
+        mock_notes.list_for_exam.assert_awaited_once()
+
     def test_note_add_audited(self):
         mock_conn = MagicMock()
         mock_notes = MagicMock()
