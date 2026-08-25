@@ -145,3 +145,35 @@ round (documented backlog).
 4. Settings diff-view (ADM-12 nicety).
 5. Sedation/recovery/reaction/MAR surfaces (remaining 037 tables beyond
    spec §2.11 scope) + contrast administration logging UI.
+
+## Verification evidence (2026-08-25/26)
+
+Live smoke against the dev stack as `test.care_coordinator` (G3 grants after
+token re-mint), plus full gates per commit:
+
+| Gate | Result |
+|------|--------|
+| backend ruff + full pytest | ✅ 2786 passed / 2 skipped |
+| frontend tsc --noEmit / prettier / build | ✅ clean / built in ~7s |
+| frontend full Vitest | ✅ 831→846 passed across runs; zero failures in round surfaces |
+| Live flow | ✅ prep-list → exam console via NURSING_READ-only token → checklist seeds 5 spec defaults → partial-echo confirm 400 naming unmet stored requireds → vitals 201 → consent decline 422-without/201-with reason → prep-list reflects state → `nursing.*` audit rows |
+| Cross-role visibility | ✅ technologist (`EXAM_READ` only) reads vitals/notes, writes 403 |
+
+Three defects the mocked harness missed were caught live and fixed
+(`bdc2b28`): jsonb-as-string items, confirm ignoring merged required state,
+and an `{exam_id}` vs `{id}` path-param mismatch.
+
+### Environment notes for the next round
+
+1. **Dev DB migration drift**: the shared dev database sits at alembic 087;
+   migrations 088+ fail on it because their columns pre-exist via
+   `sync_db()`. Round DDL/grants were applied manually here. The chain needs
+   an idempotency pass before the next cutover (see CUTOVER_RUNBOOK.md).
+2. **Concurrent-surface flakes (pre-existing, owned elsewhere)**:
+   - `ScheduleBoard.test.tsx 'navigates to the next day'` fails 00:00–03:00
+     local: test uses local `dayjs()`, component uses `dayjs.utc()`.
+   - 7 unhandled-rejection warnings from `PeerReviewInbox` /
+     `ProtocolRegistry` suites make `vitest run` exit 1 despite all tests
+     passing (mocked `message` without error fn).
+   Both belong to rounds that own those files; flagged here so CI owners
+   expect them.
