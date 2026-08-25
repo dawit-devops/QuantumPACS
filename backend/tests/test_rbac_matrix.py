@@ -261,7 +261,9 @@ class TestDeadPermissions:
     # Codes whose only built-in holders were removed by the R2-16 trim.
     CUSTOM_COMPOSABLE_ONLY = {
         'RESULTS_RELEASE', 'MED_VERIFY', 'HIM_WRITE', 'MPI_ADMIN',
-        'PRIOR_AUTH_WRITE', 'ADMIN', 'LAB_SPECIMEN_WRITE', 'CODING_WRITE',
+        # PRIOR_AUTH_WRITE removed by G2 (2026-08-25): care_coordinator now
+        # holds it, so it is no longer custom-composable-only.
+        'ADMIN', 'LAB_SPECIMEN_WRITE', 'CODING_WRITE',
         'MAR_WRITE', 'PATIENT_MERGE',
     }
 

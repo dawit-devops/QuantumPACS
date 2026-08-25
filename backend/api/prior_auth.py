@@ -16,6 +16,7 @@ from api.validate import parse_body
 from api.schemas.ris_prior_auth import (
     SubmitPriorAuthRequest,
     PriorAuthDecisionRequest,
+    OverridePriorAuthRequest,
 )
 from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
@@ -114,6 +115,77 @@ class PriorAuthDecisionHandler(HTTPEndpoint):
                 tenant=tenant,
             )
         return ok({'id': request_id, 'status': final})
+
+
+class PriorAuthSubmitForReviewHandler(HTTPEndpoint):
+    """CS1/CC-11: POST /ris/prior-auth/{id}/submit — REQUIRED → PENDING.
+
+    Wires the previously orphaned PriorAuth.submit_for_review(); without it
+    API-created requests stayed REQUIRED and could never reach the decision
+    endpoint (which demands PENDING)."""
+
+    @requires_permission(Permission.PRIOR_AUTH_WRITE)
+    async def post(self, request):
+        from db.ris_prior_auth import PriorAuth
+        request_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            pa = await PriorAuth(conn).get(request_id, tenant)
+            if not pa:
+                return not_found('Prior-auth request not found')
+            if pa['status'] != 'REQUIRED':
+                return validation_error(
+                    f'Only REQUIRED requests can be submitted for review '
+                    f'(current: {pa["status"]})')
+            await PriorAuth(conn).submit_for_review(
+                request_id=request_id, tenant_id=tenant)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='prior_auth.review_requested',
+                actor_id=request.user.id,
+                resource_type='ris_prior_auth_requests',
+                resource_id=str(request_id),
+                details={'order_id': (pa or {}).get('order_id')},
+                tenant=tenant,
+            )
+        return ok({'data': {'id': str(request_id), 'status': 'PENDING'}})
+
+
+class PriorAuthOverrideHandler(HTTPEndpoint):
+    """CS1/CC-11: POST /ris/prior-auth/{id}/override — flip an unapproved
+    request to NOT_REQUIRED with a mandatory reason (audited)."""
+
+    @requires_permission(Permission.PRIOR_AUTH_WRITE)
+    async def post(self, request):
+        from db.ris_prior_auth import PriorAuth
+        request_id = request.path_params['id']
+        body = await parse_body(OverridePriorAuthRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            pa = await PriorAuth(conn).get(request_id, tenant)
+            if not pa:
+                return not_found('Prior-auth request not found')
+            if pa['status'] in ('APPROVED', 'NOT_REQUIRED'):
+                return validation_error(
+                    f'{pa["status"]} requests cannot be overridden')
+            result = await PriorAuth(conn).override(
+                request_id=request_id,
+                overridden_by=str(request.user.id),
+                tenant_id=tenant,
+            )
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='prior_auth.overridden',
+                actor_id=request.user.id,
+                resource_type='ris_prior_auth_requests',
+                resource_id=str(request_id),
+                details={'reason': body.reason,
+                         'previous_status': pa['status'],
+                         'order_id': (result or {}).get('order_id')},
+                tenant=tenant,
+            )
+        return ok({'data': {'id': str(request_id),
+                            'status': 'NOT_REQUIRED'}})
 
 
 class PriorAuthExpireHandler(HTTPEndpoint):

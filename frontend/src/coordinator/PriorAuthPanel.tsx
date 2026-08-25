@@ -22,6 +22,9 @@ import {
   listPriorAuth,
   submitPriorAuth,
   decidePriorAuth,
+  listPriorAuthExpiring,
+  submitForReview,
+  overridePriorAuth,
   type PriorAuthRequest,
 } from "../api/prior-auth";
 import "./PriorAuthPanel.css";
@@ -48,11 +51,20 @@ function PriorAuthPanel() {
   const [error, setError] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [decideFor, setDecideFor] = useState<PriorAuthRequest | null>(null);
+  // CS1: expiring-soon view + override-with-reason.
+  const [expiringOnly, setExpiringOnly] = useState(false);
+  const [overrideFor, setOverrideFor] = useState<PriorAuthRequest | null>(
+    null,
+  );
+  const [overrideReason, setOverrideReason] = useState("");
 
   const fetch = useCallback(() => {
     setLoading(true);
     setError(null);
-    listPriorAuth()
+    const req = expiringOnly
+      ? listPriorAuthExpiring(7)
+      : listPriorAuth();
+    req
       .then((res) => {
         setLoading(false);
         setData(res.data);
@@ -62,7 +74,7 @@ function PriorAuthPanel() {
         setError(e.message);
         message.error(e.message);
       });
-  }, [message]);
+  }, [message, expiringOnly]);
 
   useEffect(() => {
     fetch();
@@ -86,6 +98,31 @@ function PriorAuthPanel() {
       fetch();
     } catch (e: any) {
       message.error(e.message || "Submit failed");
+    }
+  };
+
+  // CS1: REQUIRED → PENDING so the payer decision can be recorded.
+  const handleSubmitForReview = async (record: PriorAuthRequest) => {
+    try {
+      await submitForReview(record.id);
+      message.success("Request sent for payer review");
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Submit-for-review failed");
+    }
+  };
+
+  // CS1: override-with-reason → NOT_REQUIRED.
+  const handleOverride = async () => {
+    if (!overrideFor || !overrideReason.trim()) return;
+    try {
+      await overridePriorAuth(overrideFor.id, overrideReason.trim());
+      message.success("Prior auth overridden — NOT_REQUIRED");
+      setOverrideFor(null);
+      setOverrideReason("");
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Override failed");
     }
   };
 
@@ -149,6 +186,16 @@ function PriorAuthPanel() {
       width: "16%",
       render: (_: any, record: PriorAuthRequest) => (
         <Space size="small">
+          {record.status === "REQUIRED" && (
+            <Button
+              size="small"
+              type="primary"
+              aria-label="Submit for review"
+              onClick={() => handleSubmitForReview(record)}
+            >
+              Submit
+            </Button>
+          )}
           {record.status === "PENDING" && (
             <Button
               size="small"
@@ -161,6 +208,18 @@ function PriorAuthPanel() {
               Decide
             </Button>
           )}
+          {["REQUIRED", "PENDING", "DENIED", "EXPIRED"].includes(
+            record.status,
+          ) && (
+            <Button
+              size="small"
+              danger
+              aria-label={`Override prior auth ${record.order_id}`}
+              onClick={() => setOverrideFor(record)}
+            >
+              Override
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -171,6 +230,13 @@ function PriorAuthPanel() {
       <div className="pa-header">
         <h2>Prior Authorization</h2>
         <Space>
+          <Button
+            type={expiringOnly ? "primary" : "default"}
+            onClick={() => setExpiringOnly((v) => !v)}
+            aria-pressed={expiringOnly}
+          >
+            Expiring soon (7d)
+          </Button>
           <Button
             icon={<PlusOutlined />}
             onClick={() => setSubmitOpen(true)}
@@ -273,6 +339,28 @@ function PriorAuthPanel() {
             Confirm Decision
           </Button>
         </Form>
+      </Modal>
+
+      {/* CS1: override-with-reason — mandatory text, audited server-side. */}
+      <Modal
+        title={`Override prior auth — ${overrideFor?.order_id || ""}`}
+        open={overrideFor !== null}
+        onOk={handleOverride}
+        onCancel={() => setOverrideFor(null)}
+        okText="Override"
+        okButtonProps={{ danger: true, disabled: !overrideReason.trim() }}
+      >
+        <p>
+          Marks this request NOT_REQUIRED. The reason is recorded in the
+          audit trail.
+        </p>
+        <Input.TextArea
+          role="textbox"
+          rows={3}
+          value={overrideReason}
+          onChange={(e) => setOverrideReason(e.target.value)}
+          placeholder="Why is prior auth not required? (required)"
+        />
       </Modal>
     </Content>
   );

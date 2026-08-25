@@ -296,6 +296,10 @@ MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',
     'MED_ORDER_READ',  # no MED_ORDER_WRITE
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
+    # G2 (approved 2026-08-25): PRIOR_AUTH_WRITE unlocks the P0 prior-auth
+    # management surface (create / submit-for-review / decide / override)
+    # and reminder send+config — previously held by no staff role.
+    'PRIOR_AUTH_WRITE',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
     # Care-coordinator review (P0-1/P1-1): WORKLIST_READ (read-only) unlocks
     # the Schedule Board's day data (GET /api/worklist) — the SCHEDULE_READ

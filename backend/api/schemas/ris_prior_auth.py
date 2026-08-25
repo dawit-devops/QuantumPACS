@@ -28,3 +28,8 @@ class PriorAuthDecisionRequest(BaseModel):
         if v not in PRIOR_AUTH_ACTIONS:
             raise ValueError(f'action must be one of {PRIOR_AUTH_ACTIONS}')
         return v
+
+class OverridePriorAuthRequest(BaseModel):
+    """CS1/CC-11: override a prior-auth requirement with a reason."""
+    reason: str = Field(..., min_length=3, max_length=500,
+                        description='Why the auth is not required')

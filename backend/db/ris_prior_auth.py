@@ -78,6 +78,18 @@ class PriorAuth(Table):
             request_id, tenant_id,
         )
 
+    async def override(self, *, request_id, overridden_by='',
+                       tenant_id='default'):
+        """CS1: override-with-reason companion — flip an unapproved request
+        to NOT_REQUIRED (the reason itself lives in the audit event)."""
+        return await self.conn.fetchrow(
+            "UPDATE ris_prior_auth_requests SET status = 'NOT_REQUIRED',"
+            " updated_at = now() WHERE id = $1 AND tenant_id = $2"
+            " AND status IN ('REQUIRED', 'PENDING', 'DENIED', 'EXPIRED')"
+            " RETURNING id, order_id, status",
+            request_id, tenant_id,
+        )
+
     async def approve(self, *, request_id, auth_number='', approved_units=None,
                       approved_date=None, expiry_date=None, decided_by='',
                       tenant_id='default'):

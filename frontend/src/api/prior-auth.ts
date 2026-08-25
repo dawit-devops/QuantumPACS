@@ -56,3 +56,20 @@ export const decidePriorAuth = (
 
 export const runPriorAuthExpiry = (): Promise<{ expired: number }> =>
   request("ris/prior-auth/expire", { method: "POST" });
+
+// CS1/CC-11: REQUIRED → PENDING (wires the previously orphaned verb).
+export const submitForReview = (id: string): Promise<{ id: string; status: string }> =>
+  request<{ data: { id: string; status: string } }>(
+    `ris/prior-auth/${id}/submit`,
+    { method: "POST" },
+  ).then((res) => res?.data ?? { id, status: "PENDING" });
+
+// CS1/CC-11: override-with-reason → NOT_REQUIRED (audited server-side).
+export const overridePriorAuth = (
+  id: string,
+  reason: string,
+): Promise<{ id: string; status: string }> =>
+  request<{ data: { id: string; status: string } }>(
+    `ris/prior-auth/${id}/override`,
+    { method: "POST", data: { reason } },
+  ).then((res) => res?.data ?? { id, status: "NOT_REQUIRED" });

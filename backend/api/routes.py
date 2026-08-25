@@ -117,6 +117,8 @@ from api.ris_dashboard import (
 from api.prior_auth import (
     PriorAuthHandler,
     PriorAuthDecisionHandler,
+    PriorAuthSubmitForReviewHandler,
+    PriorAuthOverrideHandler,
     PriorAuthExpireHandler,
 )
 from api.reminders import (
@@ -352,6 +354,8 @@ _V1_ROUTES = [
     v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
     v2(Route('/ris/prior-auth/expire', endpoint=PriorAuthExpireHandler, methods=['POST'])),
     v2(Route('/ris/prior-auth/{id}/decision', endpoint=PriorAuthDecisionHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth/{id}/submit', endpoint=PriorAuthSubmitForReviewHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth/{id}/override', endpoint=PriorAuthOverrideHandler, methods=['POST'])),
     # R2-02: Reminders — dispatch, audit log, per-event config (E-RIS2-02).
     v2(Route('/ris/reminders/send', endpoint=ReminderSendHandler, methods=['POST'])),
     v2(Route('/ris/reminders/log', endpoint=ReminderLogHandler)),
