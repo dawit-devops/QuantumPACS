@@ -1073,3 +1073,71 @@ class TestPatientResponsibility:
         assert data['deductible_remaining'] == 400
         assert data['open_charges_total'] == 430.0
         assert data['invoice_balance'] == 75.0
+
+
+class TestRevenueDashboard:
+    """B-07: GET /ris/billing/revenue — collections trend, breakdowns by
+    payer and modality, and AR aging in dollars."""
+
+    def _app(self, perms=None):
+        from api.billing import RisRevenueHandler
+        effective = perms if perms is not None else [Permission.BILLING_READ]
+        return Starlette(
+            routes=[Route('/ris/billing/revenue',
+                          endpoint=RisRevenueHandler)],
+            middleware=[Middleware(_FakeAuth, user=_user(*effective))],
+        )
+
+    def test_requires_billing_read(self, conn):
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = TestClient(self._app([])).get('/ris/billing/revenue')
+        assert resp.status_code == 403
+
+    def test_days_param_is_clamped(self, conn):
+        seen = {'first_args': []}
+
+        async def fetch(sql, *a):
+            seen['first_args'].append(a)
+            if 'FROM payment' in sql:
+                return [{'day': '2026-08-24', 'collected': 500.0}]
+            if 'ris_claims' in sql:
+                return [{'payer_name': 'Medicare', 'paid': 300.0}]
+            return []
+
+        conn.fetch = fetch
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = TestClient(self._app()).get(
+                '/ris/billing/revenue?days=500')
+        assert resp.status_code == 200
+        assert '90' in [x[0] for x in seen['first_args']]
+
+    def test_composes_trend_payer_modality_and_aging(self):
+        class RevConn(_Conn):
+            async def fetch(self, sql, *args):
+                self.calls.append(('fetch', sql, args))
+                if 'FROM payment' in sql:
+                    return [{'day': '2026-08-23', 'collected': 250.0},
+                            {'day': '2026-08-24', 'collected': 500.0}]
+                if 'FROM ris_claims' in sql:
+                    return [{'payer_name': 'Medicare', 'paid': 300.0},
+                            {'payer_name': 'Aetna', 'paid': 120.0}]
+                if 'e.modality' in sql:
+                    return [{'modality': 'CT', 'billed': 430.0}]
+                return []
+
+        class RevConnRow(RevConn):
+            async def fetchrow(self, sql, *args):
+                self.calls.append(('fetchrow', sql, args))
+                if 'FILTER' in sql:
+                    return {'current': 100.0, 'over5': 200.0, 'over10': 50.0}
+                return None
+
+        conn = RevConnRow()
+        with patch('api.billing.get_conn', return_value=conn):
+            resp = TestClient(self._app()).get('/ris/billing/revenue')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert data['daily'][-1]['collected'] == 500.0
+        assert data['by_payer'][0]['payer_name'] == 'Medicare'
+        assert data['by_modality'][0]['modality'] == 'CT'
+        assert data['ar_aging']['over10'] == 50.0

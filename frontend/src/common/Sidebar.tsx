@@ -365,6 +365,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["BILLING_READ"],
       },
       {
+        // B-07: revenue trends + AR aging.
+        key: "billing-revenue",
+        path: "/billing/revenue",
+        label: "Revenue",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
         key: "billing-unbilled",
         path: "/billing/unbilled",
         label: "Unbilled Aging",

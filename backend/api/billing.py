@@ -1184,6 +1184,72 @@ class RisClaimBatchSubmitHandler(HTTPEndpoint):
         return ok({'data': {'submitted': submitted, 'missing': missing}})
 
 
+class RisRevenueHandler(HTTPEndpoint):
+    """B-07: GET /ris/billing/revenue?days=30 — collections trend from the
+    payment ledger, paid-claims by payer, billed charges by modality, and
+    unbilled AR aging in dollars. Days clamped to 90 like reading-stats."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        try:
+            days = int(request.query_params.get('days', 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(1, min(days, 90))
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            daily = await conn.fetch(
+                """SELECT date_trunc('day', created_at)::date AS day,
+                          COALESCE(SUM(amount), 0) AS collected
+                   FROM payment
+                   WHERE created_at >= now() - ($1 || ' days')::interval
+                   GROUP BY day ORDER BY day""",
+                str(days),
+            )
+            by_payer = await conn.fetch(
+                """SELECT payer_name,
+                          COALESCE(SUM(charge_amount), 0) AS paid
+                   FROM ris_claims
+                   WHERE tenant_id = $1 AND status = 'PAID'
+                   GROUP BY payer_name ORDER BY paid DESC""",
+                tenant,
+            )
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COALESCE(SUM(ch.charge_amount), 0) AS billed
+                   FROM ris_charges ch
+                   JOIN exams e ON e.id = ch.exam_id
+                   WHERE ch.tenant_id = $1
+                     AND ch.status IN ('BILLED', 'PAID')
+                   GROUP BY e.modality ORDER BY billed DESC""",
+                tenant,
+            )
+            aging = await conn.fetchrow(
+                """SELECT
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at > now() - interval '5 days'), 0)
+                       AS current,
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at <= now() - interval '5 days'
+                           AND created_at > now() - interval '10 days'), 0)
+                       AS over5,
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at <= now() - interval '10 days'), 0)
+                       AS over10
+                   FROM ris_charges
+                   WHERE tenant_id = $1 AND status = 'PENDING'""",
+                tenant,
+            )
+        return ok({'data': {
+            'days': days,
+            'daily': [dict(r) for r in daily],
+            'by_payer': [dict(r) for r in by_payer],
+            'by_modality': [dict(r) for r in by_modality],
+            'ar_aging': dict(aging) if aging else {
+                'current': 0, 'over5': 0, 'over10': 0},
+        }})
+
+
 class RisDenialQueueHandler(HTTPEndpoint):
     """R2-02-01: GET /ris/billing/denials — the coder's rework queue."""
 

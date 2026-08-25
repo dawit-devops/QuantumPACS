@@ -117,6 +117,9 @@ const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const QAAnalyticsDashboard = React.lazy(() => import("./qa/QAAnalyticsDashboard"));
 const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
 const ClaimsStatus = React.lazy(() => import("./billing/ClaimsStatus"));
+const RevenueDashboard = React.lazy(
+  () => import("./billing/RevenueDashboard"),
+);
 const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
@@ -483,6 +486,15 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="BILLING_READ">
                           <ClaimsStatus />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* B-07: revenue trends + AR aging. */}
+                    <Route
+                      path="/billing/revenue"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <RevenueDashboard />
                         </ClinicalRoute>
                       }
                     />
