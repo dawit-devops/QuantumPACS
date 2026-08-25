@@ -131,6 +131,7 @@ from api.care_plans import (
     CarePlanHandler,
     CarePlanDetailHandler,
 )
+from api.encounters import EncounterHandler
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
     MaintenanceScheduleItemHandler, QCRecordsHandler, DowntimeEventsHandler,
@@ -368,6 +369,7 @@ _V1_ROUTES = [
     v2(Route('/ris/reminders/optouts', endpoint=ReminderOptOutHandler)),
     v2(Route('/ris/care-plans', endpoint=CarePlanHandler)),
     v2(Route('/ris/care-plans/{id}', endpoint=CarePlanDetailHandler)),
+    v2(Route('/ris/encounters', endpoint=EncounterHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),

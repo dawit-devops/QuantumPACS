@@ -30,6 +30,14 @@ vi.mock("../api/patient", async (importOriginal) => {
   return { ...actual, getPatient: mockGetPatient };
 });
 
+// CS6: encounters ride their own client module.
+const mockListEncounters = vi.hoisted(() => vi.fn());
+const mockCreateEncounter = vi.hoisted(() => vi.fn());
+vi.mock("../api/encounters", () => ({
+  listEncounters: mockListEncounters,
+  createEncounter: mockCreateEncounter,
+}));
+
 vi.mock("../common/base", () => ({
   default: (C: React.ComponentType) => (p: any) => <C {...p} />,
 }));
@@ -80,10 +88,30 @@ describe("Patient chart tabs (CC-09/CC-10)", () => {
         "PATIENT_READ",
         "REPORT_READ",
         "ORDER_READ",
+        "ENCOUNTER_WRITE",
       ]),
     );
     mockGetPatient.mockReset();
     mockGetPatient.mockResolvedValue(patientPayload);
+    mockListEncounters.mockReset();
+    mockListEncounters.mockResolvedValue({
+      data: [
+        {
+          id: "enc-1",
+          patient_id: "P1",
+          encounter_type: "call",
+          occurred_at: "2026-08-22T14:30:00Z",
+          summary: "Discussed follow-up imaging",
+          linked_order_id: "",
+          linked_report_id: "",
+          recorded_by: "u1",
+          tenant_id: "t1",
+          created_at: "2026-08-22T14:30:00Z",
+        },
+      ],
+    });
+    mockCreateEncounter.mockReset();
+    mockCreateEncounter.mockResolvedValue({ data: {} });
     mockRequest.mockReset();
     mockRequest.mockImplementation((url: string) => {
       if (url.startsWith("reports/priors")) {
@@ -151,6 +179,36 @@ describe("Patient chart tabs (CC-09/CC-10)", () => {
     fireEvent.click(screen.getByRole("tab", { name: /orders/i }));
     await waitFor(() => {
       expect(screen.getByText("ACC-2")).toBeInTheDocument();
+    });
+  });
+
+  it("shows the encounter timeline on the Encounters tab (CS6)", async () => {
+    renderChart();
+    await waitFor(() => {
+      expect(screen.getAllByText("Doe^Jane").length).toBeGreaterThan(0);
+    });
+    expect(mockListEncounters).toHaveBeenCalledWith({ patient_id: "P1" });
+    fireEvent.click(screen.getByRole("tab", { name: /encounters/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Discussed follow-up imaging/),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("CALL")).toBeInTheDocument();
+  });
+
+  it("offers Log Encounter when ENCOUNTER_WRITE is held (CS6)", async () => {
+    renderChart();
+    await waitFor(() => {
+      expect(screen.getAllByText("Doe^Jane").length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /encounters/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Log Encounter")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Log Encounter"));
+    await waitFor(() => {
+      expect(screen.getByText(/Summary/i)).toBeInTheDocument();
     });
   });
 });

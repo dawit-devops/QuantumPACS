@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
+  App,
   Layout,
   Card,
   Descriptions,
@@ -12,6 +13,12 @@ import {
   Empty,
   Spin,
   Tabs,
+  Timeline,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Select,
 } from "antd";
 import {
   FolderOutlined,
@@ -21,7 +28,10 @@ import {
   CalendarOutlined,
   UserOutlined,
   MedicineBoxOutlined,
+  PhoneOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import withSidebar from "../common/base";
 import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
@@ -29,6 +39,11 @@ import { REPORT_STATUS_COLORS, REPORT_STATUS_LABEL } from "../common/statusColor
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate, useParams } from "react-router";
 import { request } from "../helpers";
+import {
+  listEncounters,
+  createEncounter,
+  type Encounter,
+} from "../api/encounters";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
@@ -40,7 +55,9 @@ function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
 
   const { hasPermission } = useAuth();
+  const { message } = App.useApp();
   const canReadReports = hasPermission("REPORT_READ");
+  const canWriteEncounters = hasPermission("ENCOUNTER_WRITE");
 
   const [data, setData] = useState<PatientSummary>({});
   const [loading, setLoading] = useState(false);
@@ -51,6 +68,10 @@ function Patient(props: any) {
   // RIS orders, composed from existing endpoints (no new aggregate).
   const [priors, setPriors] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  // CS6/CC-03: encounter timeline + quick-log modal.
+  const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [encOpen, setEncOpen] = useState(false);
+  const [encForm] = Form.useForm();
 
   const navigate = useNavigate();
   const { id: patientId } = useParams();
@@ -91,7 +112,36 @@ function Patient(props: any) {
         setOrders(Array.isArray(res?.data) ? res.data : res?.data?.data || []),
       )
       .catch(() => {});
+    // CS6: encounter timeline for the chart tab.
+    listEncounters({ patient_id: String(patientId) })
+      .then((res) => setEncounters(res.data || []))
+      .catch(() => {});
   }, [patientId]);
+
+  const fetchEncounters = useCallback(() => {
+    if (!patientId) return;
+    listEncounters({ patient_id: String(patientId) })
+      .then((res) => setEncounters(res.data || []))
+      .catch(() => {});
+  }, [patientId]);
+
+  const handleLogEncounter = async (values: any) => {
+    try {
+      await createEncounter({
+        patient_id: String(patientId),
+        encounter_type: values.encounter_type,
+        summary: values.summary,
+        linked_order_id: values.linked_order_id || "",
+        linked_report_id: "",
+      });
+      message.success("Encounter logged");
+      setEncOpen(false);
+      encForm.resetFields();
+      fetchEncounters();
+    } catch (e: any) {
+      message.error(e.message || "Save failed");
+    }
+  };
 
   const stats = useMemo(() => {
     const studies = data.studies || [];
@@ -444,6 +494,59 @@ function Patient(props: any) {
                   ),
                 },
                 {
+                  key: "encounters",
+                  label: "Encounters",
+                  children: (
+                    <Card
+                      title={
+                        <span>
+                          <PhoneOutlined style={{ marginRight: 8 }} />
+                          Encounters
+                        </span>
+                      }
+                      extra={
+                        canWriteEncounters && (
+                          <Button
+                            size="small"
+                            icon={<PlusOutlined />}
+                            onClick={() => setEncOpen(true)}
+                          >
+                            Log Encounter
+                          </Button>
+                        )
+                      }
+                    >
+                      {encounters.length === 0 ? (
+                        <Empty description="No encounters recorded" />
+                      ) : (
+                        <Timeline
+                          items={encounters.map((e) => ({
+                            color:
+                              e.encounter_type === "visit"
+                                ? "blue"
+                                : e.encounter_type === "call"
+                                  ? "green"
+                                  : "gray",
+                            children: (
+                              <div>
+                                <Space size={8} wrap>
+                                  <Tag>{e.encounter_type.toUpperCase()}</Tag>
+                                  <Typography.Text type="secondary">
+                                    {dayjs(e.occurred_at).format(
+                                      "YYYY-MM-DD HH:mm",
+                                    )}
+                                  </Typography.Text>
+                                </Space>
+                                <div>{e.summary}</div>
+                              </div>
+                            ),
+                          }))}
+                        />
+                      )}
+                    </Card>
+                  ),
+                },
+                {
                   key: "studies",
                   label: "Studies",
                   children: (
@@ -497,6 +600,45 @@ function Patient(props: any) {
           )}
         </Spin>
       </PageState>
+
+      <Modal
+        title="Log Encounter"
+        open={encOpen}
+        onCancel={() => setEncOpen(false)}
+        footer={null}
+      >
+        <Form
+          form={encForm}
+          layout="vertical"
+          onFinish={handleLogEncounter}
+          initialValues={{ encounter_type: "call" }}
+        >
+          <Form.Item
+            name="encounter_type"
+            label="Type"
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: "visit", label: "Visit" },
+                { value: "call", label: "Call" },
+                { value: "message", label: "Message" },
+                { value: "fax", label: "Fax" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="summary"
+            label="Summary"
+            rules={[{ required: true, message: "Summary is required" }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>
+            Log Encounter
+          </Button>
+        </Form>
+      </Modal>
     </Content>
   );
 }
