@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateUserRequest(BaseModel):
@@ -28,3 +28,10 @@ class BatchUserStatusRequest(BaseModel):
 class UpdateUserRoleRequest(BaseModel):
     user_id: int = Field(description="User database ID")
     role_id: int | None = Field(None, description="New role UUID (null to remove role)")
+
+
+class UpdatePreferencesRequest(BaseModel):
+    """Open per-user preference document. Top-level keys are feature
+    namespaces (e.g. dashboard_layout) merged independently server-side;
+    unknown keys are allowed and persisted as-is."""
+    model_config = ConfigDict(extra="allow")

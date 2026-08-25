@@ -35,7 +35,7 @@ from api.nursing import (
     PrepChecklistHandler,
     VitalsHandler,
 )
-from api.account import ProfileHandler
+from api.account import PreferencesHandler, ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import (
     oauth_login, oauth_callback, oidc_discovery, oidc_jwks, oauth_token_exchange,
@@ -223,6 +223,7 @@ _V1_ROUTES = [
     v2(Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])),
     v2(Route('/change_password', endpoint=ChangePassword)),
     v2(Route('/account/profile', endpoint=ProfileHandler)),
+    v2(Route('/account/preferences', endpoint=PreferencesHandler)),
     v2(Route('/users', endpoint=UsersHandler)),
     v2(Route('/users/deactivate', endpoint=UsersDeactivate)),
     v2(Route('/users/batch-status', endpoint=UsersBatchStatus)),
