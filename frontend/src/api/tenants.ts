@@ -39,6 +39,10 @@ export interface TenantUsageRow {
    * delivered bell notifications. Absent on older backends. */
   mwl_queries?: number;
   notifications?: number;
+  /** ADM-14 history series fields from the metering daily rollup — absent
+   * on backends predating tenant_usage_daily. */
+  storage_bytes?: number;
+  active_users?: number;
 }
 
 export interface TenantHealth {
@@ -58,11 +62,13 @@ export const updateTenant = (id: string, data: Record<string, unknown>): Promise
 export const deleteTenant = (id: string): Promise<void> =>
   request(`tenants/${id}`, { data: undefined, method: "DELETE" });
 
-// Daily api_calls series for the per-tenant usage panel. The backend may
-// wrap rows in {data: [...]} or return a bare array; normalize to an array.
+// Daily usage series for the per-tenant usage panel (ADM-14). MeteringUsage
+// returns {usage_daily: [...]}; older shapes ({data} / bare array) are kept
+// for compatibility. Normalize to an array.
 export const getTenantUsage = async (id: string): Promise<TenantUsageRow[]> => {
   const res = await request(`tenants/${id}/usage`);
   if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.usage_daily)) return res.usage_daily;
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res?.usage)) return res.usage;
   return [];

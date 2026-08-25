@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -34,6 +34,17 @@ vi.mock("../helpers", () => ({
   stopRefreshTimer: () => {},
   emit: vi.fn(),
   subscribe: vi.fn(() => undefined),
+}));
+
+// jsdom has no canvas context, so chart.js cannot mount; stand in a plain
+// accessible node that keeps the aria-label contract.
+vi.mock("react-chartjs-2", () => ({
+  Line: (props: { "aria-label"?: string }) => (
+    <div role="img" aria-label={props["aria-label"] ?? "chart"} />
+  ),
+  Bar: (props: { "aria-label"?: string }) => (
+    <div role="img" aria-label={props["aria-label"] ?? "chart"} />
+  ),
 }));
 
 vi.mock("../hooks", () => ({
@@ -161,10 +172,7 @@ describe("Tenants", () => {
     await waitForCards();
 
     await user.click(screen.getByText("Provision Tenant"));
-    await user.type(
-      screen.getByPlaceholderText("e.g., Memorial Hospital West"),
-      "West Clinic",
-    );
+    await user.type(screen.getByPlaceholderText("e.g., Memorial Hospital West"), "West Clinic");
     await user.type(screen.getByPlaceholderText("e.g., memorial-west"), "west");
 
     await user.click(screen.getByRole("button", { name: /^Provision$/ }));
@@ -188,17 +196,12 @@ describe("Tenants", () => {
     await waitForCards();
 
     await user.click(screen.getByText("Provision Tenant"));
-    await user.type(
-      screen.getByPlaceholderText("e.g., Memorial Hospital West"),
-      "West Clinic",
-    );
+    await user.type(screen.getByPlaceholderText("e.g., Memorial Hospital West"), "West Clinic");
     await user.type(screen.getByPlaceholderText("e.g., memorial-west"), "west");
     await user.click(screen.getByRole("button", { name: /^Provision$/ }));
 
     await waitFor(() => {
-      expect(
-        screen.queryByText("Tenant Admin Credentials"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Tenant Admin Credentials")).not.toBeInTheDocument();
     });
   });
 
@@ -210,7 +213,9 @@ describe("Tenants", () => {
     await user.click(screen.getAllByText("Usage")[0]);
 
     await waitFor(() => {
-      expect(screen.getByText("API calls")).toBeInTheDocument();
+      // "API calls" now labels both the trend-series toggle and the table
+      // column, so assert on the column role.
+      expect(screen.getByRole("columnheader", { name: /api calls/i })).toBeInTheDocument();
     });
     expect(mockGetTenantUsage).toHaveBeenCalledWith("1");
     expect(screen.getByText("2026-07-01")).toBeInTheDocument();
@@ -224,15 +229,125 @@ describe("Tenants", () => {
     await user.click(screen.getAllByText("Usage")[0]);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("columnheader", { name: /mwl queries/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: /mwl queries/i })).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("columnheader", { name: /^notifications/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^notifications/i })).toBeInTheDocument();
     // Per-day RIS counters render next to api_calls.
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("raises a 90%-tier storage alert when utilization crosses it (ADM-17)", async () => {
+    mockListTenants.mockResolvedValue([
+      {
+        id: "1",
+        name: "Full Tenant",
+        slug: "full",
+        status: "active",
+        storage_used_bytes: 9 * 1024 ** 3,
+        storage_quota_bytes: 10 * 1024 ** 3,
+      },
+    ]);
+    renderWithAuth(<Tenants />);
+    await screen.findByText("Full Tenant");
+
+    expect(await screen.findByText(/Storage above 90%/)).toBeInTheDocument();
+  });
+
+  it("raises an exhausted-quota error alert at 100% (ADM-17)", async () => {
+    mockListTenants.mockResolvedValue([
+      {
+        id: "1",
+        name: "Packed Tenant",
+        slug: "packed",
+        status: "active",
+        storage_used_bytes: 10 * 1024 ** 3,
+        storage_quota_bytes: 10 * 1024 ** 3,
+      },
+    ]);
+    renderWithAuth(<Tenants />);
+    await screen.findByText("Packed Tenant");
+
+    expect(await screen.findByText(/Storage quota exhausted/)).toBeInTheDocument();
+  });
+
+  it("shows no storage alert below 80% (ADM-17)", async () => {
+    renderWithAuth(<Tenants />);
+    await waitForCards();
+
+    // Fixtures sit at ~50% and ~20% — no threshold copy anywhere.
+    expect(screen.queryByText(/Storage above 90%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Storage quota exhausted/)).not.toBeInTheDocument();
+  });
+
+  it("requires and sends a justification when the quota changes", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Tenants />);
+    await waitForCards();
+
+    // Main Hospital ships with 1000 GB; open its Edit modal.
+    const editButtons = screen.getAllByText("Edit");
+    await user.click(editButtons[0]);
+    const quotaInput = await screen.findByLabelText("Storage Quota (GB)");
+    await user.clear(quotaInput);
+    await user.type(quotaInput, "500");
+
+    // Saving without a reason fails fast client-side.
+    await user.click(screen.getByRole("button", { name: /^Save$/ }));
+    const err = await screen.findByText(
+      /justification is required when changing the storage quota/i
+    );
+    expect(err).toBeInTheDocument();
+    expect(mockUpdateTenant).not.toHaveBeenCalled();
+
+    await user.type(
+      screen.getByLabelText(/Justification \(required for quota changes\)/),
+      "Imaging volume doubled after clinic merge"
+    );
+    await user.click(screen.getByRole("button", { name: /^Save$/ }));
+
+    await waitFor(() => {
+      expect(mockUpdateTenant).toHaveBeenCalledWith(
+        "1",
+        expect.objectContaining({
+          storage_quota_bytes: 500 * 1024 ** 3,
+          quota_justification: "Imaging volume doubled after clinic merge",
+        })
+      );
+    });
+  });
+
+  it("renders usage history trend series toggles in the drawer (ADM-14)", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Tenants />);
+    await waitForCards();
+
+    await user.click(screen.getAllByText("Usage")[0]);
+
+    const group = await screen.findByRole("group", {
+      name: "Usage trend series",
+    });
+    expect(group).toBeInTheDocument();
+    // Toggle labels share text with table columns — assert within the group.
+    expect(within(group).getByText("API calls")).toBeInTheDocument();
+    expect(within(group).getByText("Storage (GB)")).toBeInTheDocument();
+    expect(screen.getByText("Active users")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /usage history chart/i })).toBeInTheDocument();
+    // The per-day table still renders beneath the chart.
+    expect(await screen.findByText("2026-07-01")).toBeInTheDocument();
+  });
+
+  it("keeps the trend chart alive when series are toggled (ADM-14)", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Tenants />);
+    await waitForCards();
+
+    await user.click(screen.getAllByText("Usage")[0]);
+    await screen.findByRole("group", { name: "Usage trend series" });
+
+    await user.click(screen.getByText("Storage (GB)"));
+    await user.click(screen.getByText("Active users"));
+
+    expect(screen.getByRole("img", { name: /usage history chart/i })).toBeInTheDocument();
   });
 });
