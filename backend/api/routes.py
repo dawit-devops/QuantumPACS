@@ -28,6 +28,13 @@ from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
     UsersHandler, UsersDeactivate, UsersBatchStatus, UsersNewPassword, UserRoleUpdate,
 )
+from api.nursing import (
+    ConsentHandler,
+    NurseNotesHandler,
+    NursingPrepListHandler,
+    PrepChecklistHandler,
+    VitalsHandler,
+)
 from api.account import ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import (
@@ -386,6 +393,14 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/critical-flag', endpoint=ExamCriticalFlagHandler)),
     v2(Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler)),
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
+    # §2.11 nursing (N-01..N-04): exam-linked records; reads pass any-of
+    # [NURSING_READ, EXAM_READ], writes NURSING_WRITE. Registered beside the
+    # other /exams/{id} sub-resources — no catch-all shadows these.
+    v2(Route('/exams/{id}/vitals', endpoint=VitalsHandler)),
+    v2(Route('/exams/{id}/pre-procedure-checklist', endpoint=PrepChecklistHandler)),
+    v2(Route('/exams/{id}/consent', endpoint=ConsentHandler)),
+    v2(Route('/exams/{id}/nurse-notes', endpoint=NurseNotesHandler)),
+    v2(Route('/nursing/prep-list', endpoint=NursingPrepListHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
     v2(Route('/protocols/{id}/favorite', endpoint=ProtocolFavoriteHandler,
              methods=['POST'])),
