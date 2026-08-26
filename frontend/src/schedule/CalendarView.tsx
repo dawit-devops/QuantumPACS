@@ -17,6 +17,7 @@ import {
   listResourceAppointments,
   getResourceAvailability,
   listAppointmentsDateRange,
+  rescheduleAppointment,
   type RisResource,
   type RisAppointment,
   type ResourceAvailabilitySlot,
@@ -222,6 +223,20 @@ function CalendarView() {
     fetch();
   };
 
+  // S-01: drop-to-rebook — drag a booked block onto a free cell and the
+  // appointment moves there preserving its duration. Conflicts surface via
+  // the same warning path as a modal reschedule.
+  const rebookByDrag = (appointmentId: string, startIso: string, endIso: string) => {
+    rescheduleAppointment(appointmentId, { new_start_time: startIso, new_end_time: endIso })
+      .then(() => {
+        message.success("Appointment moved");
+        refreshAfterMutation();
+      })
+      .catch((e: unknown) => {
+        handleBookingConflict(toErrorMessage(e) || "Could not move the appointment");
+      });
+  };
+
   const openReschedule = () => {
     if (!selected) return;
     const r = resources.find((x) => x.id === selected.resource_id);
@@ -329,6 +344,7 @@ function CalendarView() {
             setSelected(a);
             setDetailResource(r);
           }}
+          onRebook={rebookByDrag}
         />
       ) : view === "gantt" ? (
         <GanttView

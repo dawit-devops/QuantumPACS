@@ -697,6 +697,87 @@ describe("CalendarView", () => {
   });
 });
 
+describe("CalendarView S-01 drag-to-rebook", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+    ]);
+  });
+
+  // Minimal HTML5 DataTransfer stand-in: setData/getData round-trip a store.
+  function makeDataTransfer(store: Record<string, string> = {}) {
+    return {
+      dropEffect: "",
+      setData: (k: string, v: string) => {
+        store[k] = v;
+      },
+      getData: (k: string) => store[k],
+    };
+  }
+
+  it("drags an appointment block onto a free cell and rebooks (S-01)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    expect(block).toHaveAttribute("draggable", "true");
+
+    const targetCell = screen.getByLabelText("CT Room 1 09:30 (free)");
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(block, { dataTransfer: dt });
+    fireEvent.drop(targetCell, { dataTransfer: dt });
+
+    // Rebook preserves the 30-min duration: 09:30 → 10:00.
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalledWith("a1", {
+        new_start_time: expect.stringContaining("09:30"),
+        new_end_time: expect.stringContaining("10:00"),
+      });
+    });
+  });
+
+  it("surfaces a conflict when the drag-rebook target is just taken (S-01)", async () => {
+    mockReschedule.mockRejectedValue({
+      status: 409,
+      code: "SLOT_CONFLICT",
+      message: "Slot just taken",
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    const targetCell = screen.getByLabelText("CT Room 1 09:30 (free)");
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(block, { dataTransfer: dt });
+    fireEvent.drop(targetCell, { dataTransfer: dt });
+
+    // The warning path refetches availability/calendar.
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mockListResources.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  it("does not offer drag on read-only schedules (S-01)", async () => {
+    // Re-seed without SCHEDULE_WRITE.
+    seedUser(["SCHEDULE_READ"]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    expect(block).toHaveAttribute("draggable", "false");
+  });
+});
+
 describe("CalendarView S-03 week/month views", () => {
   beforeEach(() => {
     vi.clearAllMocks();

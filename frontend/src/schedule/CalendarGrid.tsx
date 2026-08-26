@@ -21,6 +21,19 @@ interface CalendarGridProps {
   canWrite: boolean;
   onOpenBooking: (resource: RisResource, slot: ResourceAvailabilitySlot) => void;
   onSelectAppointment: (appointment: RisAppointment, resource: RisResource) => void;
+  // S-01: drag a booked block onto a free cell to rebook it (same-day, any
+  // resource). start/end are ISO UTC instants derived from the drop slot and
+  // the dragged appointment's duration.
+  onRebook: (appointmentId: string, startIso: string, endIso: string) => void;
+}
+
+// S-01: carried on dataTransfer during a drag. durationMinutes preserves the
+// appointment's length when dropped onto a different slot.
+const DRAG_MIME = "application/x-ris-appointment";
+
+interface DragPayload {
+  id: string;
+  durationMinutes: number;
 }
 
 // S4-14/S4-16 grid extracted from CalendarView (M-10): owns the busy/free
@@ -35,6 +48,7 @@ export default function CalendarGrid({
   canWrite,
   onOpenBooking,
   onSelectAppointment,
+  onRebook,
 }: CalendarGridProps) {
   const slots = useMemo(() => buildSlots(window), [window]);
 
@@ -147,6 +161,30 @@ export default function CalendarGrid({
                       onOpenBooking(r, free);
                     }
                   }}
+                  onDragOver={(e) => {
+                    // Only a free, writable cell accepts a rebook drop.
+                    if (free && canWrite) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }
+                  }}
+                  onDrop={(e) => {
+                    if (!(free && canWrite)) return;
+                    e.preventDefault();
+                    const raw = e.dataTransfer.getData(DRAG_MIME);
+                    if (!raw) return;
+                    try {
+                      const payload = JSON.parse(raw) as DragPayload;
+                      const startIso = `${day}T${free.start}:00.000Z`;
+                      const endIso = dayjs
+                        .utc(startIso)
+                        .add(payload.durationMinutes, "minute")
+                        .toISOString();
+                      onRebook(payload.id, startIso, endIso);
+                    } catch {
+                      /* malformed payload — ignore the drop */
+                    }
+                  }}
                   aria-label={`${r.name} ${slot}${isBooked ? " (booked)" : free ? " (free)" : " (closed)"}`}
                 >
                   {blocks.map((a) => {
@@ -156,6 +194,9 @@ export default function CalendarGrid({
                     if (startSi !== si) return null;
                     // S-02: double-booked blocks go red and name their partner.
                     const partners = conflictsByAppointment[a.id] ?? [];
+                    const draggable =
+                      canWrite && a.status !== "CANCELLED" && a.status !== "NO_SHOW";
+                    const durMin = dayjs.utc(a.end_time).diff(dayjs.utc(a.start_time), "minute");
                     return (
                       <Tooltip
                         key={a.id}
@@ -182,6 +223,18 @@ export default function CalendarGrid({
                           }`}
                           role="button"
                           tabIndex={0}
+                          draggable={draggable}
+                          onDragStart={(e) => {
+                            if (!draggable) return;
+                            e.dataTransfer.setData(
+                              DRAG_MIME,
+                              JSON.stringify({
+                                id: a.id,
+                                durationMinutes: durMin,
+                              } satisfies DragPayload)
+                            );
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             onSelectAppointment(a, r);
