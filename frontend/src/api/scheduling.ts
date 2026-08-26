@@ -164,6 +164,13 @@ export const markNoShow = (appointmentId: string): Promise<RisAppointment> =>
     method: "POST",
   }).then((res) => res.data);
 
+// FD-04: staff one-click check-in (SCHEDULE_WRITE) — SCHEDULED → ARRIVED,
+// idempotent for an already-ARRIVED appointment (409 surfaces as info).
+export const checkInAppointment = (appointmentId: string): Promise<RisAppointment> =>
+  request<{ data: RisAppointment }>(`ris/appointments/${appointmentId}/check-in`, {
+    method: "POST",
+  }).then((res) => res.data);
+
 // S-03: date-range appointments for week/month calendar views.
 export const listAppointmentsDateRange = (
   dateFrom: string,

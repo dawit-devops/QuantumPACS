@@ -1,13 +1,12 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Layout, Tag, Spin, Alert, Button, Segmented, DatePicker } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { Layout, Tag, Spin, Alert, Button, Segmented, DatePicker, App as AntdApp } from "antd";
+import { ReloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import PageHeader from "../common/PageHeader";
-import {
-  listRisAppointments,
-} from "../api/frontdesk";
-import type { RisAppointment } from "../api/scheduling";
+import { useAuth } from "../auth/AuthContext";
+import { listRisAppointments } from "../api/frontdesk";
+import { checkInAppointment, type RisAppointment } from "../api/scheduling";
 import dayjs from "dayjs";
 import "./FrontDesk.css";
 
@@ -45,6 +44,12 @@ const STATUS_FILTERS = [
 // quick-filtered by modality and status.
 function ScheduleToday() {
   useDocumentTitle("QuantumPACS - Today's Schedule");
+  const { message } = AntdApp.useApp();
+  const { hasPermission } = useAuth();
+  // FD-04: staff one-click check-in rides SCHEDULE_WRITE (same gate the
+  // backend handler enforces).
+  const canCheckIn = hasPermission("SCHEDULE_WRITE");
+  const [checkingId, setCheckingId] = useState<string | null>(null);
   const [day, setDay] = useState<string>(() => dayjs().format("YYYY-MM-DD"));
   const [data, setData] = useState<TodayAppointment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,19 +80,29 @@ function ScheduleToday() {
 
   useTenantRefetch(fetch);
 
+  const handleCheckIn = (row: TodayAppointment) => {
+    setCheckingId(row.id);
+    checkInAppointment(row.id)
+      .then(() => {
+        message.success(`${row.patient_name || row.patient_id} checked in`);
+        fetch();
+      })
+      .catch((e: any) => {
+        if (e?.status === 409) message.info("Already checked in");
+        else message.error(e?.message || "Check-in failed");
+        fetch();
+      })
+      .finally(() => setCheckingId(null));
+  };
+
   const modalities = useMemo(() => {
-    const all = Array.from(
-      new Set(data.map((r) => r.modality).filter(Boolean)),
-    ) as string[];
+    const all = Array.from(new Set(data.map((r) => r.modality).filter(Boolean))) as string[];
     return all.sort();
   }, [data]);
 
   const statusOptions = useMemo(
-    () =>
-      STATUS_FILTERS.filter(
-        (f) => !f.value || data.some((r) => r.status === f.value),
-      ),
-    [data],
+    () => STATUS_FILTERS.filter((f) => !f.value || data.some((r) => r.status === f.value)),
+    [data]
   );
 
   return (
@@ -151,11 +166,7 @@ function ScheduleToday() {
           <Spin />
         </div>
       ) : data.length === 0 ? (
-        <Alert
-          type="info"
-          showIcon
-          title={`No appointments on ${day}`}
-        />
+        <Alert type="info" showIcon title={`No appointments on ${day}`} />
       ) : (
         <table className="fd-schedule-table">
           <thead>
@@ -166,33 +177,42 @@ function ScheduleToday() {
               <th>Room</th>
               <th>Status</th>
               <th>Priority</th>
+              {canCheckIn && <th>Action</th>}
             </tr>
           </thead>
           <tbody>
             {data.map((row) => (
               <tr key={row.id}>
-                <td>
-                  {dayjs(row.start_time).format("HH:mm")}
-                </td>
+                <td>{dayjs(row.start_time).format("HH:mm")}</td>
                 <td>{row.patient_name || row.patient_id}</td>
                 <td>{row.modality || "—"}</td>
                 <td>{row.room || "—"}</td>
                 <td>
-                  <Tag
-                    color={STATUS_COLORS[row.status] || "default"}
-                  >
-                    {row.status}
-                  </Tag>
+                  <Tag color={STATUS_COLORS[row.status] || "default"}>{row.status}</Tag>
                 </td>
                 <td>
                   {row.priority && ["STAT", "S"].includes(row.priority) ? (
                     <Tag color="red">STAT</Tag>
                   ) : (
-                    <span className="fd-patient-meta">
-                      {row.priority || "—"}
-                    </span>
+                    <span className="fd-patient-meta">{row.priority || "—"}</span>
                   )}
                 </td>
+                {canCheckIn && (
+                  <td>
+                    {row.status === "SCHEDULED" ? (
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<CheckCircleOutlined />}
+                        loading={checkingId === row.id}
+                        onClick={() => handleCheckIn(row)}
+                        aria-label={`Check in ${row.patient_name || row.patient_id}`}
+                      >
+                        Check in
+                      </Button>
+                    ) : null}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
