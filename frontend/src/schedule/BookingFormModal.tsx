@@ -104,7 +104,7 @@ export default function BookingFormModal({
     try {
       const detail = await getRisOrder(o.id);
       const procs = detail.procedures ?? [];
-      setPriorAuthStatus(detail.prior_auth_status || "");
+      setPriorAuthStatus(detail.order?.prior_auth_status || "");
       setProcedures(procs);
       if (procs.length > 0) {
         const first = procs[0];

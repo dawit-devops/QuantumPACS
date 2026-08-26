@@ -56,7 +56,7 @@ beforeEach(() => {
   localStorage.setItem("permissions", JSON.stringify(["SCHEDULE_WRITE", "ORDER_READ"]));
   mockSearchOrders.mockResolvedValue({ data: [ORDER_ROW] });
   mockGetOrder.mockResolvedValue({
-    id: "ord-1",
+    order: { id: "ord-1", prior_auth_status: "APPROVED" },
     procedures: [{ id: "p1", procedure_name: "CT Chest" }],
   });
   mockBook.mockResolvedValue({ id: "appt-new" });
@@ -66,8 +66,7 @@ describe("BookingFormModal S-10 proactive prior-auth warning", () => {
   it("warns before confirm when the picked order's auth is not obtained", async () => {
     const user = userEvent.setup();
     mockGetOrder.mockResolvedValue({
-      id: "ord-1",
-      prior_auth_status: "PENDING",
+      order: { id: "ord-1", prior_auth_status: "PENDING" },
       procedures: [],
     });
     renderModal();
@@ -82,8 +81,7 @@ describe("BookingFormModal S-10 proactive prior-auth warning", () => {
   it("does not warn when auth is approved or absent", async () => {
     const user = userEvent.setup();
     mockGetOrder.mockResolvedValue({
-      id: "ord-1",
-      prior_auth_status: "APPROVED",
+      order: { id: "ord-1", prior_auth_status: "APPROVED" },
       procedures: [],
     });
     renderModal();
@@ -99,8 +97,7 @@ describe("BookingFormModal S-10 proactive prior-auth warning", () => {
   it("escalates the warning tone for denied auth", async () => {
     const user = userEvent.setup();
     mockGetOrder.mockResolvedValue({
-      id: "ord-1",
-      prior_auth_status: "DENIED",
+      order: { id: "ord-1", prior_auth_status: "DENIED" },
       procedures: [],
     });
     renderModal();
