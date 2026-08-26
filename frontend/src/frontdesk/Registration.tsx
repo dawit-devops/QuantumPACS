@@ -50,17 +50,13 @@ function Registration() {
   const [results, setResults] = useState<FrontDeskPatient[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [dedupSelected, setDedupSelected] = useState<FrontDeskPatient | null>(
-    null,
-  );
+  const [dedupSelected, setDedupSelected] = useState<FrontDeskPatient | null>(null);
   const [saving, setSaving] = useState(false);
   const [bookFor, setBookFor] = useState<FrontDeskPatient | null>(null);
   const [form] = Form.useForm();
   // FD-01: MPI soft alert — the created patient may be a duplicate of an
   // existing record flagged by the fuzzy trigram probe.
-  const [fuzzyWarning, setFuzzyWarning] = useState<
-    FrontDeskPatient["warning"] | null
-  >(null);
+  const [fuzzyWarning, setFuzzyWarning] = useState<FrontDeskPatient["warning"] | null>(null);
 
   const runSearch = useCallback((q: string) => {
     const term = q.trim();
@@ -110,7 +106,20 @@ function Registration() {
         email: values.email || undefined,
         // E1: consent captured at registration (R2-05-07) — the portal gate
         // keeps reports/orders hidden until this is granted.
-        meta: { consent_results: Boolean(values.consent) },
+        // FD-01: address + emergency contact live in the JSONB meta column so
+        // no schema migration is needed for these optional fields.
+        meta: {
+          consent_results: Boolean(values.consent),
+          ...(values.address ? { address: values.address } : {}),
+          ...(values.emergency_contact || values.emergency_phone
+            ? {
+                emergency_contact: {
+                  name: values.emergency_contact || "",
+                  phone: values.emergency_phone || "",
+                },
+              }
+            : {}),
+        },
       });
     } catch (e: any) {
       message.error(e.message || "Registration failed");
@@ -124,9 +133,7 @@ function Registration() {
         patient_id: patient.patient_id,
         destination_room: values.destination_room || "",
       });
-      message.success(
-        `Registered ${patient.name} and opened a visit (${patient.patient_id})`,
-      );
+      message.success(`Registered ${patient.name} and opened a visit (${patient.patient_id})`);
       form.resetFields();
       setDedupSelected(null);
       setQuery("");
@@ -140,7 +147,7 @@ function Registration() {
       // existing record through the dedup path so the next action is "open a
       // visit" — not a duplicate registration.
       message.error(
-        `${e.message || "Visit could not be opened"} — the patient was created; open a visit from the patient list instead.`,
+        `${e.message || "Visit could not be opened"} — the patient was created; open a visit from the patient list instead.`
       );
       setDedupSelected(patient);
     } finally {
@@ -176,9 +183,7 @@ function Registration() {
     <Content style={{ padding: 24 }} role="main">
       <div className="fd-header">
         <div className="fd-header-title">
-          <IdcardOutlined
-            style={{ fontSize: 22, color: "var(--color-primary)" }}
-          />
+          <IdcardOutlined style={{ fontSize: 22, color: "var(--color-primary)" }} />
           <div>
             <h2>Patient Registration</h2>
             <span className="fd-subtitle">
@@ -254,7 +259,7 @@ function Registration() {
                 el.scrollIntoView(
                   window.matchMedia("(prefers-reduced-motion: reduce)").matches
                     ? { block: "start" }
-                    : { behavior: "smooth", block: "start" },
+                    : { behavior: "smooth", block: "start" }
                 );
               }}
             >
@@ -288,10 +293,7 @@ function Registration() {
             title={`Similar patient exists: ${fuzzyWarning.existing_patient_name} (${fuzzyWarning.existing_patient_id})`}
             description="The new record was created, but a probable duplicate was found. Review before proceeding."
             action={
-              <Button
-                size="small"
-                onClick={() => setFuzzyWarning(null)}
-              >
+              <Button size="small" onClick={() => setFuzzyWarning(null)}>
                 Dismiss
               </Button>
             }
@@ -356,9 +358,7 @@ function Registration() {
         id="fd-registration-form"
         extra={
           dedupSelected ? (
-            <Tag color="orange">
-              Duplicate check: use the existing record above
-            </Tag>
+            <Tag color="orange">Duplicate check: use the existing record above</Tag>
           ) : undefined
         }
       >
@@ -411,18 +411,10 @@ function Registration() {
                 ]}
               />
             </Form.Item>
-            <Form.Item
-              name="phone"
-              label="Phone"
-              style={{ flex: 1 }}
-            >
+            <Form.Item name="phone" label="Phone" style={{ flex: 1 }}>
               <Input placeholder="(555) 123-4567" />
             </Form.Item>
-            <Form.Item
-              name="email"
-              label="Email"
-              style={{ flex: 1 }}
-            >
+            <Form.Item name="email" label="Email" style={{ flex: 1 }}>
               <Input placeholder="patient@example.com" />
             </Form.Item>
             <Form.Item
@@ -433,11 +425,27 @@ function Registration() {
               <Input placeholder="e.g. CT Room 1" />
             </Form.Item>
           </div>
-          <Form.Item
-            name="consent"
-            valuePropName="checked"
-            style={{ marginBottom: 8 }}
-          >
+          {/* FD-01: optional address + emergency contact (stored in meta). */}
+          <Form.Item name="address" label="Address (optional)">
+            <Input placeholder="Street, city, state, ZIP" />
+          </Form.Item>
+          <div style={{ display: "flex", gap: 12 }}>
+            <Form.Item
+              name="emergency_contact"
+              label="Emergency contact (optional)"
+              style={{ flex: 1 }}
+            >
+              <Input placeholder="Name" />
+            </Form.Item>
+            <Form.Item
+              name="emergency_phone"
+              label="Emergency phone (optional)"
+              style={{ flex: 1 }}
+            >
+              <Input placeholder="(555) 123-4567" />
+            </Form.Item>
+          </div>
+          <Form.Item name="consent" valuePropName="checked" style={{ marginBottom: 8 }}>
             <Checkbox disabled={!canWrite}>
               Patient consents to results being shared via the portal
             </Checkbox>

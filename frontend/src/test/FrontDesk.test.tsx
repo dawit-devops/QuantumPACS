@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import dayjs from "dayjs";
@@ -74,7 +68,7 @@ vi.mock("antd", async () => {
           onConfirm?.();
         },
       },
-      children,
+      children
     );
   return { ...actual, Popconfirm };
 });
@@ -130,9 +124,7 @@ describe("Registration", () => {
     await user.type(screen.getByPlaceholderText(/Search name or MRN/), "Jo");
     await user.click(screen.getByRole("button", { name: /^search$/i }));
     await waitFor(() => expect(mockSearchPatients).toHaveBeenCalledWith("Jo"));
-    expect(
-      await screen.findByText(/No existing patient matched/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/No existing patient matched/)).toBeInTheDocument();
   });
 
   it("shows matching patients and offers to use the existing record", async () => {
@@ -150,20 +142,34 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByLabelText("Full name"), "Jane Roe");
-    await user.type(
-      screen.getByLabelText("MRN / Patient ID (optional)"),
-      "P099",
-    );
-    await user.click(
-      screen.getByRole("button", { name: /register & open visit/i }),
-    );
+    await user.type(screen.getByLabelText("MRN / Patient ID (optional)"), "P099");
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
     await waitFor(() => {
       expect(mockCreatePatient).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Jane Roe", patient_id: "P099" }),
+        expect.objectContaining({ name: "Jane Roe", patient_id: "P099" })
       );
       // The visit opens against the server-returned patient id (P001 fixture).
-      expect(mockCreateVisit).toHaveBeenCalledWith(
-        expect.objectContaining({ patient_id: "P001" }),
+      expect(mockCreateVisit).toHaveBeenCalledWith(expect.objectContaining({ patient_id: "P001" }));
+    });
+  });
+
+  it("captures address and emergency contact in the registration payload (FD-01)", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Registration />);
+    await user.type(screen.getByLabelText("Full name"), "Jane Roe");
+    await user.type(screen.getByPlaceholderText(/Street, city, state/), "1 Main St");
+    await user.type(screen.getByLabelText("Emergency contact (optional)"), "Jim Roe");
+    await user.type(screen.getByLabelText("Emergency phone (optional)"), "555-0100");
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
+    await waitFor(() => {
+      expect(mockCreatePatient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Jane Roe",
+          meta: expect.objectContaining({
+            address: "1 Main St",
+            emergency_contact: { name: "Jim Roe", phone: "555-0100" },
+          }),
+        })
       );
     });
   });
@@ -181,11 +187,9 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByLabelText("Full name"), "Jane Roe");
-    await user.click(
-      screen.getByRole("button", { name: /register & open visit/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
     expect(
-      await screen.findByText(/Similar patient exists: Jane Roey \(P099\)/),
+      await screen.findByText(/Similar patient exists: Jane Roey \(P099\)/)
     ).toBeInTheDocument();
   });
 
@@ -193,9 +197,7 @@ describe("Registration", () => {
     seedUser(["REGISTRATION_READ"]);
     renderWithAuth(<Registration />);
     expect(screen.getByText(/Read-only registration/)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /register new patient/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /register new patient/i })).toBeNull();
   });
 });
 
@@ -223,9 +225,14 @@ describe("Visits & Check-In", () => {
     mockListConsents.mockResolvedValue([]);
     mockListInsurance.mockResolvedValue([]);
     mockGetInsuranceEligibility.mockResolvedValue({
-      patient_id: "P001", status: "none", provider: "",
-      member_id: "", copay_amount: null, deductible_total: null,
-      deductible_remaining: null, checked_at: "2026-08-08T10:00:00Z",
+      patient_id: "P001",
+      status: "none",
+      provider: "",
+      member_id: "",
+      copay_amount: null,
+      deductible_total: null,
+      deductible_remaining: null,
+      checked_at: "2026-08-08T10:00:00Z",
     });
     mockUpdateVisit.mockResolvedValue(undefined);
     mockCreateOrder.mockResolvedValue({});
@@ -252,20 +259,28 @@ describe("Visits & Check-In", () => {
     await user.click(screen.getByRole("button", { name: /details/i }));
     expect(await screen.findByText(/Orders/)).toBeInTheDocument();
     expect(await screen.findByText(/Consents/)).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Insurance \/ Guarantor/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Insurance \/ Guarantor/)).toBeInTheDocument();
   });
 
   it("shows insurance eligibility coverage when active (FD-02)", async () => {
     mockGetInsuranceEligibility.mockResolvedValue({
-      patient_id: "P001", status: "active", provider: "Aetna",
-      member_id: "M-123", copay_amount: 25, deductible_total: 500,
-      deductible_remaining: 350, checked_at: "2026-08-08T10:00:00Z",
+      patient_id: "P001",
+      status: "active",
+      provider: "Aetna",
+      member_id: "M-123",
+      copay_amount: 25,
+      deductible_total: 500,
+      deductible_remaining: 350,
+      checked_at: "2026-08-08T10:00:00Z",
     });
     mockListInsurance.mockResolvedValue([
-      { id: "ins-1", patient_id: "P001", policy_number: "POL-1",
-        provider: "Aetna", member_id: "M-123" },
+      {
+        id: "ins-1",
+        patient_id: "P001",
+        policy_number: "POL-1",
+        provider: "Aetna",
+        member_id: "M-123",
+      },
     ]);
     const user = userEvent.setup();
     renderWithAuth(<Visits />);
@@ -283,13 +298,13 @@ describe("Visits & Check-In", () => {
     await user.click(screen.getByRole("button", { name: /details/i }));
     await user.type(
       await screen.findByPlaceholderText(/CT CHEST W CONTRAST/),
-      "CT CHEST W CONTRAST",
+      "CT CHEST W CONTRAST"
     );
     await user.click(screen.getByRole("button", { name: /add order/i }));
     await waitFor(() => {
       expect(mockCreateOrder).toHaveBeenCalledWith(
         "v1",
-        expect.objectContaining({ requested_procedure: "CT CHEST W CONTRAST" }),
+        expect.objectContaining({ requested_procedure: "CT CHEST W CONTRAST" })
       );
     });
   });
@@ -301,18 +316,30 @@ describe("ScheduleToday", () => {
     seedUser(["SCHEDULE_READ"]);
     mockListRisAppointments.mockResolvedValue([
       {
-        id: "a1", patient_id: "P001", patient_name: "John Smith",
-        resource_id: "res-1", order_id: "ord-1",
+        id: "a1",
+        patient_id: "P001",
+        patient_name: "John Smith",
+        resource_id: "res-1",
+        order_id: "ord-1",
         start_time: "2026-08-08T09:00:00+00:00",
         end_time: "2026-08-08T09:30:00+00:00",
-        status: "SCHEDULED", modality: "CT", room: "CT-1", priority: "routine",
+        status: "SCHEDULED",
+        modality: "CT",
+        room: "CT-1",
+        priority: "routine",
       },
       {
-        id: "a2", patient_id: "P002", patient_name: "Jane Doe",
-        resource_id: "res-2", order_id: "ord-2",
+        id: "a2",
+        patient_id: "P002",
+        patient_name: "Jane Doe",
+        resource_id: "res-2",
+        order_id: "ord-2",
         start_time: "2026-08-08T10:00:00+00:00",
         end_time: "2026-08-08T10:30:00+00:00",
-        status: "ARRIVED", modality: "MR", room: "MR-1", priority: "STAT",
+        status: "ARRIVED",
+        modality: "MR",
+        room: "MR-1",
+        priority: "STAT",
       },
     ]);
   });
@@ -343,8 +370,8 @@ describe("ScheduleToday", () => {
     await user.click(ctLabel);
     await waitFor(() =>
       expect(mockListRisAppointments).toHaveBeenCalledWith(
-        expect.objectContaining({ modality: "CT" }),
-      ),
+        expect.objectContaining({ modality: "CT" })
+      )
     );
   });
 });
@@ -394,7 +421,7 @@ describe("WaitingQueue", () => {
     await waitFor(() =>
       expect(mockGetWaitingQueue).toHaveBeenCalledWith({
         date: "2026-08-09",
-      }),
+      })
     );
   });
 
@@ -427,9 +454,7 @@ describe("WaitingQueue", () => {
     mockGetWaitingQueue.mockResolvedValue([]);
     renderWithAuth(<WaitingQueue />);
     const today = dayjs().format("YYYY-MM-DD");
-    expect(
-      await screen.findByText(`No patients waiting on ${today}`),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(`No patients waiting on ${today}`)).toBeInTheDocument();
   });
 
   it("fetches the queue once on mount (interval behavior lives in the hook)", async () => {
@@ -442,19 +467,37 @@ describe("WaitingQueue", () => {
     // FD-05: green <15m, amber 15-30m, red >30m.
     mockGetWaitingQueue.mockResolvedValue([
       {
-        visit_id: "v1", patient_id: "P001", patient_name: "Alice Brown",
-        status: "checked_in", destination: "CT1", modality: "CT",
-        priority: "STAT", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 12,
+        visit_id: "v1",
+        patient_id: "P001",
+        patient_name: "Alice Brown",
+        status: "checked_in",
+        destination: "CT1",
+        modality: "CT",
+        priority: "STAT",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 12,
       },
       {
-        visit_id: "v2", patient_id: "P002", patient_name: "Carol Davis",
-        status: "checked_in", destination: "MR1", modality: "MR",
-        priority: "ROUTINE", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 22,
+        visit_id: "v2",
+        patient_id: "P002",
+        patient_name: "Carol Davis",
+        status: "checked_in",
+        destination: "MR1",
+        modality: "MR",
+        priority: "ROUTINE",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 22,
       },
       {
-        visit_id: "v3", patient_id: "P003", patient_name: "Eve Foster",
-        status: "checked_in", destination: "XR1", modality: "XR",
-        priority: "URGENT", updated_at: "2026-08-08T10:00:00+00:00", wait_minutes: 45,
+        visit_id: "v3",
+        patient_id: "P003",
+        patient_name: "Eve Foster",
+        status: "checked_in",
+        destination: "XR1",
+        modality: "XR",
+        priority: "URGENT",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 45,
       },
     ]);
     renderWithAuth(<WaitingQueue />);
@@ -478,12 +521,7 @@ describe("AppointmentBooking", () => {
 
   it("renders free slots enabled and full slots disabled", async () => {
     renderWithAuth(
-      <AppointmentBooking
-        open
-        onClose={() => {}}
-        patientId="P001"
-        patientName="John Doe"
-      />,
+      <AppointmentBooking open onClose={() => {}} patientId="P001" patientName="John Doe" />
     );
     const freeSlot = await screen.findByRole("gridcell", {
       name: /09:00/,
@@ -496,12 +534,7 @@ describe("AppointmentBooking", () => {
   it("books the selected slot for the patient", async () => {
     const user = userEvent.setup();
     renderWithAuth(
-      <AppointmentBooking
-        open
-        onClose={() => {}}
-        patientId="P001"
-        patientName="John Doe"
-      />,
+      <AppointmentBooking open onClose={() => {}} patientId="P001" patientName="John Doe" />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -511,7 +544,7 @@ describe("AppointmentBooking", () => {
         expect.objectContaining({
           patient_id: "P001",
           scheduled_time: "09:00:00",
-        }),
+        })
       );
     });
   });
@@ -532,7 +565,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -540,9 +573,7 @@ describe("AppointmentBooking", () => {
     // The backend 409 message surfaces in the conflict alert.
     expect(await screen.findByText(/Slot already booked/)).toBeInTheDocument();
     // Availability reloads after the conflict.
-    await waitFor(() =>
-      expect(mockGetAvailability.mock.calls.length).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(mockGetAvailability.mock.calls.length).toBeGreaterThan(1));
     // The modal must STAY open with the refreshed grid: closing it or firing
     // onBooked here would drop the booking attempt (R4-06).
     expect(screen.getByText("Book Appointment")).toBeInTheDocument();
@@ -563,7 +594,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -588,7 +619,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     const freeSlot = await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(freeSlot);
@@ -599,8 +630,8 @@ describe("AppointmentBooking", () => {
     await waitFor(() =>
       expect(screen.getByRole("gridcell", { name: /09:00/ })).toHaveAttribute(
         "aria-pressed",
-        "false",
-      ),
+        "false"
+      )
     );
   });
 });
@@ -610,8 +641,14 @@ describe("PatientSearchOverlay", () => {
     vi.clearAllMocks();
     seedUser(["PATIENT_READ"]);
     mockSearchRisPatients.mockResolvedValue([
-      { id: 1, patient_id: "P001", name: "Jane Doe", birth_date: "1980-05-04",
-        sex: "F", phone: "555-0100" },
+      {
+        id: 1,
+        patient_id: "P001",
+        name: "Jane Doe",
+        birth_date: "1980-05-04",
+        sex: "F",
+        phone: "555-0100",
+      },
     ]);
     localStorage.clear();
   });
@@ -620,14 +657,9 @@ describe("PatientSearchOverlay", () => {
     const user = userEvent.setup();
     renderWithAuth(<PatientSearchOverlay />);
     await user.click(screen.getByRole("button", { name: /patient search/i }));
-    await user.type(
-      await screen.findByPlaceholderText(/search patients/i),
-      "Jane",
-    );
+    await user.type(await screen.findByPlaceholderText(/search patients/i), "Jane");
     await waitFor(() =>
-      expect(mockSearchRisPatients).toHaveBeenCalledWith(
-        expect.objectContaining({ q: "Jane" }),
-      ),
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(expect.objectContaining({ q: "Jane" }))
     );
     expect(await screen.findByText("Jane Doe")).toBeInTheDocument();
   });
@@ -636,14 +668,9 @@ describe("PatientSearchOverlay", () => {
     const user = userEvent.setup();
     renderWithAuth(<PatientSearchOverlay />);
     await user.click(screen.getByRole("button", { name: /patient search/i }));
-    await user.type(
-      await screen.findByLabelText(/search by phone/i),
-      "555",
-    );
+    await user.type(await screen.findByLabelText(/search by phone/i), "555");
     await waitFor(() =>
-      expect(mockSearchRisPatients).toHaveBeenCalledWith(
-        expect.objectContaining({ phone: "555" }),
-      ),
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(expect.objectContaining({ phone: "555" }))
     );
   });
 });
