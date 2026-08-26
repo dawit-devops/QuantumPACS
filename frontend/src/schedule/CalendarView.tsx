@@ -1,5 +1,5 @@
 import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert, Segmented } from "antd";
+import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert, Segmented, Select } from "antd";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
@@ -97,6 +97,15 @@ function CalendarView() {
   const [rescheduleFor, setRescheduleFor] = useState<RisAppointment | null>(null);
   const [cancelFor, setCancelFor] = useState<RisAppointment | null>(null);
 
+  // S-11: calendar filters — narrow by resource type (room/modality/tech)
+  // or modality. Passed server-side to listRisResources so appointments and
+  // availability are only fetched for the shown resources.
+  const [resTypeFilter, setResTypeFilter] = useState<string | undefined>();
+  const [modalityFilter, setModalityFilter] = useState<string | undefined>();
+  // Full unfiltered resource list — the modality dropdown must not collapse
+  // to whatever the current filter happens to show.
+  const [allResources, setAllResources] = useState<RisResource[]>([]);
+
   // A slow response for an earlier day must never paint over a newer one
   // (same pattern as Visits' detailSeq guard).
   const fetchSeq = useRef(0);
@@ -110,7 +119,10 @@ function CalendarView() {
     setAppointments({});
     setFreeSlots({});
     setRangeAppointments([]);
-    listRisResources()
+    listRisResources({
+      ...(resTypeFilter ? { resource_type: resTypeFilter } : {}),
+      ...(modalityFilter ? { modality: modalityFilter } : {}),
+    })
       .then(async (res) => {
         if (view !== "day") {
           // S-03 week/month: one date-range query across all resources.
@@ -143,7 +155,7 @@ function CalendarView() {
       .finally(() => {
         if (seq === fetchSeq.current) setLoading(false);
       });
-  }, [day, view]);
+  }, [day, view, resTypeFilter, modalityFilter]);
 
   useEffect(() => {
     fetch();
@@ -151,6 +163,25 @@ function CalendarView() {
 
   // Tenant switch must repaint this page with the new tenant's data.
   useTenantRefetch(fetch);
+
+  // S-11: keep a full resource list so the modality/resource-type filter
+  // options survive even when the grid itself is narrowed server-side.
+  const loadAllResources = useCallback(() => {
+    listRisResources()
+      .then((res) => setAllResources(res))
+      .catch(() => {
+        /* filter options are best-effort — the grid still loads */
+      });
+  }, []);
+  useEffect(() => {
+    loadAllResources();
+  }, [loadAllResources]);
+  useTenantRefetch(loadAllResources);
+
+  const modalityOptions = useMemo(
+    () => [...new Set(allResources.map((r) => r.modality).filter(Boolean) as string[])].sort(),
+    [allResources]
+  );
 
   const changeDay = (delta: number) => {
     // S-03: prev/next shifts by the current view's unit (day/week/month).
@@ -242,6 +273,35 @@ function CalendarView() {
             onToday={() => setDay(dayjs.utc().format("YYYY-MM-DD"))}
           />
         </div>
+      </div>
+
+      {/* S-11: filter the calendar to a resource type (room/modality/tech)
+          and/or a modality. Both narrow the grid server-side. */}
+      <div className="sched-toolbar" style={{ marginTop: -8 }}>
+        <Select
+          id="schedule-type-filter"
+          aria-label="Resource type"
+          allowClear
+          placeholder="All resource types"
+          style={{ width: 180 }}
+          value={resTypeFilter}
+          onChange={setResTypeFilter}
+          options={[
+            { value: "ROOM", label: "Rooms" },
+            { value: "MODALITY", label: "Modalities" },
+            { value: "TECH", label: "Technologists" },
+          ]}
+        />
+        <Select
+          id="schedule-modality-filter"
+          aria-label="Modality"
+          allowClear
+          placeholder="All modalities"
+          style={{ width: 140 }}
+          value={modalityFilter}
+          onChange={setModalityFilter}
+          options={modalityOptions.map((m) => ({ value: m, label: m }))}
+        />
       </div>
 
       {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}

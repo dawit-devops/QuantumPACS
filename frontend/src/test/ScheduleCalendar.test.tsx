@@ -823,6 +823,45 @@ describe("CalendarView S-03 week/month views", () => {
   });
 });
 
+describe("CalendarView S-11 calendar filters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  it("filters by resource type through the resources API (S-11)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.mouseDown(screen.getByLabelText("Resource type"));
+    const opts = await screen.findAllByText("Rooms");
+    fireEvent.click(opts[opts.length - 1]);
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalledWith(
+        expect.objectContaining({ resource_type: "ROOM" })
+      );
+    });
+  });
+
+  it("filters by modality through the resources API (S-11)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.mouseDown(screen.getByLabelText("Modality"));
+    const opts = await screen.findAllByText("CT");
+    fireEvent.click(opts[opts.length - 1]);
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalledWith(expect.objectContaining({ modality: "CT" }));
+    });
+  });
+});
+
 describe("CalendarView S-13 no-show action", () => {
   beforeEach(() => {
     seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
