@@ -357,7 +357,7 @@ describe("PatientProfile", () => {
     });
     await user.click(screen.getByText("Yes, Withdraw Consent"));
     await waitFor(() => {
-      expect(mockUpdateConsent).toHaveBeenCalledWith("P001", false);
+      expect(mockUpdateConsent).toHaveBeenCalledWith("P001", false, true);
     });
   });
 });

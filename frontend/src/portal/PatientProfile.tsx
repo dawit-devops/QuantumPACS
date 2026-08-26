@@ -58,6 +58,9 @@ function PatientProfile() {
 
   // Consent state — derived from the bundle's patient data
   const [consentResults, setConsentResults] = useState<boolean>(false);
+  // P5: second consent toggle — appointment-detail visibility. Defaults on
+  // for scheduled patients, independent of results sharing.
+  const [consentAppointments, setConsentAppointments] = useState<boolean>(true);
   const [consentLoading, setConsentLoading] = useState(false);
   const [consentModalOpen, setConsentModalOpen] = useState(false);
   const [consentReason, setConsentReason] = useState("");
@@ -101,6 +104,12 @@ function PatientProfile() {
         } else if (consent === "false" || consent === "") {
           setConsentResults(false);
         }
+        const apptConsent = b?.patient && (b.patient as any).consent_appointments;
+        if (apptConsent === "false") {
+          setConsentAppointments(false);
+        } else {
+          setConsentAppointments(true);
+        }
         if (!b || !b.patient) {
           message.warning("No records are currently shared for this patient.");
         }
@@ -128,9 +137,10 @@ function PatientProfile() {
       // Withdrawing consent — show confirmation modal
       setConsentModalOpen(true);
     } else {
-      // Granting consent — call the API directly
+      // Granting consent — call the API directly (preserving the current
+      // appointment toggle).
       setConsentLoading(true);
-      updateConsent(activePatientId!, true)
+      updateConsent(activePatientId!, true, consentAppointments)
         .then(() => {
           setConsentResults(true);
           message.success("Consent granted — your records are now visible in the portal");
@@ -142,10 +152,12 @@ function PatientProfile() {
 
   const confirmConsentWithdrawal = () => {
     setConsentLoading(true);
-    updateConsent(activePatientId!, false)
+    updateConsent(activePatientId!, false, consentAppointments)
       .then(() => {
         setConsentResults(false);
-        message.info("Consent withdrawn — reports and orders will no longer be visible in the portal");
+        message.info(
+          "Consent withdrawn — reports and orders will no longer be visible in the portal"
+        );
       })
       .catch((e: any) => message.error(e.message || "Failed to update consent"))
       .finally(() => {
@@ -153,6 +165,23 @@ function PatientProfile() {
         setConsentModalOpen(false);
         setConsentReason("");
       });
+  };
+
+  // P5: appointment-detail toggle — independent of results sharing. When
+  // withdrawn, appointment cards in the portal stop showing scheduling detail.
+  const handleAppointmentConsentToggle = (checked: boolean) => {
+    setConsentLoading(true);
+    updateConsent(activePatientId!, consentResults, checked)
+      .then(() => {
+        setConsentAppointments(checked);
+        message.success(
+          checked
+            ? "Appointment details are now visible in the portal"
+            : "Appointment details are now hidden from the portal"
+        );
+      })
+      .catch((e: any) => message.error(e.message || "Failed to update consent"))
+      .finally(() => setConsentLoading(false));
   };
 
   // --- Loading / Error states ---
@@ -210,9 +239,7 @@ function PatientProfile() {
             Your patient information — managed by your healthcare provider
           </Text>
         </div>
-        <Button onClick={() => navigate("/portal")}>
-          Back to Portal
-        </Button>
+        <Button onClick={() => navigate("/portal")}>Back to Portal</Button>
       </div>
 
       {error && (
@@ -259,18 +286,12 @@ function PatientProfile() {
               <Descriptions.Item label="Date of Birth">
                 {patient.birth_date || "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Sex">
-                {patient.sex || "—"}
-              </Descriptions.Item>
+              <Descriptions.Item label="Sex">{patient.sex || "—"}</Descriptions.Item>
               <Descriptions.Item label="Phone">
-                {(patient as any).phone || (
-                  <Text type="secondary">On file</Text>
-                )}
+                {(patient as any).phone || <Text type="secondary">On file</Text>}
               </Descriptions.Item>
               <Descriptions.Item label="Email">
-                {(patient as any).email || (
-                  <Text type="secondary">On file</Text>
-                )}
+                {(patient as any).email || <Text type="secondary">On file</Text>}
               </Descriptions.Item>
             </Descriptions>
 
@@ -296,9 +317,9 @@ function PatientProfile() {
             }
           >
             <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-              Control whether your imaging results and orders are visible in this
-              portal. Withdrawing consent will hide your reports and orders from
-              view — you can re-grant consent at any time.
+              Control whether your imaging results and orders are visible in this portal.
+              Withdrawing consent will hide your reports and orders from view — you can re-grant
+              consent at any time.
             </Paragraph>
 
             {/* Results consent */}
@@ -347,10 +368,18 @@ function PatientProfile() {
                 <Text strong>Show appointment details</Text>
                 <br />
                 <Text type="secondary" style={{ fontSize: 13 }}>
-                  View your upcoming and past appointments
+                  {consentAppointments
+                    ? "Your upcoming and past appointments are visible"
+                    : "Appointment details are hidden from the portal"}
                 </Text>
               </div>
-              <Switch defaultChecked disabled checkedChildren="ON" unCheckedChildren="OFF" />
+              <Switch
+                checked={consentAppointments}
+                onChange={handleAppointmentConsentToggle}
+                loading={consentLoading}
+                checkedChildren="ON"
+                unCheckedChildren="OFF"
+              />
             </div>
 
             <Divider style={{ margin: "16px 0" }} />
@@ -384,12 +413,12 @@ function PatientProfile() {
             cancelText="Cancel"
           >
             <Paragraph>
-              Are you sure you want to withdraw consent for sharing your imaging
-              results via this portal?
+              Are you sure you want to withdraw consent for sharing your imaging results via this
+              portal?
             </Paragraph>
             <Paragraph type="secondary">
-              Your signed reports and orders will no longer be visible here. You
-              can re-grant consent at any time.
+              Your signed reports and orders will no longer be visible here. You can re-grant
+              consent at any time.
             </Paragraph>
             <Input.TextArea
               placeholder="Reason for withdrawal (optional — for audit trail)"
@@ -401,10 +430,7 @@ function PatientProfile() {
         </>
       ) : (
         <Card>
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No patient record found."
-          />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No patient record found." />
         </Card>
       )}
     </Content>

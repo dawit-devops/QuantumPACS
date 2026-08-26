@@ -29,15 +29,23 @@ class Portal:
             patient_id,
         )
 
-    async def set_consent(self, patient_id, consent_results):
+    async def set_consent(self, patient_id, consent_results,
+                          consent_appointments=None):
         """P-01: grant/withdraw results sharing. Writes patients.meta
         consent_results — the same JSONB key the read gates test, so a
-        withdrawal revokes portal visibility on the next poll."""
+        withdrawal revokes portal visibility on the next poll.
+        consent_appointments is a second independent toggle (default None =
+        leave unchanged) controlling appointment-detail visibility."""
+        base = "COALESCE(meta, '{}'::jsonb)"
+        parts = ["jsonb_build_object('consent_results', $2)"]
+        params = [patient_id, consent_results]
+        if consent_appointments is not None:
+            parts.append("jsonb_build_object('consent_appointments', $3)")
+            params.append(consent_appointments)
+        expr = " || ".join([base] + parts)
         return await self.conn.execute(
-            "UPDATE patients SET meta = COALESCE(meta, '{}'::jsonb)"
-            " || jsonb_build_object('consent_results', $2)"
-            " WHERE patient_id = $1",
-            patient_id, consent_results,
+            f"UPDATE patients SET meta = {expr} WHERE patient_id = $1",
+            *params,
         )
 
     async def get_scope(self, patient_id, user_id):
@@ -99,7 +107,9 @@ class Portal:
         return await self.conn.fetchrow(
             f"""SELECT patient_id, name, birth_date, sex,
                        phone, email,
-                       COALESCE(meta->>'consent_results', '') AS consent_status
+                       COALESCE(meta->>'consent_results', '') AS consent_status,
+                       COALESCE(meta->>'consent_appointments', 'true')
+                         AS consent_appointments
                 FROM patients
                 WHERE patient_id = $1 AND {self._CONSENT_PREDICATE}""",
             patient_id,

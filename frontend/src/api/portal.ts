@@ -120,11 +120,18 @@ export const updateFollowUp = (id: string, data: Record<string, unknown>): Promi
 
 export const updateConsent = (
   patientId: string,
-  consentResults: boolean
+  consentResults: boolean,
+  consentAppointments?: boolean
 ): Promise<{ patient_id: string; consent_results: boolean }> =>
   request<{ data: { patient_id: string; consent_results: boolean } }>(
     `portal/patients/${patientId}/consent`,
-    { method: "PUT", data: { consent_results: consentResults } }
+    {
+      method: "PUT",
+      data: {
+        consent_results: consentResults,
+        ...(consentAppointments !== undefined ? { consent_appointments: consentAppointments } : {}),
+      },
+    }
   ).then((res) => res.data);
 
 // ---- Appointments ----------------------------------------------------------

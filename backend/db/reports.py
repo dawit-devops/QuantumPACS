@@ -52,7 +52,8 @@ class Reports(Table):
             ADD COLUMN IF NOT EXISTS ris_order_id UUID,
             ADD COLUMN IF NOT EXISTS template_id UUID,
             ADD COLUMN IF NOT EXISTS distributed_at TIMESTAMPTZ,
-            ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE
+            ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS body_part TEXT DEFAULT ''
         """)
 
     async def create(self, exam_id, data, created_by):

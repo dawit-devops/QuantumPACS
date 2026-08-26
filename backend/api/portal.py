@@ -345,7 +345,9 @@ class PortalConsentHandler(HTTPEndpoint):
             portal = Portal(conn)
             if not await portal.get_scope(patient_id, request.user.id):
                 return not_found('Patient not found')
-            await portal.set_consent(patient_id, body.consent_results)
+            await portal.set_consent(
+                patient_id, body.consent_results, body.consent_appointments,
+            )
             await AuditLog(conn).log_event(
                 event_type='portal.consent_changed',
                 actor_id=request.user.id,
@@ -354,6 +356,7 @@ class PortalConsentHandler(HTTPEndpoint):
                 details={
                     'patient_id': patient_id,
                     'consent_results': body.consent_results,
+                    'consent_appointments': body.consent_appointments,
                 },
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),

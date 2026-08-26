@@ -537,7 +537,7 @@ class TestPortalConsent:
 
         mock_conn.execute = execute
         with patch('api.portal.get_conn', return_value=mock_conn), \
-             patch('db.audit_log.AuditLog.log_event', new=AsyncMock()) as alog:
+             patch('db.audit_log.AuditLog.log_event', new=AsyncMock()):
             resp = client.put('/portal/patients/MRN1/consent',
                               json={'consent_results': True})
         assert resp.status_code == 200, resp.text
@@ -576,6 +576,32 @@ class TestPortalConsent:
             resp = client.put('/portal/patients/MRN1/consent',
                               json={'consent_results': True})
         assert resp.status_code == 404
+
+
+class TestPortalAppointmentConsent:
+    def test_updates_appointment_consent_independently(self):
+        client = TestClient(_make_app(STAFF))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetchrow.side_effect = [
+            _scope_row(),
+        ]
+        executed = []
+
+        async def execute(sql, *args):
+            executed.append(sql)
+            return 'UPDATE 1'
+
+        mock_conn.execute = execute
+        with patch('api.portal.get_conn', return_value=mock_conn), \
+             patch('db.audit_log.AuditLog.log_event', new=AsyncMock()):
+            resp = client.put('/portal/patients/MRN1/consent', json={
+                'consent_results': True,
+                'consent_appointments': False,
+            })
+        assert resp.status_code == 200
+        assert any("consent_appointments" in s for s in executed), executed
+        assert any("consent_results" in s for s in executed), executed
 
 
 class TestPortalFollowUps:

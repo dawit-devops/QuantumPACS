@@ -35,3 +35,7 @@ class UpdateConsentRequest(BaseModel):
     consent_results: bool = Field(
         description="Patient consent to share results via the portal"
     )
+    consent_appointments: bool = Field(
+        default=True,
+        description="Patient consent to show appointment details in the portal"
+    )
