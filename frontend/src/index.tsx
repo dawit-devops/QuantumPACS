@@ -88,9 +88,7 @@ const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
 const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
-const Communications = React.lazy(
-  () => import("./coordinator/Communications"),
-);
+const Communications = React.lazy(() => import("./coordinator/Communications"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
@@ -105,12 +103,8 @@ const TechnologistWorklist = React.lazy(() => import("./technologist/Technologis
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
 const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
 const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
-const ResidentProgress = React.lazy(
-  () => import("./radiologist/ResidentProgress"),
-);
-const TeachingLibrary = React.lazy(
-  () => import("./radiologist/TeachingLibrary"),
-);
+const ResidentProgress = React.lazy(() => import("./radiologist/ResidentProgress"));
+const TeachingLibrary = React.lazy(() => import("./radiologist/TeachingLibrary"));
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
 const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
 const CriticalResultsList = React.lazy(() => import("./radiologist/CriticalResults"));
@@ -122,9 +116,7 @@ const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
 const QAAnalyticsDashboard = React.lazy(() => import("./qa/QAAnalyticsDashboard"));
 const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
 const ClaimsStatus = React.lazy(() => import("./billing/ClaimsStatus"));
-const RevenueDashboard = React.lazy(
-  () => import("./billing/RevenueDashboard"),
-);
+const RevenueDashboard = React.lazy(() => import("./billing/RevenueDashboard"));
 const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
@@ -140,6 +132,7 @@ const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
 const AdminDashboard = React.lazy(() => import("./dashboard/AdminDashboard"));
 const NotificationPreferences = React.lazy(() => import("./notifications/NotificationPreferences"));
+const UserDashboard = React.lazy(() => import("./dashboard/UserDashboard"));
 const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
 const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
@@ -210,6 +203,9 @@ function ThemedApp() {
                     <Route path="/account" element={<Account />} />
                     {/* Per-user notification subscriptions (P1-1). */}
                     <Route path="/account/notifications" element={<NotificationPreferences />} />
+                    {/* §3 configurable widget dashboard — widgets self-filter
+                        by permission; the page is plain authenticated. */}
+                    <Route path="/dashboard" element={<UserDashboard />} />
                     {/* Platform-ops surfaces (super_admin review) — only the
                         platform admin holds SYSTEM_ADMIN. */}
                     <Route

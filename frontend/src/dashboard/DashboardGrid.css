@@ -1,0 +1,28 @@
+/* §3.5 dashboard grid: sm=1 col, md=2 cols, lg=3 cols with responsive
+   collapse to a single column on narrow screens. */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.dashboard-widget.size-sm {
+  grid-column: span 1;
+}
+.dashboard-widget.size-md {
+  grid-column: span 2;
+}
+.dashboard-widget.size-lg {
+  grid-column: span 3;
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-widget.size-md,
+  .dashboard-widget.size-lg {
+    grid-column: span 1;
+  }
+}
