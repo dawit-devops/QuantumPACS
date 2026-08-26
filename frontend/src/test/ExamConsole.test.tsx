@@ -910,6 +910,35 @@ describe("ExamConsole", () => {
     expect(screen.getByText("Read-only exam console")).toBeInTheDocument();
   });
 
+  it("shows the next patient's queue wait as the ETA (T-03)", async () => {
+    // The next-in-pool exam has been ready for 23 minutes — the console
+    // surfaces that wait so the tech can sequence the room without
+    // tabbing back to the worklist mid-scan.
+    const waitedExam = {
+      ...readyExam,
+      id: "e2",
+      accession_number: "ACC-NEXT",
+      patient_name: "Next Patient",
+      modality: "CT",
+      priority: "urgent",
+      status: "ready",
+      created_at: new Date(Date.now() - 23 * 60_000).toISOString(),
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      if (url === "exams") return Promise.resolve({ data: [waitedExam] });
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    // The provider bootstrap remounts the console a few times before
+    // settling, so give the banner's async fetch room beyond the default.
+    expect(await screen.findByText(/waiting 23 min/i, {}, { timeout: 5000 })).toBeInTheDocument();
+    // The accession rides inside the composite banner text.
+    expect(screen.getByText(/ACC-NEXT/)).toBeInTheDocument();
+  });
+
   it("renders a red badge for documented prior contrast reactions (T-04)", async () => {
     const examWithReactions = {
       ...inProgressExam,

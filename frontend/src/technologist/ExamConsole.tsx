@@ -222,6 +222,13 @@ function ExamConsole() {
       .catch(() => {});
   }, [exam?.id, exam?.modality, exam?.status, exam?.accession_number]);
 
+  // T-03: the ETA is queue-wait — how long the next patient has been ready
+  // on this modality. Oldest-waiting STAT first beats tabbing to the
+  // worklist to figure out sequencing.
+  const nextWaitMin = nextExam?.created_at
+    ? Math.max(0, Math.round((Date.now() - new Date(nextExam.created_at).getTime()) / 60_000))
+    : null;
+
   // C8 (NFR-R06-06): Ctrl+Shift+W jumps back to the worklist from anywhere
   // in the exam console; preventDefault stops the browser from closing the
   // tab (Ctrl+W is the tab-close chord, Ctrl+Shift+W has no default here).
@@ -645,6 +652,12 @@ function ExamConsole() {
                 <Tag color={PRIORITY_COLORS[nextExam.priority]}>
                   {String(nextExam.priority).toUpperCase()}
                 </Tag>
+              )}
+              {/* T-03: queue-wait ETA */}
+              {nextWaitMin !== null && (
+                <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                  waiting {nextWaitMin < 1 ? "<1 min" : `${nextWaitMin} min`}
+                </span>
               )}
             </span>
           }
