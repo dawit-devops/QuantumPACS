@@ -1,17 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Layout,
-  Table,
-  Tag,
-  Button,
-  Select,
-  Input,
-  Alert,
-  Spin,
-  Typography,
-} from "antd";
-import { CalendarOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Layout, Table, Tag, Button, Select, Input, Alert, Spin, Typography } from "antd";
+import { CalendarOutlined, ReloadOutlined, ScheduleOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
@@ -114,9 +104,7 @@ function Orders() {
 
   const summary = useMemo(() => {
     const open = (rows ?? []).filter(
-      (r) =>
-        derivedOrderStatus(r) !== "reported" &&
-        derivedOrderStatus(r) !== "cancelled",
+      (r) => derivedOrderStatus(r) !== "reported" && derivedOrderStatus(r) !== "cancelled"
     );
     const waiting = open.filter((r) => (ageDays(r) ?? 0) > 1);
     const reportedToday = (rows ?? []).filter((r) => {
@@ -174,9 +162,8 @@ function Orders() {
           style={{ marginBottom: 16 }}
           title={
             <span>
-              <Text strong>{summary.open}</Text> open ·{" "}
-              <Text strong>{summary.waiting}</Text> waiting &gt;24h ·{" "}
-              <Text strong>{summary.reportedToday}</Text> reported today
+              <Text strong>{summary.open}</Text> open · <Text strong>{summary.waiting}</Text>{" "}
+              waiting &gt;24h · <Text strong>{summary.reportedToday}</Text> reported today
             </span>
           }
         />
@@ -237,8 +224,7 @@ function Orders() {
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({
             // The patient route key is the patients table id, not the MRN.
-            onClick: () =>
-              navigate(`/patients/${r.patient_db_id ?? r.patient_id}`),
+            onClick: () => navigate(`/patients/${r.patient_db_id ?? r.patient_id}`),
             style: { cursor: "pointer" },
           })}
           locale={{
@@ -247,14 +233,10 @@ function Orders() {
                 <div style={{ padding: 24 }}>
                   <p style={{ marginBottom: 8 }}>No orders yet.</p>
                   <Text type="secondary" style={{ fontSize: 13 }}>
-                    New imaging requests will appear here. Book one from the
-                    Schedule Board.
+                    New imaging requests will appear here. Book one from the Schedule Board.
                   </Text>
                   <div style={{ marginTop: 12 }}>
-                    <Button
-                      icon={<CalendarOutlined />}
-                      onClick={() => navigate("/schedule-board")}
-                    >
+                    <Button icon={<CalendarOutlined />} onClick={() => navigate("/schedule-board")}>
                       Open Schedule Board
                     </Button>
                   </div>
@@ -294,8 +276,7 @@ function Orders() {
               title: "Modality",
               dataIndex: "modality",
               width: 90,
-              render: (v?: string) =>
-                v ? <Tag>{v}</Tag> : <Text type="secondary">—</Text>,
+              render: (v?: string) => (v ? <Tag>{v}</Tag> : <Text type="secondary">—</Text>),
             },
             {
               title: "Requested",
@@ -303,9 +284,7 @@ function Orders() {
               width: 110,
               render: (v?: string) =>
                 v ? (
-                  <Text style={{ fontSize: 12 }}>
-                    {new Date(v).toLocaleDateString()}
-                  </Text>
+                  <Text style={{ fontSize: 12 }}>{new Date(v).toLocaleDateString()}</Text>
                 ) : (
                   <Text type="secondary">—</Text>
                 ),
@@ -335,6 +314,35 @@ function Orders() {
                 ) : (
                   <Text type="secondary">—</Text>
                 ),
+            },
+            {
+              // S-09: book an order straight from the queue — jumps to the
+              // schedule page with the order pre-loaded in the booking form
+              // (patient/procedure/priority), so the scheduler only picks a
+              // slot. Hidden once the order is past scheduling.
+              title: "Action",
+              key: "action",
+              width: 110,
+              render: (_v, r) => {
+                const s = derivedOrderStatus(r);
+                if (s === "performed" || s === "reported" || s === "cancelled") {
+                  return <Text type="secondary">—</Text>;
+                }
+                return (
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<ScheduleOutlined />}
+                    aria-label={`Schedule ${r.patient_name || r.patient_id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/schedule?order=${encodeURIComponent(r.id)}`);
+                    }}
+                  >
+                    Schedule
+                  </Button>
+                );
+              },
             },
           ]}
         />

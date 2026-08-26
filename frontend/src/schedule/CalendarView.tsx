@@ -1,6 +1,7 @@
 import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
 import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert, Segmented } from "antd";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router";
 
 import { type Window } from "./boardSlots";
 import { dayjs } from "./time";
@@ -77,6 +78,14 @@ function CalendarView() {
   const [freeSlots, setFreeSlots] = useState<Record<string, ResourceAvailabilitySlot[]>>({});
   // S-03: flat date-range appointments for week/month views
   const [rangeAppointments, setRangeAppointments] = useState<RisAppointment[]>([]);
+
+  // S-09: an order to pre-fill into the booking form, carried here from the
+  // Orders page via /schedule?order=<id>. Cleared after a successful booking
+  // so a later free-cell click starts clean.
+  const location = useLocation();
+  const [orderPrefill, setOrderPrefill] = useState<string | null>(() =>
+    new URLSearchParams(location.search).get("order")
+  );
 
   // modal state
   const [bookFor, setBookFor] = useState<{
@@ -169,6 +178,8 @@ function CalendarView() {
 
   const refreshAfterMutation = () => {
     setSelected(null);
+    // S-09: one pre-filled order per visit — the next open starts clean.
+    setOrderPrefill(null);
     fetch();
   };
 
@@ -277,6 +288,7 @@ function CalendarView() {
         onClose={() => setBookFor(null)}
         onDone={refreshAfterMutation}
         onConflict={handleBookingConflict}
+        orderId={orderPrefill}
       />
 
       {/* appointment detail drawer with reschedule/cancel */}

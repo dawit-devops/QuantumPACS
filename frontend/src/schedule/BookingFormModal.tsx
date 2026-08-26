@@ -23,6 +23,10 @@ export interface BookingFormModalProps {
   onDone: () => void;
   /** Conflict (409) from the engine — availability may have changed. */
   onConflict?: (message: string) => void;
+  /** S-09: pre-selected order from the Orders page — auto-loads its detail
+   *  so the scheduler skips the search step (prefills patient/procedure/
+   *  priority + prior-auth warning). */
+  orderId?: string | null;
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -52,6 +56,7 @@ export default function BookingFormModal({
   onClose,
   onDone,
   onConflict,
+  orderId,
 }: BookingFormModalProps) {
   const { message } = App.useApp();
   const [orderSearch, setOrderSearch] = useState("");
@@ -89,6 +94,40 @@ export default function BookingFormModal({
       setSlotAlt(null);
     }
   }, [open, resource?.id, slot?.start]);
+
+  // S-09: open pre-filled with an order from the Orders page. The reset
+  // effect above clears pickedOrder on every open, so this effect refetches
+  // the detail and restores patient/procedure/prior-auth — the scheduler
+  // only has to pick a slot.
+  useEffect(() => {
+    if (!open || !orderId || pickedOrder) return;
+    let cancelled = false;
+    setOrderSearching(true);
+    getRisOrder(orderId)
+      .then((detail) => {
+        if (cancelled) return;
+        const o = detail.order;
+        setPickedOrder(o);
+        setPatientId(o.patient_id);
+        setPriorAuthStatus(o?.prior_auth_status || "");
+        const procs = detail.procedures ?? [];
+        setProcedures(procs);
+        if (procs.length > 0) {
+          const first = procs[0];
+          setProcedureId(first.id ?? "");
+          setReason(`Procedure: ${first.procedure_name || first.procedure_code || ""}`);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) message.warning(toErrorMessage(e) || "Could not load order");
+      })
+      .finally(() => {
+        if (!cancelled) setOrderSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, orderId, pickedOrder]);
 
   const runOrderSearch = async () => {
     const term = orderSearch.trim();

@@ -1,12 +1,9 @@
 import React from "react";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ThemeProvider } from "../common/ThemeProvider";
-import Orders, {
-  derivedOrderStatus,
-  ageDays,
-} from "../coordinator/Orders";
+import Orders, { derivedOrderStatus, ageDays } from "../coordinator/Orders";
 
 const mockRequest = vi.hoisted(() => vi.fn());
 
@@ -51,44 +48,28 @@ function row(overrides: Partial<any> = {}): any {
 
 describe("derivedOrderStatus (CS8)", () => {
   it("cancelled wins over everything", () => {
-    expect(
-      derivedOrderStatus(
-        row({ order_status: "cancelled", report_status: "final" }),
-      ),
-    ).toBe("cancelled");
+    expect(derivedOrderStatus(row({ order_status: "cancelled", report_status: "final" }))).toBe(
+      "cancelled"
+    );
   });
 
   it("non-draft reports mean reported", () => {
-    expect(derivedOrderStatus(row({ report_status: "final" }))).toBe(
-      "reported",
-    );
-    expect(derivedOrderStatus(row({ report_status: "prelim" }))).toBe(
-      "reported",
-    );
+    expect(derivedOrderStatus(row({ report_status: "final" }))).toBe("reported");
+    expect(derivedOrderStatus(row({ report_status: "prelim" }))).toBe("reported");
   });
 
   it("draft reports are in progress", () => {
-    expect(derivedOrderStatus(row({ report_status: "draft" }))).toBe(
-      "in progress",
-    );
+    expect(derivedOrderStatus(row({ report_status: "draft" }))).toBe("in progress");
   });
 
   it("exam states map to performed / in progress", () => {
-    expect(derivedOrderStatus(row({ exam_status: "completed" }))).toBe(
-      "performed",
-    );
-    expect(derivedOrderStatus(row({ exam_status: "in_progress" }))).toBe(
-      "in progress",
-    );
-    expect(derivedOrderStatus(row({ exam_status: "ready" }))).toBe(
-      "in progress",
-    );
+    expect(derivedOrderStatus(row({ exam_status: "completed" }))).toBe("performed");
+    expect(derivedOrderStatus(row({ exam_status: "in_progress" }))).toBe("in progress");
+    expect(derivedOrderStatus(row({ exam_status: "ready" }))).toBe("in progress");
   });
 
   it("scheduled worklist beats bare request", () => {
-    expect(derivedOrderStatus(row({ wl_status: "scheduled" }))).toBe(
-      "scheduled",
-    );
+    expect(derivedOrderStatus(row({ wl_status: "scheduled" }))).toBe("scheduled");
     expect(derivedOrderStatus(row())).toBe("requested");
   });
 });
@@ -101,21 +82,21 @@ describe("ageDays stuck-work boundaries (CS8)", () => {
 
   it("24h is the amber boundary (<=1d not waiting)", () => {
     // Exactly 24h old — NOT >1d, so not amber.
-    expect(ageDays(row({ created_at: new Date(Date.now() - DAY).toISOString() }))!).toBeLessThanOrEqual(1);
+    expect(
+      ageDays(row({ created_at: new Date(Date.now() - DAY).toISOString() }))!
+    ).toBeLessThanOrEqual(1);
     // Just over 24h — amber territory.
     expect(
-      ageDays(row({ created_at: new Date(Date.now() - DAY - HOUR).toISOString() }))!,
+      ageDays(row({ created_at: new Date(Date.now() - DAY - HOUR).toISOString() }))!
     ).toBeGreaterThan(1);
   });
 
   it("72h is the red boundary (>3d)", () => {
     expect(
-      ageDays(row({ created_at: new Date(Date.now() - 3 * DAY).toISOString() }))!,
+      ageDays(row({ created_at: new Date(Date.now() - 3 * DAY).toISOString() }))!
     ).toBeLessThanOrEqual(3);
     expect(
-      ageDays(
-        row({ created_at: new Date(Date.now() - 3 * DAY - HOUR).toISOString() })!,
-      ),
+      ageDays(row({ created_at: new Date(Date.now() - 3 * DAY - HOUR).toISOString() })!)
     ).toBeGreaterThan(3);
   });
 });
@@ -158,7 +139,7 @@ describe("Orders board summary + filters (CS8)", () => {
         <MemoryRouter>
           <Orders />
         </MemoryRouter>
-      </ThemeProvider>,
+      </ThemeProvider>
     );
   }
 
@@ -191,13 +172,43 @@ describe("Orders board summary + filters (CS8)", () => {
     await waitFor(() => {
       expect(screen.getByText("P1")).toBeInTheDocument();
     });
-    fireEvent.change(
-      screen.getByPlaceholderText(/search patient or procedure/i),
-      { target: { value: "p1" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText(/search patient or procedure/i), {
+      target: { value: "p1" },
+    });
     await waitFor(() => {
       expect(screen.getByText("P1")).toBeInTheDocument();
       expect(screen.queryByText("P3")).not.toBeInTheDocument();
     });
+  });
+
+  it("offers a Schedule action that jumps to /schedule?order= (S-09)", async () => {
+    const Spy = () => {
+      const loc = useLocation();
+      return <span data-testid="spy-loc">{loc.pathname + loc.search}</span>;
+    };
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/orders"]}>
+          <Spy />
+          <Orders />
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+
+    // Rows share patient_name "Doe^Jane"; the first visible row is `fresh`.
+    const scheduleBtns = await screen.findAllByRole("button", { name: /^Schedule Doe\^Jane$/ });
+    fireEvent.click(scheduleBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("spy-loc").textContent).toBe("/schedule?order=fresh");
+    });
+  });
+
+  it("hides the Schedule action for performed/reported/cancelled orders (S-09)", async () => {
+    renderOrders();
+    await screen.findByText("P4"); // reported (final report)
+    // fresh/amber/red are schedulable → 3 action buttons; done (reported) is not.
+    const scheduleBtns = screen.getAllByRole("button", { name: /^Schedule Doe\^Jane$/ });
+    expect(scheduleBtns).toHaveLength(3);
   });
 });

@@ -166,3 +166,34 @@ describe("BookingFormModal S-10 proactive prior-auth warning", () => {
     expect(await screen.findByTestId("prior-auth-warning")).toBeInTheDocument();
   });
 });
+
+describe("BookingFormModal S-09 order prefill", () => {
+  it("auto-loads a pre-selected order into the form (S-09)", async () => {
+    mockGetOrder.mockResolvedValue({
+      order: { ...ORDER_ROW, prior_auth_status: "APPROVED" },
+      procedures: [{ id: "p1", procedure_name: "CT Chest" }],
+    });
+    renderModal({ orderId: "ord-1" });
+
+    await waitFor(() => {
+      expect(mockGetOrder).toHaveBeenCalledWith("ord-1");
+    });
+    // Patient pre-filled, procedure reason set, order summary visible —
+    // the scheduler only has to pick a slot and confirm.
+    expect(await screen.findByTestId("booking-order-summary")).toBeInTheDocument();
+    expect(screen.getByLabelText("Patient ID")).toHaveValue("P1");
+    expect(screen.getByLabelText("Reason")).toHaveValue("Procedure: CT Chest");
+  });
+
+  it("stays usable for search when a prefill order fails to load (S-09)", async () => {
+    mockGetOrder.mockRejectedValue({ message: "order gone" });
+    renderModal({ orderId: "ord-missing" });
+
+    await waitFor(() => {
+      expect(mockGetOrder).toHaveBeenCalledWith("ord-missing");
+    });
+    // No summary, no patient prefill — but the search box still works.
+    expect(screen.queryByTestId("booking-order-summary")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Search order")).toBeInTheDocument();
+  });
+});
