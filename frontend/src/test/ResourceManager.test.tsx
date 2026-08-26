@@ -25,6 +25,9 @@ vi.mock("../api/scheduling", () => ({
   createRisResource: mockCreateRisResource,
   listRisSchedules: mockListRisSchedules,
   createRisSchedule: mockCreateRisSchedule,
+  listScheduleTemplates: vi.fn().mockResolvedValue([]),
+  createScheduleTemplate: vi.fn(),
+  applyScheduleTemplate: vi.fn(),
   getResourceAvailability: vi.fn(),
   listResourceAppointments: vi.fn(),
   bookAppointment: vi.fn(),
@@ -226,8 +229,6 @@ describe("ResourceManager", () => {
     seedUser(["SCHEDULE_READ"]);
     renderWithAuth(<ResourceManager />);
     await screen.findByText("CT Room 1");
-    expect(
-      screen.queryByRole("button", { name: /manage schedules/i })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /manage schedules/i })).not.toBeInTheDocument();
   });
 });

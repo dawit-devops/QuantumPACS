@@ -1,4 +1,4 @@
-import { ApartmentOutlined, PlusOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import {
   App,
   Button,
@@ -13,6 +13,7 @@ import {
   Tag,
   Alert,
   Descriptions,
+  Modal,
 } from "antd";
 import dayjs from "dayjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,9 +23,13 @@ import {
   createRisResource,
   listRisSchedules,
   createRisSchedule,
+  listScheduleTemplates,
+  createScheduleTemplate,
+  applyScheduleTemplate,
   dayOfWeekLabel,
   type RisResource,
   type RisSchedule,
+  type RisScheduleTemplate,
 } from "../api/scheduling";
 import { useAuth } from "../auth/AuthContext";
 import withSidebar from "../common/base";
@@ -75,6 +80,13 @@ function ResourceManager() {
   const [schedLoading, setSchedLoading] = useState(false);
   const [addingDay, setAddingDay] = useState<number | null>(null);
   const [newTime, setNewTime] = useState({ start: "08:00", end: "17:00" });
+  // S-05: schedule templates for this tenant.
+  const [templates, setTemplates] = useState<RisScheduleTemplate[]>([]);
+  const [tplSaveOpen, setTplSaveOpen] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [tplSaving, setTplSaving] = useState(false);
+  const [tplSelected, setTplSelected] = useState<string | undefined>();
+  const [tplApplying, setTplApplying] = useState(false);
 
   // A stale filter-change response must never paint over the newest one.
   const fetchSeq = useRef(0);
@@ -104,6 +116,16 @@ function ResourceManager() {
   }, [fetch]);
 
   useTenantRefetch(fetch);
+
+  // S-05: load the template catalog whenever the schedules drawer opens.
+  useEffect(() => {
+    if (!schedResource || !canWrite) return;
+    setTplSelected(undefined);
+    listScheduleTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedResource?.id, canWrite]);
 
   // R5: seq guard for the schedule drawer — opening A then quickly B
   // must not let A's finally flip schedLoading off while B is still pending.
@@ -170,6 +192,52 @@ function ResourceManager() {
       message.error(toErrorMessage(e) || "Failed to add schedule window");
     } finally {
       setAddingDay(null);
+    }
+  };
+
+  // S-05: save this resource's weekly windows as a named template, and
+  // batch-apply a saved template back onto the resource.
+  const doSaveTemplate = async () => {
+    if (!schedResource) return;
+    const name = tplName.trim();
+    if (!name) {
+      message.error("A template name is required");
+      return;
+    }
+    const slots = (schedules[schedResource.id] ?? []).map((s: RisSchedule) => ({
+      day_of_week: s.day_of_week,
+      start_time: s.start_time,
+      end_time: s.end_time,
+    }));
+    if (slots.length === 0) {
+      message.error("This resource has no windows to save");
+      return;
+    }
+    setTplSaving(true);
+    try {
+      await createScheduleTemplate({ name, slots });
+      message.success(`Template "${name}" saved`);
+      setTplSaveOpen(false);
+      setTplName("");
+      setTemplates(await listScheduleTemplates());
+    } catch (e: unknown) {
+      message.error(toErrorMessage(e) || "Failed to save template");
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
+  const doApplyTemplate = async () => {
+    if (!schedResource || !tplSelected) return;
+    setTplApplying(true);
+    try {
+      await applyScheduleTemplate(tplSelected, schedResource.id);
+      message.success("Template applied — weekly windows replaced");
+      openSchedules(schedResource);
+    } catch (e: unknown) {
+      message.error(toErrorMessage(e) || "Failed to apply template");
+    } finally {
+      setTplApplying(false);
     }
   };
 
@@ -353,6 +421,41 @@ function ResourceManager() {
                 </Space>
               </div>
             )}
+
+            {canWrite && (
+              <div style={{ marginTop: 16 }}>
+                <div className="sched-form-section-title">Templates</div>
+                <Space style={{ width: "100%" }} wrap>
+                  <Button
+                    size="small"
+                    icon={<SaveOutlined />}
+                    aria-label="Save as template"
+                    disabled={(schedules[schedResource.id]?.length ?? 0) === 0}
+                    onClick={() => setTplSaveOpen(true)}
+                  >
+                    Save as template
+                  </Button>
+                  <Select
+                    aria-label="Choose template"
+                    placeholder="Choose template"
+                    style={{ minWidth: 180 }}
+                    value={tplSelected}
+                    onChange={(v: string) => setTplSelected(v)}
+                    options={templates.map((t) => ({ value: t.id, label: t.name }))}
+                  />
+                  <Button
+                    size="small"
+                    type="primary"
+                    aria-label="Apply"
+                    disabled={!tplSelected}
+                    loading={tplApplying}
+                    onClick={doApplyTemplate}
+                  >
+                    Apply
+                  </Button>
+                </Space>
+              </div>
+            )}
           </>
         ) : null}
       </Drawer>
@@ -393,6 +496,27 @@ function ResourceManager() {
           </Button>
         </Form>
       </Drawer>
+
+      {/* S-05: name a saved template — the current resource's weekly windows
+          become the template's slot list. */}
+      <Modal
+        title="Save schedule template"
+        open={tplSaveOpen}
+        okText="Save template"
+        okButtonProps={{ loading: tplSaving }}
+        onOk={doSaveTemplate}
+        onCancel={() => setTplSaveOpen(false)}
+        destroyOnHidden
+        data-testid="template-save-dialog"
+      >
+        <Input
+          aria-label="Template name"
+          placeholder="e.g. Weekday day shift"
+          value={tplName}
+          onChange={(e) => setTplName(e.target.value)}
+          maxLength={128}
+        />
+      </Modal>
     </div>
   );
 }

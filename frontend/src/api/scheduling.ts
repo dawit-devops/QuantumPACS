@@ -164,6 +164,43 @@ export const markNoShow = (appointmentId: string): Promise<RisAppointment> =>
     method: "POST",
   }).then((res) => res.data);
 
+// ---------------------------------------------------------------------------
+// S-05: schedule templates — save a resource's weekly windows under a name
+// and batch-apply them to another resource.
+// ---------------------------------------------------------------------------
+
+export interface RisScheduleSlot {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface RisScheduleTemplate {
+  id: string;
+  name: string;
+  slots: RisScheduleSlot[];
+  created_at?: string;
+}
+
+export const listScheduleTemplates = (): Promise<RisScheduleTemplate[]> =>
+  request<{ data: RisScheduleTemplate[] }>("ris/schedule-templates").then((res) => res?.data ?? []);
+
+export const createScheduleTemplate = (body: {
+  name: string;
+  slots: RisScheduleSlot[];
+}): Promise<RisScheduleTemplate> =>
+  request<RisScheduleTemplate>("ris/schedule-templates", { data: body }).then(
+    (res) =>
+      (res as unknown as { data?: RisScheduleTemplate })?.data ??
+      (res as unknown as RisScheduleTemplate)
+  );
+
+export const applyScheduleTemplate = (templateId: string, resourceId: string): Promise<void> =>
+  request(`ris/schedule-templates/${templateId}/apply`, {
+    method: "POST",
+    data: { resource_id: resourceId },
+  }).then(() => undefined);
+
 // FD-04: staff one-click check-in (SCHEDULE_WRITE) — SCHEDULED → ARRIVED,
 // idempotent for an already-ARRIVED appointment (409 surfaces as info).
 export const checkInAppointment = (appointmentId: string): Promise<RisAppointment> =>
