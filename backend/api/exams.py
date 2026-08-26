@@ -349,6 +349,7 @@ class ExamHandler(HTTPEndpoint):
             # (excluding this exam) so the tech sees documented reactions
             # before scanning. Rows carry checked item, answer, who, when.
             prior_safety_checks = []
+            prior_contrast_reactions = []
             if mrn:
                 prior_safety_checks = await conn.fetch(
                     """SELECT sc.check_item, sc.answer, sc.checked_by, sc.checked_at,
@@ -357,6 +358,19 @@ class ExamHandler(HTTPEndpoint):
                        JOIN exams e ON e.id = sc.exam_id
                        WHERE e.patient_id = $1 AND e.id != $2
                        ORDER BY sc.checked_at DESC""",
+                    mrn, exam_id,
+                )
+                # T-04: documented contrast reactions from this patient's
+                # other exams — the red-badge signal before contrast
+                # administration (only contrast_reaction incidents count).
+                prior_contrast_reactions = await conn.fetch(
+                    """SELECT i.incident_type, i.severity, i.description, i.created_at,
+                              e.accession_number
+                         FROM incidents i
+                         JOIN exams e ON e.id = i.exam_id
+                        WHERE e.patient_id = $1 AND e.id != $2
+                          AND i.incident_type = 'contrast_reaction'
+                        ORDER BY i.created_at DESC""",
                     mrn, exam_id,
                 )
         return ok({
@@ -375,6 +389,9 @@ class ExamHandler(HTTPEndpoint):
                 'report_status': report_status,
                 'qa_flags': qa_flags,
                 'prior_safety_checks': [dict(r) for r in prior_safety_checks],
+                'prior_contrast_reactions': [
+                    dict(r) for r in prior_contrast_reactions
+                ],
             },
         })
 

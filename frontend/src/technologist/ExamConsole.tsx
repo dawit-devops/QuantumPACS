@@ -1042,6 +1042,27 @@ function ExamConsole() {
               ) : undefined
             }
           >
+            {/* T-04: documented contrast reactions from this patient's other
+                exams — red badge on the pre-contrast surface so the tech sees
+                the history before administering. */}
+            {(exam.prior_contrast_reactions || []).length > 0 && (
+              <div className="exam-reaction-history" data-testid="contrast-reaction-badge">
+                <Tag color="red">
+                  Prior contrast reaction{exam.prior_contrast_reactions.length > 1 ? "s" : ""} (
+                  {exam.prior_contrast_reactions.length})
+                </Tag>
+                {exam.prior_contrast_reactions.map((r: any, i: number) => (
+                  <div key={i} className="exam-prior-study">
+                    <span>
+                      {r.created_at ? `${String(r.created_at).slice(0, 10)} · ` : ""}
+                      {r.severity ? `${r.severity} severity · ` : ""}
+                      {r.description}
+                      {r.accession_number ? ` (${r.accession_number})` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {(exam.safety_checks || []).length ? (
               <Table
                 rowKey="id"

@@ -319,6 +319,53 @@ class TestExamIdentity:
         assert resp.json()['data']['confirmed'] is True
 
 
+class TestPriorContrastReactions:
+    """T-04: documented contrast reactions from the patient's other exams
+    ride the exam detail bundle so the console can show a red warning badge
+    before contrast administration."""
+
+    def _detail(self, fetch):
+        client = TestClient(_make_app(TECH))
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM patients' in q:
+                return None  # no patient extra tree needed for these cases
+            return {'id': 'e1', 'patient_id': 'P1', 'accession_number': 'A1'}
+
+        with _conn(fetchrow=fake_fetchrow, fetch=fetch):
+            resp = client.get('/exams/e1')
+        assert resp.status_code == 200
+        return resp.json()['data']
+
+    def test_documented_reaction_is_returned(self):
+        async def fake_fetch(q, *a):
+            if 'contrast_reaction' in q:
+                return [{
+                    'incident_type': 'contrast_reaction',
+                    'severity': 'high',
+                    'description': 'Urticaria after iodinated contrast',
+                    'accession_number': 'ACC-P9',
+                }]
+            return []
+
+        body = self._detail(fake_fetch)
+        assert len(body['prior_contrast_reactions']) == 1
+        row = body['prior_contrast_reactions'][0]
+        assert row['severity'] == 'high'
+        assert row['description'] == 'Urticaria after iodinated contrast'
+
+    def test_clean_history_returns_empty_list(self):
+        async def fake_fetch(q, *a):
+            return []
+
+        body = self._detail(fake_fetch)
+        assert body['prior_contrast_reactions'] == []
+
+    # Note: incident-type filtering happens in SQL
+    # (i.incident_type = 'contrast_reaction'); the fake-conn seam cannot
+    # exercise WHERE clauses, so only the wiring is covered here.
+
+
 class TestExamAcquisitions:
     def test_record_acquisition(self):
         client = TestClient(_make_app(TECH))

@@ -909,4 +909,55 @@ describe("ExamConsole", () => {
     expect(screen.queryByText("Log Incident")).not.toBeInTheDocument();
     expect(screen.getByText("Read-only exam console")).toBeInTheDocument();
   });
+
+  it("renders a red badge for documented prior contrast reactions (T-04)", async () => {
+    const examWithReactions = {
+      ...inProgressExam,
+      prior_contrast_reactions: [
+        {
+          incident_type: "contrast_reaction",
+          severity: "high",
+          description: "Urticaria after iodinated contrast",
+          accession_number: "ACC-P9",
+          created_at: "2025-11-02T09:00:00Z",
+        },
+        {
+          incident_type: "contrast_reaction",
+          severity: "medium",
+          description: "Flushing and nausea",
+          accession_number: "ACC-P2",
+          created_at: "2024-03-15T09:00:00Z",
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examWithReactions });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      // The badge sits in the Safety Checks card — the pre-contrast surface.
+      expect(screen.getByTestId("contrast-reaction-badge")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/prior contrast reactions \(2\)/i)).toBeInTheDocument();
+    // Each documented reaction is readable: severity + description.
+    expect(screen.getByText(/urticaria after iodinated contrast/i)).toBeInTheDocument();
+    expect(screen.getByText(/flushing and nausea/i)).toBeInTheDocument();
+  });
+
+  it("shows no reaction badge when the patient history is clean (T-04)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("contrast-reaction-badge")).toBeNull();
+  });
 });
