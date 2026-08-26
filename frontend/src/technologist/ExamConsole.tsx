@@ -135,6 +135,27 @@ function maxSeriesOf(previews: any[], server: any[]): number {
   return m;
 }
 
+// T-07: simulated image-quality score — the spec keeps this simulated until
+// real IQ metrics exist, but it must be deterministic per series UID so a
+// reload shows the same number the technologist judged the series by.
+function qualityScoreOf(acq: any): number | null {
+  const seed = String(acq?.instance_uid || acq?.id || "");
+  if (!seed) return null;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return 70 + (h % 30); // 70–99 band
+}
+
+function QualityTag({ acq }: { acq: any }) {
+  const q = qualityScoreOf(acq);
+  if (q === null) return null;
+  return (
+    <Tag color={q >= 90 ? "green" : q >= 80 ? "gold" : "red"} style={{ marginLeft: 8 }}>
+      Quality {q}%
+    </Tag>
+  );
+}
+
 function ExamConsole() {
   const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Exam Console");
@@ -907,7 +928,11 @@ function ExamConsole() {
                           label={acq.description || "Series"}
                         />
                         <div className="exam-acq-item-info">
-                          <b>{acq.description || "Series"}</b>
+                          <b>
+                            {acq.description || "Series"}
+                            {/* T-07: simulated quality score */}
+                            <QualityTag acq={acq} />
+                          </b>
                           <span className="exam-acq-item-meta">
                             DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp {acq.kvp || 0}
                           </span>
@@ -936,7 +961,10 @@ function ExamConsole() {
                         {rejectedAcqs.map((acq: any) => (
                           <div key={acq.id} className="exam-acq-item exam-acq-item-rejected">
                             <div>
-                              <b>{acq.description || "Series"}</b>
+                              <b>
+                                {acq.description || "Series"}
+                                <QualityTag acq={acq} />
+                              </b>
                               <span className="exam-acq-item-meta">
                                 Series {acq.series_number} · Rejected:{" "}
                                 {acq.reject_reason || "no reason"}

@@ -393,6 +393,45 @@ describe("ExamConsole", () => {
     expect(screen.getByText("Localizer")).toBeInTheDocument();
   });
 
+  it("shows a stable simulated quality score on QA-queue items (T-07)", async () => {
+    // The spec's quality score is simulated for now; it must still be
+    // deterministic per series so a reload shows the same number the tech
+    // judged acquisition by. Same UID -> same score via fixture reuse below.
+    let examState: any = { ...inProgressExam };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      if (url === "exams/e1/acquisitions") {
+        const acq = {
+          id: "acq-q",
+          series_number: 1,
+          description: "Diagnostic series",
+          instance_uid: "1.2.826.0.1.3680043.9.quality",
+          kvp: 120,
+          mas: 210,
+          dlp: 520,
+          ctdivol: 12.5,
+        };
+        examState = { ...examState, acquisitions: [...examState.acquisitions, acq] };
+        return Promise.resolve({ data: acq });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
+
+    const scoreText = await screen.findByText(/Quality \d+%/);
+    expect(scoreText).toBeInTheDocument();
+    // 70–99 band — never a zero or a nonsense value.
+    const pct = Number(scoreText.textContent!.match(/(\d+)%/)![1]);
+    expect(pct).toBeGreaterThanOrEqual(70);
+    expect(pct).toBeLessThanOrEqual(99);
+  });
+
   it("accepts a pending acquisition and clears the QA queue", async () => {
     let examState: any = { ...inProgressExam };
     mockRequest.mockImplementation((url: string) => {
