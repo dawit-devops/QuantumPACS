@@ -47,9 +47,7 @@ export interface UnbilledAgingReport {
   buckets?: { over5: number; over10: number };
 }
 
-export const listBillingQueue = (
-  query: Record<string, string> = {},
-): Promise<BillingQueuePage> =>
+export const listBillingQueue = (query: Record<string, string> = {}): Promise<BillingQueuePage> =>
   request<BillingQueuePage>("ris/billing/queue", { query });
 
 export const dropCharge = (id: string): Promise<{ id: string; status: string }> =>
@@ -65,46 +63,60 @@ export interface BatchDropResult {
 
 export const batchDropCharges = (
   chargeIds: string[],
-  overrides?: Record<string, { cpt_code?: string; icd10_code?: string }>,
+  overrides?: Record<string, { cpt_code?: string; icd10_code?: string }>
 ): Promise<BatchDropResult> =>
   request<{ data: BatchDropResult }>("ris/billing/charges/batch", {
     method: "POST",
     data: { charge_ids: chargeIds, overrides },
-  }).then(
-    (res) =>
-      res?.data ?? { dropped: [], missing: [], skipped: [] },
-  );
+  }).then((res) => res?.data ?? { dropped: [], missing: [], skipped: [] });
 
 // B-10: batch rework of a denial reason-code group.
 export const batchResubmitClaims = (
   claimIds: string[],
-  note: string,
+  note: string
 ): Promise<{ resubmitted: string[]; missing: string[] }> =>
   request<{ data: { resubmitted: string[]; missing: string[] } }>(
     "ris/billing/claims/batch-resubmit",
-    { method: "POST", data: { claim_ids: claimIds, note } },
+    { method: "POST", data: { claim_ids: claimIds, note } }
   ).then((res) => res?.data ?? { resubmitted: [], missing: [] });
 
 export const getUnbilledAging = (
   query: Record<string, string> = {}
-): Promise<UnbilledAgingReport> =>
-  request<UnbilledAgingReport>("ris/billing/unbilled", { query });
+): Promise<UnbilledAgingReport> => request<UnbilledAgingReport>("ris/billing/unbilled", { query });
 
-export const getCptSuggestions = (
-  procedure: string,
-): Promise<{ data: CptSuggestion[] }> =>
+export const getCptSuggestions = (procedure: string): Promise<{ data: CptSuggestion[] }> =>
   request<{ data: CptSuggestion[] }>("ris/billing/cpt-suggestions", {
     query: { procedure },
   });
 
 export const submitClaim = (
-  id: string,
+  id: string
 ): Promise<{ id: string; claim_number: string; status: string }> =>
   request(`ris/billing/claims/${id}/submit`, { method: "POST" });
 
-export const reworkDenial = (
-  id: string,
-): Promise<{ id: string; status: string }> =>
+// B-03: patient financial responsibility — coverage snapshot plus open
+// charges/invoice balances for the coder's pre-bill review.
+export interface PatientResponsibility {
+  patient_id: string;
+  coverage_status: string;
+  provider?: string;
+  member_id?: string;
+  copay_amount: number | null;
+  deductible_total: number | null;
+  deductible_remaining: number | null;
+  coinsurance_pct: number | null;
+  open_charges_count: number;
+  open_charges_total: number;
+  open_invoices: number;
+  invoice_balance: number;
+}
+
+export const getPatientResponsibility = (patientId: string): Promise<PatientResponsibility> =>
+  request<{ data: PatientResponsibility }>(`ris/billing/patients/${patientId}/responsibility`).then(
+    (res) => res?.data
+  );
+
+export const reworkDenial = (id: string): Promise<{ id: string; status: string }> =>
   request(`ris/billing/denials/${id}/rework`, { method: "POST" });
 // ---------------------------------------------------------------------------
 // R2-S3/S4 — denial rework chain
@@ -134,20 +146,16 @@ export interface ClaimEvent {
 }
 
 export const listDenialRework = (): Promise<DenialReworkRow[]> =>
-  request<{ data: DenialReworkRow[] }>("ris/billing/denials").then(
-    (res) => res.data ?? [],
-  );
+  request<{ data: DenialReworkRow[] }>("ris/billing/denials").then((res) => res.data ?? []);
 
 export const resubmitClaim = (
   id: string,
-  body: { note: string },
+  body: { note: string }
 ): Promise<{ id: string; status: string }> =>
   request(`ris/billing/claims/${id}/resubmit`, { method: "POST", data: body });
 
 export const getClaimHistory = (id: string): Promise<ClaimEvent[]> =>
-  request<{ data: ClaimEvent[] }>(`ris/billing/claims/${id}/history`).then(
-    (res) => res.data ?? [],
-  );
+  request<{ data: ClaimEvent[] }>(`ris/billing/claims/${id}/history`).then((res) => res.data ?? []);
 
 // B-06: full claim lifecycle dashboard.
 export interface ClaimRow {
@@ -166,16 +174,12 @@ export interface ClaimRow {
   charge_amount: number;
 }
 
-export const listClaims = (
-  query: Record<string, string> = {},
-): Promise<ClaimRow[]> =>
-  request<{ data: ClaimRow[] }>("ris/billing/claims", { query }).then(
-    (res) => res?.data ?? [],
-  );
+export const listClaims = (query: Record<string, string> = {}): Promise<ClaimRow[]> =>
+  request<{ data: ClaimRow[] }>("ris/billing/claims", { query }).then((res) => res?.data ?? []);
 
 // B-02: batch submission — one claim per prepared charge.
 export const batchSubmitClaims = (
-  chargeIds: string[],
+  chargeIds: string[]
 ): Promise<{
   submitted: { charge_id: string; claim_number: string; status: string }[];
   missing: string[];

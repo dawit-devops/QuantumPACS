@@ -1,7 +1,19 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
-import { App, Layout, Table, Tag, Button, Space, Input, Alert, Modal, Descriptions } from "antd";
-import { ReloadOutlined, DollarOutlined, SendOutlined } from "@ant-design/icons";
+import {
+  App,
+  Layout,
+  Table,
+  Tag,
+  Button,
+  Space,
+  Input,
+  Alert,
+  Modal,
+  Descriptions,
+  Drawer,
+} from "antd";
+import { ReloadOutlined, DollarOutlined, SendOutlined, WalletOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
 import {
@@ -11,6 +23,8 @@ import {
   batchDropCharges,
   submitClaim,
   batchSubmitClaims,
+  getPatientResponsibility,
+  type PatientResponsibility,
   type BillingQueueEntry,
   type CptSuggestion,
 } from "../api/billing-ris";
@@ -43,6 +57,22 @@ function BillingQueue() {
   const [reviewTarget, setReviewTarget] = useState<BillingQueueEntry | null>(null);
   const [submittingClaim, setSubmittingClaim] = useState(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+  // B-03: patient responsibility drawer.
+  const [respTarget, setRespTarget] = useState<BillingQueueEntry | null>(null);
+  const [respData, setRespData] = useState<PatientResponsibility | null>(null);
+  const [respLoading, setRespLoading] = useState(false);
+
+  const openResponsibility = (entry: BillingQueueEntry) => {
+    setRespTarget(entry);
+    setRespData(null);
+    setRespLoading(true);
+    getPatientResponsibility(entry.patient_id)
+      .then(setRespData)
+      .catch((e: any) => message.error(e.message || "Failed to load responsibility"))
+      .finally(() => setRespLoading(false));
+  };
+
+  const money = (v: number | null | undefined) => (v == null ? "—" : `$${Number(v).toFixed(2)}`);
 
   const fetch = useCallback(() => {
     setLoading(true);
@@ -196,6 +226,14 @@ function BillingQueue() {
           </Button>
           <Button
             size="small"
+            icon={<WalletOutlined />}
+            aria-label={`Responsibility for ${record.patient_name || record.patient_id}`}
+            onClick={() => openResponsibility(record)}
+          >
+            Responsibility
+          </Button>
+          <Button
+            size="small"
             icon={<DollarOutlined />}
             aria-label="Drop charge"
             onClick={() => handleDrop(record)}
@@ -307,6 +345,56 @@ function BillingQueue() {
           </Descriptions>
         )}
       </Modal>
+
+      {/* B-03: patient financial responsibility — coverage snapshot plus the
+          open charges/invoice balances the statement would settle. */}
+      <Drawer
+        title={`Patient responsibility — ${respTarget?.patient_name || ""}`}
+        open={!!respTarget}
+        onClose={() => setRespTarget(null)}
+        width={420}
+        destroyOnHidden
+      >
+        <div data-testid="responsibility-drawer">
+          {respLoading ? (
+            <span>Loading…</span>
+          ) : respData ? (
+            <>
+              {respData.coverage_status !== "active" && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="No active coverage on file"
+                  style={{ marginBottom: 12 }}
+                />
+              )}
+              <Descriptions bordered column={1} size="small">
+                <Descriptions.Item label="Coverage">
+                  <Tag color={respData.coverage_status === "active" ? "green" : "default"}>
+                    {respData.coverage_status}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Payer">{respData.provider || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Member ID">{respData.member_id || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Copay">{money(respData.copay_amount)}</Descriptions.Item>
+                <Descriptions.Item label="Coinsurance">
+                  {respData.coinsurance_pct != null ? `${respData.coinsurance_pct}%` : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Deductible remaining">
+                  {money(respData.deductible_remaining)}{" "}
+                  {respData.deductible_total != null && `of ${money(respData.deductible_total)}`}
+                </Descriptions.Item>
+                <Descriptions.Item label="Open charges">
+                  {respData.open_charges_count} ({money(respData.open_charges_total)})
+                </Descriptions.Item>
+                <Descriptions.Item label="Invoice balance">
+                  {money(respData.invoice_balance)} across {respData.open_invoices} invoice(s)
+                </Descriptions.Item>
+              </Descriptions>
+            </>
+          ) : null}
+        </div>
+      </Drawer>
     </Content>
   );
 }
