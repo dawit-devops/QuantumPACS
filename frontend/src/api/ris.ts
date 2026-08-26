@@ -59,43 +59,74 @@ export const listRisInterfaces = async (): Promise<RisInterface[]> => {
 
 export const listRisInterfaceMessages = async (
   id: string,
-  params: { limit?: number; offset?: number } = {},
+  params: { limit?: number; offset?: number } = {}
 ): Promise<RisMessagePage> => {
   const query: Record<string, string> = {};
   if (params.limit !== undefined) query.limit = String(params.limit);
   if (params.offset !== undefined) query.offset = String(params.offset);
-  const body = await request<{ data: RisMessagePage }>(
-    `ris/interfaces/${id}/messages`,
-    { query },
-  );
+  const body = await request<{ data: RisMessagePage }>(`ris/interfaces/${id}/messages`, { query });
   return body.data;
 };
 
-export const getRisInterfaceMetrics = async (
-  id: string,
-  period: string,
-): Promise<RisMetrics> => {
-  const body = await request<{ data: RisMetrics }>(
-    `ris/interfaces/${id}/metrics`,
-    { query: { period } },
-  );
+export const getRisInterfaceMetrics = async (id: string, period: string): Promise<RisMetrics> => {
+  const body = await request<{ data: RisMetrics }>(`ris/interfaces/${id}/metrics`, {
+    query: { period },
+  });
   return body.data;
 };
 
-export const listRisExceptions = async (
-  limit = 50,
-): Promise<RisException[]> => {
+export const listRisExceptions = async (limit = 50): Promise<RisException[]> => {
   const body = await request<{
     data: { exceptions: RisException[]; count: number };
   }>("ris/interfaces/exceptions", { query: { limit: String(limit) } });
   return body.data.exceptions;
 };
 
-export const retryRisException = async (
-  id: string,
-): Promise<{ retried: boolean }> => {
+export const retryRisException = async (id: string): Promise<{ retried: boolean }> => {
   const body = await request<{
     data: { message_id: string; retried: boolean };
   }>(`ris/interfaces/exceptions/${id}/retry`, { method: "POST" });
   return body.data;
+};
+
+/* ── Handoff Notes (CC-08) ────────────────────────────────────────────── */
+
+export interface HandoffNote {
+  id: string;
+  patient_id: string;
+  note: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  is_read: boolean;
+  tenant_id: string;
+  created_by: string;
+  created_at: string;
+}
+
+export const listHandoffNotes = async (params?: {
+  patient_id?: string;
+  unread_only?: boolean;
+}): Promise<HandoffNote[]> => {
+  const query: Record<string, string> = {};
+  if (params?.patient_id) query.patient_id = params.patient_id;
+  if (params?.unread_only) query.unread_only = "true";
+  const body = await request<{ data: HandoffNote[] }>("ris/handoff-notes", {
+    query,
+  });
+  return body.data;
+};
+
+export const createHandoffNote = async (data: {
+  patient_id: string;
+  note: string;
+  priority?: string;
+}): Promise<HandoffNote> => {
+  const body = await request<{ data: HandoffNote }>("ris/handoff-notes", {
+    method: "POST",
+    data,
+  });
+  return body.data;
+};
+
+export const markHandoffNoteRead = async (id: string): Promise<void> => {
+  await request(`ris/handoff-notes/${id}/read`, { method: "PATCH" });
 };

@@ -139,6 +139,7 @@ from api.care_plans import (
     CarePlanHandler,
     CarePlanDetailHandler,
 )
+from api.handoff_notes import HandoffNotesHandler, HandoffNoteReadHandler
 from api.encounters import EncounterHandler
 from api.communications import CommunicationHandler
 from api.equipment import (
@@ -381,6 +382,9 @@ _V1_ROUTES = [
     v2(Route('/ris/reminders/optouts', endpoint=ReminderOptOutHandler)),
     v2(Route('/ris/care-plans', endpoint=CarePlanHandler)),
     v2(Route('/ris/care-plans/{id}', endpoint=CarePlanDetailHandler)),
+    v2(Route('/ris/handoff-notes', endpoint=HandoffNotesHandler)),
+    v2(Route('/ris/handoff-notes/{id}/read', endpoint=HandoffNoteReadHandler,
+             methods=['PATCH'])),
     v2(Route('/ris/encounters', endpoint=EncounterHandler)),
     v2(Route('/ris/communications', endpoint=CommunicationHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
