@@ -1,15 +1,10 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
+import { App } from "antd";
 import PeerReviewInbox from "../radiologist/PeerReviewInbox";
 
 const mockRequest = vi.hoisted(() => vi.fn());
@@ -46,13 +41,15 @@ vi.mock("antd", async () => {
 
 function renderInbox() {
   return render(
-    <ThemeProvider>
-      <AuthProvider>
-        <MemoryRouter initialEntries={["/peer-review"]}>
-          <PeerReviewInbox />
-        </MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
+    <App>
+      <ThemeProvider>
+        <AuthProvider>
+          <MemoryRouter initialEntries={["/peer-review"]}>
+            <PeerReviewInbox />
+          </MemoryRouter>
+        </AuthProvider>
+      </ThemeProvider>
+    </App>
   );
 }
 
@@ -89,10 +86,7 @@ describe("PeerReviewInbox", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "radiologist");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["PEER_REVIEW_READ", "PEER_REVIEW_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["PEER_REVIEW_READ", "PEER_REVIEW_WRITE"]));
     mockRequest.mockReset();
   });
 
@@ -139,17 +133,18 @@ describe("PeerReviewInbox", () => {
   });
 
   it("submits a discrepancy-level outcome", async () => {
+    const inProgressReview = { ...mockReview, status: "in_progress" };
     mockRequest.mockImplementation((url: string, opts?: any) => {
       if (url === "peer-reviews") {
-        return Promise.resolve({ data: [mockReview] });
+        return Promise.resolve({ data: [inProgressReview] });
       }
       if (url === "peer-reviews/rev-1") {
-        return Promise.resolve({ data: mockReview });
+        return Promise.resolve({ data: inProgressReview });
       }
       if (url === "peer-reviews/rev-1/submit") {
         return Promise.resolve({
           data: {
-            ...mockReview,
+            ...inProgressReview,
             status: "completed",
             discrepancy_level: opts.data.discrepancy_level,
             comment: opts.data.comment,
@@ -184,14 +179,12 @@ describe("PeerReviewInbox", () => {
 
     const dialog = screen
       .getAllByRole("dialog")
-      .find((d) =>
-        within(d as HTMLElement).queryByText("Discrepancy level"),
-      ) as HTMLElement;
+      .find((d) => within(d as HTMLElement).queryByText("Discrepancy level")) as HTMLElement;
     fireEvent.click(within(dialog).getByRole("button", { name: /^submit$/i }));
 
     await waitFor(() => {
       const submitCall = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "peer-reviews/rev-1/submit",
+        (c: any) => c[0] === "peer-reviews/rev-1/submit"
       ) as any[] | undefined;
       expect(submitCall).toBeDefined();
       expect(submitCall![1].data.discrepancy_level).toBe("minor");
@@ -201,13 +194,14 @@ describe("PeerReviewInbox", () => {
   it("shows a read-only review for a PEER_REVIEW_READ-only user", async () => {
     // A reviewer without PEER_REVIEW_WRITE views the report but cannot close
     // the review — the submit affordance is replaced by an info notice.
+    const inProgressReview = { ...mockReview, status: "in_progress" };
     localStorage.setItem("permissions", JSON.stringify(["PEER_REVIEW_READ"]));
     mockRequest.mockImplementation((url: string) => {
       if (url === "peer-reviews") {
-        return Promise.resolve({ data: [mockReview] });
+        return Promise.resolve({ data: [inProgressReview] });
       }
       if (url === "peer-reviews/rev-1") {
-        return Promise.resolve({ data: mockReview });
+        return Promise.resolve({ data: inProgressReview });
       }
       return Promise.resolve({ data: {} });
     });
@@ -222,11 +216,9 @@ describe("PeerReviewInbox", () => {
       expect(screen.getByText("Original Findings")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: /submit review outcome/i }),
+      screen.queryByRole("button", { name: /submit review outcome/i })
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/requires the PEER_REVIEW_WRITE permission/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/requires the PEER_REVIEW_WRITE permission/i)).toBeInTheDocument();
   });
 
   it("shows an empty state when no reviews are assigned", async () => {
@@ -234,9 +226,7 @@ describe("PeerReviewInbox", () => {
     renderInbox();
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/No peer reviews assigned to you yet/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/No peer reviews assigned to you yet/i)).toBeInTheDocument();
     });
   });
 
@@ -245,9 +235,125 @@ describe("PeerReviewInbox", () => {
     renderInbox();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load peer reviews"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Failed to load peer reviews")).toBeInTheDocument();
     });
+  });
+
+  it("accepts a review, moving it to in-progress", async () => {
+    mockRequest.mockImplementation((url: string, opts?: any) => {
+      if (url === "peer-reviews") {
+        return Promise.resolve({ data: [mockReview] });
+      }
+      if (url === "peer-reviews/rev-1") {
+        return Promise.resolve({ data: mockReview });
+      }
+      if (url === "peer-reviews/rev-1/accept") {
+        return Promise.resolve({
+          data: { ...mockReview, status: "in_progress" },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    renderInbox();
+
+    await waitFor(() => {
+      expect(screen.getByText("Review")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Review"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Start Review")).toBeInTheDocument();
+    });
+    // Popconfirm: confirm via its OK button (exact "Start")
+    fireEvent.click(screen.getByText("Start Review"));
+    fireEvent.click(await screen.findByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      const acceptCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "peer-reviews/rev-1/accept"
+      ) as any[] | undefined;
+      expect(acceptCall).toBeDefined();
+      expect(acceptCall![1].method).toBe("POST");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Start Review")).not.toBeInTheDocument();
+      expect(screen.getByText("Submit Review Outcome")).toBeInTheDocument();
+    });
+  });
+
+  it("declines a review with a reason", async () => {
+    mockRequest.mockImplementation((url: string, opts?: any) => {
+      if (url === "peer-reviews") {
+        return Promise.resolve({ data: [mockReview] });
+      }
+      if (url === "peer-reviews/rev-1") {
+        return Promise.resolve({ data: mockReview });
+      }
+      if (url === "peer-reviews/rev-1/decline") {
+        return Promise.resolve({
+          data: {
+            ...mockReview,
+            status: "rejected",
+            declined_reason: opts.data.reason,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    renderInbox();
+
+    await waitFor(() => {
+      expect(screen.getByText("Review")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Review"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Decline")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Decline"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Decline Peer Review")).toBeInTheDocument();
+    });
+    const dialog = screen
+      .getAllByRole("dialog")
+      .find((d) => within(d as HTMLElement).queryByText("Decline Peer Review")) as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: /^decline$/i }));
+
+    await waitFor(() => {
+      const declineCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "peer-reviews/rev-1/decline"
+      ) as any[] | undefined;
+      expect(declineCall).toBeDefined();
+      expect(declineCall![1].data.reason).toBe("");
+    });
+  });
+
+  it("shows declined status with reason", async () => {
+    const declined = {
+      ...mockReview,
+      status: "rejected",
+      declined_reason: "Out of scope",
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "peer-reviews") {
+        return Promise.resolve({ data: [declined] });
+      }
+      if (url === "peer-reviews/rev-1") {
+        return Promise.resolve({ data: declined });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    renderInbox();
+
+    await waitFor(() => {
+      expect(screen.getByText("rejected")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Review"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Review declined — Out of scope/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Start Review")).not.toBeInTheDocument();
   });
 });

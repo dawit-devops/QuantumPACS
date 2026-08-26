@@ -12,8 +12,15 @@ import {
   Form,
   Select,
   Input,
+  Popconfirm,
 } from "antd";
-import { AuditOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
+import {
+  AuditOutlined,
+  ReloadOutlined,
+  TeamOutlined,
+  CheckOutlined,
+  CloseOutlined,
+} from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
@@ -25,6 +32,7 @@ const STATUS_COLORS: Record<string, string> = {
   assigned: "blue",
   in_progress: "gold",
   completed: "green",
+  rejected: "red",
 };
 
 const DISCREPANCY_COLORS: Record<string, string> = {
@@ -53,6 +61,10 @@ function PeerReviewInbox() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitForm] = Form.useForm();
+
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [declineForm] = Form.useForm();
 
   const fetchList = useCallback(() => {
     setLoading(true);
@@ -113,6 +125,49 @@ function PeerReviewInbox() {
     }
   };
 
+  const acceptReview = async () => {
+    if (!review) return;
+    setSubmitting(true);
+    try {
+      const res = await request(`peer-reviews/${review.id}/accept`, {
+        method: "POST",
+      });
+      message.success("Review started");
+      setReview(res.data);
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || "Accept failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const declineReview = async () => {
+    let values;
+    try {
+      values = await declineForm.validateFields();
+    } catch {
+      return;
+    }
+    if (!review) return;
+    setDeclining(true);
+    try {
+      const res = await request(`peer-reviews/${review.id}/decline`, {
+        method: "POST",
+        data: { reason: values.reason || "" },
+      });
+      message.success("Peer review declined");
+      setDeclineOpen(false);
+      setReview(res.data);
+      declineForm.resetFields();
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || "Decline failed");
+    } finally {
+      setDeclining(false);
+    }
+  };
+
   const columns = [
     {
       title: "Accession",
@@ -122,8 +177,7 @@ function PeerReviewInbox() {
     {
       title: "Patient",
       key: "patient",
-      render: (_: unknown, r: any) =>
-        r.exam?.patient_name || r.exam?.patient_id || "—",
+      render: (_: unknown, r: any) => r.exam?.patient_name || r.exam?.patient_id || "—",
     },
     {
       title: "Modality",
@@ -136,17 +190,14 @@ function PeerReviewInbox() {
       dataIndex: "status",
       key: "status",
       width: 120,
-      render: (s: string) => (
-        <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>
-      ),
+      render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
     },
     {
       title: "Discrepancy",
       dataIndex: "discrepancy_level",
       key: "discrepancy_level",
       width: 130,
-      render: (v: string) =>
-        v ? <Tag color={DISCREPANCY_COLORS[v]}>{v}</Tag> : <span>—</span>,
+      render: (v: string) => (v ? <Tag color={DISCREPANCY_COLORS[v]}>{v}</Tag> : <span>—</span>),
     },
     {
       title: "Assigned",
@@ -232,21 +283,16 @@ function PeerReviewInbox() {
         {review && (
           <div className="pr-review-body">
             <h3>
-              {review.exam?.patient_name || review.exam?.patient_id} ·{" "}
-              {review.exam?.modality} ·{" "}
+              {review.exam?.patient_name || review.exam?.patient_id} · {review.exam?.modality} ·{" "}
               {review.exam?.accession_number || "no accession"}
             </h3>
             <div className="pr-review-section">
               <b>Original Findings</b>
-              <pre className="pr-review-text">
-                {review.report?.findings || "—"}
-              </pre>
+              <pre className="pr-review-text">{review.report?.findings || "—"}</pre>
             </div>
             <div className="pr-review-section">
               <b>Original Impression</b>
-              <pre className="pr-review-text">
-                {review.report?.impression || "—"}
-              </pre>
+              <pre className="pr-review-text">{review.report?.impression || "—"}</pre>
             </div>
             {review.status === "completed" ? (
               <Alert
@@ -254,6 +300,40 @@ function PeerReviewInbox() {
                 showIcon
                 title={`Review complete — discrepancy: ${review.discrepancy_level}`}
               />
+            ) : review.status === "rejected" ? (
+              <Alert
+                type="error"
+                showIcon
+                title={`Review declined — ${review.declined_reason || "no reason given"}`}
+              />
+            ) : review.status === "assigned" ? (
+              <div style={{ marginTop: 12 }}>
+                <Popconfirm
+                  title="Start this peer review?"
+                  description="Accepts the assignment and moves it to in-progress."
+                  okText="Start"
+                  cancelText="Back"
+                  onConfirm={acceptReview}
+                >
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    loading={submitting}
+                    disabled={!canSubmit}
+                  >
+                    Start Review
+                  </Button>
+                </Popconfirm>
+                <Button
+                  danger
+                  icon={<CloseOutlined />}
+                  onClick={() => setDeclineOpen(true)}
+                  disabled={!canSubmit}
+                  style={{ marginLeft: 8 }}
+                >
+                  Decline
+                </Button>
+              </div>
             ) : canSubmit ? (
               <Button
                 type="primary"
@@ -299,9 +379,30 @@ function PeerReviewInbox() {
             />
           </Form.Item>
           <Form.Item name="comment" label="Comment (optional)">
+            <Input.TextArea rows={4} placeholder="Feedback for the reading radiologist…" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Decline Peer Review"
+        open={declineOpen}
+        onCancel={() => setDeclineOpen(false)}
+        onOk={declineReview}
+        okText="Decline"
+        okButtonProps={{ danger: true, loading: declining }}
+        cancelButtonProps={{ disabled: declining }}
+        destroyOnHidden
+      >
+        <Form form={declineForm} layout="vertical">
+          <Form.Item
+            name="reason"
+            label="Reason (optional)"
+            extra="Declining returns the assignment to the pool — the report stays available for another reviewer."
+          >
             <Input.TextArea
-              rows={4}
-              placeholder="Feedback for the reading radiologist…"
+              rows={3}
+              placeholder="e.g. out of scope, already reviewing, workload…"
             />
           </Form.Item>
         </Form>

@@ -38,6 +38,7 @@ def _make_app(user=None):
         ExamAssignHandler, ExamImagesHandler,
         ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
         PeerReviewHandler, PeerReviewSubmitHandler,
+        PeerReviewAcceptHandler, PeerReviewDeclineHandler,
         ReportVersionRestoreHandler,
     )
     return Starlette(
@@ -53,6 +54,10 @@ def _make_app(user=None):
             Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler),
             Route('/peer-reviews', endpoint=PeerReviewsHandler),
             Route('/peer-reviews/{id}', endpoint=PeerReviewHandler),
+            Route('/peer-reviews/{id}/accept', endpoint=PeerReviewAcceptHandler,
+                  methods=['POST']),
+            Route('/peer-reviews/{id}/decline', endpoint=PeerReviewDeclineHandler,
+                  methods=['POST']),
             Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler),
             Route('/reports/{report_id}/versions/{version}/restore',
                   endpoint=ReportVersionRestoreHandler, methods=['POST']),
@@ -1070,6 +1075,104 @@ class TestPeerReviews:
             resp = client.get('/peer-reviews/rev-1')
         assert resp.status_code == 200
         assert resp.json()['data']['report']['status'] == 'final'
+
+    def test_accept_transitions_to_in_progress(self):
+        client = TestClient(_make_app(RAD))
+        accepted = {
+            'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+            'status': 'in_progress', 'discrepancy_level': '', 'comment': '',
+            'declined_reason': '', 'assigned_at': None, 'accepted_at': 'now',
+            'completed_at': None, 'created_at': None,
+        }
+        async def fake_fetchrow(q, *a):
+            if 'FROM peer_reviews' in q:
+                return accepted
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.PeerReviews') as mock_pr_cls:
+            mock_pr = AsyncMock()
+            mock_pr.get.return_value = {
+                'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+                'status': 'assigned', 'discrepancy_level': '', 'comment': '',
+                'assigned_at': None, 'completed_at': None, 'created_at': None,
+            }
+            mock_pr.accept.return_value = accepted
+            mock_pr_cls.return_value = mock_pr
+            resp = client.post('/peer-reviews/rev-1/accept')
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'in_progress'
+
+    def test_accept_blocks_wrong_reviewer(self):
+        client = TestClient(_make_app(READ_ONLY))
+        async def fake_fetchrow(q, *a):
+            if 'FROM peer_reviews' in q:
+                return {
+                    'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+                    'status': 'assigned', 'discrepancy_level': '', 'comment': '',
+                    'assigned_at': None, 'completed_at': None, 'created_at': None,
+                }
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = client.post('/peer-reviews/rev-1/accept')
+        assert resp.status_code == 403
+
+    def test_accept_blocks_wrong_status(self):
+        client = TestClient(_make_app(RAD))
+        async def fake_fetchrow(q, *a):
+            if 'FROM peer_reviews' in q:
+                return {
+                    'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+                    'status': 'completed', 'discrepancy_level': 'minor',
+                    'comment': '', 'assigned_at': None, 'completed_at': None,
+                    'created_at': None,
+                }
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = client.post('/peer-reviews/rev-1/accept')
+        assert resp.status_code == 400
+
+    def test_decline_transitions_to_rejected(self):
+        client = TestClient(_make_app(RAD))
+        declined = {
+            'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+            'status': 'rejected', 'discrepancy_level': '', 'comment': '',
+            'declined_reason': 'Too busy', 'assigned_at': None,
+            'accepted_at': None, 'completed_at': None, 'created_at': None,
+        }
+        async def fake_fetchrow(q, *a):
+            if 'FROM peer_reviews' in q:
+                return declined
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok(), \
+             patch('api.reports.PeerReviews') as mock_pr_cls:
+            mock_pr = AsyncMock()
+            mock_pr.get.return_value = {
+                'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+                'status': 'assigned', 'discrepancy_level': '', 'comment': '',
+                'assigned_at': None, 'completed_at': None, 'created_at': None,
+            }
+            mock_pr.reject.return_value = declined
+            mock_pr_cls.return_value = mock_pr
+            resp = client.post('/peer-reviews/rev-1/decline', json={
+                'reason': 'Too busy',
+            })
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'rejected'
+        assert resp.json()['data']['declined_reason'] == 'Too busy'
+
+    def test_decline_blocks_wrong_reviewer(self):
+        client = TestClient(_make_app(READ_ONLY))
+        async def fake_fetchrow(q, *a):
+            if 'FROM peer_reviews' in q:
+                return {
+                    'id': 'rev-1', 'report_id': 'rep-1', 'reviewer_id': '50',
+                    'status': 'assigned', 'discrepancy_level': '', 'comment': '',
+                    'assigned_at': None, 'completed_at': None, 'created_at': None,
+                }
+            return None
+        with _conn(fetchrow=fake_fetchrow):
+            resp = client.post('/peer-reviews/rev-1/decline', json={'reason': 'Nope'})
+        assert resp.status_code == 403
 
 
 class TestReportVersionRestore:

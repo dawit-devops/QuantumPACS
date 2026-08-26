@@ -16,7 +16,7 @@ from api.validate import parse_body
 from api.schemas.reports import (
     SaveReportRequest, SignReportRequest, ReturnReportRequest,
     AssignRadiologistRequest, CreatePeerReviewRequest, SubmitPeerReviewRequest,
-    TeachingFileRequest,
+    DeclinePeerReviewRequest, TeachingFileRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn, get_tenant_slug
@@ -1030,6 +1030,68 @@ class PeerReviewSubmitHandler(HTTPEndpoint):
                     f'{body.comment[:120]}',
                     f'/reading/{exam["id"] if exam else ""}',
                 )
+        return ok({'data': review})
+
+
+class PeerReviewAcceptHandler(HTTPEndpoint):
+    """Explicitly accept a peer-review assignment (assigned -> in_progress)."""
+
+    @requires_permission(Permission.PEER_REVIEW_WRITE)
+    async def post(self, request):
+        review_id = request.path_params['id']
+        async with get_conn() as conn:
+            review = await PeerReviews(conn).get(review_id)
+            if not review:
+                return not_found('Peer review not found')
+            if review['reviewer_id'] and review['reviewer_id'] != str(request.user.id):
+                return forbidden('Only the assigned reviewer can accept this review')
+            if review['status'] != 'assigned':
+                return validation_error(
+                    f'Only assigned reviews can be accepted (current: {review["status"]})',
+                )
+            review = await PeerReviews(conn).accept(review_id)
+            await AuditLog(conn).log_event(
+                event_type='peer_review.accepted',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={'report_id': review['report_id']},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': review})
+
+
+class PeerReviewDeclineHandler(HTTPEndpoint):
+    """Decline a peer-review assignment (assigned -> rejected with reason)."""
+
+    @requires_permission(Permission.PEER_REVIEW_WRITE)
+    async def post(self, request):
+        review_id = request.path_params['id']
+        body = await parse_body(DeclinePeerReviewRequest, request)
+        async with get_conn() as conn:
+            review = await PeerReviews(conn).get(review_id)
+            if not review:
+                return not_found('Peer review not found')
+            if review['reviewer_id'] and review['reviewer_id'] != str(request.user.id):
+                return forbidden('Only the assigned reviewer can decline this review')
+            if review['status'] != 'assigned':
+                return validation_error(
+                    f'Only assigned reviews can be declined (current: {review["status"]})',
+                )
+            review = await PeerReviews(conn).reject(review_id, body.reason)
+            await AuditLog(conn).log_event(
+                event_type='peer_review.declined',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={
+                    'report_id': review['report_id'],
+                    'reason': body.reason,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         return ok({'data': review})
 
 

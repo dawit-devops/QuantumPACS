@@ -463,11 +463,13 @@ class PeerReviews(Table):
             report_id UUID NOT NULL,
             reviewer_id TEXT DEFAULT '',
             status TEXT NOT NULL DEFAULT 'assigned'
-                CHECK (status IN ('assigned', 'in_progress', 'completed')),
+                CHECK (status IN ('assigned', 'in_progress', 'completed', 'rejected')),
             discrepancy_level TEXT DEFAULT ''
                 CHECK (discrepancy_level IN ('', 'none', 'minor', 'major', 'discrepancy')),
             comment TEXT DEFAULT '',
+            declined_reason TEXT DEFAULT '',
             assigned_at TIMESTAMPTZ DEFAULT now(),
+            accepted_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT now()
         )
@@ -477,6 +479,17 @@ class PeerReviews(Table):
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_peer_reviews_report ON peer_reviews(report_id)
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews ADD COLUMN IF NOT EXISTS declined_reason TEXT DEFAULT ''
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews DROP CONSTRAINT IF EXISTS peer_reviews_status_check;
+        ALTER TABLE peer_reviews ADD CONSTRAINT peer_reviews_status_check
+            CHECK (status IN ('assigned', 'in_progress', 'completed', 'rejected'))
         """)
 
     async def create(self, report_id, reviewer_id):
@@ -511,6 +524,22 @@ class PeerReviews(Table):
             "UPDATE peer_reviews SET status = 'in_progress' WHERE id = $1",
             review_id,
         )
+
+    async def accept(self, review_id):
+        await self.conn.execute(
+            "UPDATE peer_reviews SET status = 'in_progress', accepted_at = now() "
+            "WHERE id = $1",
+            review_id,
+        )
+        return await self.get(review_id)
+
+    async def reject(self, review_id, reason):
+        await self.conn.execute(
+            "UPDATE peer_reviews SET status = 'rejected', declined_reason = $2, "
+            "completed_at = now() WHERE id = $1",
+            review_id, reason,
+        )
+        return await self.get(review_id)
 
     async def submit(self, review_id, discrepancy_level, comment):
         await self.conn.execute(

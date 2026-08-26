@@ -52,6 +52,10 @@ class SubmitPeerReviewRequest(BaseModel):
         return v
 
 
+class DeclinePeerReviewRequest(BaseModel):
+    reason: str = Field('', description="Reason for declining the review assignment")
+
+
 class PublishTemplateRequest(BaseModel):
     findings: str = Field('', description="Findings section body")
     impression: str = Field('', description="Impression section body")
