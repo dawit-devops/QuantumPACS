@@ -106,6 +106,23 @@ function RejectAnalysisPanel() {
     },
   ];
 
+  // QA-02: the backend has always returned this fourth dimension — the UI
+  // never rendered it, hiding protocol-level training targets.
+  const protocolCols = [
+    { title: "Protocol", dataIndex: "protocol_name", key: "protocol" },
+    { title: "Modality", dataIndex: "modality", key: "mod", render: (v: string) => <Tag>{v}</Tag> },
+    { title: "Total", dataIndex: "total", key: "total" },
+    { title: "Fails", dataIndex: "fails", key: "fails" },
+    {
+      title: "Reject Rate",
+      dataIndex: "reject_rate",
+      key: "rate",
+      render: (v: number) => (
+        <span style={{ color: v > 10 ? "#ff4d4f" : v > 5 ? "#fa8c16" : "#52c41a" }}>{v}%</span>
+      ),
+    },
+  ];
+
   return (
     <PageState error={error} onRetry={fetch} loading={loading}>
       {data && (
@@ -134,6 +151,15 @@ function RejectAnalysisPanel() {
             rowKey="tech"
             columns={techCols}
             dataSource={data.by_technologist}
+            pagination={false}
+            size="small"
+            style={{ marginBottom: 16 }}
+          />
+          <h3>Reject Rate by Protocol</h3>
+          <Table
+            rowKey="protocol_name"
+            columns={protocolCols}
+            dataSource={data.by_protocol}
             pagination={false}
             size="small"
             style={{ marginBottom: 16 }}
