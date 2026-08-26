@@ -162,7 +162,7 @@ class Portal:
             f"""
             SELECT r.id AS id, r.id AS report_id, r.exam_id, e.accession_number,
                    e.modality, e.requested_procedure_desc, r.status,
-                   r.impression, r.signed_at, r.signed_by,
+                   r.body_part, r.impression, r.signed_at, r.signed_by,
                    u.username AS signed_by_name
             FROM reports r
             JOIN exams e ON e.id = r.exam_id

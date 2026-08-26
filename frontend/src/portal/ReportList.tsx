@@ -1,31 +1,11 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  App,
-  Layout,
-  Card,
-  Table,
-  Tag,
-  Button,
-  Alert,
-  Empty,
-  Typography,
-  Space,
-} from "antd";
-import {
-  FileTextOutlined,
-  CheckCircleOutlined,
-  ArrowLeftOutlined,
-} from "@ant-design/icons";
+import { App, Layout, Card, Table, Tag, Button, Alert, Empty, Typography, Space } from "antd";
+import { FileTextOutlined, CheckCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
-import {
-  listScope,
-  getPortalPatient,
-  type PortalScope,
-  type PortalReport,
-} from "../api/portal";
+import { listScope, getPortalPatient, type PortalScope, type PortalReport } from "../api/portal";
 import "./Portal.css";
 
 const { Text } = Typography;
@@ -70,32 +50,29 @@ function ReportList() {
   useTenantRefetch(loadScope);
 
   const patientSeq = useRef(0);
-  const loadReports = useCallback(
-    (patientId: string) => {
-      const seq = ++patientSeq.current;
-      setLoading(true);
-      setError(null);
-      setReports([]);
-      getPortalPatient(patientId)
-        .then((b) => {
-          if (seq !== patientSeq.current) return;
-          // Only show final/signed reports (consent-gated by backend)
-          const signed = (b?.reports || []).filter(
-            (r) => r.status === "signed" || r.status === "final",
-          );
-          setReports(signed);
-        })
-        .catch((e: any) => {
-          if (seq === patientSeq.current) {
-            setError(e.message || "Failed to load results");
-          }
-        })
-        .finally(() => {
-          if (seq === patientSeq.current) setLoading(false);
-        });
-    },
-    [],
-  );
+  const loadReports = useCallback((patientId: string) => {
+    const seq = ++patientSeq.current;
+    setLoading(true);
+    setError(null);
+    setReports([]);
+    getPortalPatient(patientId)
+      .then((b) => {
+        if (seq !== patientSeq.current) return;
+        // Only show final/signed reports (consent-gated by backend)
+        const signed = (b?.reports || []).filter(
+          (r) => r.status === "signed" || r.status === "final"
+        );
+        setReports(signed);
+      })
+      .catch((e: any) => {
+        if (seq === patientSeq.current) {
+          setError(e.message || "Failed to load results");
+        }
+      })
+      .finally(() => {
+        if (seq === patientSeq.current) setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     if (activePatientId) loadReports(activePatientId);
@@ -115,6 +92,13 @@ function ReportList() {
       key: "modality",
       width: 90,
       render: (v: string) => (v ? <Tag>{v}</Tag> : "—"),
+    },
+    {
+      title: "Body Part",
+      dataIndex: "body_part",
+      key: "body_part",
+      width: 120,
+      render: (v: string) => v || <Text type="secondary">—</Text>,
     },
     {
       title: "Status",
@@ -138,12 +122,18 @@ function ReportList() {
       render: (v: string) => v || <Text type="secondary">—</Text>,
     },
     {
+      title: "Signed By",
+      dataIndex: "signed_by_name",
+      key: "signed_by_name",
+      width: 140,
+      render: (v: string) => v || <Text type="secondary">—</Text>,
+    },
+    {
       title: "Signed Date",
       dataIndex: "signed_at",
       key: "signed_at",
       width: 140,
-      render: (v: string) =>
-        v ? new Date(v).toLocaleDateString() : "—",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
     },
     {
       title: "",
