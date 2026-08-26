@@ -19,7 +19,7 @@ from api.permissions import Permission
 from api.response import api_error, created, not_found, ok
 from api.schemas.ris_scheduling import (
     ApplyTemplateRequest, CancelRequest, CreateAppointmentRequest,
-    BatchBookAppointmentRequest,
+    BatchBookAppointmentRequest, AddWaitlistRequest, UpdateWaitlistStatusRequest,
     CreateResourceRequest, CreateScheduleRequest, CreateTemplateRequest,
     RescheduleRequest,
 )
@@ -262,6 +262,70 @@ class RisBatchAppointmentsHandler(HTTPEndpoint):
                         await RisAppointments(conn).stamp_requesting_tenant(
                             res['appointment']['id'], home_tenant)
         return created({'data': {'results': results}})
+
+
+class RisWaitlistHandler(HTTPEndpoint):
+    """S-08: waitlist management — POST /ris/appointments/waitlist
+    (add entry) and GET /ris/appointments/waitlist (list, priority-sorted)."""
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        from db.ris_waitlist import RisWaitlist
+        body = await parse_body(AddWaitlistRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            row = await RisWaitlist(conn).create({
+                'tenant_id': tenant,
+                'resource_id': body.resource_id,
+                'patient_id': body.patient_id,
+                'patient_name': body.patient_name,
+                'priority': body.priority,
+                'modality': body.modality,
+                'notes': body.notes,
+                'created_by': str(request.user.id),
+            })
+        return created({'data': _row_dict(row)})
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        from db.ris_waitlist import RisWaitlist
+        tenant = effective_tenant(request) or 'default'
+        params = request.query_params
+        async with get_conn() as conn:
+            rows = await RisWaitlist(conn).list_for_tenant(
+                tenant,
+                resource_id=params.get('resource_id') or None,
+                status=params.get('status') or None,
+            )
+        return ok({'data': [_row_dict(r) for r in rows]})
+
+
+class RisWaitlistEntryHandler(HTTPEndpoint):
+    """S-08: per-entry waitlist ops — DELETE (remove) and PATCH (status
+    transition like NOTIFIED/BOOKED when a slot opens or is claimed)."""
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def delete(self, request):
+        from db.ris_waitlist import RisWaitlist
+        entry_id = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisWaitlist(conn)
+            row = await repo.get(entry_id)
+            if row is None:
+                return not_found('Waitlist entry not found')
+            await repo.delete(entry_id)
+        return ok({'data': {'deleted': entry_id}})
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def patch(self, request):
+        from db.ris_waitlist import RisWaitlist
+        body = await parse_body(UpdateWaitlistStatusRequest, request)
+        entry_id = request.path_params['id']
+        async with get_conn() as conn:
+            row = await RisWaitlist(conn).update_status(entry_id, body.status)
+            if row is None:
+                return not_found('Waitlist entry not found')
+        return ok({'data': _row_dict(row)})
 
 
 class RisAppointmentRescheduleHandler(HTTPEndpoint):

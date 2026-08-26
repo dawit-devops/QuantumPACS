@@ -173,7 +173,7 @@ from api.scheduling import (
     RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
     RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
     RisAppointmentCheckInHandler, RisAppointmentNoShowHandler,
-    RisBatchAppointmentsHandler,
+    RisBatchAppointmentsHandler, RisWaitlistHandler, RisWaitlistEntryHandler,
     RisScheduleTemplatesHandler, RisScheduleTemplateApplyHandler,
     RisChargebackHandler,
 )
@@ -487,6 +487,8 @@ _V1_ROUTES = [
     v2(Route('/ris/appointments/{id}/check-in', endpoint=RisAppointmentCheckInHandler)),
     v2(Route('/ris/appointments/{id}/no-show', endpoint=RisAppointmentNoShowHandler)),
     v2(Route('/ris/appointments/batch', endpoint=RisBatchAppointmentsHandler)),
+    v2(Route('/ris/appointments/waitlist', endpoint=RisWaitlistHandler)),
+    v2(Route('/ris/appointments/waitlist/{id}', endpoint=RisWaitlistEntryHandler)),
     v2(Route('/ris/schedule-templates', endpoint=RisScheduleTemplatesHandler)),
     v2(Route('/ris/schedule-templates/{id}/apply', endpoint=RisScheduleTemplateApplyHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),

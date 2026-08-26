@@ -20,6 +20,8 @@ const mockCancel = vi.hoisted(() => vi.fn());
 const mockNoShow = vi.hoisted(() => vi.fn());
 const mockSearchOrders = vi.hoisted(() => vi.fn());
 const mockBatchBook = vi.hoisted(() => vi.fn());
+const mockListWaitlist = vi.hoisted(() => vi.fn());
+const mockAddWaitlist = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/scheduling", () => ({
   listRisResources: mockListResources,
@@ -35,6 +37,8 @@ vi.mock("../api/scheduling", () => ({
   markNoShow: mockNoShow,
   searchRisOrders: mockSearchOrders,
   batchBookAppointments: mockBatchBook,
+  listWaitlist: mockListWaitlist,
+  addWaitlistEntry: mockAddWaitlist,
   dayOfWeekLabel: (d: number) =>
     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][d],
 }));
@@ -1035,6 +1039,67 @@ describe("CalendarView S-06 batch booking", () => {
     await waitFor(() => {
       expect(mockBatchBook).toHaveBeenCalledWith(
         expect.arrayContaining([expect.objectContaining({ patient_id: "P001" })])
+      );
+    });
+  });
+});
+
+describe("CalendarView S-08 waitlist", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+    mockListWaitlist.mockResolvedValue([]);
+  });
+
+  it("opens the waitlist modal and lists entries (S-08)", async () => {
+    mockListWaitlist.mockResolvedValue([
+      {
+        id: "wl-1",
+        resource_id: "r1",
+        patient_id: "P001",
+        patient_name: "John Doe",
+        priority: "STAT",
+        status: "WAITING",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /waitlist/i }));
+    await screen.findByRole("dialog");
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.getByText("stat")).toBeInTheDocument();
+  });
+
+  it("adds an entry to the waitlist (S-08)", async () => {
+    mockAddWaitlist.mockResolvedValue({ id: "wl-2", status: "WAITING" });
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /waitlist/i }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByText("Add to Waitlist"));
+
+    // Pick resource, enter patient, submit.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    fireEvent.change(screen.getByPlaceholderText("Patient ID"), {
+      target: { value: "P099" },
+    });
+    fireEvent.click(screen.getByText("Add"));
+
+    await waitFor(() => {
+      expect(mockAddWaitlist).toHaveBeenCalledWith(
+        expect.objectContaining({ patient_id: "P099", resource_id: "r1" })
       );
     });
   });

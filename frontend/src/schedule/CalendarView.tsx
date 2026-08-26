@@ -14,6 +14,7 @@ import WeekMonthView from "./WeekMonthView";
 import GanttView from "./GanttView";
 import HeatmapView from "./HeatmapView";
 import BatchBookingModal from "./BatchBookingModal";
+import WaitlistModal from "./WaitlistModal";
 import {
   listRisResources,
   listResourceAppointments,
@@ -102,6 +103,8 @@ function CalendarView() {
   const [cancelFor, setCancelFor] = useState<RisAppointment | null>(null);
   // S-06: batch booking modal — book several slots on one resource at once.
   const [batchOpen, setBatchOpen] = useState(false);
+  // S-08: waitlist modal — patients waiting for a cancelled slot.
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
 
   // S-11: calendar filters — narrow by resource type (room/modality/tech)
   // or modality. Passed server-side to listRisResources so appointments and
@@ -302,6 +305,12 @@ function CalendarView() {
               Batch Book
             </Button>
           )}
+          {/* S-08: waitlist — patients queued for cancelled slots. */}
+          {canWrite && (
+            <Button onClick={() => setWaitlistOpen(true)} aria-label="Waitlist">
+              Waitlist
+            </Button>
+          )}
           <ScheduleDayNav
             onDayChange={changeDay}
             onToday={() => setDay(dayjs.utc().format("YYYY-MM-DD"))}
@@ -499,6 +508,14 @@ function CalendarView() {
           setBatchOpen(false);
           refreshAfterMutation();
         }}
+      />
+
+      {/* S-08: waitlist — add/list/notify/remove patients on cancelled slots. */}
+      <WaitlistModal
+        open={waitlistOpen}
+        resources={resources}
+        onClose={() => setWaitlistOpen(false)}
+        onDone={() => setWaitlistOpen(false)}
       />
     </div>
   );

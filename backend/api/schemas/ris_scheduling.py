@@ -127,3 +127,31 @@ class StaffScheduleRequest(BaseModel):
     station_ae: str = Field('', max_length=64)
     technologist: str = Field('', max_length=128)
     tenant_id: str = Field('default', max_length=128)
+
+class AddWaitlistRequest(BaseModel):
+    """S-08: add a patient to the waitlist for a resource/slot."""
+    resource_id: str = Field(..., min_length=1, max_length=64)
+    patient_id: str = Field(..., min_length=1, max_length=128)
+    patient_name: str = Field('', max_length=128)
+    priority: str = Field('ROUTINE', max_length=10)
+    modality: str = Field('', max_length=10)
+    notes: str = Field('', max_length=500)
+
+    @field_validator('priority')
+    @classmethod
+    def _valid_priority(cls, v):
+        if v not in ('ROUTINE', 'URGENT', 'STAT'):
+            raise ValueError(f'Invalid priority {v!r}')
+        return v
+
+
+class UpdateWaitlistStatusRequest(BaseModel):
+    """S-08: update a waitlist entry's status."""
+    status: str = Field(..., max_length=20)
+
+    @field_validator('status')
+    @classmethod
+    def _valid_status(cls, v):
+        if v not in ('NOTIFIED', 'BOOKED', 'EXPIRED', 'CANCELLED'):
+            raise ValueError(f'Invalid status {v!r}')
+        return v

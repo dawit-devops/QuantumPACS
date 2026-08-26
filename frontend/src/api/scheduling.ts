@@ -239,6 +239,59 @@ export const listAppointmentsDateRange = (
     query: { date_from: dateFrom, date_to: dateTo, ...params },
   }).then((res) => res.data ?? []);
 
+// S-08: waitlist management — patients waiting for a cancelled slot on a
+// resource. Priority-sorted (STAT > urgent > routine).
+export interface WaitlistEntry {
+  id: string;
+  resource_id: string;
+  patient_id: string;
+  patient_name?: string;
+  priority?: string;
+  modality?: string;
+  notes?: string;
+  status?: string;
+  created_at?: string;
+}
+
+export const listWaitlist = (
+  params: { resource_id?: string; status?: string } = {}
+): Promise<WaitlistEntry[]> => {
+  const query: Record<string, string> = {};
+  if (params.resource_id) query.resource_id = params.resource_id;
+  if (params.status) query.status = params.status;
+  return request<{ data: WaitlistEntry[] }>("ris/appointments/waitlist", {
+    query,
+  }).then((res) => res.data ?? []);
+};
+
+export const addWaitlistEntry = (
+  data: {
+    resource_id: string;
+    patient_id: string;
+    patient_name?: string;
+    priority?: string;
+    modality?: string;
+    notes?: string;
+  }
+): Promise<WaitlistEntry> =>
+  request<{ data: WaitlistEntry }>("ris/appointments/waitlist", { data }).then(
+    (res) => res.data
+  );
+
+export const updateWaitlistStatus = (
+  entryId: string,
+  status: string
+): Promise<WaitlistEntry> =>
+  request<{ data: WaitlistEntry }>(`ris/appointments/waitlist/${entryId}`, {
+    method: "PATCH",
+    data: { status },
+  }).then((res) => res.data);
+
+export const deleteWaitlistEntry = (entryId: string): Promise<void> =>
+  request(`ris/appointments/waitlist/${entryId}`, { method: "DELETE" }).then(
+    () => undefined
+  );
+
 // ---- Orders (booking form patient/order search) --------------------------------
 
 export const searchRisOrders = (

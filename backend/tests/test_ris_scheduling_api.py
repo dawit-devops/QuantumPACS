@@ -42,7 +42,7 @@ def _make_app(user=None):
     from api.scheduling import (
         RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
         RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
-        RisBatchAppointmentsHandler,
+        RisBatchAppointmentsHandler, RisWaitlistHandler, RisWaitlistEntryHandler,
     )
     return Starlette(
         routes=[
@@ -51,6 +51,8 @@ def _make_app(user=None):
             Route('/ris/resources/{id}/availability', endpoint=RisResourceAvailabilityHandler),
             Route('/ris/appointments', endpoint=RisAppointmentsHandler),
             Route('/ris/appointments/batch', endpoint=RisBatchAppointmentsHandler),
+            Route('/ris/appointments/waitlist', endpoint=RisWaitlistHandler),
+            Route('/ris/appointments/waitlist/{id}', endpoint=RisWaitlistEntryHandler),
             Route('/ris/appointments/{id}/reschedule', endpoint=RisAppointmentRescheduleHandler),
             Route('/ris/appointments/{id}/cancel', endpoint=RisAppointmentCancelHandler),
         ],
@@ -930,3 +932,70 @@ class TestBatchBooking:
                 'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
             resp = client.post('/ris/appointments/batch', json={'bookings': []})
         assert resp.status_code == 422
+
+
+class TestWaitlist:
+    """S-08: waitlist — add/list/remove/status-transition entries."""
+
+    def test_add_waitlist_entry(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_waitlist.RisWaitlist') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo_cls.return_value.create = AsyncMock(return_value={
+                'id': 'wl-1', 'tenant_id': 'default', 'resource_id': 'res-1',
+                'patient_id': 'P001', 'priority': 'STAT', 'status': 'WAITING',
+            })
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/waitlist', json={
+                'resource_id': 'res-1', 'patient_id': 'P001',
+                'patient_name': 'John Doe', 'priority': 'STAT',
+            })
+        assert resp.status_code == 201
+        data = resp.json()['data']
+        assert data['id'] == 'wl-1'
+        assert data['status'] == 'WAITING'
+
+    def test_list_waitlist_priority_sorted(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_waitlist.RisWaitlist') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo_cls.return_value.list_for_tenant = AsyncMock(return_value=[
+                {'id': 'wl-1', 'priority': 'STAT', 'status': 'WAITING'},
+                {'id': 'wl-2', 'priority': 'ROUTINE', 'status': 'WAITING'},
+            ])
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_READ']})))
+            resp = client.get('/ris/appointments/waitlist')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert len(data) == 2
+        assert data[0]['priority'] == 'STAT'
+
+    def test_update_waitlist_status(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_waitlist.RisWaitlist') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo_cls.return_value.update_status = AsyncMock(return_value={
+                'id': 'wl-1', 'status': 'BOOKED',
+            })
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.patch('/ris/appointments/waitlist/wl-1',
+                                json={'status': 'BOOKED'})
+        assert resp.status_code == 200
+        assert resp.json()['data']['status'] == 'BOOKED'
+
+    def test_delete_waitlist_entry(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('db.ris_waitlist.RisWaitlist') as repo_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            repo_cls.return_value.get = AsyncMock(return_value={
+                'id': 'wl-1', 'status': 'WAITING',
+            })
+            repo_cls.return_value.delete = AsyncMock()
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.delete('/ris/appointments/waitlist/wl-1')
+        assert resp.status_code == 200
+        repo_cls.return_value.delete.assert_awaited_once_with('wl-1')
