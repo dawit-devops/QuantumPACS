@@ -12,6 +12,7 @@ import RescheduleModal from "./RescheduleModal";
 import CalendarGrid, { statusLabel } from "./CalendarGrid";
 import WeekMonthView from "./WeekMonthView";
 import GanttView from "./GanttView";
+import HeatmapView from "./HeatmapView";
 import {
   listRisResources,
   listResourceAppointments,
@@ -69,7 +70,7 @@ function CalendarView() {
   const [day, setDay] = useState<string>(() => dayjs.utc().format("YYYY-MM-DD"));
   // S-03: day/week/month toggle — week/month reuse the range appointments
   // API; the day grid keeps the per-resource availability view.
-  const [view, setView] = useState<"day" | "week" | "month" | "gantt">("day");
+  const [view, setView] = useState<"day" | "week" | "month" | "gantt" | "heatmap">("day");
   const [resources, setResources] = useState<RisResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +127,7 @@ function CalendarView() {
       ...(modalityFilter ? { modality: modalityFilter } : {}),
     })
       .then(async (res) => {
-        if (view !== "day") {
+        if (view !== "day" && view !== "heatmap") {
           // S-03 week/month + S-14 gantt: one date-range query across all
           // resources. Gantt shows the anchored week (same range as week).
           const [from, to] = view === "month" ? monthRange(day) : weekRange(day);
@@ -263,12 +264,13 @@ function CalendarView() {
         <div className="sched-header-nav">
           <Segmented
             value={view}
-            onChange={(v) => setView(v as "day" | "week" | "month" | "gantt")}
+            onChange={(v) => setView(v as "day" | "week" | "month" | "gantt" | "heatmap")}
             options={[
               { label: "Day", value: "day" },
               { label: "Week", value: "week" },
               { label: "Month", value: "month" },
               { label: "Gantt", value: "gantt" },
+              { label: "Heatmap", value: "heatmap" },
             ]}
             aria-label="Calendar view"
           />
@@ -345,6 +347,19 @@ function CalendarView() {
             setDetailResource(r);
           }}
           onRebook={rebookByDrag}
+        />
+      ) : view === "heatmap" ? (
+        <HeatmapView
+          window={BOARD_WINDOW}
+          resources={resources}
+          appointments={appointments}
+          freeSlots={freeSlots}
+          canWrite={canWrite}
+          onOpenBooking={openBooking}
+          onSelectAppointment={(a, r) => {
+            setSelected(a);
+            setDetailResource(r);
+          }}
         />
       ) : view === "gantt" ? (
         <GanttView

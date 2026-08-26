@@ -778,6 +778,59 @@ describe("CalendarView S-01 drag-to-rebook", () => {
   });
 });
 
+describe("CalendarView S-04 room utilization heatmap", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+    ]);
+  });
+
+  const toggleHeatmap = () => {
+    fireEvent.click(screen.getByText("Heatmap"));
+  };
+
+  it("switches to heatmap view and renders a per-slot grid (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    const grid = await screen.findByRole("grid", { name: /heatmap/i });
+    expect(grid).toBeInTheDocument();
+    // Resource row header is present.
+    expect(screen.getByRole("rowheader", { name: /CT Room 1/ })).toBeInTheDocument();
+  });
+
+  it("colors a booked slot full and an empty slot free (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    // APPT occupies 09:00-09:30 → full; 09:30 is free per availability.
+    const fullCell = await screen.findByTestId("heat-cell-r1-09:00");
+    expect(fullCell).toHaveAttribute("data-utilization", "full");
+
+    const freeCell = screen.getByTestId("heat-cell-r1-09:30");
+    expect(freeCell).toHaveAttribute("data-utilization", "free");
+  });
+
+  it("opens the appointment drawer when a full cell is clicked (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    const fullCell = await screen.findByTestId("heat-cell-r1-09:00");
+    fireEvent.click(fullCell);
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    expect(screen.getByText("P001")).toBeInTheDocument();
+  });
+});
+
 describe("CalendarView S-03 week/month views", () => {
   beforeEach(() => {
     vi.clearAllMocks();
