@@ -267,6 +267,34 @@ describe("CheckIn (enhanced kiosk)", () => {
     expect(mockConfirmCheckIn).toHaveBeenCalledWith("test-token-123");
   });
 
+  it("pays copay and shows the receipt number on the done screen (K-04)", async () => {
+    const user = userEvent.setup();
+    mockGetCheckIn.mockResolvedValue(SUMMARY);
+    mockSubmitPayment.mockResolvedValue({
+      receipt: { id: "r-1", payment_id: "pay-1", receipt_number: "RCP-001" },
+    });
+    renderKiosk();
+    await screen.findByText(/Preparation Instructions/);
+    await user.click(screen.getByText(/I understand — continue to consent/));
+    const canvas = screen.getByTestId("signature-canvas");
+    fireEvent.mouseDown(canvas, { clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(canvas, { clientX: 50, clientY: 50 });
+    fireEvent.mouseUp(canvas, { clientX: 50, clientY: 50 });
+    await user.click(screen.getByTestId("consent-checkbox"));
+    await user.click(screen.getByTestId("consent-submit"));
+    await user.click(screen.getByTestId("checkin-confirm"));
+    // Pay copay
+    await waitFor(() => {
+      expect(screen.getByTestId("copay-pay")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("copay-pay"));
+    // Receipt should appear on the done screen
+    await waitFor(() => {
+      expect(screen.getByTestId("kiosk-receipt")).toBeInTheDocument();
+    });
+    expect(screen.getByText("#RCP-001")).toBeInTheDocument();
+  });
+
   it("shows error on duplicate check-in (409)", async () => {
     const user = userEvent.setup();
     mockGetCheckIn.mockResolvedValue(SUMMARY);

@@ -80,6 +80,9 @@ const CheckIn: React.FC = () => {
   const [phase, setPhase] = useState<Phase>("loading");
   const [summary, setSummary] = useState<CheckInSummary | null>(null);
   const [error, setError] = useState("");
+  // K-04: the receipt returned by the payment endpoint — shown on the done
+  // screen so the patient can note the number or print a copy.
+  const [receipt, setReceipt] = useState<{ receipt_number?: string } | null>(null);
 
   // Consent state
   const [consentChecked, setConsentChecked] = useState(false);
@@ -225,16 +228,27 @@ const CheckIn: React.FC = () => {
   }
 
   if (phase === "done") {
-    return token ? (
-      <WaitTime token={token} />
-    ) : (
+    return (
       <div className="kiosk-center">
-        <Result
-          status="success"
-          icon={<CheckCircleOutlined />}
-          title="You're checked in!"
-          subTitle="Please have a seat — we'll call you when it's time."
-        />
+        {token && <WaitTime token={token} />}
+        {!token && (
+          <Result
+            status="success"
+            icon={<CheckCircleOutlined />}
+            title="You're checked in!"
+            subTitle="Please have a seat — we'll call you when it's time."
+          />
+        )}
+        {receipt?.receipt_number && (
+          <div className="kiosk-receipt" data-testid="kiosk-receipt">
+            <Divider />
+            <Text strong>Payment receipt</Text>
+            <div className="kiosk-receipt-number">#{receipt.receipt_number}</div>
+            <Button onClick={() => window.print()} className="kiosk-copay-skip">
+              Print receipt
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -245,7 +259,10 @@ const CheckIn: React.FC = () => {
       <CoPayPrompt
         token={token}
         amount={COPRAY_AMOUNT}
-        onComplete={() => setPhase("done")}
+        onComplete={(rcpt) => {
+          setReceipt(rcpt);
+          setPhase("done");
+        }}
         onSkip={() => setPhase("done")}
       />
     );

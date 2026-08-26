@@ -147,8 +147,8 @@
 .kiosk-decline {
   margin-top: 8px;
   padding: 12px;
-  background: #FFF1F0;
-  border: 1px solid #FFCCC7;
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
   border-radius: 12px;
 }
 
@@ -157,7 +157,7 @@
 .kiosk-copay-amount {
   font-size: 48px;
   font-weight: 700;
-  color: #1A1A2E;
+  color: #1a1a2e;
   margin: 16px 0;
   text-align: center;
 }
@@ -178,6 +178,24 @@
 
 .kiosk-copay-skip {
   margin-top: 16px;
-  color: #8B949E;
+  color: #8b949e;
   font-size: 14px;
+}
+
+/* K-04: payment receipt shown on the done screen */
+.kiosk-receipt {
+  text-align: center;
+  padding: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+  border: 1px dashed var(--border-color, #d9d9d9);
+  border-radius: 12px;
+  background: var(--bg-surface, #fff);
+}
+
+.kiosk-receipt-number {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin: 8px 0 12px;
 }
