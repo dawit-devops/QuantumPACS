@@ -9,7 +9,6 @@ import {
   Input,
   Button,
   Timeline,
-  Tag,
   Space,
   Alert,
   Empty,
@@ -99,12 +98,10 @@ function FollowUpHub() {
   const [submitting, setSubmitting] = useState(false);
   // S7 (P-05): linked context — the patient's own reports/appointments the
   // coordinator can be pointed at to pre-fill the request.
-  const [reportOptions, setReportOptions] = useState<
-    { value: string; label: string }[]
-  >([]);
-  const [appointmentOptions, setAppointmentOptions] = useState<
-    { value: string; label: string }[]
-  >([]);
+  const [reportOptions, setReportOptions] = useState<{ value: string; label: string }[]>([]);
+  const [appointmentOptions, setAppointmentOptions] = useState<{ value: string; label: string }[]>(
+    []
+  );
   const [form] = Form.useForm();
 
   const loadScope = useCallback(() => {
@@ -211,10 +208,10 @@ function FollowUpHub() {
 
   // Group by status
   const activeRequests = followUps.filter(
-    (f) => f.status === "submitted" || f.status === "acknowledged",
+    (f) => f.status === "submitted" || f.status === "acknowledged"
   );
   const completedRequests = followUps.filter(
-    (f) => f.status === "completed" || f.status === "cancelled",
+    (f) => f.status === "completed" || f.status === "cancelled"
   );
 
   return (
@@ -225,9 +222,7 @@ function FollowUpHub() {
             <SolutionOutlined style={{ marginRight: 8 }} />
             Follow-up Requests
           </h2>
-          <Text type="secondary">
-            Request follow-ups and track their status
-          </Text>
+          <Text type="secondary">Request follow-ups and track their status</Text>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadFollowUps}>
@@ -272,10 +267,7 @@ function FollowUpHub() {
             label="Reason for follow-up"
             rules={[{ required: true, message: "Please select a reason" }]}
           >
-            <Select
-              placeholder="Select a reason"
-              options={REASON_OPTIONS}
-            />
+            <Select placeholder="Select a reason" options={REASON_OPTIONS} />
           </Form.Item>
 
           {/* S7 (P-05): linked context — pre-fill the coordinator with a
@@ -306,10 +298,7 @@ function FollowUpHub() {
             />
           </Form.Item>
 
-          <Form.Item
-            name="preferred_time"
-            label="Preferred contact time (optional)"
-          >
+          <Form.Item name="preferred_time" label="Preferred contact time (optional)">
             <Select
               allowClear
               placeholder="When should we contact you?"
@@ -340,12 +329,7 @@ function FollowUpHub() {
           </Form.Item>
 
           <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={submitting}
-              icon={<SendOutlined />}
-            >
+            <Button type="primary" htmlType="submit" loading={submitting} icon={<SendOutlined />}>
               Submit Request
             </Button>
           </Form.Item>
@@ -370,30 +354,29 @@ function FollowUpHub() {
           emptyMessage="No active follow-up requests"
         >
           <Timeline
+            className="portal-followup-timeline"
             items={activeRequests.map((fu) => {
-              const cfg = FOLLOWUP_STATUS_CONFIG[fu.status || "submitted"] || FOLLOWUP_STATUS_CONFIG.submitted;
+              const cfg =
+                FOLLOWUP_STATUS_CONFIG[fu.status || "submitted"] ||
+                FOLLOWUP_STATUS_CONFIG.submitted;
+              const statusKey =
+                fu.status === "acknowledged" ? "in-progress" : fu.status || "submitted";
               return {
                 dot: cfg.icon,
                 color: cfg.color,
                 children: (
                   <div key={fu.id}>
                     <Space>
-                      <Tag color={cfg.color}>{cfg.label}</Tag>
+                      <span className={`portal-followup-status ${statusKey}`}>{cfg.label}</span>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {fu.created_at
-                          ? new Date(fu.created_at).toLocaleString()
-                          : ""}
+                        {fu.created_at ? new Date(fu.created_at).toLocaleString() : ""}
                       </Text>
                     </Space>
                     <Paragraph style={{ margin: "4px 0", fontSize: 13 }}>
                       {fu.reason || "No reason specified"}
                     </Paragraph>
                     {fu.status === "submitted" && (
-                      <Button
-                        size="small"
-                        danger
-                        onClick={() => handleCancel(fu.id)}
-                      >
+                      <Button size="small" danger onClick={() => handleCancel(fu.id)}>
                         Cancel
                       </Button>
                     )}
@@ -417,19 +400,21 @@ function FollowUpHub() {
           }
         >
           <Timeline
+            className="portal-followup-timeline"
             items={completedRequests.map((fu) => {
-              const cfg = FOLLOWUP_STATUS_CONFIG[fu.status || "completed"] || FOLLOWUP_STATUS_CONFIG.completed;
+              const cfg =
+                FOLLOWUP_STATUS_CONFIG[fu.status || "completed"] ||
+                FOLLOWUP_STATUS_CONFIG.completed;
+              const statusKey = fu.status === "cancelled" ? "cancelled" : "completed";
               return {
                 dot: cfg.icon,
                 color: cfg.color,
                 children: (
                   <div key={fu.id}>
                     <Space>
-                      <Tag color={cfg.color}>{cfg.label}</Tag>
+                      <span className={`portal-followup-status ${statusKey}`}>{cfg.label}</span>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {fu.created_at
-                          ? new Date(fu.created_at).toLocaleString()
-                          : ""}
+                        {fu.created_at ? new Date(fu.created_at).toLocaleString() : ""}
                       </Text>
                     </Space>
                     <Paragraph style={{ margin: "4px 0", fontSize: 13 }}>

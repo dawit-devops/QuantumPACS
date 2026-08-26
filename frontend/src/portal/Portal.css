@@ -89,6 +89,32 @@
   padding: 16px;
 }
 
+/* Spec §2.12.6 — card header/body utility blocks (for non-antd Card
+   surfaces; antd Card pages inherit the .ant-card-* rules above). */
+.portal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
+.portal-card-body {
+  padding: 16px 20px;
+}
+
+/* Spec §2.12.6 — appointment prep instruction highlight. */
+.portal-appt-prep {
+  background: #fff7e6;
+  border-left: 3px solid #fa8c16;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
 /* Card list items (appointments, results) */
 .portal-card-list {
   display: flex;
@@ -123,9 +149,20 @@
   text-overflow: ellipsis;
 }
 
-/* New results get a subtle pulse */
+/* New results get a subtle pulse (spec §2.12.6) */
 .portal-result-new {
   border-left: 3px solid #52c41a;
+  animation: portal-pulse 2s ease-in-out 3;
+}
+
+@keyframes portal-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(82, 196, 26, 0.1);
+  }
 }
 
 /* Quick actions */
@@ -185,6 +222,41 @@
 
 .portal-appt-item {
   align-items: flex-start;
+}
+
+/* Spec §2.12.6 — follow-up status timeline + pills */
+.portal-followup-timeline {
+  padding: 12px 0;
+}
+
+.portal-followup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.portal-followup-status.submitted {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.portal-followup-status.in-progress {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.portal-followup-status.completed {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.portal-followup-status.cancelled {
+  background: #fff1f0;
+  color: #ff4d4f;
 }
 
 /* (report document styles live in common/report.css, imported globally) */

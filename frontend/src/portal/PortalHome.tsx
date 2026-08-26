@@ -125,12 +125,12 @@ function PortalHome() {
 
   // Upcoming appointments from the real appointments endpoint
   const upcomingAppointments = appointments.filter(
-    (a) => a.status === "SCHEDULED" || a.status === "CONFIRMED",
+    (a) => a.status === "SCHEDULED" || a.status === "CONFIRMED"
   );
 
   // Recent results = signed/preliminary reports
   const recentResults = reports.filter(
-    (r) => r.status === "signed" || r.status === "final" || r.status === "preliminary",
+    (r) => r.status === "signed" || r.status === "final" || r.status === "preliminary"
   );
 
   // Imaging summary counts
@@ -146,7 +146,7 @@ function PortalHome() {
     return new Date(r.signed_at).getFullYear() === thisYear;
   }).length;
   const pendingCount = orders.filter(
-    (o) => o.status === "ordered" || o.status === "scheduled",
+    (o) => o.status === "ordered" || o.status === "scheduled"
   ).length;
 
   // --- Loading / Error states ---
@@ -202,15 +202,10 @@ function PortalHome() {
             QuantumPACS Patient Portal
           </h2>
           <Text type="secondary">
-            Welcome{patient?.name ? `, ${patient.name}` : ""} — your imaging
-            records
+            Welcome{patient?.name ? `, ${patient.name}` : ""} — your imaging records
           </Text>
         </div>
-        <Space>
-          {scope.length > 1 && (
-            <Tag color="blue">{scope.length} linked patients</Tag>
-          )}
-        </Space>
+        <Space>{scope.length > 1 && <Tag color="blue">{scope.length} linked patients</Tag>}</Space>
       </div>
 
       {error && (
@@ -243,11 +238,7 @@ function PortalHome() {
                   </span>
                 }
                 extra={
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => navigate("/portal/appointments")}
-                  >
+                  <Button type="link" size="small" onClick={() => navigate("/portal/appointments")}>
                     View all <RightOutlined />
                   </Button>
                 }
@@ -281,6 +272,9 @@ function PortalHome() {
                             <Text type="secondary" style={{ fontSize: 12 }}>
                               Room: {apt.room}
                             </Text>
+                          )}
+                          {apt.prep_instructions && (
+                            <div className="portal-appt-prep">{apt.prep_instructions}</div>
                           )}
                         </div>
                         <div className="portal-card-item-side">
@@ -321,11 +315,7 @@ function PortalHome() {
                   </span>
                 }
                 extra={
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => navigate("/portal/results")}
-                  >
+                  <Button type="link" size="small" onClick={() => navigate("/portal/results")}>
                     View all <RightOutlined />
                   </Button>
                 }
@@ -353,17 +343,13 @@ function PortalHome() {
                             {rpt.signed_at
                               ? `Signed ${new Date(rpt.signed_at).toLocaleDateString()}`
                               : "Pending"}
-                            {(rpt as any).signed_by_name
-                              ? ` · ${(rpt as any).signed_by_name}`
-                              : ""}
+                            {(rpt as any).signed_by_name ? ` · ${(rpt as any).signed_by_name}` : ""}
                           </Text>
                         </div>
                         <div className="portal-card-item-side">
                           <Tag
                             color={
-                              rpt.status === "signed" || rpt.status === "final"
-                                ? "green"
-                                : "orange"
+                              rpt.status === "signed" || rpt.status === "final" ? "green" : "orange"
                             }
                           >
                             {rpt.status || "draft"}
@@ -445,11 +431,7 @@ function PortalHome() {
               }
               extra={
                 <Space>
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => navigate("/portal/profile")}
-                  >
+                  <Button type="link" size="small" onClick={() => navigate("/portal/profile")}>
                     View Profile
                   </Button>
                   <Button
@@ -464,41 +446,49 @@ function PortalHome() {
             >
               <Row gutter={[24, 8]}>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Name</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Name
+                  </Text>
                   <br />
                   <Text strong>{patient.name || "—"}</Text>
                 </Col>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>MRN</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    MRN
+                  </Text>
                   <br />
                   <Text strong>{patient.patient_id || "—"}</Text>
                 </Col>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>DOB</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    DOB
+                  </Text>
                   <br />
                   <Text strong>{patient.birth_date || "—"}</Text>
                 </Col>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Sex</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Sex
+                  </Text>
                   <br />
                   <Text strong>{patient.sex || "—"}</Text>
                 </Col>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Phone</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Phone
+                  </Text>
                   <br />
                   <Text strong>
-                    {(patient as any).phone || (
-                      <Text type="secondary">On file</Text>
-                    )}
+                    {(patient as any).phone || <Text type="secondary">On file</Text>}
                   </Text>
                 </Col>
                 <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Email</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Email
+                  </Text>
                   <br />
                   <Text strong>
-                    {(patient as any).email || (
-                      <Text type="secondary">On file</Text>
-                    )}
+                    {(patient as any).email || <Text type="secondary">On file</Text>}
                   </Text>
                 </Col>
               </Row>
@@ -517,26 +507,16 @@ function PortalHome() {
           >
             <Row gutter={[24, 16]}>
               <Col xs={8}>
-                <Statistic
-                  title="Total Reports"
-                  value={reports.length}
-                />
+                <Statistic title="Total Reports" value={reports.length} />
               </Col>
               <Col xs={8}>
-                <Statistic
-                  title={`This Year (${thisYear})`}
-                  value={thisYearCount}
-                />
+                <Statistic title={`This Year (${thisYear})`} value={thisYearCount} />
               </Col>
               <Col xs={8}>
                 <Statistic
                   title="Pending"
                   value={pendingCount}
-                  valueStyle={
-                    pendingCount > 0
-                      ? { color: "#fa8c16" }
-                      : undefined
-                  }
+                  valueStyle={pendingCount > 0 ? { color: "#fa8c16" } : undefined}
                 />
               </Col>
             </Row>
