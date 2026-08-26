@@ -1,7 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
-import { App, Layout, Table, Tag, Button, Space, Input, Alert } from "antd";
-import { ReloadOutlined, DollarOutlined } from "@ant-design/icons";
+import { App, Layout, Table, Tag, Button, Space, Input, Alert, Modal, Descriptions } from "antd";
+import { ReloadOutlined, DollarOutlined, SendOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
 import {
@@ -9,6 +9,8 @@ import {
   dropCharge,
   getCptSuggestions,
   batchDropCharges,
+  submitClaim,
+  batchSubmitClaims,
   type BillingQueueEntry,
   type CptSuggestion,
 } from "../api/billing-ris";
@@ -37,6 +39,10 @@ function BillingQueue() {
   // B-05: batch confirm-and-drop selection.
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchDropping, setBatchDropping] = useState(false);
+  // B-02: review-before-submit claim flow.
+  const [reviewTarget, setReviewTarget] = useState<BillingQueueEntry | null>(null);
+  const [submittingClaim, setSubmittingClaim] = useState(false);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
 
   const fetch = useCallback(() => {
     setLoading(true);
@@ -97,9 +103,7 @@ function BillingQueue() {
       message.success(
         `Dropped ${res.dropped.length} charge(s)` +
           (res.missing.length ? ` — ${res.missing.length} not found` : "") +
-          (res.skipped.length
-            ? ` — ${res.skipped.length} skipped (not PENDING)`
-            : ""),
+          (res.skipped.length ? ` — ${res.skipped.length} skipped (not PENDING)` : "")
       );
       setSelectedRowKeys([]);
       fetch();
@@ -107,6 +111,43 @@ function BillingQueue() {
       message.error(e.message || "Batch drop failed");
     } finally {
       setBatchDropping(false);
+    }
+  };
+
+  // B-02: prepare + submit the reviewed charge as an electronic claim.
+  const handleClaimSubmit = async () => {
+    if (!reviewTarget) return;
+    setSubmittingClaim(true);
+    try {
+      const res = await submitClaim(reviewTarget.id);
+      message.success(`Claim ${res.claim_number} submitted`);
+      setReviewTarget(null);
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Claim submission failed");
+    } finally {
+      setSubmittingClaim(false);
+    }
+  };
+
+  // B-02: one claim per prepared charge, single round-trip for the batch.
+  const handleBatchSubmit = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchSubmitting(true);
+    try {
+      const res = await batchSubmitClaims(selectedRowKeys.map(String));
+      const submitted = res.submitted ?? [];
+      const missing = res.missing ?? [];
+      message.success(
+        `${submitted.length} claim(s) submitted` +
+          (missing.length ? ` — ${missing.length} not prepared` : "")
+      );
+      setSelectedRowKeys([]);
+      fetch();
+    } catch (e: any) {
+      message.error(e.message || "Batch claim submission failed");
+    } finally {
+      setBatchSubmitting(false);
     }
   };
 
@@ -147,6 +188,14 @@ function BillingQueue() {
         <Space size="small">
           <Button
             size="small"
+            icon={<SendOutlined />}
+            aria-label={`Submit claim for ${record.patient_name || record.patient_id}`}
+            onClick={() => setReviewTarget(record)}
+          >
+            Submit claim
+          </Button>
+          <Button
+            size="small"
             icon={<DollarOutlined />}
             aria-label="Drop charge"
             onClick={() => handleDrop(record)}
@@ -163,21 +212,28 @@ function BillingQueue() {
       <div className="billing-queue-header">
         <h2>Billing Queue</h2>
         {selectedRowKeys.length > 0 && (
-          <Button
-            type="primary"
-            icon={<DollarOutlined />}
-            loading={batchDropping}
-            onClick={handleBatchDrop}
-            aria-label="Drop selected charges"
-          >
-            Confirm & Drop ({selectedRowKeys.length})
-          </Button>
+          <>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              loading={batchSubmitting}
+              onClick={handleBatchSubmit}
+              aria-label={`Submit claims (${selectedRowKeys.length})`}
+            >
+              Submit claims ({selectedRowKeys.length})
+            </Button>
+            <Button
+              type="primary"
+              icon={<DollarOutlined />}
+              loading={batchDropping}
+              onClick={handleBatchDrop}
+              aria-label="Drop selected charges"
+            >
+              Confirm & Drop ({selectedRowKeys.length})
+            </Button>
+          </>
         )}
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={fetch}
-          style={{ marginBottom: 16 }}
-        >
+        <Button icon={<ReloadOutlined />} onClick={fetch} style={{ marginBottom: 16 }}>
           Refresh
         </Button>
       </div>
@@ -187,8 +243,8 @@ function BillingQueue() {
           showIcon
           title={
             <>
-              CPT/ICD-10 suggestions loaded from the coding map — confirm each
-              charge to drop it to billing.{" "}
+              CPT/ICD-10 suggestions loaded from the coding map — confirm each charge to drop it to
+              billing.{" "}
               {Object.values(suggestions).some((s) => s.confidence != null) &&
                 "Confidence reflects match quality (95% exact, 75% partial)."}
             </>
@@ -223,6 +279,34 @@ function BillingQueue() {
           size="middle"
         />
       </PageState>
+
+      {/* B-02: review-before-submit — the coder sees exactly what will be
+          billed before the claim is prepared and transmitted. */}
+      <Modal
+        title="Submit Claim"
+        open={!!reviewTarget}
+        okText="Submit"
+        okButtonProps={{ loading: submittingClaim }}
+        onOk={handleClaimSubmit}
+        onCancel={() => setReviewTarget(null)}
+        width={480}
+      >
+        {reviewTarget && (
+          <Descriptions bordered column={1} size="small">
+            <Descriptions.Item label="Patient">
+              {reviewTarget.patient_name || reviewTarget.patient_id}
+            </Descriptions.Item>
+            <Descriptions.Item label="Accession #">
+              {reviewTarget.accession_number}
+            </Descriptions.Item>
+            <Descriptions.Item label="CPT">{reviewTarget.cpt_code || "—"}</Descriptions.Item>
+            <Descriptions.Item label="ICD-10">{reviewTarget.icd10_code || "—"}</Descriptions.Item>
+            <Descriptions.Item label="Amount">
+              ${Number(reviewTarget.charge_amount ?? 0).toFixed(2)}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </Content>
   );
 }
