@@ -77,10 +77,7 @@ function renderBoard() {
   // Seed user into localStorage so AuthProvider picks it up
   localStorage.setItem("userId", "1");
   localStorage.setItem("username", "test");
-  localStorage.setItem(
-    "permissions",
-    JSON.stringify(["WORKLIST_READ", "WORKLIST_WRITE"]),
-  );
+  localStorage.setItem("permissions", JSON.stringify(["WORKLIST_READ", "WORKLIST_WRITE"]));
   localStorage.setItem("tenant_id", "t1");
   localStorage.setItem("tenant_name", "Test");
   return render(
@@ -90,13 +87,15 @@ function renderBoard() {
           <TrackingBoard />
         </ThemeProvider>
       </AuthProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
 describe("TrackingBoard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // §6 made kanban the default view; these suites pin the TABLE surface.
+    localStorage.setItem("tracking-view", "table");
     mockListTracking.mockResolvedValue({
       data: mockTrackingData,
       total: 2,
@@ -152,9 +151,7 @@ describe("TrackingBoard", () => {
 
   it("shows search input", async () => {
     renderBoard();
-    expect(
-      screen.getByPlaceholderText("Search patient/accession..."),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search patient/accession...")).toBeInTheDocument();
   });
 
   it("shows filter selects", async () => {
@@ -216,11 +213,7 @@ vi.mock("../api/scheduling", () => ({
 }));
 vi.mock("../schedule/RescheduleModal", () => ({
   default: (props: { open: boolean; appointment: any }) =>
-    props.open ? (
-      <div data-testid="reschedule-modal">
-        modal for {props.appointment?.id}
-      </div>
-    ) : null,
+    props.open ? <div data-testid="reschedule-modal">modal for {props.appointment?.id}</div> : null,
 }));
 
 describe("TrackingBoard C5 filters + actions", () => {
@@ -228,6 +221,8 @@ describe("TrackingBoard C5 filters + actions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // §6 kanban is the default view; these tests exercise table row actions.
+    localStorage.setItem("tracking-view", "table");
     mockListTracking.mockResolvedValue({
       data: [
         {
@@ -247,9 +242,7 @@ describe("TrackingBoard C5 filters + actions", () => {
       overdue: 0,
       stat_count: 0,
     });
-    mockGetAvailability.mockResolvedValue([
-      { start: "10:00", end: "10:30" },
-    ]);
+    mockGetAvailability.mockResolvedValue([{ start: "10:00", end: "10:30" }]);
   });
 
   it("sends room filter as query param; priority control renders", async () => {
@@ -290,9 +283,7 @@ describe("TrackingBoard C5 filters + actions", () => {
     await waitFor(() => {
       expect(mockGetAvailability).toHaveBeenCalledWith("res-1", "2026-08-20");
     });
-    expect(await screen.findByTestId("reschedule-modal")).toHaveTextContent(
-      "modal for appt-1"
-    );
+    expect(await screen.findByTestId("reschedule-modal")).toHaveTextContent("modal for appt-1");
   });
   it("passes WCAG 2.1 AA automated scan (F3)", async () => {
     renderBoard();
@@ -303,5 +294,4 @@ describe("TrackingBoard C5 filters + actions", () => {
     const results = await scanA11y(document.body);
     expect(seriousViolations(results)).toEqual([]);
   });
-
 });

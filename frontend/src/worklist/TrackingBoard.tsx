@@ -15,6 +15,7 @@ import {
   Modal,
   Descriptions,
   DatePicker,
+  Segmented,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -40,6 +41,7 @@ import type { ResourceAvailabilitySlot, RisAppointment } from "../api/scheduling
 import { PageState } from "../common/PageState";
 import { TRACKING_STATUS_COLORS, TRACKING_PRIORITY_COLORS } from "../common/statusColors";
 import KpiStrip from "./KpiStrip";
+import TrackingKanban from "./TrackingKanban";
 import "./TrackingBoard.css";
 
 const { Content } = Layout;
@@ -93,6 +95,15 @@ function TrackingBoard() {
   // M-1: staleness guard — last successful fetch time so operators can see
   // when the board data was actually retrieved.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // §6.3 kanban ↔ table toggle; kanban is the spec default and the choice
+  // persists per browser.
+  const [view, setView] = useState<"kanban" | "table">(() =>
+    localStorage.getItem("tracking-view") === "table" ? "table" : "kanban"
+  );
+  const switchView = (v: string) => {
+    setView(v as "kanban" | "table");
+    localStorage.setItem("tracking-view", v);
+  };
   // M-2: keep the user's page across auto-refresh (30s) so the board does not
   // silently jump back to page 1 while they review a later page.
   const pageRef = useRef(1);
@@ -123,7 +134,7 @@ function TrackingBoard() {
       if (overrides) Object.assign(query, overrides);
       return query;
     },
-    [modalityFilter, statusFilter, priorityFilter, debouncedRoom, dateRange, debouncedSearch],
+    [modalityFilter, statusFilter, priorityFilter, debouncedRoom, dateRange, debouncedSearch]
   );
 
   const fetchKpi = useCallback(() => {
@@ -165,7 +176,7 @@ function TrackingBoard() {
         });
       fetchKpi();
     },
-    [buildQuery, fetchKpi],
+    [buildQuery, fetchKpi]
   );
 
   useEffect(() => {
@@ -196,7 +207,7 @@ function TrackingBoard() {
         message.error(e.message || "Failed to update status");
       }
     },
-    [fetch],
+    [fetch]
   );
 
   // C5: open the shared reschedule modal against the entry's live
@@ -207,8 +218,7 @@ function TrackingBoard() {
     async (entry: TrackingEntry) => {
       if (!entry.appointment_id || !entry.resource_id) return;
       setRescheduleLoading(true);
-      const day =
-        (entry.scheduled_date || new Date().toISOString().slice(0, 10));
+      const day = entry.scheduled_date || new Date().toISOString().slice(0, 10);
       try {
         const slots = await getResourceAvailability(entry.resource_id, day);
         setRescheduleTarget({
@@ -230,7 +240,7 @@ function TrackingBoard() {
         setRescheduleLoading(false);
       }
     },
-    [message],
+    [message]
   );
 
   const columns: any[] = useMemo(
@@ -259,9 +269,7 @@ function TrackingBoard() {
         title: "Scheduled",
         width: "12%",
         render: (_: any, r: TrackingEntry) =>
-          r.scheduled_date
-            ? `${r.scheduled_date} ${r.scheduled_time || ""}`
-            : "-",
+          r.scheduled_date ? `${r.scheduled_date} ${r.scheduled_time || ""}` : "-",
       },
       {
         title: "Room",
@@ -273,9 +281,7 @@ function TrackingBoard() {
         title: "Status",
         dataIndex: "status",
         width: "10%",
-        render: (s: string) => (
-          <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>
-        ),
+        render: (s: string) => <Tag color={STATUS_COLORS[s] || "default"}>{s}</Tag>,
       },
       {
         title: "Priority",
@@ -283,9 +289,17 @@ function TrackingBoard() {
         width: "8%",
         render: (v: string) => {
           if (!v) return "-";
-          const color =
-            PRIORITY_COLORS[v] || (v === "STAT" || v === "S" ? "red" : "default");
-          return <Badge count={v} style={{ backgroundColor: color === "red" ? "#ff4d4f" : color === "orange" ? "#fa8c16" : "#d9d9d9", color: "#fff" }} />;
+          const color = PRIORITY_COLORS[v] || (v === "STAT" || v === "S" ? "red" : "default");
+          return (
+            <Badge
+              count={v}
+              style={{
+                backgroundColor:
+                  color === "red" ? "#ff4d4f" : color === "orange" ? "#fa8c16" : "#d9d9d9",
+                color: "#fff",
+              }}
+            />
+          );
         },
       },
       {
@@ -311,11 +325,8 @@ function TrackingBoard() {
               render: (_: any, record: TrackingEntry) => {
                 const transitions = VALID_TRANSITIONS[record.status] || [];
                 const canReschedule =
-                  canSchedule &&
-                  record.status === "scheduled" &&
-                  !!record.appointment_id;
-                if (transitions.length === 0 && !canReschedule)
-                  return <span>-</span>;
+                  canSchedule && record.status === "scheduled" && !!record.appointment_id;
+                if (transitions.length === 0 && !canReschedule) return <span>-</span>;
                 return (
                   <Space size="small">
                     {canReschedule && (
@@ -346,9 +357,7 @@ function TrackingBoard() {
                           type="primary"
                           aria-label="Start Exam"
                           icon={<ArrowRightOutlined />}
-                          onClick={() =>
-                            handleStatusUpdate(record, "in_progress")
-                          }
+                          onClick={() => handleStatusUpdate(record, "in_progress")}
                         />
                       </Tooltip>
                     )}
@@ -359,18 +368,14 @@ function TrackingBoard() {
                           aria-label="Complete"
                           style={{ color: "#52c41a", borderColor: "#52c41a" }}
                           icon={<CheckCircleOutlined />}
-                          onClick={() =>
-                            handleStatusUpdate(record, "completed")
-                          }
+                          onClick={() => handleStatusUpdate(record, "completed")}
                         />
                       </Tooltip>
                     )}
                     {transitions.includes("cancelled") && (
                       <Popconfirm
                         title="Cancel this exam?"
-                        onConfirm={() =>
-                          handleStatusUpdate(record, "cancelled")
-                        }
+                        onConfirm={() => handleStatusUpdate(record, "cancelled")}
                       >
                         <Tooltip title="Cancel">
                           <Button
@@ -389,7 +394,7 @@ function TrackingBoard() {
           ]
         : []),
     ],
-    [canWrite, canSchedule, rescheduleLoading, handleStatusUpdate, handleReschedule],
+    [canWrite, canSchedule, rescheduleLoading, handleStatusUpdate, handleReschedule]
   );
 
   return (
@@ -406,6 +411,15 @@ function TrackingBoard() {
 
       {/* Filters */}
       <Space style={{ marginBottom: 16 }} wrap>
+        <Segmented
+          aria-label="Board view"
+          value={view}
+          onChange={(v) => switchView(v as string)}
+          options={[
+            { value: "kanban", label: "Kanban" },
+            { value: "table", label: "Table" },
+          ]}
+        />
         <Input.Search
           placeholder="Search patient/accession..."
           value={searchQuery}
@@ -505,30 +519,38 @@ function TrackingBoard() {
         empty={!loading && !error && data.length === 0}
         emptyMessage="No exams on the tracking board"
       >
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            showTotal: (total: number) => `${total} exams`,
-          }}
-          onChange={(pag: any) => {
-            pageRef.current = pag.current || 1;
-            pageSizeRef.current = pag.pageSize || 20;
-            setPagination(pag);
-            fetch({ page: pag.current, per_page: pag.pageSize });
-          }}
-          size="middle"
-          rowClassName={(record: TrackingEntry) =>
-            record.requested_procedure_priority === "STAT" ||
-            record.requested_procedure_priority === "S"
-              ? "tracking-stat-row"
-              : ""
-          }
-        />
+        {view === "kanban" ? (
+          <TrackingKanban
+            entries={data}
+            onStatusChange={handleStatusUpdate}
+            onOpenDetail={setDetailModal}
+          />
+        ) : (
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={data}
+            loading={loading}
+            pagination={{
+              ...pagination,
+              showSizeChanger: true,
+              showTotal: (total: number) => `${total} exams`,
+            }}
+            onChange={(pag: any) => {
+              pageRef.current = pag.current || 1;
+              pageSizeRef.current = pag.pageSize || 20;
+              setPagination(pag);
+              fetch({ page: pag.current, per_page: pag.pageSize });
+            }}
+            size="middle"
+            rowClassName={(record: TrackingEntry) =>
+              record.requested_procedure_priority === "STAT" ||
+              record.requested_procedure_priority === "S"
+                ? "tracking-stat-row"
+                : ""
+            }
+          />
+        )}
       </PageState>
 
       {/* Detail Modal */}
@@ -554,9 +576,7 @@ function TrackingBoard() {
               {detailModal.requested_procedure_desc || "-"}
             </Descriptions.Item>
             <Descriptions.Item label="Status">
-              <Tag color={STATUS_COLORS[detailModal.status]}>
-                {detailModal.status}
-              </Tag>
+              <Tag color={STATUS_COLORS[detailModal.status]}>{detailModal.status}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Priority">
               {detailModal.requested_procedure_priority || "Routine"}
