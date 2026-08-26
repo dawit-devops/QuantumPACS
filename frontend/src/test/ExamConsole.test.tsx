@@ -287,6 +287,67 @@ describe("ExamConsole", () => {
     });
   });
 
+  it("narrows the registry by clinical indication (T-06)", async () => {
+    const protocolsWithInd = {
+      data: [
+        {
+          id: "p1",
+          name: "CT Head (Trauma)",
+          modality: "CT",
+          body_part: "Head",
+          clinical_indication: "Head trauma, stroke, severe headache",
+          is_default: false,
+          is_favorite: false,
+          sequences: [],
+        },
+        {
+          id: "p2",
+          name: "CT Abdomen (Routine)",
+          modality: "CT",
+          body_part: "Abdomen",
+          clinical_indication: "Abdominal pain, abnormal LFTs",
+          is_default: false,
+          is_favorite: false,
+          sequences: [],
+        },
+      ],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: readyExam });
+      if (url === "protocols") return Promise.resolve(protocolsWithInd);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    // Pick "stroke" from the indication filter — the abdomen protocol,
+    // whose indications never mention stroke, drops out of the registry.
+    const indCombo = await screen.findByRole("combobox", {
+      name: /filter by indication/i,
+    });
+    fireEvent.mouseDown(indCombo);
+    // antd mounts the open dropdown's items without role attributes under
+    // jsdom, so target the option elements directly.
+    await waitFor(() => {
+      const opts = Array.from(document.querySelectorAll<HTMLElement>(".ant-select-item-option"));
+      expect(opts.some((o) => o.textContent === "stroke")).toBe(true);
+    });
+    const strokeOpt = Array.from(
+      document.querySelectorAll<HTMLElement>(".ant-select-item-option")
+    ).find((o) => o.textContent === "stroke");
+    fireEvent.click(strokeOpt!);
+
+    // Open the registry dropdown and confirm the narrowed option list.
+    const combos = await screen.findAllByRole("combobox");
+    fireEvent.mouseDown(combos[0]);
+    await waitFor(() => {
+      const names = Array.from(
+        document.querySelectorAll<HTMLElement>(".ant-select-item-option")
+      ).map((o) => o.textContent);
+      expect(names).not.toContain("CT Abdomen (Routine)");
+      expect(names).toContain("CT Head (Trauma)");
+    });
+  });
+
   it("acquires an image and queues it for QA", async () => {
     let examState: any = { ...inProgressExam };
     mockRequest.mockImplementation((url: string) => {

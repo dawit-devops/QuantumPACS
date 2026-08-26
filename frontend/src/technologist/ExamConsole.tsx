@@ -158,6 +158,7 @@ function ExamConsole() {
   // T-06: protocol favorites + body-part narrowing on the registry picker.
   const [favOnly, setFavOnly] = useState(false);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>("");
+  const [indicationFilter, setIndicationFilter] = useState<string>("");
 
   // Acquisition state.
   const [pendingPreviews, setPendingPreviews] = useState<any[]>([]);
@@ -280,21 +281,44 @@ function ExamConsole() {
     [protocols]
   );
 
-  // T-06: registry options narrowed by body part / favorites-only.
+  // T-06: registry options narrowed by body part / indication / favorites-only.
   const protocolOptions = useMemo(() => {
     return protocols
       .filter((p: any) => (favOnly ? p.is_favorite : true))
       .filter((p: any) => (bodyPartFilter ? p.body_part === bodyPartFilter : true))
+      .filter((p: any) =>
+        indicationFilter
+          ? String(p.clinical_indication || "")
+              .toLowerCase()
+              .includes(indicationFilter.toLowerCase())
+          : true
+      )
       .map((p: any) => ({
         value: p.name,
         label: p.is_favorite ? `★ ${p.name}` : p.name,
       }));
-  }, [protocols, favOnly, bodyPartFilter]);
+  }, [protocols, favOnly, bodyPartFilter, indicationFilter]);
 
   const bodyParts = useMemo(
     () => Array.from(new Set(protocols.map((p: any) => p.body_part).filter(Boolean))).sort(),
     [protocols]
   );
+
+  // T-06: individual indication terms — the stored text is a comma list
+  // ("Head trauma, stroke"), so the picker offers one term per entry.
+  const indications = useMemo(() => {
+    return Array.from(
+      new Set(
+        protocols
+          .flatMap((p: any) =>
+            String(p.clinical_indication || "")
+              .split(",")
+              .map((s: string) => s.trim())
+          )
+          .filter(Boolean)
+      )
+    ).sort();
+  }, [protocols]);
 
   const workflow = useMemo(
     () => MODALITY_WORKFLOWS[exam?.modality || ""] || null,
@@ -780,6 +804,17 @@ function ExamConsole() {
                       value: bp,
                       label: bp,
                     }))}
+                  />
+                  {/* T-06: clinical-indication narrowing — options come from
+                      the comma-split indication text of the loaded protocols. */}
+                  <Select
+                    allowClear
+                    aria-label="Filter by indication"
+                    placeholder="Indication"
+                    style={{ width: 170 }}
+                    value={indicationFilter || undefined}
+                    onChange={(v: string) => setIndicationFilter(v || "")}
+                    options={indications.map((ind: string) => ({ value: ind, label: ind }))}
                   />
                   <Checkbox checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)}>
                     Favorites only
