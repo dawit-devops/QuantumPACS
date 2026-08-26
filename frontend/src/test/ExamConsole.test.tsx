@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -48,7 +42,7 @@ function renderConsole() {
           </MemoryRouter>
         </AuthProvider>
       </ThemeProvider>
-    </AntdApp>,
+    </AntdApp>
   );
 }
 
@@ -77,6 +71,17 @@ const inProgressExam = {
   status: "in_progress",
   identity_confirmed_at: "2026-08-03T08:00:00Z",
   protocol_name: "CT Head (Routine)",
+  // T-14: this CT exam has cleared the pregnancy/radiation-risk
+  // acknowledgment, so acquiring is allowed (the gate tests below use a
+  // copy with the check stripped).
+  safety_checks: [
+    {
+      id: "sc-1",
+      check_item: "Not pregnant (or documented radiation risk accepted)",
+      answer: "confirmed",
+      checked_by: "u1",
+    },
+  ],
   dose: {
     total_dlp: 520,
     total_ctdivol: 12.5,
@@ -113,10 +118,7 @@ describe("ExamConsole", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "technologist");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["EXAM_READ", "EXAM_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["EXAM_READ", "EXAM_WRITE"]));
     mockRequest.mockReset();
   });
 
@@ -129,14 +131,10 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Patient Identity Verification"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
     });
     expect(screen.getByText("John Doe")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Confirm Patient/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirm Patient/i })).toBeInTheDocument();
   });
 
   it("confirms identity and moves to in-progress", async () => {
@@ -148,15 +146,12 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Confirm Patient/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Confirm Patient/i })).toBeInTheDocument();
     });
 
     // Confirm identity writes via the API; the refetch returns in-progress.
     mockRequest.mockImplementation((url: string) => {
-      if (url === "exams/e1/identity-confirm")
-        return Promise.resolve({ data: {} });
+      if (url === "exams/e1/identity-confirm") return Promise.resolve({ data: {} });
       if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
       if (url === "protocols") return Promise.resolve(mockProtocols);
       return Promise.resolve({ data: [] });
@@ -214,9 +209,7 @@ describe("ExamConsole", () => {
 
     // Default selection lands on the default protocol; favorite it.
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /favorite protocol/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /favorite protocol/i })).toBeInTheDocument();
     });
 
     let favState = false;
@@ -231,19 +224,15 @@ describe("ExamConsole", () => {
       if (url === "protocols") return Promise.resolve(protocolsWithIds);
       return Promise.resolve({ data: [] });
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /favorite protocol/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /favorite protocol/i }));
 
     // The star flips without a refetch.
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith(
         "protocols/p1/favorite",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({ method: "POST" })
       );
-      expect(
-        screen.getByRole("button", { name: /unfavorite protocol/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /unfavorite protocol/i })).toBeInTheDocument();
     });
   });
 
@@ -284,22 +273,17 @@ describe("ExamConsole", () => {
     };
     await openDropdown();
     await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: "CT Chest (Routine)" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "CT Chest (Routine)" })).toBeInTheDocument();
     });
 
     // Favorites-only hides the non-favorite chest protocol.
     fireEvent.click(screen.getByRole("checkbox", { name: /favorites only/i }));
     await openDropdown();
     await waitFor(() => {
-      expect(
-        screen.queryByRole("option", { name: "CT Chest (Routine)" }),
-      ).toBeNull();
-      expect(
-        screen.getAllByRole("option", { name: /CT Head \(Routine\)/ })
-          .length,
-      ).toBeGreaterThan(0);
+      expect(screen.queryByRole("option", { name: "CT Chest (Routine)" })).toBeNull();
+      expect(screen.getAllByRole("option", { name: /CT Head \(Routine\)/ }).length).toBeGreaterThan(
+        0
+      );
     });
   });
 
@@ -335,17 +319,13 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Acquire Image/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Accept/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /Reject/i })).toBeInTheDocument();
     // The acquired image description appears in the QA queue.
@@ -370,30 +350,23 @@ describe("ExamConsole", () => {
         };
         return Promise.resolve({ data: acq });
       }
-      if (url.includes("/accept"))
-        return Promise.resolve({ data: { status: "accepted" } });
+      if (url.includes("/accept")) return Promise.resolve({ data: { status: "accepted" } });
       return Promise.resolve({ data: [] });
     });
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Acquire Image/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Accept/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Accept/i }));
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /Accept/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Accept/i })).not.toBeInTheDocument();
     });
   });
 
@@ -406,26 +379,18 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Emergency Override/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Emergency Override/i })).toBeInTheDocument();
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /Emergency Override/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Emergency Override/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Emergency Protocol Override"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Emergency Protocol Override")).toBeInTheDocument();
     });
     // Submit without justification — validation should block the API call.
     fireEvent.click(screen.getByRole("button", { name: /Confirm Override/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Justification is required/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Justification is required/i)).toBeInTheDocument();
     });
   });
 
@@ -433,16 +398,13 @@ describe("ExamConsole", () => {
     mockRequest.mockImplementation((url: string) => {
       if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
       if (url === "protocols") return Promise.resolve(mockProtocols);
-      if (url === "exams/e1/incidents")
-        return Promise.resolve({ data: { id: "inc-1" } });
+      if (url === "exams/e1/incidents") return Promise.resolve({ data: { id: "inc-1" } });
       return Promise.resolve({ data: [] });
     });
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Log Incident/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Log Incident/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Log Incident/i }));
 
@@ -481,9 +443,7 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Exam completed and handed off/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Exam completed and handed off/i)).toBeInTheDocument();
     });
   });
 
@@ -514,9 +474,7 @@ describe("ExamConsole", () => {
         examState = {
           ...examState,
           acquisitions: examState.acquisitions.map((a: any) =>
-            a.id === "acq-1"
-              ? { ...a, status: "rejected", reject_reason: "Patient motion" }
-              : a,
+            a.id === "acq-1" ? { ...a, status: "rejected", reject_reason: "Patient motion" } : a
           ),
         };
         return Promise.resolve({
@@ -528,16 +486,12 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Acquire Image/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Acquire Image/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Reject/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Reject/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Reject/i }));
 
@@ -545,17 +499,13 @@ describe("ExamConsole", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    fireEvent.mouseDown(
-      within(screen.getByRole("dialog")).getByLabelText("Reject reason"),
-    );
+    fireEvent.mouseDown(within(screen.getByRole("dialog")).getByLabelText("Reject reason"));
     await waitFor(() => {
-      expect(
-        document.querySelectorAll(".ant-select-item-option").length,
-      ).toBeGreaterThan(0);
+      expect(document.querySelectorAll(".ant-select-item-option").length).toBeGreaterThan(0);
     });
-    const option = Array.from(
-      document.querySelectorAll(".ant-select-item-option"),
-    ).find((o) => o.textContent === "Patient motion");
+    const option = Array.from(document.querySelectorAll(".ant-select-item-option")).find(
+      (o) => o.textContent === "Patient motion"
+    );
     expect(option).toBeTruthy();
     fireEvent.click(option!);
     // Modal title and OK button both read "Reject Image" — target the
@@ -563,7 +513,7 @@ describe("ExamConsole", () => {
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Reject Image",
-      }),
+      })
     );
 
     // The rejected acquisition stays visible with reason + actions.
@@ -625,25 +575,19 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Retake/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Retake/i })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("button", { name: /Retake/i }));
 
     await waitFor(() => {
-      const acqCall = mockRequest.mock.calls.find(
-        (c: any[]) => c[0] === "exams/e1/acquisitions",
-      );
+      const acqCall = mockRequest.mock.calls.find((c: any[]) => c[0] === "exams/e1/acquisitions");
       expect(acqCall).toBeTruthy();
       expect(acqCall![1].data.series_number).toBe(4);
       expect(acqCall![1].data.description).toBe("Retake — Localizer");
     });
     // The retake lands in the pending QA queue for accept/reject.
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Accept/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
     });
   });
 
@@ -673,16 +617,12 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Accept/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Accept/i })).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /Reject/i })).toBeInTheDocument();
     expect(screen.getByText("QA Queue (1 pending)")).toBeInTheDocument();
     // Each pending item is represented by a thumbnail, not text only (§3-10).
-    expect(
-      document.querySelectorAll(".sim-preview-canvas-mini").length,
-    ).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".sim-preview-canvas-mini").length).toBeGreaterThan(0);
   });
 
   it("pre-fills the incident modal from a rejected acquisition", async () => {
@@ -720,9 +660,7 @@ describe("ExamConsole", () => {
     });
     // The Select renders the readable label (underscores stripped).
     expect(screen.getByText("patient motion")).toBeInTheDocument();
-    expect(
-      screen.getByDisplayValue(/Rejected series 1 \(Patient motion\)/),
-    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/Rejected series 1 \(Patient motion\)/)).toBeInTheDocument();
   });
 
   it("shows prior studies with a comparison link in the identity card", async () => {
@@ -748,9 +686,7 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Patient Identity Verification"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
     });
     // Prior study description + modality render with a viewer link.
     expect(screen.getByText(/CT Head Prior/)).toBeInTheDocument();
@@ -759,17 +695,18 @@ describe("ExamConsole", () => {
   });
 
   it("records only individually confirmed safety checks with a pregnancy warning", async () => {
+    // The checklist only renders while no checks are recorded yet — the
+    // shared inProgress fixture carries the ack, so strip it here.
     mockRequest.mockImplementation((url: string) => {
-      if (url === "exams/e1") return Promise.resolve({ data: inProgressExam });
+      if (url === "exams/e1")
+        return Promise.resolve({ data: { ...inProgressExam, safety_checks: [] } });
       if (url === "protocols") return Promise.resolve(mockProtocols);
       return Promise.resolve({ data: [] });
     });
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Safety Checks (pre-contrast)"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Safety Checks (pre-contrast)")).toBeInTheDocument();
     });
 
     // The pregnancy item surfaces a radiation warning (FR-R06-06).
@@ -788,14 +725,10 @@ describe("ExamConsole", () => {
 
     // Only the confirmed item is sent — not a hardcoded all-confirmed list.
     await waitFor(() => {
-      const call = mockRequest.mock.calls.find(
-        (c: any[]) => c[0] === "exams/e1/safety-checks",
-      );
+      const call = mockRequest.mock.calls.find((c: any[]) => c[0] === "exams/e1/safety-checks");
       expect(call).toBeTruthy();
     });
-    const call = mockRequest.mock.calls.find(
-      (c: any[]) => c[0] === "exams/e1/safety-checks",
-    );
+    const call = mockRequest.mock.calls.find((c: any[]) => c[0] === "exams/e1/safety-checks");
     expect(call![1].data.checks).toEqual([
       {
         check_item: "No known contrast allergies",
@@ -803,6 +736,90 @@ describe("ExamConsole", () => {
         notes: "",
       },
     ]);
+  });
+
+  it("disables acquiring until the pregnancy acknowledgment is recorded (T-14)", async () => {
+    // Mirrors the server gate in api/exams.py — a CT exam without a recorded
+    // pregnancy/radiation-risk check cannot acquire, client or server side.
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1")
+        return Promise.resolve({ data: { ...inProgressExam, safety_checks: [] } });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
+    });
+    const btn = screen.getByRole("button", { name: /Acquire Image/i });
+    expect(btn.hasAttribute("disabled")).toBe(true);
+    // The acquisition surface explains why (the Safety Checks card carries
+    // the checklist that resolves it).
+    expect(screen.getByText(/pregnancy\/radiation-risk acknowledgment/i)).toBeInTheDocument();
+  });
+
+  it("unlocks acquiring after the pregnancy check is recorded (T-14)", async () => {
+    let examState: any = {
+      ...inProgressExam,
+      safety_checks: [],
+      acquisitions: [],
+    };
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1") return Promise.resolve({ data: examState });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      if (url === "exams/e1/safety-checks") {
+        examState = {
+          ...examState,
+          safety_checks: [
+            {
+              id: "sc-9",
+              check_item: "Not pregnant (or documented radiation risk accepted)",
+              answer: "confirmed",
+            },
+          ],
+        };
+        return Promise.resolve({ data: { recorded: 2 } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Acquire Image/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Acquire Image/i }).hasAttribute("disabled")).toBe(
+      true
+    );
+
+    // Confirm the pregnancy item and record — the refetched exam carries the
+    // ack row and Acquire unlocks.
+    fireEvent.click(screen.getByLabelText(/Not pregnant \(or documented radiation risk/i));
+    fireEvent.click(screen.getByRole("button", { name: /Record Safety Checks/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Acquire Image/i }).hasAttribute("disabled")).toBe(
+        false
+      );
+    });
+  });
+
+  it("does not gate non-ionizing modalities (T-14)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams/e1")
+        return Promise.resolve({
+          data: { ...inProgressExam, modality: "MR", safety_checks: [] },
+        });
+      if (url === "protocols") return Promise.resolve(mockProtocols);
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /Acquire Image/i });
+      expect(btn.hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.queryByText(/pregnancy\/radiation-risk acknowledgment/i)).toBeNull();
   });
 
   it("lists per-series dose and flags the panel when the benchmark is exceeded", async () => {
@@ -849,9 +866,7 @@ describe("ExamConsole", () => {
     expect(screen.getByText("S1 · Localizer")).toBeInTheDocument();
     expect(screen.getByText("S2 · Diagnostic series")).toBeInTheDocument();
     // dose_level danger flags the panel itself, not just the progress bar.
-    expect(
-      screen.getByText(/ACR dose benchmark exceeded/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/ACR dose benchmark exceeded/i)).toBeInTheDocument();
   });
 
   it("navigates to the worklist on Ctrl+Shift+W", async () => {
@@ -863,9 +878,7 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Patient Identity Verification"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(window, { key: "w", ctrlKey: true, shiftKey: true });
@@ -887,13 +900,9 @@ describe("ExamConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Patient Identity Verification"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Patient Identity Verification")).toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("button", { name: /Confirm Patient/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirm Patient/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Start Protocol")).not.toBeInTheDocument();
     expect(screen.queryByText("Acquire Image")).not.toBeInTheDocument();
     expect(screen.queryByText("Complete Exam")).not.toBeInTheDocument();

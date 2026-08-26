@@ -350,6 +350,53 @@ class TestExamAcquisitions:
         assert data['rejected_count'] == 1
 
 
+class TestPregnancyAckGate:
+    """T-14: on ionizing-radiation modalities the pregnancy / radiation-risk
+    acknowledgment must be recorded before any acquisition is accepted —
+    enforced server-side so skipping the checklist in the UI cannot bypass it."""
+
+    def _post_acquisition(self, exam_row, fetchval=None):
+        client = TestClient(_make_app(TECH))
+
+        async def fake_fetchrow(q, *a):
+            if q.startswith('SELECT * FROM exams'):
+                return exam_row
+            return {'id': 'acq-1', 'exam_id': exam_row['id'], 'dlp': 0.0}
+
+        with _conn(fetchrow=fake_fetchrow, fetchval=fetchval), _audit_ok():
+            resp = client.post(f"/exams/{exam_row['id']}/acquisitions", json={
+                'series_number': 1, 'description': 'Axial Diagnostic',
+            })
+        return resp
+
+    def test_ct_blocked_without_acknowledgment(self):
+        resp = self._post_acquisition({'id': 'e1', 'modality': 'CT'})
+        assert resp.status_code == 400
+        assert 'pregnan' in resp.json()['error']['message'].lower()
+
+    def test_ct_allowed_after_acknowledgment_recorded(self):
+        # The ack query hits safety_checks; 1 = a pregnancy check row exists.
+        resp = self._post_acquisition(
+            {'id': 'e1', 'modality': 'CT'}, fetchval=AsyncMock(return_value=1))
+        assert resp.status_code == 201
+        assert resp.json()['data']['id'] == 'acq-1'
+
+    def test_non_ionizing_modality_exempt(self):
+        # MR involves no ionizing radiation — no pregnancy gate.
+        resp = self._post_acquisition({'id': 'e2', 'modality': 'MR'})
+        assert resp.status_code == 201
+
+    def test_modality_match_is_case_insensitive(self):
+        resp = self._post_acquisition({'id': 'e3', 'modality': 'ct'})
+        assert resp.status_code == 400
+
+    def test_missing_modality_not_blocked(self):
+        # Legacy/adopted rows without a modality stay creatable (the gate
+        # keys on known ionizing modalities, not on absence of data).
+        resp = self._post_acquisition({'id': 'e4'})
+        assert resp.status_code == 201
+
+
 class TestExamDose:
     def test_dose_levels(self):
         client = TestClient(_make_app(TECH))

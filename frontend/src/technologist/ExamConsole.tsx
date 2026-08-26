@@ -19,6 +19,7 @@ import {
   Progress,
   Divider,
   Space,
+  Tooltip,
 } from "antd";
 import { StarFilled, StarOutlined } from "@ant-design/icons";
 import {
@@ -103,6 +104,12 @@ const SAFETY_CHECK_ITEMS = [
   },
   { check_item: "Creatinine/recent lab values reviewed", key: "renal" },
 ];
+
+// T-14: modalities exposing the patient to ionizing radiation. Must match
+// _IONIZING_MODALITIES in api/exams.py, which refuses acquisitions until a
+// pregnancy/radiation-risk safety check is recorded — the UI mirrors that
+// gate so the technologist sees why Acquire is unavailable.
+const IONIZING_MODALITIES = ["CT", "CR", "DX", "XR", "MG", "NM", "PT", "PET", "XA", "RF"];
 
 // The QA queue merges this session's optimistic previews with the server's
 // pending acquisitions (which survive a reload, FR-R06-04), deduped by id —
@@ -533,6 +540,16 @@ function ExamConsole() {
   const isComplete = exam.status === "completed";
   const identityDone = !!exam.identity_confirmed_at || exam.status === "in_progress";
   const protocolStarted = !!exam.protocol_name;
+  // T-14: the acknowledgment is any recorded check whose item mentions
+  // pregnancy — the checklist only posts explicitly confirmed items, so the
+  // row's existence IS the acknowledgment (same rule the server applies).
+  const pregnancyAcked = (exam.safety_checks ?? []).some((s: any) =>
+    String(s?.check_item || "")
+      .toLowerCase()
+      .includes("pregnan")
+  );
+  const needsPregnancyAck =
+    IONIZING_MODALITIES.includes((exam.modality || "").toUpperCase()) && !pregnancyAcked;
   // FR-R06-02: prior studies for the comparison link in the identity card.
   const priorStudies = exam.prior_studies || [];
 
@@ -776,9 +793,17 @@ function ExamConsole() {
             style={{ marginTop: 16 }}
             extra={
               canWrite && !isComplete && identityDone && protocolStarted ? (
-                <Button type="primary" onClick={() => acquireImage()}>
-                  Acquire Image
-                </Button>
+                needsPregnancyAck ? (
+                  <Tooltip title="Record the pregnancy/radiation-risk safety check before acquiring">
+                    <Button type="primary" disabled>
+                      Acquire Image
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Button type="primary" onClick={() => acquireImage()}>
+                    Acquire Image
+                  </Button>
+                )
               ) : undefined
             }
           >
@@ -789,100 +814,111 @@ function ExamConsole() {
                 title="Confirm the patient and start the protocol before acquiring images."
               />
             ) : (
-              <div className="exam-acq">
-                <div className="exam-acq-preview">
-                  {/* C11 (Sprint D): mount the real viewer when the exam's study
+              <>
+                {needsPregnancyAck && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    title={`Ionizing radiation exam (${exam.modality}) — record the pregnancy/radiation-risk acknowledgment in Safety Checks below before acquiring.`}
+                  />
+                )}
+                <div className="exam-acq">
+                  <div className="exam-acq-preview">
+                    {/* C11 (Sprint D): mount the real viewer when the exam's study
                   has been stored; SimulatedPreview stays the no-DICOM
                   fallback so the console never shows an empty box. */}
-                  {exam.imaging && exam.imaging_patient ? (
-                    <ExamViewport
-                      patient={exam.imaging_patient}
-                      patientName={exam.patient_name}
-                      patientId={exam.patient_id}
-                      examModality={exam.modality}
-                    />
-                  ) : (
-                    <SimulatedPreview label={`Series ${Math.max(1, nextSeries)} preview`} />
-                  )}
-                </div>
-                <div className="exam-acq-queue">
-                  <h4>QA Queue ({pendingAcqs.length} pending)</h4>
-                  {pendingAcqs.length === 0 && (
-                    <span className="exam-acq-empty">
-                      Pending acquisitions will appear here for accept/reject.
-                    </span>
-                  )}
-                  {pendingAcqs.map((acq) => (
-                    <div key={acq.id} className="exam-acq-item">
-                      {/* §3-10: each pending acquisition is represented by a
+                    {exam.imaging && exam.imaging_patient ? (
+                      <ExamViewport
+                        patient={exam.imaging_patient}
+                        patientName={exam.patient_name}
+                        patientId={exam.patient_id}
+                        examModality={exam.modality}
+                      />
+                    ) : (
+                      <SimulatedPreview label={`Series ${Math.max(1, nextSeries)} preview`} />
+                    )}
+                  </div>
+                  <div className="exam-acq-queue">
+                    <h4>QA Queue ({pendingAcqs.length} pending)</h4>
+                    {pendingAcqs.length === 0 && (
+                      <span className="exam-acq-empty">
+                        Pending acquisitions will appear here for accept/reject.
+                      </span>
+                    )}
+                    {pendingAcqs.map((acq) => (
+                      <div key={acq.id} className="exam-acq-item">
+                        {/* §3-10: each pending acquisition is represented by a
                           thumbnail, not text only — the real viewport mounts
                           for exams with DICOM (C11); the simulated mini
                           canvas covers the fallback path. */}
-                      <SimulatedPreview
-                        mini
-                        width={88}
-                        height={88}
-                        label={acq.description || "Series"}
-                      />
-                      <div className="exam-acq-item-info">
-                        <b>{acq.description || "Series"}</b>
-                        <span className="exam-acq-item-meta">
-                          DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp {acq.kvp || 0}
-                        </span>
-                      </div>
-                      <Space>
-                        {canWrite && (
-                          <>
-                            <Button
-                              size="small"
-                              type="primary"
-                              onClick={() => decideAcquisition(acq.id, "accept")}
-                            >
-                              Accept
-                            </Button>
-                            <Button size="small" danger onClick={() => setRejectOpen(acq.id)}>
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                      </Space>
-                    </div>
-                  ))}
-                  {rejectedAcqs.length > 0 && (
-                    <div className="exam-acq-rejected">
-                      <h4>Rejected ({rejectedAcqs.length})</h4>
-                      {rejectedAcqs.map((acq: any) => (
-                        <div key={acq.id} className="exam-acq-item exam-acq-item-rejected">
-                          <div>
-                            <b>{acq.description || "Series"}</b>
-                            <span className="exam-acq-item-meta">
-                              Series {acq.series_number} · Rejected:{" "}
-                              {acq.reject_reason || "no reason"}
-                            </span>
-                          </div>
-                          <Space>
-                            {canWrite && (
-                              <>
-                                <Button
-                                  size="small"
-                                  type="primary"
-                                  ghost
-                                  onClick={() => acquireImage(acq)}
-                                >
-                                  Retake
-                                </Button>
-                                <Button size="small" onClick={() => openIncidentForRejected(acq)}>
-                                  Log Incident
-                                </Button>
-                              </>
-                            )}
-                          </Space>
+                        <SimulatedPreview
+                          mini
+                          width={88}
+                          height={88}
+                          label={acq.description || "Series"}
+                        />
+                        <div className="exam-acq-item-info">
+                          <b>{acq.description || "Series"}</b>
+                          <span className="exam-acq-item-meta">
+                            DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp {acq.kvp || 0}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <Space>
+                          {canWrite && (
+                            <>
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={() => decideAcquisition(acq.id, "accept")}
+                              >
+                                Accept
+                              </Button>
+                              <Button size="small" danger onClick={() => setRejectOpen(acq.id)}>
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </Space>
+                      </div>
+                    ))}
+                    {rejectedAcqs.length > 0 && (
+                      <div className="exam-acq-rejected">
+                        <h4>Rejected ({rejectedAcqs.length})</h4>
+                        {rejectedAcqs.map((acq: any) => (
+                          <div key={acq.id} className="exam-acq-item exam-acq-item-rejected">
+                            <div>
+                              <b>{acq.description || "Series"}</b>
+                              <span className="exam-acq-item-meta">
+                                Series {acq.series_number} · Rejected:{" "}
+                                {acq.reject_reason || "no reason"}
+                              </span>
+                            </div>
+                            <Space>
+                              {canWrite && (
+                                <>
+                                  <Button
+                                    size="small"
+                                    type="primary"
+                                    ghost
+                                    disabled={needsPregnancyAck}
+                                    onClick={() => acquireImage(acq)}
+                                  >
+                                    Retake
+                                  </Button>
+                                  <Button size="small" onClick={() => openIncidentForRejected(acq)}>
+                                    Log Incident
+                                  </Button>
+                                </>
+                              )}
+                            </Space>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             {isComplete && <Alert type="success" showIcon title="Acquisition complete." />}
           </Card>

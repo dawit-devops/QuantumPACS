@@ -492,6 +492,35 @@ class ExamProtocolHandler(HTTPEndpoint):
         return ok({'data': {'protocol_name': name}})
 
 
+# T-14: modalities exposing the patient to ionizing radiation. Acquiring on
+# these requires a recorded pregnancy / radiation-risk acknowledgment so the
+# safety checklist cannot be bypassed client-side.
+_IONIZING_MODALITIES = {'CT', 'CR', 'DX', 'XR', 'MG', 'NM', 'PT', 'PET', 'XA', 'RF'}
+
+
+async def _require_pregnancy_ack(conn, exam):
+    """Return an error message when acquisition may not proceed, else None.
+
+    The acknowledgment is any recorded safety_checks row whose item mentions
+    pregnancy — the console only posts items the technologist explicitly
+    confirmed, so the row's existence IS the acknowledgment."""
+    modality = (exam.get('modality') or '').upper()
+    if modality not in _IONIZING_MODALITIES:
+        return None
+    acked = await conn.fetchval(
+        "SELECT 1 FROM safety_checks WHERE exam_id = $1 "
+        "AND position('pregnan' in lower(check_item)) > 0 LIMIT 1",
+        exam.get('id'),
+    )
+    if acked:
+        return None
+    return (
+        'Pregnancy/radiation-risk acknowledgment must be recorded before '
+        f'acquisition for {modality} exams — record the pregnancy safety '
+        'check first'
+    )
+
+
 class ExamAcquisitionsHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_WRITE)
     async def post(self, request):
@@ -501,6 +530,9 @@ class ExamAcquisitionsHandler(HTTPEndpoint):
             exam = await Exams(conn).get(exam_id)
             if not exam:
                 return not_found('Exam not found')
+            ack_error = await _require_pregnancy_ack(conn, exam)
+            if ack_error:
+                return validation_error(ack_error)
             instance_uid = body.instance_uid or f'1.2.826.0.1.3680043.9.{uuid.uuid4().int}'
             acquisition = await Acquisitions(conn).create({
                 'exam_id': exam_id,
