@@ -1,13 +1,8 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  act,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { App } from "antd";
 import { AuthProvider } from "../auth/AuthContext";
 import { ThemeProvider } from "../common/ThemeProvider";
 import ReadingConsole from "../radiologist/ReadingConsole";
@@ -58,13 +53,15 @@ function renderConsole() {
   return render(
     <ThemeProvider>
       <AuthProvider>
-        <MemoryRouter initialEntries={["/reading/e1"]}>
-          <Routes>
-            <Route path="/reading/:examId" element={<ReadingConsole />} />
-          </Routes>
-        </MemoryRouter>
+        <App>
+          <MemoryRouter initialEntries={["/reading/e1"]}>
+            <Routes>
+              <Route path="/reading/:examId" element={<ReadingConsole />} />
+            </Routes>
+          </MemoryRouter>
+        </App>
       </AuthProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
 }
 
@@ -93,7 +90,7 @@ describe("ReadingConsole", () => {
     localStorage.setItem("role", "radiologist");
     localStorage.setItem(
       "permissions",
-      JSON.stringify(["REPORT_READ", "REPORT_WRITE", "REPORT_SIGN"]),
+      JSON.stringify(["REPORT_READ", "REPORT_WRITE", "REPORT_SIGN"])
     );
     mockRequest.mockReset();
   });
@@ -168,8 +165,7 @@ describe("ReadingConsole", () => {
       });
 
       const saveCall = mockRequest.mock.calls.find(
-        (c: any) =>
-          c[0] === "reports/e1" && c[1]?.data?.impression === "Normal head CT.",
+        (c: any) => c[0] === "reports/e1" && c[1]?.data?.impression === "Normal head CT."
       );
       expect(saveCall).toBeDefined();
     } finally {
@@ -287,9 +283,7 @@ describe("ReadingConsole", () => {
     fireEvent.click(await screen.findByText("Sign & Finalize"));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Report distributed to 2 recipient/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Report distributed to 2 recipient/i)).toBeInTheDocument();
       expect(screen.getByText("SENT")).toBeInTheDocument();
       expect(screen.getByText("FAILED")).toBeInTheDocument();
     });
@@ -360,12 +354,15 @@ describe("ReadingConsole", () => {
     });
     fireEvent.click(screen.getByText("Sign & Next"));
 
+    // R-15: the success toast names the next patient in the queue.
+    await waitFor(() => {
+      expect(screen.getByText("Report signed ✓ — Next: Jane Roe")).toBeInTheDocument();
+    });
+
     // The console navigates to the next queue item — the router re-mounts it
     // with examId=e2 and the next load request goes out.
     await waitFor(() => {
-      const nextLoad = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "reports/e2",
-      );
+      const nextLoad = mockRequest.mock.calls.find((c: any) => c[0] === "reports/e2");
       expect(nextLoad).toBeDefined();
     });
   });
@@ -415,9 +412,7 @@ describe("ReadingConsole", () => {
 
     // No next exam exists → navigate to /reading; no e2 load is ever issued.
     await waitFor(() => {
-      const nextLoad = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "reports/e2",
-      );
+      const nextLoad = mockRequest.mock.calls.find((c: any) => c[0] === "reports/e2");
       expect(nextLoad).toBeUndefined();
     });
   });
@@ -436,12 +431,8 @@ describe("ReadingConsole", () => {
     expect(screen.getByText("Read-only report")).toBeInTheDocument();
     expect(screen.queryByText("Save Draft")).not.toBeInTheDocument();
     expect(screen.queryByText("Mark Preliminary")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /sign report/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByPlaceholderText("Apply a template"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sign report/i })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Apply a template")).not.toBeInTheDocument();
     // Read-only surfaces render the branded report document (not a readonly
     // textarea) — the findings text is displayed as document body.
     expect(screen.getByText("Initial findings")).toBeInTheDocument();
@@ -451,10 +442,7 @@ describe("ReadingConsole", () => {
   it("hides Sign Report for a resident without REPORT_SIGN", async () => {
     // resident drafts (REPORT_WRITE) but the attending cosigns: the sign
     // affordance must be absent, save must remain.
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["REPORT_READ", "REPORT_WRITE"]));
     mockNoImaging();
     renderConsole();
 
@@ -462,17 +450,12 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
     expect(screen.getByText("Save Draft")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /sign report/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sign report/i })).not.toBeInTheDocument();
   });
 
   it("lets a resident submit the draft for attending review", async () => {
     localStorage.setItem("role", "resident");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["REPORT_READ", "REPORT_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["REPORT_READ", "REPORT_WRITE"]));
     mockRequest.mockImplementation((url: string) => {
       if (url === "reports/e1") {
         return Promise.resolve({
@@ -509,9 +492,7 @@ describe("ReadingConsole", () => {
     fireEvent.click(submitBtn!);
 
     await waitFor(() => {
-      const submitCall = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "reports/e1/submit",
-      );
+      const submitCall = mockRequest.mock.calls.find((c: any) => c[0] === "reports/e1/submit");
       expect(submitCall).toBeDefined();
     });
     // The submitted report locks: header shows SUBMITTED and the panel
@@ -519,12 +500,10 @@ describe("ReadingConsole", () => {
     await waitFor(() => {
       expect(screen.getByText("SUBMITTED")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/Submitted for attending review/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /submit for review/i }),
-    ).not.toBeInTheDocument();
+    // The report panel advertises the attending's hands are on it; with the
+    // App wrapper the same text also renders as the toast, so match loosely.
+    expect(screen.getAllByText(/Submitted for attending review/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /submit for review/i })).not.toBeInTheDocument();
   });
 
   it("attending returns a submitted report for revision", async () => {
@@ -565,45 +544,30 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
     // The attending's review actions replace the plain sign button.
-    expect(
-      screen.getAllByRole("button", { name: /approve & co-sign/i }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByRole("button", { name: /return for revision/i }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /approve & co-sign/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /return for revision/i }).length).toBeGreaterThan(
+      0
+    );
 
-    fireEvent.click(
-      screen.getAllByRole("button", { name: /return for revision/i })[0],
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: /return for revision/i })[0]);
     await waitFor(() => {
-      expect(
-        screen.getByText("Return Report for Revision"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Return Report for Revision")).toBeInTheDocument();
     });
-    fireEvent.change(
-      screen.getByPlaceholderText(/What should the resident revise/),
-      {
-        target: { value: "Add comparison with prior CT." },
-      },
-    );
+    fireEvent.change(screen.getByPlaceholderText(/What should the resident revise/), {
+      target: { value: "Add comparison with prior CT." },
+    });
     fireEvent.click(screen.getByText("Return & Reopen Draft"));
 
     await waitFor(() => {
-      const returnCall = mockRequest.mock.calls.find(
-        (c: any) => c[0] === "reports/e1/return",
-      );
+      const returnCall = mockRequest.mock.calls.find((c: any) => c[0] === "reports/e1/return");
       expect(returnCall).toBeDefined();
     });
     // Back to an editable draft, carrying the attending's feedback.
     await waitFor(() => {
       expect(screen.getByText("DRAFT")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/Attending returned this report/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Add comparison with prior CT/i).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getByText(/Attending returned this report/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Add comparison with prior CT/i).length).toBeGreaterThan(0);
   });
 
   it("shows version history and restores a prior version (R-06)", async () => {
@@ -669,20 +633,16 @@ describe("ReadingConsole", () => {
       }
       return Promise.resolve({ data: [] });
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /restore version 2/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /restore version 2/i }));
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith(
         "reports/rep-1/versions/2/restore",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({ method: "POST" })
       );
     });
     await waitFor(() => {
-      expect(
-        screen.getByDisplayValue("Older draft text"),
-      ).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Older draft text")).toBeInTheDocument();
     });
   });
 
@@ -734,9 +694,7 @@ describe("ReadingConsole", () => {
 
     expect(await screen.findByText(/Old impression text/)).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /open prior ACC-009/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /open prior ACC-009/i }));
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith("reports/exam-9");
       expect(screen.getByText(/Full prior impression/)).toBeInTheDocument();
@@ -751,9 +709,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /submit to teaching file/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /submit to teaching file/i }));
 
     fireEvent.change(await screen.findByLabelText("Case title"), {
       target: { value: "Classic subdural" },
@@ -769,7 +725,7 @@ describe("ReadingConsole", () => {
             exam_id: "e1",
             title: "Classic subdural",
           }),
-        }),
+        })
       );
     });
   });

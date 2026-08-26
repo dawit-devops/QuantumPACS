@@ -377,23 +377,36 @@ function ReadingConsole() {
       setStatus("final");
       setSavedAt(new Date());
       setSignOpen(false);
-      message?.success?.(
-        wasSubmitted
-          ? "Report co-signed — status is now FINAL"
-          : "Report signed — status is now FINAL"
-      );
-      // R-16: distribution confirmation — receipt rows from the ORU engine.
-      if (!next && res.data?.id) {
-        request(`notifications/delivery-status?report_id=${res.data.id}`)
-          .then((d: any) => setDistribution(Array.isArray(d.data) ? d.data : []))
-          .catch(() => setDistribution([]));
-      }
       if (next) {
+        // R-15: Sign & Next names the patient coming up so the radiologist
+        // knows where the queue is taking them next.
+        const nextId = nextExamId();
+        const nextName = nextId
+          ? queue.find((item) => item.exam_id === nextId)?.patient_name
+          : null;
+        message?.success?.(
+          nextName
+            ? `Report signed ✓ — Next: ${nextName}`
+            : nextId
+              ? "Report signed ✓ — Next: study"
+              : "Report signed ✓ — queue complete"
+        );
         // Sign & next: jump to the next unread exam in the same filtered
         // queue, preserving the worklist filters for the next console. When
         // the queue is empty (or unknown) return to the worklist instead.
-        const nextId = nextExamId();
         navigate(nextId ? `/reading/${nextId}${worklistSearch}` : `/reading${worklistSearch}`);
+      } else {
+        message?.success?.(
+          wasSubmitted
+            ? "Report co-signed — status is now FINAL"
+            : "Report signed — status is now FINAL"
+        );
+        // R-16: distribution confirmation — receipt rows from the ORU engine.
+        if (res.data?.id) {
+          request(`notifications/delivery-status?report_id=${res.data.id}`)
+            .then((d: any) => setDistribution(Array.isArray(d.data) ? d.data : []))
+            .catch(() => setDistribution([]));
+        }
       }
     } catch (e: any) {
       message?.error?.(e.message || "Sign failed");
