@@ -929,6 +929,8 @@ function Sidebar() {
   const sidebarContent = (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
+        data-role={user?.role || undefined}
+        className="sidebar-header"
         style={{
           padding: collapsed ? "16px 8px" : "16px 24px",
           display: "flex",

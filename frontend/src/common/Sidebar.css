@@ -15,3 +15,33 @@
   gap: 8px;
   width: 100%;
 }
+
+/* §7.2 role accent: a subtle 3px left edge on the sidebar header names the
+   persona at a glance without repainting the whole chrome. */
+.sidebar-header {
+  border-left: 3px solid transparent;
+}
+
+.sidebar-header[data-role="radiologist"],
+.sidebar-header[data-role="teleradiologist"] {
+  border-left-color: #0088cc;
+}
+.sidebar-header[data-role="technologist"] {
+  border-left-color: #00a86b;
+}
+.sidebar-header[data-role="receptionist"] {
+  border-left-color: #722ed1;
+}
+.sidebar-header[data-role="care_coordinator"] {
+  border-left-color: #26c6da;
+}
+.sidebar-header[data-role="cashier"] {
+  border-left-color: #e05252;
+}
+.sidebar-header[data-role="dept_manager"] {
+  border-left-color: #e68a00;
+}
+.sidebar-header[data-role="super_admin"],
+.sidebar-header[data-role="tenant_admin"] {
+  border-left-color: #52c41a;
+}

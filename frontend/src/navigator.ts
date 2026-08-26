@@ -159,6 +159,10 @@ const LANDING_STEPS: LandingStep[] = [
     workspace: "frontdesk",
     permissions: ["QUEUE_READ"],
   },
+  // §4.3: schedulers land on the scheduling calendar itself. Placed before
+  // the frontdesk-scoped schedule step so pure-scheduler profiles resolve
+  // here; role-pinned personas (coordinator → /orders etc.) are unaffected.
+  { route: "/schedule", workspace: "acquisition", permissions: ["SCHEDULE_READ"] },
   {
     route: "/frontdesk/schedule",
     workspace: "frontdesk",
