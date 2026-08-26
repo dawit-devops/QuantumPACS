@@ -1,12 +1,5 @@
 import { useDocumentTitle } from "../hooks";
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Layout,
@@ -40,6 +33,7 @@ import ResizableSplit from "../common/ResizableSplit";
 import SeriesNavigator from "./SeriesNavigator";
 import ReportPanel from "./ReportPanel";
 import { useExamImaging } from "./useExamImaging";
+import { useReaderShortcuts } from "./useReaderShortcuts";
 import { parseAnnotations } from "../detail/MeasurementPanel";
 import MeasurementPanel from "../detail/MeasurementPanel";
 import { KeyboardShortcuts } from "../detail/KeyboardShortcuts";
@@ -59,9 +53,7 @@ const AUTOSAVE_MS = 3000;
 // The console reuses the Cornerstone viewer unchanged — Detail mounts it by
 // file id, the console mounts it with a file picked from the exam's imaging
 // tree. Lazy so the report-only fallback never pulls the rendering engine.
-const CornerstoneElement = React.lazy(
-  () => import("../detail/CornerstoneElement"),
-);
+const CornerstoneElement = React.lazy(() => import("../detail/CornerstoneElement"));
 
 // Split reading console: viewer (left) + report (right) on one screen, with
 // the full report lifecycle (autosave, templates, sign) that the old
@@ -142,13 +134,7 @@ function ReadingConsole() {
   const queueQuery = useMemo(() => {
     const q: Record<string, string> = {};
     const sp = new URLSearchParams(location.search);
-    for (const k of [
-      "status",
-      "modality",
-      "search",
-      "radiologist",
-      "physician",
-    ]) {
+    for (const k of ["status", "modality", "search", "radiologist", "physician"]) {
       const v = sp.get(k);
       if (v) q[k] = v;
     }
@@ -158,9 +144,7 @@ function ReadingConsole() {
   // Viewer-side annotation state, mirroring Detail's wiring.
   const [rawAnnotations, setRawAnnotations] = useState<any[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(
-    null,
-  );
+  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(null);
 
   // Load the queue once with the console (mirroring the worklist's filters);
   // Sign & Next consumes it. Failures are non-fatal — Sign & Next degrades
@@ -240,15 +224,7 @@ function ReadingConsole() {
         return false;
       }
     },
-    [
-      canWrite,
-      examId,
-      findings,
-      impression,
-      recommendations,
-      status,
-      templateName,
-    ],
+    [canWrite, examId, findings, impression, recommendations, status, templateName]
   );
 
   // Keep the interval closure pointing at the latest saveDraft after every render.
@@ -260,8 +236,7 @@ function ReadingConsole() {
     // Autosave loop: flush the local draft on an interval (FR-R12-09 /
     // NFR-R12-10).
     saveTimer.current = setInterval(() => {
-      if (dirtyRef.current && statusRef.current !== "submitted"
-          && statusRef.current !== "final") {
+      if (dirtyRef.current && statusRef.current !== "submitted" && statusRef.current !== "final") {
         saveDraftRef.current();
       }
     }, AUTOSAVE_MS);
@@ -287,9 +262,7 @@ function ReadingConsole() {
     setStatus("preliminary");
     // Pass the explicit status: setStatus only affects the UI, and the
     // saveDraft closure still carries the previous status in this render.
-    saveDraft(true, "preliminary").then(() =>
-      message?.success?.("Marked preliminary"),
-    );
+    saveDraft(true, "preliminary").then(() => message?.success?.("Marked preliminary"));
   };
 
   const goBack = () => {
@@ -306,6 +279,20 @@ function ReadingConsole() {
     if (idx >= 0) return queue[idx + 1]?.exam_id ?? null;
     return queue[0]?.exam_id ?? null;
   }, [queue, examId]);
+
+  // §5.2 ← / → in immersive mode walk the same queue backwards/forwards.
+  const prevExamId = useCallback((): string | null => {
+    const idx = queue.findIndex((item) => item.exam_id === examId);
+    if (idx > 0) return queue[idx - 1].exam_id;
+    return null;
+  }, [queue, examId]);
+
+  const navigateExam = useCallback(
+    (id: string | null) => {
+      if (id) navigate(`/reading/${id}${worklistSearch}`);
+    },
+    [navigate, worklistSearch]
+  );
 
   // R-06: restore a prior version — the server copies the snapshot onto the
   // report (appending a new version); we then reload it into the console.
@@ -330,7 +317,7 @@ function ReadingConsole() {
         message?.error?.(e.message || "Restore failed");
       }
     },
-    [report?.id, examId, setReport, message],
+    [report?.id, examId, setReport, message]
   );
 
   // R-11: submit the current case to the teaching file library.
@@ -393,13 +380,11 @@ function ReadingConsole() {
       message?.success?.(
         wasSubmitted
           ? "Report co-signed — status is now FINAL"
-          : "Report signed — status is now FINAL",
+          : "Report signed — status is now FINAL"
       );
       // R-16: distribution confirmation — receipt rows from the ORU engine.
       if (!next && res.data?.id) {
-        request(
-          `notifications/delivery-status?report_id=${res.data.id}`,
-        )
+        request(`notifications/delivery-status?report_id=${res.data.id}`)
           .then((d: any) => setDistribution(Array.isArray(d.data) ? d.data : []))
           .catch(() => setDistribution([]));
       }
@@ -408,11 +393,7 @@ function ReadingConsole() {
         // queue, preserving the worklist filters for the next console. When
         // the queue is empty (or unknown) return to the worklist instead.
         const nextId = nextExamId();
-        navigate(
-          nextId
-            ? `/reading/${nextId}${worklistSearch}`
-            : `/reading${worklistSearch}`,
-        );
+        navigate(nextId ? `/reading/${nextId}${worklistSearch}` : `/reading${worklistSearch}`);
       }
     } catch (e: any) {
       message?.error?.(e.message || "Sign failed");
@@ -478,16 +459,28 @@ function ReadingConsole() {
 
   // [ / ] collapses/expands the report pane. Shares the focus guard the
   // viewer uses: never steal keys inside inputs, antd overlays, or dialogs.
+  // §5 immersive reader mode + global shortcut map (declared after every
+  // handler it closes over).
+  const { immersive, toggleImmersive } = useReaderShortcuts({
+    saveDraft: () => {
+      saveDraft(false);
+    },
+    requestSign: () => setSignOpen(true),
+    submitReport,
+    goPrevExam: () => navigateExam(prevExamId()),
+    goNextExam: () => navigateExam(nextExamId()),
+    goToWorklist: goBack,
+    showHelp: () => setShowShortcuts(true),
+  });
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "[" && e.key !== "]") return;
       const target = e.target as HTMLElement;
       const isInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
       const inOverlay = !!document.activeElement?.closest(
-        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']",
+        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']"
       );
       if (isInput || inOverlay) return;
       e.preventDefault();
@@ -506,9 +499,7 @@ function ReadingConsole() {
     setTimeout(() => setFocusAnnotationUID(null), 100);
   }, []);
 
-  const imageUrl = selectedFile
-    ? `wadouri:${API_URL}/files/${selectedFile.id}/data`
-    : "";
+  const imageUrl = selectedFile ? `wadouri:${API_URL}/files/${selectedFile.id}/data` : "";
   const files = selectedSeries?.files ?? [];
   const fileIndex = files.findIndex((f) => f.id === selectedFile?.id);
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
@@ -519,12 +510,9 @@ function ReadingConsole() {
     ? {
         ...selectedFile,
         modality: selectedSeries?.modality || "",
-        patient: exam
-          ? { name: exam.patient_name, patient_id: exam.patient_id }
-          : undefined,
+        patient: exam ? { name: exam.patient_name, patient_id: exam.patient_id } : undefined,
         study: selectedStudy?.description || selectedStudy?.study_id || "",
-        series:
-          selectedSeries?.description || String(selectedSeries?.number ?? ""),
+        series: selectedSeries?.description || String(selectedSeries?.number ?? ""),
       }
     : { id: 0 };
 
@@ -583,12 +571,7 @@ function ReadingConsole() {
               />
             </Suspense>
           ) : (
-            <Alert
-              type="info"
-              showIcon
-              title="No images in this series"
-              style={{ margin: 16 }}
-            />
+            <Alert type="info" showIcon title="No images in this series" style={{ margin: 16 }} />
           )}
         </div>
         <MeasurementPanel
@@ -659,7 +642,7 @@ function ReadingConsole() {
 
   return (
     <Content
-      className="reading-console"
+      className={`reading-console${immersive ? " immersive" : ""}`}
       style={{
         padding: 24,
         flex: 1,
@@ -676,13 +659,10 @@ function ReadingConsole() {
           </Button>
           <div className="reading-console-header-title">
             <h2>
-              <FileTextOutlined /> Report —{" "}
-              {exam.accession_number || exam.id.slice(0, 8)}
+              <FileTextOutlined /> Report — {exam.accession_number || exam.id.slice(0, 8)}
               <Tag
                 color={PRIORITY_COLORS[exam.priority]}
-                className={
-                  exam.priority === "stat" ? "report-stat-tag" : undefined
-                }
+                className={exam.priority === "stat" ? "report-stat-tag" : undefined}
               >
                 {(exam.priority || "routine").toUpperCase()}
               </Tag>
@@ -711,6 +691,10 @@ function ReadingConsole() {
                 <SaveOutlined /> saved {savedAt.toLocaleTimeString()}
               </span>
             )}
+            {/* §5.1 manual immersive toggle (Space also toggles). */}
+            <Button size="small" aria-pressed={immersive} onClick={toggleImmersive}>
+              {immersive ? "Exit immersive" : "Immersive"}
+            </Button>
             {/* Sign stays in the header so it remains reachable while the
                 report pane is collapsed ([). A submitted report swaps the
                 sign affordance for the attending's review pair: co-sign or
@@ -724,10 +708,7 @@ function ReadingConsole() {
                 >
                   Approve & Co-sign
                 </Button>
-                <Button
-                  icon={<RollbackOutlined />}
-                  onClick={() => setReturnOpen(true)}
-                >
+                <Button icon={<RollbackOutlined />} onClick={() => setReturnOpen(true)}>
                   Return for revision
                 </Button>
               </>
@@ -742,19 +723,12 @@ function ReadingConsole() {
               </Button>
             )}
             {canWrite && report && (
-              <Button
-                danger
-                icon={<AlertOutlined />}
-                onClick={() => setCriticalOpen(true)}
-              >
+              <Button danger icon={<AlertOutlined />} onClick={() => setCriticalOpen(true)}>
                 Flag Critical
               </Button>
             )}
             {canWrite && (
-              <Button
-                icon={<BookOutlined />}
-                onClick={() => setTeachOpen(true)}
-              >
+              <Button icon={<BookOutlined />} onClick={() => setTeachOpen(true)}>
                 Submit to Teaching File
               </Button>
             )}
@@ -790,16 +764,10 @@ function ReadingConsole() {
               }))}
             />
           </Form.Item>
-          <Form.Item
-            name="teaching_points"
-            label="Teaching points (one per line)"
-          >
+          <Form.Item name="teaching_points" label="Teaching points (one per line)">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item
-            name="differential_diagnosis"
-            label="Differential diagnosis (one per line)"
-          >
+          <Form.Item name="differential_diagnosis" label="Differential diagnosis (one per line)">
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
@@ -821,12 +789,7 @@ function ReadingConsole() {
         </div>
       ) : error && !exam ? (
         <div>
-          <Alert
-            type="error"
-            title="Failed to load exam"
-            description={error}
-            showIcon
-          />
+          <Alert type="error" title="Failed to load exam" description={error} showIcon />
           <Button style={{ marginTop: 12 }} onClick={goBack}>
             Back to worklist
           </Button>
@@ -834,10 +797,7 @@ function ReadingConsole() {
       ) : !exam ? null : imaging ? (
         isMobile ? (
           <div className="reading-console-mobile">
-            <div
-              className="reading-console-mobile-viewport"
-              style={{ minHeight: "55vh" }}
-            >
+            <div className="reading-console-mobile-viewport" style={{ minHeight: "55vh" }}>
               {viewportPane}
             </div>
             <div className="reading-console-mobile-report">{reportContent}</div>
@@ -904,8 +864,7 @@ function ReadingConsole() {
           }
         />
         <p>
-          Impression preview:{" "}
-          <em>{impression || "(empty — required to sign)"}</em>
+          Impression preview: <em>{impression || "(empty — required to sign)"}</em>
         </p>
       </Modal>
 
@@ -932,10 +891,20 @@ function ReadingConsole() {
         />
       </Modal>
 
-      <KeyboardShortcuts
-        open={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-      />
+      <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      {immersive && (
+        <div className="reading-status-bar" data-testid="reader-status-bar">
+          <span>Space immersive</span>
+          <span>[ ] report</span>
+          <span>Ctrl+S save</span>
+          <span>Ctrl+Enter sign</span>
+          <span>Ctrl+Shift+S submit</span>
+          <span>←/→ exam</span>
+          <span>Ctrl+Shift+W worklist</span>
+          <span>F1 help</span>
+        </div>
+      )}
     </Content>
   );
 }

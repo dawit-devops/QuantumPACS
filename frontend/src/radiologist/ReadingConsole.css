@@ -143,3 +143,52 @@
   display: flex;
   flex-direction: column;
 }
+
+/* §5 Immersive reader mode — dark reading-room surface. The sidebar renders
+   outside this page's tree, so its 48px icon-strip collapse is driven by
+   body.immersive-reading (toggled by useReaderShortcuts). */
+
+.reading-console.immersive {
+  background: #0a0a0a;
+  color: #e0e0e0;
+}
+
+.reading-console.immersive .reading-console-header {
+  background: #111;
+  border-bottom-color: #333;
+}
+
+.reading-console.immersive .reading-console-subtitle,
+.reading-console.immersive .reading-console-saved {
+  color: #9aa0aa;
+}
+
+body.immersive-reading .ant-layout-sider {
+  flex-basis: 48px !important;
+  max-width: 48px !important;
+  min-width: 48px !important;
+  width: 48px !important;
+  overflow: hidden;
+}
+
+body.immersive-reading .ant-layout-sider .nav-text {
+  display: none;
+}
+
+/* §5.1 fixed shortcut status bar; left offset clears the collapsed strip. */
+.reading-status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 48px;
+  right: 0;
+  height: 28px;
+  background: #111;
+  color: #e0e0e0;
+  border-top: 1px solid #333;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 24px;
+  z-index: 50;
+}
