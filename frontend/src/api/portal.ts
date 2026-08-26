@@ -74,6 +74,7 @@ export interface PortalAppointment {
   procedure?: string;
   priority?: string;
   accession_number?: string;
+  checked_in_at?: string;
 }
 
 // ---- Scope ------------------------------------------------------------------

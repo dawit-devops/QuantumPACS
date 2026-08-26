@@ -28,11 +28,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
-import {
-  listScope,
-  getPortalAppointments,
-  type PortalScope,
-} from "../api/portal";
+import { listScope, getPortalAppointments, type PortalScope } from "../api/portal";
 import "./Portal.css";
 
 const { Text } = Typography;
@@ -78,6 +74,7 @@ interface PortalAppointment {
   priority?: string;
   accession_number?: string;
   report_id?: string | null;
+  checked_in_at?: string;
 }
 
 function AppointmentList() {
@@ -95,9 +92,7 @@ function AppointmentList() {
   // S6 (P-03): history filters — modality + date range, applied client-side
   // over the fetched history set.
   const [filterModality, setFilterModality] = useState<string | undefined>();
-  const [dateRange, setDateRange] = useState<
-    [Date | null, Date | null] | null
-  >(null);
+  const [dateRange, setDateRange] = useState<[Date | null, Date | null] | null>(null);
 
   const activeTab = searchParams.get("tab") || "upcoming";
 
@@ -121,29 +116,26 @@ function AppointmentList() {
   useTenantRefetch(loadScope);
 
   const patientSeq = useRef(0);
-  const loadAppointments = useCallback(
-    (patientId: string, history: boolean) => {
-      const seq = ++patientSeq.current;
-      setLoading(true);
-      setError(null);
-      setAppointments([]);
-      const query = history ? { status: "history" } : undefined;
-      getPortalAppointments(patientId, query)
-        .then((appts) => {
-          if (seq !== patientSeq.current) return;
-          setAppointments(appts);
-        })
-        .catch((e: any) => {
-          if (seq === patientSeq.current) {
-            setError(e.message || "Failed to load appointments");
-          }
-        })
-        .finally(() => {
-          if (seq === patientSeq.current) setLoading(false);
-        });
-    },
-    [],
-  );
+  const loadAppointments = useCallback((patientId: string, history: boolean) => {
+    const seq = ++patientSeq.current;
+    setLoading(true);
+    setError(null);
+    setAppointments([]);
+    const query = history ? { status: "history" } : undefined;
+    getPortalAppointments(patientId, query)
+      .then((appts) => {
+        if (seq !== patientSeq.current) return;
+        setAppointments(appts);
+      })
+      .catch((e: any) => {
+        if (seq === patientSeq.current) {
+          setError(e.message || "Failed to load appointments");
+        }
+      })
+      .finally(() => {
+        if (seq === patientSeq.current) setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     if (activePatientId) {
@@ -169,7 +161,7 @@ function AppointmentList() {
     });
   }
   const historyModalities = Array.from(
-    new Set(appointments.map((a) => a.modality).filter(Boolean)),
+    new Set(appointments.map((a) => a.modality).filter(Boolean))
   ) as string[];
 
   const columns = [
@@ -178,8 +170,7 @@ function AppointmentList() {
       dataIndex: "start_time",
       key: "date",
       width: 140,
-      render: (v: string) =>
-        v ? new Date(v).toLocaleDateString() : "—",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
     },
     {
       title: "Procedure",
@@ -200,26 +191,25 @@ function AppointmentList() {
       key: "priority",
       width: 90,
       render: (v: string) =>
-        v ? (
-          <Tag color={URGENCY_COLORS[v] || "default"}>
-            {v.toLowerCase()}
-          </Tag>
-        ) : (
-          "routine"
-        ),
+        v ? <Tag color={URGENCY_COLORS[v] || "default"}>{v.toLowerCase()}</Tag> : "routine",
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
       width: 130,
-      render: (v: string) => (
-        <Tag color={APPT_STATUS_COLORS[v] || "default"}>
-          {v === "COMPLETED" && <CheckCircleOutlined style={{ marginRight: 4 }} />}
-          {v === "ARRIVED" && <CheckCircleOutlined style={{ marginRight: 4 }} />}
-          {v === "ARRIVED" ? "Checked in" : (v || "SCHEDULED").toLowerCase()}
-        </Tag>
-      ),
+      render: (v: string, r: PortalAppointment) => {
+        const isCheckedIn = v === "ARRIVED";
+        const checkinTime = r.checked_in_at ? new Date(r.checked_in_at).toLocaleString() : null;
+        const tag = (
+          <Tag color={APPT_STATUS_COLORS[v] || "default"}>
+            {isCheckedIn && <CheckCircleOutlined style={{ marginRight: 4 }} />}
+            {v === "COMPLETED" && <CheckCircleOutlined style={{ marginRight: 4 }} />}
+            {isCheckedIn ? "Checked in" : (v || "SCHEDULED").toLowerCase()}
+          </Tag>
+        );
+        return checkinTime ? <Tooltip title={`Checked in at ${checkinTime}`}>{tag}</Tooltip> : tag;
+      },
     },
     {
       title: "Prep",
@@ -242,17 +232,15 @@ function AppointmentList() {
       render: (_: any, r: PortalAppointment) => {
         if (r.status === "SCHEDULED" || r.status === "CONFIRMED") {
           return (
-            <Button
-              type="link"
-              size="small"
-              onClick={() => navigate(`/portal`)}
-            >
+            <Button type="link" size="small" onClick={() => navigate(`/portal`)}>
               Details
             </Button>
           );
         }
-        if ((r.status === "COMPLETED" || r.status === "SIGNED") &&
-            (r.report_id || r.accession_number)) {
+        if (
+          (r.status === "COMPLETED" || r.status === "SIGNED") &&
+          (r.report_id || r.accession_number)
+        ) {
           return (
             <Button
               type="link"
@@ -338,11 +326,7 @@ function AppointmentList() {
               ),
               children: (
                 <>
-                  <Space
-                    style={{ marginBottom: 12 }}
-                    wrap
-                    data-testid="history-filters"
-                  >
+                  <Space style={{ marginBottom: 12 }} wrap data-testid="history-filters">
                     <Select
                       allowClear
                       placeholder="Filter by modality"
@@ -358,10 +342,7 @@ function AppointmentList() {
                     <RangePicker
                       onChange={(_, dateStrings) => {
                         if (dateStrings[0] && dateStrings[1]) {
-                          setDateRange([
-                            new Date(dateStrings[0]),
-                            new Date(dateStrings[1]),
-                          ]);
+                          setDateRange([new Date(dateStrings[0]), new Date(dateStrings[1])]);
                         } else {
                           setDateRange(null);
                         }

@@ -129,7 +129,7 @@ class Portal:
         rows = await self.conn.fetch(
             f"""
             SELECT a.id::text AS id, a.patient_id, a.start_time, a.end_time,
-                   a.status,
+                   a.status, a.checked_in_at,
                    COALESCE(r.modality, '') AS modality,
                    COALESCE(r.location, '') AS room,
                    COALESCE(a.prep_instructions, '') AS prep_instructions,
