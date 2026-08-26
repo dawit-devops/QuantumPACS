@@ -16,6 +16,10 @@ export interface WidgetDef {
 }
 
 const PlatformTotals = React.lazy(() => import("./PlatformTotals"));
+const QaOverview = React.lazy(() => import("./QaOverview"));
+const OrdersPipeline = React.lazy(() => import("./OrdersPipeline"));
+const BillingUnbilled = React.lazy(() => import("./BillingUnbilled"));
+const FrontDeskWaiting = React.lazy(() => import("./FrontDeskWaiting"));
 
 export const WIDGETS: WidgetDef[] = [
   {
@@ -24,6 +28,34 @@ export const WIDGETS: WidgetDef[] = [
     defaultSize: "md",
     permissions: ["METRICS_READ"],
     component: PlatformTotals,
+  },
+  {
+    id: "qa-overview",
+    title: "QA overview",
+    defaultSize: "md",
+    permissions: ["QA_READ"],
+    component: QaOverview,
+  },
+  {
+    id: "orders-pipeline",
+    title: "Order pipeline",
+    defaultSize: "md",
+    permissions: ["ORDER_READ"],
+    component: OrdersPipeline,
+  },
+  {
+    id: "billing-unbilled",
+    title: "Unbilled charges",
+    defaultSize: "md",
+    permissions: ["BILLING_READ"],
+    component: BillingUnbilled,
+  },
+  {
+    id: "frontdesk-waiting",
+    title: "Waiting room",
+    defaultSize: "sm",
+    permissions: ["QUEUE_READ"],
+    component: FrontDeskWaiting,
   },
 ];
 
@@ -34,6 +66,11 @@ export const WIDGET_BY_ID = new Map(WIDGETS.map((w) => [w.id, w]));
  * DEFAULT_LAYOUT_IDS; widgets the role lacks grants for are filtered at
  * render time by the grid.
  */
-export const ROLE_DEFAULT_LAYOUTS: Record<string, string[]> = {};
+export const ROLE_DEFAULT_LAYOUTS: Record<string, string[]> = {
+  receptionist: ["frontdesk-waiting"],
+  care_coordinator: ["orders-pipeline"],
+  cashier: ["billing-unbilled"],
+  dept_manager: ["qa-overview", "orders-pipeline", "billing-unbilled"],
+};
 
 export const DEFAULT_LAYOUT_IDS = ["platform-totals"];
