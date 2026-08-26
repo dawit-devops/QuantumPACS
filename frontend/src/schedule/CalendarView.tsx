@@ -13,6 +13,7 @@ import CalendarGrid, { statusLabel } from "./CalendarGrid";
 import WeekMonthView from "./WeekMonthView";
 import GanttView from "./GanttView";
 import HeatmapView from "./HeatmapView";
+import BatchBookingModal from "./BatchBookingModal";
 import {
   listRisResources,
   listResourceAppointments,
@@ -99,6 +100,8 @@ function CalendarView() {
   const [detailResource, setDetailResource] = useState<RisResource | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<RisAppointment | null>(null);
   const [cancelFor, setCancelFor] = useState<RisAppointment | null>(null);
+  // S-06: batch booking modal — book several slots on one resource at once.
+  const [batchOpen, setBatchOpen] = useState(false);
 
   // S-11: calendar filters — narrow by resource type (room/modality/tech)
   // or modality. Passed server-side to listRisResources so appointments and
@@ -289,6 +292,16 @@ function CalendarView() {
               Book Appointment
             </Button>
           )}
+          {/* S-06: batch book several slots at once on one resource. */}
+          {canWrite && view === "day" && (
+            <Button
+              disabled={resources.length === 0}
+              onClick={() => setBatchOpen(true)}
+              aria-label="Batch book"
+            >
+              Batch Book
+            </Button>
+          )}
           <ScheduleDayNav
             onDayChange={changeDay}
             onToday={() => setDay(dayjs.utc().format("YYYY-MM-DD"))}
@@ -474,6 +487,18 @@ function CalendarView() {
         appointment={cancelFor}
         onClose={() => setCancelFor(null)}
         onDone={refreshAfterMutation}
+      />
+
+      {/* S-06: batch booking — several slots on one resource at once. */}
+      <BatchBookingModal
+        open={batchOpen}
+        day={day}
+        resources={resources}
+        onClose={() => setBatchOpen(false)}
+        onDone={() => {
+          setBatchOpen(false);
+          refreshAfterMutation();
+        }}
       />
     </div>
   );

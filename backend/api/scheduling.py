@@ -19,6 +19,7 @@ from api.permissions import Permission
 from api.response import api_error, created, not_found, ok
 from api.schemas.ris_scheduling import (
     ApplyTemplateRequest, CancelRequest, CreateAppointmentRequest,
+    BatchBookAppointmentRequest,
     CreateResourceRequest, CreateScheduleRequest, CreateTemplateRequest,
     RescheduleRequest,
 )
@@ -213,6 +214,54 @@ class RisAppointmentsHandler(HTTPEndpoint):
                 await RisAppointments(conn).stamp_requesting_tenant(
                     row['id'], home_tenant)
         return created({'data': _row_dict(row)})
+
+
+class RisBatchAppointmentsHandler(HTTPEndpoint):
+    """S-06: batch booking — POST /ris/appointments/batch.
+
+    Books several appointments in one call (e.g. "book 3 CT slots"). Each
+    item is a full single-booking payload; bookings are attempted
+    independently so one conflict reports that item as failed without
+    rolling back the rest. The response carries a per-item result list the
+    UI can surface ("3 of 5 booked; 2 conflicts").
+    """
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        body = await parse_body(BatchBookAppointmentRequest, request)
+        results = []
+        for b in body.bookings:
+            override_reason = (b.override_reason or '').strip()
+            try:
+                row = await SchedulingEngine(actor_id=request.user.id).book(
+                    order_id=b.order_id,
+                    patient_id=b.patient_id,
+                    resource_id=b.resource_id,
+                    start_time=b.start_time,
+                    end_time=b.end_time,
+                    reason=b.reason,
+                    override_reason=override_reason,
+                    prep_instructions=b.prep_instructions,
+                )
+                results.append({'success': True, 'appointment': _row_dict(row)})
+            except SchedulingConflict as exc:
+                results.append({'success': False, 'code': 'SLOT_CONFLICT',
+                                'message': str(exc)})
+            except SchedulingNotFound as exc:
+                results.append({'success': False, 'code': 'NOT_FOUND',
+                                'message': str(exc)})
+            except SchedulingValidation as exc:
+                results.append({'success': False, 'code': 'VALIDATION',
+                                'message': str(exc)})
+        # R2-03-08: chargeback capture for the items that landed.
+        home_tenant = getattr(request.user, 'tenant', '') or ''
+        if home_tenant:
+            async with get_conn() as conn:
+                for res in results:
+                    if res['success']:
+                        await RisAppointments(conn).stamp_requesting_tenant(
+                            res['appointment']['id'], home_tenant)
+        return created({'data': {'results': results}})
 
 
 class RisAppointmentRescheduleHandler(HTTPEndpoint):

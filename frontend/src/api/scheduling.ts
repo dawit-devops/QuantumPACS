@@ -145,6 +145,27 @@ export interface BookAppointmentInput {
 export const bookAppointment = (data: BookAppointmentInput): Promise<RisAppointment> =>
   request<{ data: RisAppointment }>("ris/appointments", { data }).then((res) => res.data);
 
+// S-06: batch booking — book several slots in one call. Each item is a full
+// booking payload. The response carries a per-item result so the UI can
+// report partial success ("3 of 5 booked; 2 conflicts").
+export interface BatchBookResult {
+  success: boolean;
+  appointment?: RisAppointment;
+  code?: string;
+  message?: string;
+}
+
+export interface BatchBookResponse {
+  results: BatchBookResult[];
+}
+
+export const batchBookAppointments = (
+  bookings: BookAppointmentInput[]
+): Promise<BatchBookResponse> =>
+  request<{ data: BatchBookResponse }>("ris/appointments/batch", {
+    data: { bookings },
+  }).then((res) => res.data ?? { results: [] });
+
 export const rescheduleAppointment = (
   appointmentId: string,
   data: { new_start_time: string; new_end_time: string; reason?: string }

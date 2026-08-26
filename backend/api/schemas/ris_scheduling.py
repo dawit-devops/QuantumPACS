@@ -58,13 +58,14 @@ class CreateAppointmentRequest(BaseModel):
             raise ValueError(f'Invalid datetime {v!r}: expected ISO 8601') from exc
         return v
 
-    @model_validator(mode='after')
-    def _end_after_start(self):
-        start = datetime.fromisoformat(str(self.start_time).replace('Z', '+00:00'))
-        end = datetime.fromisoformat(str(self.end_time).replace('Z', '+00:00'))
-        if end <= start:
-            raise ValueError('end_time must be after start_time')
-        return self
+
+class BatchBookAppointmentRequest(BaseModel):
+    """S-06: book several appointments in one call (e.g. 3 CT slots).
+
+    Each item is a full single-booking payload. The handler books them
+    independently so one conflict doesn't roll back the rest.
+    """
+    bookings: list[CreateAppointmentRequest] = Field(..., min_length=1, max_length=50)
 
 
 class RescheduleRequest(BaseModel):

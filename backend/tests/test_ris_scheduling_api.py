@@ -42,6 +42,7 @@ def _make_app(user=None):
     from api.scheduling import (
         RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
         RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
+        RisBatchAppointmentsHandler,
     )
     return Starlette(
         routes=[
@@ -49,6 +50,7 @@ def _make_app(user=None):
             Route('/ris/resources/{id}/schedules', endpoint=RisResourceSchedulesHandler),
             Route('/ris/resources/{id}/availability', endpoint=RisResourceAvailabilityHandler),
             Route('/ris/appointments', endpoint=RisAppointmentsHandler),
+            Route('/ris/appointments/batch', endpoint=RisBatchAppointmentsHandler),
             Route('/ris/appointments/{id}/reschedule', endpoint=RisAppointmentRescheduleHandler),
             Route('/ris/appointments/{id}/cancel', endpoint=RisAppointmentCancelHandler),
         ],
@@ -849,3 +851,82 @@ class TestClinicDayWindow:
         # clinic's calendar day. Bounds travel as bound parameters.
         assert any('2026-08-20 00:00:00+09:00' in a for a in args), args
         assert any('2026-08-21 00:00:00+09:00' in a for a in args), args
+
+
+class TestBatchBooking:
+    """S-06: batch booking — POST /ris/appointments/batch."""
+
+    def test_batch_books_multiple_and_returns_per_item_results(self):
+        mock_engine = AsyncMock()
+        mock_engine.book = AsyncMock(side_effect=[
+            {'id': 'a1', 'resource_id': 'res-1', 'patient_id': 'P001',
+             'start_time': '2026-08-20T09:00:00Z', 'end_time': '2026-08-20T09:30:00Z',
+             'status': 'SCHEDULED'},
+            {'id': 'a2', 'resource_id': 'res-1', 'patient_id': 'P001',
+             'start_time': '2026-08-20T09:30:00Z', 'end_time': '2026-08-20T10:00:00Z',
+             'status': 'SCHEDULED'},
+        ])
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.SchedulingEngine') as engine_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            engine_cls.return_value = mock_engine
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/batch', json={
+                'bookings': [
+                    {'resource_id': 'res-1', 'patient_id': 'P001',
+                     'start_time': '2026-08-20T09:00:00Z',
+                     'end_time': '2026-08-20T09:30:00Z'},
+                    {'resource_id': 'res-1', 'patient_id': 'P001',
+                     'start_time': '2026-08-20T09:30:00Z',
+                     'end_time': '2026-08-20T10:00:00Z'},
+                ],
+            })
+        assert resp.status_code == 201
+        data = resp.json()['data']
+        assert len(data['results']) == 2
+        assert data['results'][0]['success'] is True
+        assert data['results'][0]['appointment']['id'] == 'a1'
+        assert data['results'][1]['success'] is True
+        assert data['results'][1]['appointment']['id'] == 'a2'
+
+    def test_batch_continues_on_conflict_and_reports_partial(self):
+        mock_engine = AsyncMock()
+        mock_engine.book = AsyncMock(side_effect=[
+            {'id': 'a1', 'resource_id': 'res-1', 'patient_id': 'P001',
+             'start_time': '2026-08-20T09:00:00Z', 'end_time': '2026-08-20T09:30:00Z',
+             'status': 'SCHEDULED'},
+            SchedulingConflict('Slot just taken'),
+        ])
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.SchedulingEngine') as engine_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            engine_cls.return_value = mock_engine
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/batch', json={
+                'bookings': [
+                    {'resource_id': 'res-1', 'patient_id': 'P001',
+                     'start_time': '2026-08-20T09:00:00Z',
+                     'end_time': '2026-08-20T09:30:00Z'},
+                    {'resource_id': 'res-1', 'patient_id': 'P001',
+                     'start_time': '2026-08-20T09:30:00Z',
+                     'end_time': '2026-08-20T10:00:00Z'},
+                ],
+            })
+        assert resp.status_code == 201
+        data = resp.json()['data']
+        assert len(data['results']) == 2
+        assert data['results'][0]['success'] is True
+        assert data['results'][1]['success'] is False
+        assert data['results'][1]['code'] == 'SLOT_CONFLICT'
+
+    def test_batch_rejects_empty_list(self):
+        with patch('api.scheduling.get_conn') as conn_ctx, \
+             patch('api.scheduling.SchedulingEngine') as engine_cls:
+            conn_ctx.return_value.__aenter__.return_value = AsyncMock()
+            engine_cls.return_value = AsyncMock()
+            client = TestClient(_make_app(User({
+                'id': 1, 'permissions': ['SCHEDULE_WRITE']})))
+            resp = client.post('/ris/appointments/batch', json={'bookings': []})
+        assert resp.status_code == 422

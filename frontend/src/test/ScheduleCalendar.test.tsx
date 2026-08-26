@@ -19,6 +19,7 @@ const mockReschedule = vi.hoisted(() => vi.fn());
 const mockCancel = vi.hoisted(() => vi.fn());
 const mockNoShow = vi.hoisted(() => vi.fn());
 const mockSearchOrders = vi.hoisted(() => vi.fn());
+const mockBatchBook = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/scheduling", () => ({
   listRisResources: mockListResources,
@@ -33,6 +34,7 @@ vi.mock("../api/scheduling", () => ({
   cancelRisAppointment: mockCancel,
   markNoShow: mockNoShow,
   searchRisOrders: mockSearchOrders,
+  batchBookAppointments: mockBatchBook,
   dayOfWeekLabel: (d: number) =>
     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][d],
 }));
@@ -953,6 +955,87 @@ describe("CalendarView S-03 week/month views", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Day")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("CalendarView S-06 batch booking", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+      { start: "10:00", end: "10:30" },
+    ]);
+    mockBatchBook.mockResolvedValue({ results: [] });
+  });
+
+  it("opens the batch modal and selects slots (S-06)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /batch book/i }));
+    await screen.findByRole("dialog");
+    expect(screen.getAllByText("Batch Book").length).toBeGreaterThan(0);
+
+    // Pick the resource.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    // Slots should load.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Slot 09:00")).toBeInTheDocument();
+    });
+
+    // Select two slots.
+    fireEvent.click(screen.getByLabelText("Slot 09:00"));
+    fireEvent.click(screen.getByLabelText("Slot 09:30"));
+
+    // The button should say "Book 2 Appointments".
+    expect(screen.getByText("Book 2 Appointments")).toBeInTheDocument();
+  });
+
+  it("calls the batch API with selected slots (S-06)", async () => {
+    mockBatchBook.mockResolvedValue({
+      results: [
+        { success: true, appointment: { id: "a1" } },
+        { success: true, appointment: { id: "a2" } },
+      ],
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /batch book/i }));
+    await screen.findByRole("dialog");
+
+    // Pick resource, enter patient ID, pick slots, confirm.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Slot 09:00")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Slot 09:00"));
+    fireEvent.click(screen.getByLabelText("Slot 09:30"));
+
+    // Enter a patient ID so the button is enabled.
+    const patientInput = screen.getByPlaceholderText("Or patient ID directly (no order)");
+    fireEvent.change(patientInput, { target: { value: "P001" } });
+
+    fireEvent.click(screen.getByText("Book 2 Appointments"));
+
+    await waitFor(() => {
+      expect(mockBatchBook).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ patient_id: "P001" })])
+      );
     });
   });
 });
