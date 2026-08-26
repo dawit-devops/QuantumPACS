@@ -326,3 +326,225 @@
   border: 2px solid #cf1322;
   box-shadow: inset 0 0 0 1px rgba(207, 19, 34, 0.35);
 }
+
+/* ── S-03: Week / Month calendar views ────────────────────────────────── */
+
+.sched-wm-scroll {
+  overflow: auto;
+  max-height: calc(100dvh - 260px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+/* Week view: 7-column grid */
+.sched-wm-week {
+  display: grid;
+  min-width: max-content;
+}
+
+.sched-wm-day-col {
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.sched-wm-day-col:last-child {
+  border-right: none;
+}
+
+.sched-wm-day-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-3);
+  border: none;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+  font-family: inherit;
+}
+
+.sched-wm-day-head:hover {
+  background: var(--color-info-bg);
+}
+
+.sched-wm-day-name {
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.sched-wm-day-date {
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+
+.sched-wm-day-count {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+}
+
+.sched-wm-day-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.sched-wm-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+.sched-wm-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  border: none;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-info-bg);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.sched-wm-block:hover {
+  transform: translateY(-1px);
+}
+
+.sched-wm-block.scheduled {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-primary);
+}
+
+.sched-wm-block.arrived {
+  background: var(--color-warning-bg, #fff7e6);
+  border-left-color: var(--color-warning);
+}
+
+.sched-wm-block.in_progress {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-info, #1677ff);
+}
+
+.sched-wm-block.completed {
+  background: var(--color-success-bg, #f6ffed);
+  border-left-color: var(--color-success);
+}
+
+.sched-wm-block.cancelled {
+  background: var(--color-error-bg, #fff1f0);
+  border-left-color: var(--color-error);
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.sched-wm-block-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sched-wm-block-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Month view: grid */
+.sched-wm-month {
+  display: flex;
+  flex-direction: column;
+}
+
+.sched-wm-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sched-wm-weekday {
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.sched-wm-month-body {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.sched-wm-cell {
+  min-height: 80px;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sched-wm-cell:hover {
+  background: var(--color-info-bg);
+}
+
+.sched-wm-cell.is-outside {
+  background: var(--bg-page, #f5f5f5);
+  cursor: default;
+}
+
+.sched-wm-cell.is-today {
+  background: var(--color-info-bg);
+}
+
+.sched-wm-cell-date {
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.sched-wm-cell.is-today .sched-wm-cell-date {
+  color: var(--color-primary);
+}
+
+.sched-wm-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.sched-wm-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sched-wm-overflow {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-semibold);
+}

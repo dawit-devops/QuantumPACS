@@ -13,6 +13,7 @@ import CalendarView from "../schedule/CalendarView";
 const mockListResources = vi.hoisted(() => vi.fn());
 const mockListAppointments = vi.hoisted(() => vi.fn());
 const mockGetAvailability = vi.hoisted(() => vi.fn());
+const mockRangeAppointments = vi.hoisted(() => vi.fn());
 const mockBook = vi.hoisted(() => vi.fn());
 const mockReschedule = vi.hoisted(() => vi.fn());
 const mockCancel = vi.hoisted(() => vi.fn());
@@ -26,6 +27,7 @@ vi.mock("../api/scheduling", () => ({
   createRisSchedule: vi.fn(),
   getResourceAvailability: mockGetAvailability,
   listResourceAppointments: mockListAppointments,
+  listAppointmentsDateRange: mockRangeAppointments,
   bookAppointment: mockBook,
   rescheduleAppointment: mockReschedule,
   cancelRisAppointment: mockCancel,
@@ -93,6 +95,7 @@ describe("CalendarView", () => {
     seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
     mockListResources.mockResolvedValue([RESOURCE]);
     mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
     mockGetAvailability.mockResolvedValue([
       { start: "09:00", end: "09:30" },
       { start: "09:30", end: "10:00" },
@@ -690,6 +693,132 @@ describe("CalendarView", () => {
     // The calendar should refetch availability after the conflict
     await waitFor(() => {
       expect(mockListResources).toHaveBeenCalled();
+    });
+  });
+});
+
+describe("CalendarView S-03 week/month views", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  const toggleWeek = () => {
+    const weekLabel = screen.getByText("Week");
+    fireEvent.click(weekLabel);
+  };
+
+  const toggleMonth = () => {
+    const monthLabel = screen.getByText("Month");
+    fireEvent.click(monthLabel);
+  };
+
+  it("switches to week view and fetches range appointments (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    toggleWeek();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+    // Both args are YYYY-MM-DD dates (from, to)
+    const args = mockRangeAppointments.mock.calls[0];
+    expect(args[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(args[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("renders 7 day columns in week view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    const heads = await screen.findAllByTestId("week-day-head");
+    expect(heads).toHaveLength(7);
+    expect(heads[0]).toHaveTextContent(/Mon/i);
+    expect(heads[6]).toHaveTextContent(/Sun/i);
+  });
+
+  it("shows appointments in the correct day column (S-03)", async () => {
+    const wed = "2026-08-26";
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-wed",
+        patient_id: "P-WED",
+        start_time: `${wed}T10:00:00.000Z`,
+        end_time: `${wed}T10:30:00.000Z`,
+      },
+    ]);
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    expect(await screen.findByText("P-WED")).toBeInTheDocument();
+    const heads = screen.getAllByTestId("week-day-head");
+    const wedHead = heads.find((h) => h.textContent?.includes("26"));
+    expect(wedHead).toBeDefined();
+  });
+
+  it("picks a day from a week column head and switches to day view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    const heads = await screen.findAllByTestId("week-day-head");
+    fireEvent.click(heads[0]); // Monday
+
+    await waitFor(() => {
+      expect(screen.getByText("Day")).toBeInTheDocument();
+    });
+  });
+
+  it("switches to month view and fetches range appointments (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+  });
+
+  it("renders appointment dots in month cells (S-03)", async () => {
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-m1",
+        patient_id: "P-M01",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    const dots = await screen.findAllByTestId("appointment-dots");
+    expect(dots.length).toBeGreaterThan(0);
+  });
+
+  it("picks a day from a month cell and switches to day view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    const cells = await screen.findAllByTestId("month-day-cell");
+    expect(cells.length).toBeGreaterThan(0);
+    fireEvent.click(cells[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Day")).toBeInTheDocument();
     });
   });
 });

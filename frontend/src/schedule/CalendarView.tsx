@@ -1,5 +1,5 @@
 import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert } from "antd";
+import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert, Segmented } from "antd";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Window } from "./boardSlots";
@@ -9,10 +9,12 @@ import ScheduleDayNav from "./ScheduleDayNav";
 import CancelModal from "./CancelModal";
 import RescheduleModal from "./RescheduleModal";
 import CalendarGrid, { statusLabel } from "./CalendarGrid";
+import WeekMonthView from "./WeekMonthView";
 import {
   listRisResources,
   listResourceAppointments,
   getResourceAvailability,
+  listAppointmentsDateRange,
   type RisResource,
   type RisAppointment,
   type ResourceAvailabilitySlot,
@@ -30,6 +32,19 @@ const STATUS_COLORS = SCHEDULE_CALENDAR_STATUS_COLORS;
 // CalendarView uses the 07:00–19:00 window (default) — out-of-window
 // times return null so the row simply doesn't render.
 const BOARD_WINDOW: Window = { start: 7, end: 19 };
+
+// S-03: week starts Monday; month is the whole UTC month containing the
+// anchored day. Range fetch reuses the shipped date_from/date_to handler.
+const weekRange = (d: string) => {
+  const anchor = dayjs.utc(d);
+  const monday = anchor.subtract((anchor.day() + 6) % 7, "day");
+  return [monday.format("YYYY-MM-DD"), monday.add(6, "day").format("YYYY-MM-DD")];
+};
+
+const monthRange = (d: string) => {
+  const first = dayjs.utc(d).startOf("month");
+  return [first.format("YYYY-MM-DD"), first.endOf("month").format("YYYY-MM-DD")];
+};
 
 /**
  * S4-14/S4-16 calendar grid — per-resource day view. Rows are 30-min slots
@@ -49,6 +64,9 @@ function CalendarView() {
   // calendar must match. Browser-local dayjs() would point at yesterday
   // for users in UTC+8 between 00:00-08:00.
   const [day, setDay] = useState<string>(() => dayjs.utc().format("YYYY-MM-DD"));
+  // S-03: day/week/month toggle — week/month reuse the range appointments
+  // API; the day grid keeps the per-resource availability view.
+  const [view, setView] = useState<"day" | "week" | "month">("day");
   const [resources, setResources] = useState<RisResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +75,8 @@ function CalendarView() {
   const [appointments, setAppointments] = useState<Record<string, RisAppointment[]>>({});
   // per-resource free slots for the day
   const [freeSlots, setFreeSlots] = useState<Record<string, ResourceAvailabilitySlot[]>>({});
+  // S-03: flat date-range appointments for week/month views
+  const [rangeAppointments, setRangeAppointments] = useState<RisAppointment[]>([]);
 
   // modal state
   const [bookFor, setBookFor] = useState<{
@@ -80,8 +100,18 @@ function CalendarView() {
     // under a new date header.
     setAppointments({});
     setFreeSlots({});
+    setRangeAppointments([]);
     listRisResources()
       .then(async (res) => {
+        if (view !== "day") {
+          // S-03 week/month: one date-range query across all resources.
+          const [from, to] = view === "week" ? weekRange(day) : monthRange(day);
+          const rows = await listAppointmentsDateRange(from, to);
+          if (seq !== fetchSeq.current) return; // stale — drop
+          setResources(res);
+          setRangeAppointments(rows);
+          return;
+        }
         const [apptMap, freeMap] = await Promise.all([
           Promise.all(res.map((r) => listResourceAppointments(r.id, day))),
           Promise.all(res.map((r) => getResourceAvailability(r.id, day))),
@@ -104,7 +134,7 @@ function CalendarView() {
       .finally(() => {
         if (seq === fetchSeq.current) setLoading(false);
       });
-  }, [day]);
+  }, [day, view]);
 
   useEffect(() => {
     fetch();
@@ -114,7 +144,20 @@ function CalendarView() {
   useTenantRefetch(fetch);
 
   const changeDay = (delta: number) => {
-    setDay((prev) => dayjs(prev).add(delta, "day").format("YYYY-MM-DD"));
+    // S-03: prev/next shifts by the current view's unit (day/week/month).
+    const unit = view === "month" ? "month" : view === "week" ? "week" : "day";
+    setDay((prev) => dayjs(prev).add(delta, unit).format("YYYY-MM-DD"));
+    setSelected(null);
+    setBookFor(null);
+    setRescheduleFor(null);
+    setCancelFor(null);
+  };
+
+  // S-03: jump the anchored day to a specific date (week/day head clicks or
+  // a month cell) and switch to the day grid.
+  const pickDay = (d: string) => {
+    setDay(d);
+    setView("day");
     setSelected(null);
     setBookFor(null);
     setRescheduleFor(null);
@@ -158,7 +201,17 @@ function CalendarView() {
           <Tag>{day}</Tag>
         </div>
         <div className="sched-header-nav">
-          {canWrite && (
+          <Segmented
+            value={view}
+            onChange={(v) => setView(v as "day" | "week" | "month")}
+            options={[
+              { label: "Day", value: "day" },
+              { label: "Week", value: "week" },
+              { label: "Month", value: "month" },
+            ]}
+            aria-label="Calendar view"
+          />
+          {canWrite && view === "day" && (
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -188,7 +241,7 @@ function CalendarView() {
         </div>
       ) : resources.length === 0 ? (
         <Empty description="No resources configured — add them from the Resources page." />
-      ) : (
+      ) : view === "day" ? (
         <CalendarGrid
           day={day}
           window={BOARD_WINDOW}
@@ -201,6 +254,18 @@ function CalendarView() {
             setSelected(a);
             setDetailResource(r);
           }}
+        />
+      ) : (
+        <WeekMonthView
+          mode={view}
+          anchor={day}
+          appointments={rangeAppointments}
+          resources={resources}
+          onSelectAppointment={(a, r) => {
+            setSelected(a);
+            setDetailResource(r ?? null);
+          }}
+          onPickDay={pickDay}
         />
       )}
 
