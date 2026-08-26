@@ -1,5 +1,5 @@
 import { CalendarOutlined, PlusOutlined } from "@ant-design/icons";
-import { App, Button, Drawer, Empty, Spin, Tag, Alert } from "antd";
+import { App, Button, Drawer, Empty, Popconfirm, Spin, Tag, Alert } from "antd";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Window } from "./boardSlots";
@@ -16,6 +16,7 @@ import {
   type RisResource,
   type RisAppointment,
   type ResourceAvailabilitySlot,
+  markNoShow,
 } from "../api/scheduling";
 import { useAuth } from "../auth/AuthContext";
 import withSidebar from "../common/base";
@@ -243,6 +244,27 @@ function CalendarView() {
                 <Button danger onClick={() => setCancelFor(selected)}>
                   Cancel
                 </Button>
+                {/* S-13: no-show tracking — scheduled appointments the
+                    patient never arrived for. */}
+                {selected.status === "SCHEDULED" && (
+                  <Popconfirm
+                    title={`Mark ${selected.patient_id} as a no-show?`}
+                    onConfirm={() => {
+                      markNoShow(selected.id)
+                        .then(() => {
+                          message.success("Marked as no-show");
+                          refreshAfterMutation();
+                        })
+                        .catch((e: unknown) =>
+                          message.error(toErrorMessage(e) || "Failed to mark no-show")
+                        );
+                    }}
+                  >
+                    <Button danger aria-label="Mark as no-show">
+                      Mark as no-show
+                    </Button>
+                  </Popconfirm>
+                )}
               </div>
             )}
           </>

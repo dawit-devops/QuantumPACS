@@ -16,6 +16,7 @@ const mockGetAvailability = vi.hoisted(() => vi.fn());
 const mockBook = vi.hoisted(() => vi.fn());
 const mockReschedule = vi.hoisted(() => vi.fn());
 const mockCancel = vi.hoisted(() => vi.fn());
+const mockNoShow = vi.hoisted(() => vi.fn());
 const mockSearchOrders = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/scheduling", () => ({
@@ -28,6 +29,7 @@ vi.mock("../api/scheduling", () => ({
   bookAppointment: mockBook,
   rescheduleAppointment: mockReschedule,
   cancelRisAppointment: mockCancel,
+  markNoShow: mockNoShow,
   searchRisOrders: mockSearchOrders,
   dayOfWeekLabel: (d: number) =>
     ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][d],
@@ -555,9 +557,7 @@ describe("CalendarView", () => {
     expect(await screen.findByText("Appointment")).toBeInTheDocument();
 
     // Click Reschedule in the drawer (the drawer button, not the modal's OK)
-    const drawerReschedule = screen.getAllByText("Reschedule").find(
-      (el) => el.tagName === "SPAN"
-    )!;
+    const drawerReschedule = screen.getAllByText("Reschedule").find((el) => el.tagName === "SPAN")!;
     fireEvent.click(drawerReschedule.closest("button")!);
     expect(await screen.findByText("Reschedule Appointment")).toBeInTheDocument();
 
@@ -570,9 +570,7 @@ describe("CalendarView", () => {
     await userEvent.type(reasonInput, "patient request");
 
     // Confirm reschedule — the modal's OK button (okText="Reschedule")
-    const modalOk = screen.getAllByText("Reschedule").find(
-      (el) => el.closest(".ant-modal")
-    )!;
+    const modalOk = screen.getAllByText("Reschedule").find((el) => el.closest(".ant-modal"))!;
     fireEvent.click(modalOk.closest("button")!);
 
     await waitFor(() => {
@@ -593,9 +591,7 @@ describe("CalendarView", () => {
     // Only one free slot (09:00) — same as the appointment's current slot.
     // After filtering, zero slots remain → message.info fires.
     mockListAppointments.mockResolvedValue([APPT]);
-    mockGetAvailability.mockResolvedValue([
-      { start: "09:00", end: "09:30" },
-    ]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
 
     renderWithAuth(<CalendarView />);
     await screen.findByText("P001");
@@ -628,16 +624,12 @@ describe("CalendarView", () => {
     expect(await screen.findByText("Appointment")).toBeInTheDocument();
 
     // Click Reschedule in the drawer
-    const drawerReschedule = screen.getAllByText("Reschedule").find(
-      (el) => el.tagName === "SPAN"
-    )!;
+    const drawerReschedule = screen.getAllByText("Reschedule").find((el) => el.tagName === "SPAN")!;
     fireEvent.click(drawerReschedule.closest("button")!);
     expect(await screen.findByText("Reschedule Appointment")).toBeInTheDocument();
 
     // Confirm — the modal's OK button
-    const modalOk = screen.getAllByText("Reschedule").find(
-      (el) => el.closest(".ant-modal")
-    )!;
+    const modalOk = screen.getAllByText("Reschedule").find((el) => el.closest(".ant-modal"))!;
     fireEvent.click(modalOk.closest("button")!);
 
     await waitFor(() => {
@@ -648,5 +640,41 @@ describe("CalendarView", () => {
     await waitFor(() => {
       expect(mockListResources).toHaveBeenCalled();
     });
+  });
+});
+
+describe("CalendarView S-13 no-show action", () => {
+  beforeEach(() => {
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+    mockNoShow.mockResolvedValue({ ...APPT, status: "NO_SHOW" });
+  });
+
+  it("marks a scheduled appointment as no-show from the drawer", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    // The suite's mocked Popconfirm fires onConfirm immediately.
+    fireEvent.click(screen.getByText(/mark as no-show/i));
+
+    await waitFor(() => expect(mockNoShow).toHaveBeenCalledWith("a1"));
+    // Board refetches so the block flips to NO_SHOW (StrictMode doubles
+    // initial effects — assert a real refetch happened, not an exact count).
+    await waitFor(() => expect(mockListAppointments.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("offers no no-show action on non-scheduled appointments", async () => {
+    mockListAppointments.mockResolvedValue([{ ...APPT, status: "ARRIVED" }]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    expect(screen.queryByText(/mark as no-show/i)).not.toBeInTheDocument();
   });
 });
