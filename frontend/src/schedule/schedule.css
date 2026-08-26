@@ -548,3 +548,158 @@
   color: var(--text-secondary);
   font-weight: var(--font-weight-semibold);
 }
+
+/* ---- S-14 Gantt multi-day view -------------------------------------------- */
+
+.sched-gantt-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary, #fff);
+}
+
+.sched-gantt-table {
+  min-width: 900px;
+}
+
+.sched-gantt-row {
+  display: grid;
+  grid-template-columns: 180px repeat(7, minmax(130px, 1fr));
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+.sched-gantt-row:last-child {
+  border-bottom: none;
+}
+
+.sched-gantt-row.is-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-secondary, #fafafa);
+}
+
+.sched-gantt-resource-head,
+.sched-gantt-day-head {
+  padding: 8px;
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-color, #f0f0f0);
+  display: flex;
+  flex-direction: column;
+}
+
+.sched-gantt-resource {
+  padding: 8px;
+  border-right: 1px solid var(--border-color, #f0f0f0);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  background: var(--bg-secondary, #fafafa);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.sched-gantt-resource-name {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+}
+
+.sched-gantt-cell {
+  border-right: 1px solid var(--border-color, #f0f0f0);
+  min-height: 120px;
+  padding: 4px;
+  position: relative;
+}
+
+.sched-gantt-cell:last-child {
+  border-right: none;
+}
+
+.sched-gantt-empty {
+  color: var(--text-tertiary, #bfbfbf);
+  font-size: 12px;
+  text-align: center;
+  padding-top: 40px;
+}
+
+.sched-gantt-lane {
+  position: relative;
+  height: 110px;
+}
+
+.sched-gantt-bar {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: none;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-info-bg);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  overflow: hidden;
+  min-height: 14px;
+}
+
+.sched-gantt-bar:hover {
+  outline: 1px solid var(--color-primary);
+}
+
+.sched-gantt-bar.scheduled {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-primary);
+}
+
+.sched-gantt-bar.arrived {
+  background: var(--color-warning-bg, #fff7e6);
+  border-left-color: var(--color-warning);
+}
+
+.sched-gantt-bar.in_progress {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-info, #1677ff);
+}
+
+.sched-gantt-bar.completed {
+  background: var(--color-success-bg, #f6ffed);
+  border-left-color: var(--color-success);
+}
+
+.sched-gantt-bar.cancelled {
+  background: var(--color-error-bg, #fff1f0);
+  border-left-color: var(--color-error);
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.sched-gantt-bar.no_show {
+  background: var(--color-error-bg, #fff1f0);
+  border-left-color: #eb2f96;
+  opacity: 0.7;
+}
+
+.sched-gantt-bar-time {
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.sched-gantt-bar-patient {
+  font-size: 10px;
+  color: var(--text-primary);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -11,6 +11,7 @@ import CancelModal from "./CancelModal";
 import RescheduleModal from "./RescheduleModal";
 import CalendarGrid, { statusLabel } from "./CalendarGrid";
 import WeekMonthView from "./WeekMonthView";
+import GanttView from "./GanttView";
 import {
   listRisResources,
   listResourceAppointments,
@@ -67,7 +68,7 @@ function CalendarView() {
   const [day, setDay] = useState<string>(() => dayjs.utc().format("YYYY-MM-DD"));
   // S-03: day/week/month toggle — week/month reuse the range appointments
   // API; the day grid keeps the per-resource availability view.
-  const [view, setView] = useState<"day" | "week" | "month">("day");
+  const [view, setView] = useState<"day" | "week" | "month" | "gantt">("day");
   const [resources, setResources] = useState<RisResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,8 +126,9 @@ function CalendarView() {
     })
       .then(async (res) => {
         if (view !== "day") {
-          // S-03 week/month: one date-range query across all resources.
-          const [from, to] = view === "week" ? weekRange(day) : monthRange(day);
+          // S-03 week/month + S-14 gantt: one date-range query across all
+          // resources. Gantt shows the anchored week (same range as week).
+          const [from, to] = view === "month" ? monthRange(day) : weekRange(day);
           const rows = await listAppointmentsDateRange(from, to);
           if (seq !== fetchSeq.current) return; // stale — drop
           setResources(res);
@@ -184,8 +186,9 @@ function CalendarView() {
   );
 
   const changeDay = (delta: number) => {
-    // S-03: prev/next shifts by the current view's unit (day/week/month).
-    const unit = view === "month" ? "month" : view === "week" ? "week" : "day";
+    // S-03: prev/next shifts by the current view's unit (day/week/month);
+    // S-14 gantt shifts by week like the week view.
+    const unit = view === "month" ? "month" : view === "week" || view === "gantt" ? "week" : "day";
     setDay((prev) => dayjs(prev).add(delta, unit).format("YYYY-MM-DD"));
     setSelected(null);
     setBookFor(null);
@@ -245,11 +248,12 @@ function CalendarView() {
         <div className="sched-header-nav">
           <Segmented
             value={view}
-            onChange={(v) => setView(v as "day" | "week" | "month")}
+            onChange={(v) => setView(v as "day" | "week" | "month" | "gantt")}
             options={[
               { label: "Day", value: "day" },
               { label: "Week", value: "week" },
               { label: "Month", value: "month" },
+              { label: "Gantt", value: "gantt" },
             ]}
             aria-label="Calendar view"
           />
@@ -324,6 +328,16 @@ function CalendarView() {
           onSelectAppointment={(a, r) => {
             setSelected(a);
             setDetailResource(r);
+          }}
+        />
+      ) : view === "gantt" ? (
+        <GanttView
+          anchor={day}
+          appointments={rangeAppointments}
+          resources={resources}
+          onSelectAppointment={(a, r) => {
+            setSelected(a);
+            setDetailResource(r ?? null);
           }}
         />
       ) : (

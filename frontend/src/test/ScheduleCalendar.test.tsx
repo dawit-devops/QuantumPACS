@@ -897,3 +897,87 @@ describe("CalendarView S-13 no-show action", () => {
     expect(screen.queryByText(/mark as no-show/i)).not.toBeInTheDocument();
   });
 });
+
+describe("CalendarView S-14 gantt view", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  const toggleGantt = () => {
+    const label = screen.getByText("Gantt");
+    fireEvent.click(label);
+  };
+
+  it("switches to gantt view and fetches the week range (S-14)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    toggleGantt();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+    const args = mockRangeAppointments.mock.calls[0];
+    expect(args[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(args[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("renders one row per resource across 7 day columns (S-14)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    await screen.findByRole("grid", { name: "Gantt schedule" });
+    // Resource row header present; the day headers Mon..Sun are rendered.
+    expect(screen.getByRole("rowheader", { name: /CT Room 1/ })).toBeInTheDocument();
+    expect(screen.getByText("Mon")).toBeInTheDocument();
+    expect(screen.getByText("Sun")).toBeInTheDocument();
+  });
+
+  it("renders appointment bars on the correct resource day cell (S-14)", async () => {
+    // Anchor on the real UTC "today" so the appointment lands in the
+    // displayed week no matter when the suite runs.
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-gantt",
+        patient_id: "P-GANTT",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    const bar = await screen.findByRole("button", { name: /P-GANTT 09:00–09:30/ });
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveClass("sched-gantt-bar");
+  });
+
+  it("opens the appointment drawer when a bar is clicked (S-14)", async () => {
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-gantt",
+        patient_id: "P-GANTT",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    const bar = await screen.findByRole("button", { name: /P-GANTT 09:00–09:30/ });
+    fireEvent.click(bar);
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+  });
+});
