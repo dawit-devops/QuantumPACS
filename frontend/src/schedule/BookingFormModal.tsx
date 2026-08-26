@@ -64,6 +64,9 @@ export default function BookingFormModal({
   const [conflictMessage, setConflictMessage] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // S-10: the order detail already carries the auth state — surface it
+  // BEFORE confirm instead of letting the engine's 409 be the first notice.
+  const [priorAuthStatus, setPriorAuthStatus] = useState<string>("");
 
   // Reset transient form state whenever the modal is (re)opened for a slot.
   useEffect(() => {
@@ -101,6 +104,7 @@ export default function BookingFormModal({
     try {
       const detail = await getRisOrder(o.id);
       const procs = detail.procedures ?? [];
+      setPriorAuthStatus(detail.prior_auth_status || "");
       setProcedures(procs);
       if (procs.length > 0) {
         const first = procs[0];
@@ -143,10 +147,7 @@ export default function BookingFormModal({
       onDone();
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string; code?: string };
-      if (
-        err.status === 409 &&
-        /requires prior authorization/i.test(err.message || "")
-      ) {
+      if (err.status === 409 && /requires prior authorization/i.test(err.message || "")) {
         // R2-01-06: keep the form open and offer the audited override —
         // a plain toast loses the whole booking context.
         setConflictMessage(err.message || "Prior authorization required");
@@ -171,7 +172,26 @@ export default function BookingFormModal({
     setProcedureId("");
     setConflictMessage("");
     setOverrideReason("");
+    setPriorAuthStatus("");
   };
+
+  // S-10: auth states that will block (or should stop) a booking. The
+  // engine's reactive 409 stays as the backstop; this is the heads-up.
+  const AUTH_BLOCKING = new Set(["REQUIRED", "PENDING", "DENIED", "EXPIRED"]);
+  const authWarning =
+    pickedOrder && AUTH_BLOCKING.has(priorAuthStatus)
+      ? {
+          tone: (priorAuthStatus === "DENIED" || priorAuthStatus === "EXPIRED"
+            ? "error"
+            : "warning") as "error" | "warning",
+          text:
+            priorAuthStatus === "DENIED"
+              ? "Prior authorization was DENIED — booking requires an audited override."
+              : priorAuthStatus === "EXPIRED"
+                ? "Prior authorization has EXPIRED — booking requires an audited override."
+                : `Prior authorization is ${priorAuthStatus} — the engine will block this booking until it is approved, or you provide an override.`,
+        }
+      : null;
 
   return (
     <Modal
@@ -185,8 +205,7 @@ export default function BookingFormModal({
       footer={
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <span style={{ color: "var(--text-secondary)" }}>
-            {resource?.name} · {slot?.start}–
-            {slot?.end}
+            {resource?.name} · {slot?.start}–{slot?.end}
           </span>
           <Button
             type="primary"
@@ -207,10 +226,18 @@ export default function BookingFormModal({
           </Tag>
         </div>
       )}
+      {authWarning && (
+        <Alert
+          type={authWarning.tone}
+          showIcon
+          data-testid="prior-auth-warning"
+          message="Prior authorization check"
+          description={authWarning.text}
+          style={{ marginBottom: 12 }}
+        />
+      )}
       <div style={{ marginBottom: 16 }} className="sched-form-section">
-        <div className="sched-form-section-title">
-          Search order or enter patient
-        </div>
+        <div className="sched-form-section-title">Search order or enter patient</div>
         <Input.Search
           aria-label="Search order"
           placeholder="Search order (name, MRN or accession)"
@@ -265,18 +292,13 @@ export default function BookingFormModal({
               setProcedureId(id);
               const proc = procedures.find((p) => p.id === id);
               if (proc) {
-                setReason(
-                  `Procedure: ${proc.procedure_name || proc.procedure_code || ""}`
-                );
+                setReason(`Procedure: ${proc.procedure_name || proc.procedure_code || ""}`);
               }
             }}
             style={{ marginTop: 8, width: "100%" }}
             options={procedures.map((p) => ({
               value: p.id ?? "",
-              label:
-                p.procedure_name ||
-                p.procedure_code ||
-                `Procedure ${p.id ?? ""}`,
+              label: p.procedure_name || p.procedure_code || `Procedure ${p.id ?? ""}`,
             }))}
           />
         )}
