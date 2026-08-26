@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { toErrorMessage } from "../common/errors";
 import {
   bookAppointment,
+  getResourceAvailability,
   getRisOrder,
   searchRisOrders,
   type ResourceAvailabilitySlot,
@@ -67,6 +68,11 @@ export default function BookingFormModal({
   // S-10: the order detail already carries the auth state — surface it
   // BEFORE confirm instead of letting the engine's 409 be the first notice.
   const [priorAuthStatus, setPriorAuthStatus] = useState<string>("");
+  // S-02: a slot conflict keeps this modal open and offers the next free
+  // slot — losing the whole order/patient context over a race is worse
+  // than a one-click move to the alternative.
+  const [slotConflictMsg, setSlotConflictMsg] = useState("");
+  const [slotAlt, setSlotAlt] = useState<ResourceAvailabilitySlot | null>(null);
 
   // Reset transient form state whenever the modal is (re)opened for a slot.
   useEffect(() => {
@@ -79,6 +85,8 @@ export default function BookingFormModal({
       setProcedureId("");
       setConflictMessage("");
       setOverrideReason("");
+      setSlotConflictMsg("");
+      setSlotAlt(null);
     }
   }, [open, resource?.id, slot?.start]);
 
@@ -120,8 +128,9 @@ export default function BookingFormModal({
     }
   };
 
-  const submitBooking = async (override = false) => {
-    if (!resource || !slot) return;
+  const submitBooking = async (override = false, target?: ResourceAvailabilitySlot) => {
+    const s = target ?? slot;
+    if (!resource || !s) return;
     if (!pickedOrder && !patientId.trim()) {
       message.error("Select an order or enter a patient ID");
       return;
@@ -132,8 +141,8 @@ export default function BookingFormModal({
     }
     setSubmitting(true);
     try {
-      const startISO = slotToIso(day, slot.start);
-      const endISO = slotToIso(day, slot.end);
+      const startISO = slotToIso(day, s.start);
+      const endISO = slotToIso(day, s.end);
       await bookAppointment({
         order_id: pickedOrder?.id ?? "",
         resource_id: resource.id,
@@ -144,6 +153,8 @@ export default function BookingFormModal({
         ...(override ? { override_reason: overrideReason.trim() } : {}),
       });
       message.success("Appointment booked");
+      setSlotConflictMsg("");
+      setSlotAlt(null);
       onDone();
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string; code?: string };
@@ -152,9 +163,18 @@ export default function BookingFormModal({
         // a plain toast loses the whole booking context.
         setConflictMessage(err.message || "Prior authorization required");
       } else if (err.status === 409 || err.code === "SLOT_CONFLICT") {
-        onConflict?.(err.message || "Slot just taken — availability refreshed");
-        reset();
-        onClose();
+        // S-02: stay in context — find the next free slot after the failed
+        // attempt and offer it inline; the parent refreshes the grid behind.
+        const msg = err.message || "Slot just taken";
+        setSlotConflictMsg(msg);
+        setSlotAlt(null);
+        try {
+          const slots = await getResourceAvailability(resource.id, day);
+          setSlotAlt(slots.find((cand) => cand.start > s.start) ?? null);
+        } catch {
+          /* suggestion is best-effort — the message alone still explains */
+        }
+        onConflict?.(msg);
       } else {
         message.error(toErrorMessage(e) || "Booking failed");
       }
@@ -332,6 +352,40 @@ export default function BookingFormModal({
                 >
                   Book with override
                 </Button>
+              </>
+            }
+          />
+        )}
+        {/* S-02: slot-conflict resolution — the failed attempt stays visible
+            with a one-click alternative instead of a dead-end toast. */}
+        {slotConflictMsg && (
+          <Alert
+            type="warning"
+            showIcon
+            data-testid="slot-conflict-alert"
+            style={{ marginTop: 12 }}
+            message="Booking blocked by a scheduling conflict"
+            description={
+              <>
+                <div style={{ marginBottom: 8 }}>
+                  {slotConflictMsg}
+                  {!slotAlt && " — no later free slot this day on this resource."}
+                </div>
+                {slotAlt && (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      Next free on {resource?.name}: {slotAlt.start}–{slotAlt.end}
+                    </div>
+                    <Button
+                      type="primary"
+                      danger
+                      loading={submitting}
+                      onClick={() => void submitBooking(false, slotAlt)}
+                    >
+                      Book {slotAlt.start} instead
+                    </Button>
+                  </>
+                )}
               </>
             }
           />

@@ -1,5 +1,5 @@
 import React from "react";
-import { screen } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import BookingFormModal from "../schedule/BookingFormModal";
@@ -8,11 +8,13 @@ import { renderWithAuth } from "./renderWithApp";
 const mockSearchOrders = vi.hoisted(() => vi.fn());
 const mockGetOrder = vi.hoisted(() => vi.fn());
 const mockBook = vi.hoisted(() => vi.fn());
+const mockAvailability = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/scheduling", () => ({
   searchRisOrders: mockSearchOrders,
   getRisOrder: mockGetOrder,
   bookAppointment: mockBook,
+  getResourceAvailability: mockAvailability,
 }));
 
 vi.mock("../common/errors", () => ({
@@ -60,6 +62,61 @@ beforeEach(() => {
     procedures: [{ id: "p1", procedure_name: "CT Chest" }],
   });
   mockBook.mockResolvedValue({ id: "appt-new" });
+  mockAvailability.mockResolvedValue([]);
+});
+
+describe("BookingFormModal S-02 conflict alternative", () => {
+  it("stays open on a slot conflict and offers a one-click alternative slot", async () => {
+    const user = userEvent.setup();
+    // First attempt conflicts; availability shows two later free slots.
+    mockBook.mockRejectedValueOnce({ status: 409, message: "Slot just taken" });
+    mockBook.mockResolvedValueOnce({ id: "appt-2" });
+    mockAvailability.mockResolvedValue([
+      { start: "10:30", end: "11:00" },
+      { start: "12:00", end: "12:30" },
+    ]);
+    renderModal();
+
+    await user.type(screen.getByLabelText(/search order/i), "jane");
+    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(await screen.findByRole("button", { name: /select order jane/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm booking/i }));
+
+    // The modal stays open and suggests the first later free slot.
+    const alert = await screen.findByTestId("slot-conflict-alert");
+    expect(alert).toHaveTextContent(/just taken/i);
+    expect(alert).toHaveTextContent(/10:30–11:00/);
+
+    fireEvent.click(screen.getByRole("button", { name: /book 10:30 instead/i }));
+
+    await waitFor(() => {
+      expect(mockBook).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          start_time: expect.stringContaining("T10:30"),
+          end_time: expect.stringContaining("T11:00"),
+        })
+      );
+    });
+    expect(mockAvailability).toHaveBeenCalledWith("res-1", "2026-08-26");
+  });
+
+  it("does not suggest the failed slot itself as an alternative", async () => {
+    const user = userEvent.setup();
+    mockBook.mockRejectedValueOnce({ status: 409, message: "Slot just taken" });
+    // Only the attempted slot comes back free (availability can lag).
+    mockAvailability.mockResolvedValue([{ start: "10:00", end: "10:30" }]);
+    renderModal();
+
+    await user.type(screen.getByLabelText(/search order/i), "jane");
+    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(await screen.findByRole("button", { name: /select order jane/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm booking/i }));
+
+    const alert = await screen.findByTestId("slot-conflict-alert");
+    expect(alert).toHaveTextContent(/no later free slot/i);
+  });
 });
 
 describe("BookingFormModal S-10 proactive prior-auth warning", () => {

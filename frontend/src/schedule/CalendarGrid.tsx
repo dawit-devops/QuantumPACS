@@ -1,18 +1,9 @@
 import React, { useMemo } from "react";
-import { Tag } from "antd";
-import {
-  buildSlots,
-  slotIndexFor,
-  slotSpanFor,
-  type Window,
-} from "./boardSlots";
+import { Tag, Tooltip } from "antd";
+import { buildSlots, slotIndexFor, slotSpanFor, type Window } from "./boardSlots";
 import { dayjs } from "./time";
 import { SCHEDULE_CALENDAR_STATUS_COLORS } from "../common/statusColors";
-import type {
-  RisResource,
-  RisAppointment,
-  ResourceAvailabilitySlot,
-} from "../api/scheduling";
+import type { RisResource, RisAppointment, ResourceAvailabilitySlot } from "../api/scheduling";
 import "./schedule.css";
 
 const STATUS_COLORS = SCHEDULE_CALENDAR_STATUS_COLORS;
@@ -81,6 +72,31 @@ export default function CalendarGrid({
     return map;
   }, [resources, freeSlots, blocksByResourceSlot, window]);
 
+  // S-02: pairwise overlap detection per resource — two live appointments
+  // sharing wall-clock time on one room/modality is a double-booking.
+  // Cancelled/no-show blocks don't occupy the room so they can't conflict.
+  const conflictsByAppointment = useMemo(() => {
+    const map: Record<string, RisAppointment[]> = {};
+    for (const r of resources) {
+      const list = (appointments[r.id] ?? []).filter(
+        (a) => statusLabel(a.status) !== "CANCELLED" && statusLabel(a.status) !== "NO_SHOW"
+      );
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i];
+          const b = list[j];
+          const overlap =
+            dayjs.utc(a.start_time).valueOf() < dayjs.utc(b.end_time).valueOf() &&
+            dayjs.utc(b.start_time).valueOf() < dayjs.utc(a.end_time).valueOf();
+          if (!overlap) continue;
+          (map[a.id] ??= []).push(b);
+          (map[b.id] ??= []).push(a);
+        }
+      }
+    }
+    return map;
+  }, [resources, appointments]);
+
   return (
     <div className="sched-calendar-scroll">
       <div
@@ -134,57 +150,75 @@ export default function CalendarGrid({
                   aria-label={`${r.name} ${slot}${isBooked ? " (booked)" : free ? " (free)" : " (closed)"}`}
                 >
                   {blocks.map((a) => {
-                    const startSi = slotIndexFor(
-                      dayjs.utc(a.start_time).format("HH:mm"),
-                      window,
-                    );
-                    const span = slotSpanFor(a);
+                    const startSi = slotIndexFor(dayjs.utc(a.start_time).format("HH:mm"), window);
                     // Render the visible block only on the appointment's
                     // start row; later rows in the span just stay "busy".
                     if (startSi !== si) return null;
+                    // S-02: double-booked blocks go red and name their partner.
+                    const partners = conflictsByAppointment[a.id] ?? [];
                     return (
-                      <div
+                      <Tooltip
                         key={a.id}
-                        className={`sched-block ${statusLabel(a.status).toLowerCase()}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectAppointment(a, r);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
+                        title={
+                          partners.length > 0 ? (
+                            <span data-testid="conflict-tooltip">
+                              {partners
+                                .map(
+                                  (p) =>
+                                    `Conflicts with ${p.patient_id} ${dayjs
+                                      .utc(p.start_time)
+                                      .format("HH:mm")}–${dayjs.utc(p.end_time).format("HH:mm")}`
+                                )
+                                .join("\n")}
+                            </span>
+                          ) : (
+                            ""
+                          )
+                        }
+                      >
+                        <div
+                          className={`sched-block ${statusLabel(a.status).toLowerCase()} ${
+                            partners.length > 0 ? "conflict" : ""
+                          }`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
                             e.stopPropagation();
                             onSelectAppointment(a, r);
-                          }
-                        }}
-                      >
-                        <span className="sched-block-title">{a.patient_id}</span>
-                        <span className="sched-block-meta">
-                          <span>{dayjs.utc(a.start_time).format("HH:mm")}</span>
-                          {(a as { priority?: string }).priority === "STAT" ||
-                            (a as { priority?: string }).priority ===
-                              "URGENT" ? (
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onSelectAppointment(a, r);
+                            }
+                          }}
+                        >
+                          <span className="sched-block-title">{a.patient_id}</span>
+                          <span className="sched-block-meta">
+                            <span>{dayjs.utc(a.start_time).format("HH:mm")}</span>
+                            {(a as { priority?: string }).priority === "STAT" ||
+                            (a as { priority?: string }).priority === "URGENT" ? (
+                              <Tag
+                                color={
+                                  (a as { priority?: string }).priority === "STAT"
+                                    ? "red"
+                                    : "orange"
+                                }
+                                style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}
+                              >
+                                {(a as { priority?: string }).priority}
+                              </Tag>
+                            ) : null}
                             <Tag
-                              color={
-                                (a as { priority?: string }).priority === "STAT"
-                                  ? "red"
-                                  : "orange"
-                              }
-                              style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}
+                              color={STATUS_COLORS[statusLabel(a.status)]}
+                              style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}
                             >
-                              {(a as { priority?: string }).priority}
+                              {statusLabel(a.status)}
                             </Tag>
-                          ) : null}
-                          <Tag
-                            color={STATUS_COLORS[statusLabel(a.status)]}
-                            style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}
-                          >
-                            {statusLabel(a.status)}
-                          </Tag>
-                        </span>
-                      </div>
+                          </span>
+                        </div>
+                      </Tooltip>
                     );
                   })}
                 </div>

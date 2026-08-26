@@ -321,3 +321,8 @@
 .sched-priority-ROUTINE {
   color: var(--color-success);
 }
+/* S-02: double-booked blocks read as errors regardless of status color */
+.sched-block.conflict {
+  border: 2px solid #cf1322;
+  box-shadow: inset 0 0 0 1px rgba(207, 19, 34, 0.35);
+}

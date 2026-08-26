@@ -116,6 +116,57 @@ describe("CalendarView", () => {
     expect(screen.getByText("STAT")).toBeInTheDocument();
   });
 
+  it("marks overlapping appointments as conflicts with partner details (S-02)", async () => {
+    // P002 starts 15 minutes into P001's slot — a genuine double-booking.
+    mockListAppointments.mockResolvedValue([
+      APPT,
+      {
+        ...APPT,
+        id: "a3",
+        patient_id: "P002",
+        start_time: "2026-08-20T09:15:00.000Z",
+        end_time: "2026-08-20T09:45:00.000Z",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+
+    expect(await screen.findByText("P001")).toBeInTheDocument();
+    expect(screen.getByText("P002")).toBeInTheDocument();
+
+    // Both blocks carry the conflict styling.
+    const p1 = screen.getByText("P001").closest(".sched-block") as HTMLElement;
+    const p2 = screen.getByText("P002").closest(".sched-block") as HTMLElement;
+    expect(p1.className).toContain("conflict");
+    expect(p2.className).toContain("conflict");
+
+    // Hovering a conflicted block names the partner appointment. antd
+    // portals the tooltip to document.body, so match there.
+    fireEvent.mouseEnter(p1);
+    fireEvent.mouseOver(p1);
+    await waitFor(() => {
+      expect(document.body.textContent).toMatch(/Conflicts with P002/);
+    });
+  });
+
+  it("does not mark back-to-back appointments as conflicts (S-02)", async () => {
+    mockListAppointments.mockResolvedValue([
+      APPT,
+      {
+        ...APPT,
+        id: "a4",
+        patient_id: "P003",
+        start_time: "2026-08-20T09:30:00.000Z",
+        end_time: "2026-08-20T10:00:00.000Z",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    expect(await screen.findByText("P003")).toBeInTheDocument();
+    const p1 = screen.getByText("P001").closest(".sched-block") as HTMLElement;
+    const p3 = screen.getByText("P003").closest(".sched-block") as HTMLElement;
+    expect(p1.className).not.toContain("conflict");
+    expect(p3.className).not.toContain("conflict");
+  });
+
   it("shows an empty state when no resources are configured", async () => {
     mockListResources.mockResolvedValue([]);
     renderWithAuth(<CalendarView />);
