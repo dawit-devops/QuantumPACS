@@ -8,7 +8,6 @@ Create Date: 2026-08-23 23:08:19.586336
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = '088'
@@ -21,26 +20,25 @@ def upgrade() -> None:
     # S1: kiosk shows modality-specific prep instructions on the check-in
     # screen (ui-ux-redesign-spec 2.13 K-02). Stored per appointment so the
     # scheduling/booking path can author them; the kiosk only reads.
-    op.add_column(
-        'ris_appointments',
-        sa.Column('prep_instructions', sa.Text(), nullable=False,
-                  server_default=''),
+    # ADD COLUMN IF NOT EXISTS — sync_db() in the scheduling repos may have
+    # created the column already on a drifted dev database.
+    op.execute(
+        "ALTER TABLE ris_appointments "
+        "ADD COLUMN IF NOT EXISTS prep_instructions TEXT NOT NULL DEFAULT ''"
     )
     # S8: P-05 follow-up contact fields — the coordinator needs the patient's
     # preferred contact method, a free-text note, and a time window.
-    op.add_column(
-        'follow_up_requests',
-        sa.Column('contact_method', sa.Text(), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE follow_up_requests "
+        "ADD COLUMN IF NOT EXISTS contact_method TEXT"
     )
-    op.add_column(
-        'follow_up_requests',
-        sa.Column('note', sa.Text(), nullable=True, server_default=None),
+    op.execute(
+        "ALTER TABLE follow_up_requests "
+        "ADD COLUMN IF NOT EXISTS note TEXT"
     )
-    op.add_column(
-        'follow_up_requests',
-        sa.Column('preferred_time', sa.Text(), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE follow_up_requests "
+        "ADD COLUMN IF NOT EXISTS preferred_time TEXT"
     )
 
 

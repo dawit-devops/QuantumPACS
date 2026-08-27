@@ -11,7 +11,6 @@ color-code by wait time (green <15m, amber 15-30m, red >30m).
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 revision: str = '090'
@@ -21,40 +20,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'ris_appointments',
-        sa.Column('checked_in_at', sa.DateTime(timezone=True), nullable=True,
-                  server_default=None),
+    # ADD COLUMN IF NOT EXISTS — sync_db() may have created the appointment
+    # column on a drifted dev database.
+    op.execute(
+        "ALTER TABLE ris_appointments "
+        "ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ"
     )
-    op.add_column(
-        'visits',
-        sa.Column('checked_in_at', sa.DateTime(timezone=True), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE visits "
+        "ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ"
     )
     # FD-02: insurance coverage fields — provider/member_id/copay/deductible
     # so eligibility returns real coverage data instead of a hardcoded stub.
-    op.add_column(
-        'insurance_records',
-        sa.Column('provider', sa.Text(), nullable=True, server_default=None),
+    op.execute(
+        "ALTER TABLE insurance_records "
+        "ADD COLUMN IF NOT EXISTS provider TEXT"
     )
-    op.add_column(
-        'insurance_records',
-        sa.Column('member_id', sa.Text(), nullable=True, server_default=None),
+    op.execute(
+        "ALTER TABLE insurance_records "
+        "ADD COLUMN IF NOT EXISTS member_id TEXT"
     )
-    op.add_column(
-        'insurance_records',
-        sa.Column('copay_amount', sa.Numeric(10, 2), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE insurance_records "
+        "ADD COLUMN IF NOT EXISTS copay_amount NUMERIC(10, 2)"
     )
-    op.add_column(
-        'insurance_records',
-        sa.Column('deductible_total', sa.Numeric(10, 2), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE insurance_records "
+        "ADD COLUMN IF NOT EXISTS deductible_total NUMERIC(10, 2)"
     )
-    op.add_column(
-        'insurance_records',
-        sa.Column('deductible_remaining', sa.Numeric(10, 2), nullable=True,
-                  server_default=None),
+    op.execute(
+        "ALTER TABLE insurance_records "
+        "ADD COLUMN IF NOT EXISTS deductible_remaining NUMERIC(10, 2)"
     )
 
 

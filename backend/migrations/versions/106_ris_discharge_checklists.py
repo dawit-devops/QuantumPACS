@@ -17,7 +17,6 @@ DROP TABLE ris_discharge_checklists. Safe: no production data (feature
 not shipped).
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = '106'
@@ -29,33 +28,29 @@ STATUSES = ('open', 'completed')
 
 
 def upgrade():
-    op.create_table(
-        'ris_discharge_checklists',
-        sa.Column('id', sa.Uuid(), primary_key=True,
-                  server_default=sa.text('gen_random_uuid()')),
-        sa.Column('tenant_id', sa.Text(), nullable=False,
-                  server_default='default'),
-        sa.Column('patient_id', sa.Text(), nullable=False),
-        sa.Column('title', sa.Text(), nullable=False,
-                  server_default='Discharge Checklist'),
-        sa.Column('status', sa.Text(), nullable=False, server_default='open'),
-        sa.Column('items', sa.JSON(), nullable=False,
-                  server_default=sa.text("'[]'::json")),
-        sa.Column('notes', sa.Text(), server_default=''),
-        sa.Column('created_by', sa.Text(), server_default=''),
-        sa.Column('created_at', sa.DateTime(timezone=True),
-                  server_default=sa.text('now()')),
-        sa.Column('updated_at', sa.DateTime(timezone=True),
-                  server_default=sa.text('now()')),
-        sa.CheckConstraint(
-            "status IN ('open', 'completed')",
-            name='ck_ris_discharge_checklists_status',
-        ),
-    )
-    op.create_index('ix_ris_discharge_patient',
-                    'ris_discharge_checklists', ['patient_id'])
-    op.create_index('ix_ris_discharge_tenant',
-                    'ris_discharge_checklists', ['tenant_id', 'status'])
+    # CREATE TABLE IF NOT EXISTS — the repo's sync_db() may have created the
+    # table already on a drifted dev database; keep this idempotent.
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS ris_discharge_checklists (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            patient_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT 'Discharge Checklist',
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'completed')),
+            items JSON NOT NULL DEFAULT '[]'::json,
+            notes TEXT DEFAULT '',
+            created_by TEXT DEFAULT '',
+            created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+    """)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ris_discharge_patient "
+        "ON ris_discharge_checklists(patient_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_ris_discharge_tenant "
+        "ON ris_discharge_checklists(tenant_id, status)")
 
 
 def downgrade():

@@ -199,7 +199,7 @@ class DeptStaffScheduleHandler(HTTPEndpoint):
             rows = await conn.fetch(
                 f"""SELECT w.id, w.patient_name, w.accession_number,
                           w.modality, w.scheduled_date, w.scheduled_time,
-                          w.assigned_station_ae, w.status,
+                          w.station_ae_title, w.status,
                           w.assigned_technologist
                    FROM worklist_entries w
                    {clause}
@@ -218,7 +218,7 @@ class DeptStaffScheduleHandler(HTTPEndpoint):
             row = await conn.fetchrow(
                 """INSERT INTO worklist_entries
                    (patient_name, accession_number, modality, scheduled_date,
-                    scheduled_time, assigned_station_ae, assigned_technologist,
+                    scheduled_time, station_ae_title, assigned_technologist,
                     status, tenant_id)
                    VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', $8)
                    RETURNING id""",

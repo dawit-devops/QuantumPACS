@@ -17,7 +17,6 @@ DROP TABLE study_bookmarks, bookmark_collections. Safe: no production
 data (feature not shipped).
 """
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = '107'
@@ -27,42 +26,42 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        'bookmark_collections',
-        sa.Column('id', sa.Uuid(), primary_key=True,
-                  server_default=sa.text('gen_random_uuid()')),
-        sa.Column('tenant_id', sa.Text(), nullable=False,
-                  server_default='default'),
-        sa.Column('user_id', sa.Text(), nullable=False),
-        sa.Column('name', sa.Text(), nullable=False),
-        sa.Column('description', sa.Text(), server_default=''),
-        sa.Column('is_shared', sa.Boolean(), nullable=False,
-                  server_default=sa.text('false')),
-        sa.Column('created_by', sa.Text(), server_default=''),
-        sa.Column('created_at', sa.DateTime(timezone=True),
-                  server_default=sa.text('now()')),
-    )
-    op.create_index('ix_bookmark_collections_user',
-                    'bookmark_collections', ['tenant_id', 'user_id'])
+    # CREATE TABLE IF NOT EXISTS — the repo's sync_db() may have created the
+    # tables already on a drifted dev database; keep this idempotent.
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS bookmark_collections (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            is_shared BOOLEAN NOT NULL DEFAULT FALSE,
+            created_by TEXT DEFAULT '',
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+    """)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_bookmark_collections_user "
+        "ON bookmark_collections(tenant_id, user_id)")
 
-    op.create_table(
-        'study_bookmarks',
-        sa.Column('id', sa.Uuid(), primary_key=True,
-                  server_default=sa.text('gen_random_uuid()')),
-        sa.Column('tenant_id', sa.Text(), nullable=False,
-                  server_default='default'),
-        sa.Column('user_id', sa.Text(), nullable=False),
-        sa.Column('study_uid', sa.Text(), nullable=False),
-        sa.Column('study_desc', sa.Text(), server_default=''),
-        sa.Column('collection_id', sa.Text(), server_default=''),
-        sa.Column('notes', sa.Text(), server_default=''),
-        sa.Column('created_at', sa.DateTime(timezone=True),
-                  server_default=sa.text('now()')),
-    )
-    op.create_index('ix_study_bookmarks_user',
-                    'study_bookmarks', ['tenant_id', 'user_id'])
-    op.create_index('ix_study_bookmarks_study',
-                    'study_bookmarks', ['study_uid'])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS study_bookmarks (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            user_id TEXT NOT NULL,
+            study_uid TEXT NOT NULL,
+            study_desc TEXT DEFAULT '',
+            collection_id TEXT DEFAULT '',
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+    """)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_study_bookmarks_user "
+        "ON study_bookmarks(tenant_id, user_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_study_bookmarks_study "
+        "ON study_bookmarks(study_uid)")
 
 
 def downgrade():

@@ -32,7 +32,7 @@ export interface StaffScheduleRow {
   modality: string;
   scheduled_date: string;
   scheduled_time: string;
-  assigned_station_ae: string;
+  station_ae_title: string;
   status: string;
   assigned_technologist: string;
 }
@@ -226,7 +226,7 @@ function StaffSchedule() {
     },
     {
       title: "Station",
-      dataIndex: "assigned_station_ae",
+      dataIndex: "station_ae_title",
       key: "station",
       render: (v: string) => v || "—",
     },
