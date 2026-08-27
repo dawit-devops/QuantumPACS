@@ -121,6 +121,9 @@ from api.billing import (
     RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
     RisDenialQueueHandler, RisClaimResubmitHandler, RisClaimHistoryHandler,
     RisReconciliationHandler,
+    FeeScheduleHandler, FeeScheduleUpdateHandler, FeeScheduleImportHandler,
+    FeeScheduleHistoryHandler,
+    PayerContractListHandler, PayerContractHandler, PayerContractComparisonHandler,
 )
 from api.ris_dashboard import (
     RisDashboardKpiHandler, DeptWorkloadHandler, DeptTatDrilldownHandler,
@@ -374,6 +377,15 @@ _V1_ROUTES = [
     v2(Route('/ris/billing/claims/{id}/resubmit', endpoint=RisClaimResubmitHandler, methods=['POST'])),
     v2(Route('/ris/billing/claims/{id}/history', endpoint=RisClaimHistoryHandler)),
     v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
+    # B-09 Procedure Fee Schedule — list/edit/import/version history.
+    v2(Route('/ris/billing/fee-schedule', endpoint=FeeScheduleHandler)),
+    v2(Route('/ris/billing/fee-schedule/import', endpoint=FeeScheduleImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/fee-schedule/history/{code}', endpoint=FeeScheduleHistoryHandler)),
+    v2(Route('/ris/billing/fee-schedule/{code}', endpoint=FeeScheduleUpdateHandler, methods=['PUT'])),
+    # B-08 Payer Contract Rates — list/create + compare actual vs contracted.
+    v2(Route('/ris/billing/contracts/comparison', endpoint=PayerContractComparisonHandler)),
+    v2(Route('/ris/billing/contracts/{id}', endpoint=PayerContractHandler)),
+    v2(Route('/ris/billing/contracts', endpoint=PayerContractListHandler)),
     # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
     v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
     # Department Manager analytics (DM-01, DM-02, DM-04, DM-07)

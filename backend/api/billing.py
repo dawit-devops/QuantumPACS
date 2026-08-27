@@ -23,6 +23,8 @@ from api.schemas.billing import (
     CreateClaimRequest, UpdateClaimRequest, CreateRefundRequest,
     RefundActionRequest, CreateQuoteRequest, CreatePaymentPlanRequest,
     ReconciliationCloseRequest,
+    FeeScheduleUpdateRequest, FeeScheduleImportRequest,
+    CreatePayerContractRequest, UpdatePayerContractRequest,
 )
 from db.audit_log import AuditLog
 from db.billing import money
@@ -1367,3 +1369,275 @@ class RisReconciliationHandler(HTTPEndpoint):
             'charged_reports': charged,
             'capture_rate_pct': rate,
         })
+
+
+# ---------------------------------------------------------------------------
+# B-09 Procedure Fee Schedule — editable catalog, bulk import, version history
+# ---------------------------------------------------------------------------
+
+class FeeScheduleHandler(HTTPEndpoint):
+    """B-09: GET /ris/billing/fee-schedule — list catalog (optional code filter)."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        code = request.query_params.get('code')
+        async with get_conn() as conn:
+            if code:
+                rows = await conn.fetch(
+                    """SELECT * FROM procedure_pricing_catalog
+                       WHERE procedure_code ILIKE $1
+                       ORDER BY procedure_code""",
+                    f'%{code}%',
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT * FROM procedure_pricing_catalog
+                       ORDER BY procedure_code""",
+                )
+        items = [dict(r) | {'list_price': money(r['list_price'])} for r in rows]
+        return ok({'data': items})
+
+
+class FeeScheduleUpdateHandler(HTTPEndpoint):
+    """B-09: PUT /ris/billing/fee-schedule/{code} — edit list price/description
+    and record a version-history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def put(self, request):
+        code = request.path_params['code']
+        body = await parse_body(FeeScheduleUpdateRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            existing = await conn.fetchrow(
+                "SELECT * FROM procedure_pricing_catalog WHERE procedure_code = $1",
+                code,
+            )
+            if not existing:
+                return not_found(f'Procedure {code} not found')
+
+            new_price = money(body.list_price) if body.list_price is not None else money(existing['list_price'])
+            new_desc = body.description if body.description is not None else existing['description']
+            row = await conn.fetchrow(
+                """UPDATE procedure_pricing_catalog
+                   SET list_price = $2, description = $3, active = TRUE
+                   WHERE procedure_code = $1
+                   RETURNING *""",
+                code, new_price, new_desc,
+            )
+            await conn.execute(
+                """INSERT INTO ris_fee_schedule_history
+                       (tenant_id, procedure_code, description, list_price, changed_by)
+                   VALUES ($1, $2, $3, $4, $5)""",
+                tenant, code, new_desc, new_price, str(request.user.id),
+            )
+        return ok({'data': dict(row) | {'list_price': money(row['list_price'])}})
+
+
+class FeeScheduleImportHandler(HTTPEndpoint):
+    """B-09: POST /ris/billing/fee-schedule/import — bulk upsert from CMS-style
+    rows; every upsert writes a version-history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        body = await parse_body(FeeScheduleImportRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        imported = 0
+        async with get_conn() as conn:
+            for item in body.rows:
+                await conn.execute(
+                    """INSERT INTO procedure_pricing_catalog
+                           (procedure_code, description, list_price, active)
+                       VALUES ($1, $2, $3, TRUE)
+                       ON CONFLICT (procedure_code) DO UPDATE
+                           SET description = EXCLUDED.description,
+                               list_price = EXCLUDED.list_price,
+                               active = TRUE""",
+                    item.procedure_code, item.description, money(item.list_price),
+                )
+                await conn.execute(
+                    """INSERT INTO ris_fee_schedule_history
+                           (tenant_id, procedure_code, description, list_price, changed_by)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    tenant, item.procedure_code, item.description,
+                    money(item.list_price), str(request.user.id),
+                )
+                imported += 1
+        return created({'data': {'imported': imported}})
+
+
+class FeeScheduleHistoryHandler(HTTPEndpoint):
+    """B-09: GET /ris/billing/fee-schedule/history/{code} — version history."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        code = request.path_params['code']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                """SELECT procedure_code, description, list_price, changed_by, changed_at
+                   FROM ris_fee_schedule_history
+                   WHERE tenant_id = $1 AND procedure_code = $2
+                   ORDER BY changed_at DESC""",
+                tenant, code,
+            )
+        items = [dict(r) | {'list_price': money(r['list_price'])} for r in rows]
+        return ok({'data': items})
+
+
+# ---------------------------------------------------------------------------
+# B-08 Payer Contract Rates
+# ---------------------------------------------------------------------------
+
+class PayerContractListHandler(HTTPEndpoint):
+    """B-08: GET /ris/billing/contracts — contracted rates by payer/procedure."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        payer = request.query_params.get('payer_id')
+        procedure = request.query_params.get('procedure_code')
+        async with get_conn() as conn:
+            if payer:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1 AND payer_id = $2
+                       ORDER BY procedure_code""",
+                    tenant, payer,
+                )
+            elif procedure:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1 AND procedure_code = $2
+                       ORDER BY payer_name""",
+                    tenant, procedure,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1
+                       ORDER BY payer_name, procedure_code""",
+                    tenant,
+                )
+        items = [dict(r) | {'contracted_rate': money(r['contracted_rate'])} for r in rows]
+        return ok({'data': items})
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        body = await parse_body(CreatePayerContractRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO ris_payer_contracts
+                       (tenant_id, payer_id, payer_name, procedure_code,
+                        contracted_rate, effective_date, created_by)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)
+                   RETURNING *""",
+                tenant, body.payer_id, body.payer_name, body.procedure_code,
+                money(body.contracted_rate), body.effective_date, str(request.user.id),
+            )
+        return created({'data': dict(row) | {'contracted_rate': money(row['contracted_rate'])}})
+
+
+class PayerContractHandler(HTTPEndpoint):
+    """B-08: PUT/DELETE /ris/billing/contracts/{id}."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def put(self, request):
+        contract_id = request.path_params['id']
+        body = await parse_body(UpdatePayerContractRequest, request)
+        updates = body.model_dump(exclude_unset=True)
+        async with get_conn() as conn:
+            existing = await conn.fetchval(
+                "SELECT id FROM ris_payer_contracts WHERE id = $1", contract_id,
+            )
+            if not existing:
+                return not_found('Contract not found')
+            sets = []
+            params = []
+            idx = 1
+            if 'contracted_rate' in updates:
+                sets.append(f'contracted_rate = ${idx}')
+                params.append(money(updates['contracted_rate']))
+                idx += 1
+            if 'effective_date' in updates:
+                sets.append(f'effective_date = ${idx}')
+                params.append(updates['effective_date'])
+                idx += 1
+            if 'active' in updates:
+                sets.append(f'active = ${idx}')
+                params.append(updates['active'])
+                idx += 1
+            sets.append('updated_at = now()')
+            params.append(contract_id)
+            row = await conn.fetchrow(
+                f"UPDATE ris_payer_contracts SET {', '.join(sets)} "
+                f"WHERE id = ${idx} RETURNING *",
+                *params,
+            )
+        return ok({'data': dict(row) | {'contracted_rate': money(row['contracted_rate'])}})
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def delete(self, request):
+        contract_id = request.path_params['id']
+        async with get_conn() as conn:
+            existing = await conn.fetchval(
+                "SELECT id FROM ris_payer_contracts WHERE id = $1", contract_id,
+            )
+            if not existing:
+                return not_found('Contract not found')
+            await conn.execute(
+                "UPDATE ris_payer_contracts SET active = FALSE, updated_at = now() "
+                "WHERE id = $1",
+                contract_id,
+            )
+        return ok({'data': {'id': contract_id, 'active': False}})
+
+
+class PayerContractComparisonHandler(HTTPEndpoint):
+    """B-08: GET /ris/billing/contracts/comparison — join actual charges against
+    contracted rates and flag under/over-charges.
+
+    Charges come from ris_charges (the RIS billing ledger), matched to a payer
+    via the claim's payer_name/payer_id where available; each charge with a
+    matching contract rate is flagged under_charge / over_charge when the
+    charged amount deviates from the contracted rate.
+    """
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                """SELECT c.id AS charge_id,
+                          c.procedure_code,
+                          c.payer_name,
+                          c.amount AS charged_amount,
+                          pc.contracted_rate,
+                          c.created_at
+                     FROM ris_charges c
+                     JOIN ris_payer_contracts pc
+                       ON pc.tenant_id = $1
+                      AND pc.procedure_code = c.procedure_code
+                      AND pc.active = TRUE
+                     WHERE c.tenant_id = $1
+                       AND (pc.payer_name = '' OR c.payer_name = '' OR
+                            c.payer_name ILIKE '%' || pc.payer_name || '%')
+                     ORDER BY c.created_at DESC
+                     LIMIT 200""",
+                tenant,
+            )
+        items = []
+        for r in rows:
+            charged = money(r['charged_amount'])
+            contracted = money(r['contracted_rate'])
+            items.append({
+                'charge_id': str(r['charge_id']),
+                'procedure_code': r['procedure_code'],
+                'payer_name': r['payer_name'] or '',
+                'charged_amount': charged,
+                'contracted_rate': contracted,
+                'variance': round(charged - contracted, 2),
+                'flag': 'under_charge' if charged < contracted else
+                        ('over_charge' if charged > contracted else 'at_rate'),
+            })
+        return ok({'data': items, 'count': len(items)})
