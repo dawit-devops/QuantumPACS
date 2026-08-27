@@ -4,6 +4,7 @@ All endpoints should use these helpers instead of raw JSONResponse."""
 import json
 import uuid
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any
 from starlette.responses import JSONResponse as _StarletteJSONResponse, Response
 from config import config as _config
@@ -14,6 +15,8 @@ def _default(obj):
         return obj.isoformat()
     if isinstance(obj, uuid.UUID):
         return str(obj)
+    if isinstance(obj, Decimal):
+        return float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 

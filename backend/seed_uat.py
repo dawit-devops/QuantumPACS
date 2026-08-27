@@ -20,9 +20,8 @@ accession and linked to the acme tenant where a tenant column exists.
 """
 import argparse
 import asyncio
-import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 
@@ -559,6 +558,33 @@ async def seed_bookmarks(conn):
     print(f'  bookmark collections: {len(BOOKMARK_COLLECTIONS)}')
 
 
+async def reset_seed_data(conn):
+    """Idempotency guard: delete rows created by a previous seed run so
+    re-running this script never accumulates duplicates. The insert paths use
+    ON CONFLICT DO NOTHING on tables without unique keys, so a delete-then-
+    insert is the reliable reset. Conflict-keyed tables (patients, resources,
+    worklist_entries, ris_orders) are left intact."""
+    for tbl in (
+        'ris_staff_time_off', 'ris_waitlist', 'ris_protocols',
+        'ris_corrective_actions', 'care_plans', 'ris_referrals',
+        'ris_handoff_notes', 'ris_discharge_checklists', 'ris_charges',
+    ):
+        await conn.execute(
+            f'DELETE FROM {tbl} WHERE tenant_id = $1 AND created_by = $2',
+            TENANT, 'seed')
+    await conn.execute(
+        'DELETE FROM ris_prior_auth_requests WHERE tenant_id = $1 AND requested_by = $2',
+        TENANT, 'seed')
+    # Bookmark collections are created under the acme super_admin user.
+    await conn.execute(
+        'DELETE FROM study_bookmarks WHERE tenant_id = $1 AND user_id = $2',
+        TENANT, 'acme.super_admin')
+    await conn.execute(
+        'DELETE FROM bookmark_collections WHERE tenant_id = $1 AND user_id = $2',
+        TENANT, 'acme.super_admin')
+    print('  reset prior seed rows')
+
+
 async def seed(allow_docker: bool = False):
     if is_docker() and not allow_docker:
         print('Refusing to run in a docker/QUANTUMPACS_DOCKER environment. '
@@ -572,6 +598,7 @@ async def seed(allow_docker: bool = False):
             print(f'Seeding tenant "{TENANT}" (Acme Medical Center)...')
             await ensure_tenant(conn)
             await ensure_users(conn)
+            await reset_seed_data(conn)
             await seed_fee_schedule(conn)
             await seed_payer_contracts(conn)
             await seed_time_off(conn)

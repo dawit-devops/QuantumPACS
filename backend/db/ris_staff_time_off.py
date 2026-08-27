@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timezone
 
+from pypika import Order
 from db.table import Table
 
 
@@ -40,7 +41,7 @@ class RisStaffTimeOff(Table):
         q = self.select('*').where(self.table.tenant_id == tenant_id)
         if status:
             q = q.where(self.table.status == status)
-        q = q.orderby(self.table.start_date.desc(), self.table.staff_name)
+        q = q.orderby('start_date', order=Order.desc).orderby('staff_name')
         rows = await self.fetch(q)
         return [dict(r) for r in rows]
 
@@ -54,12 +55,15 @@ class RisStaffTimeOff(Table):
 
     async def approved_in_range(self, tenant_id, start_date, end_date, modality=None):
         """Approved time-off overlapping [start, end], optionally scoped to a
-        modality. Used by the coverage-gap detector."""
+        modality. Used by the coverage-gap detector. When start/end are not
+        given, all approved time-off is returned (the gap detector walks the
+        full window itself)."""
         q = (self.select('staff_id', 'staff_name', 'modality', 'start_date', 'end_date')
              .where(self.table.tenant_id == tenant_id)
-             .where(self.table.status == 'APPROVED')
-             .where(self.table.start_date <= end_date)
-             .where(self.table.end_date >= start_date))
+             .where(self.table.status == 'APPROVED'))
+        if start_date and end_date:
+            q = (q.where(self.table.start_date <= end_date)
+                 .where(self.table.end_date >= start_date))
         if modality:
             q = q.where((self.table.modality == modality) | (self.table.modality == ''))
         rows = await self.fetch(q)

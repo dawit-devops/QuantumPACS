@@ -445,7 +445,7 @@ class StaffCoverageGapsHandler(HTTPEndpoint):
                              AND scheduled_date = $3
                              AND status != 'cancelled'
                            GROUP BY modality""",
-                        tenant, a['staff_name'], day.isoformat(),
+                        tenant, a['staff_name'], day,
                     )
                     if exam_rows:
                         for r in exam_rows:
