@@ -29,3 +29,27 @@ Date: 2026-08-27
 ## Security findings (pending user decision)
 1. **Tenants registry leaks DB credentials**: `GET /tenants` returns 200 for radiologist (via CROSS_TENANT_READ, intentional for tenant switcher) but the response includes `db_name/db_host/db_port/db_user` — sensitive infra info to any clinical role. (tenants.py:65-106)
 2. **DICOMweb admin API open to radiologist**: `GET /dicomweb/admin` → 200 because radiologist holds legacy DICOMWEB_READ; UI hides the console (adminOnly) but the API is reachable. UI/API scope mismatch. (dicomweb_admin.py gate)
+
+## Phase 5b browser walk results (2026-08-27)
+
+| # | Surface | Route | Result | Notes |
+|---|---|---|---|---|
+| 1 | Reading Worklist | `/reading` | PASS | CT exams listed, filters, pagination, Continue/Take; auto-refresh |
+| 2 | Reading Console | `/reading/:examId` | PASS | Report opened + `report.opened` + `report.images_opened` audit fired; templates loaded (`/reports/templates?modality=CT`); findings/impression textareas; Sign/Preliminary/Critical/Teaching buttons; "No imaging available" (exam has no DICOM) |
+| 3 | Peer Review | `/peer-review` | PASS | Empty state correct ("No peer reviews assigned to you yet") |
+| 4 | Critical Results | `/critical` | PASS | Empty state correct |
+| 5 | Report Templates | `/admin/report-templates` | PASS | Admin section scoped to ONLY Report Templates for radiologist; template list renders; Edit/History buttons |
+| 6 | My Exams (Technologist Worklist) | `/exams` | PASS | View-only acquisition surface renders |
+| 7 | Orders (Coordination) | `/orders` | PASS | 3 open orders; view-only |
+| 8 | Files | `/` | PASS | File browser renders |
+| 9 | Admin console exclusion | `/admin` | PASS | Redirects to `/reading` (adminOnly gate) |
+
+Zero console errors across all walked pages.
+
+## Design decisions made by user
+1. R2: ENFORCE REPORT_TEMPLATE_ADMIN on template create/publish/rollback (1ff0e7a)
+2. R3: ADD PHI read audit (report.opened / images_opened / priors_opened / peer_review.opened) (1ff0e7a)
+3. R5: FIX dev `hf` DB (create + migrate) so teleradiologist cross-tenant doesn't 500 (69e45e0)
+4. Tenants DB-credential leak → STRIP for non-platform roles (66085fe)
+5. DICOMweb admin API → FIX backend gate to admin-scoped (66085fe)
+6. R1 (ADR update), R7 (auditor docs) → DEFER
