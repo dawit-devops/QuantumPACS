@@ -23,6 +23,7 @@ import {
   RollbackOutlined,
   AlertOutlined,
   BookOutlined,
+  DesktopOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -34,6 +35,7 @@ import SeriesNavigator from "./SeriesNavigator";
 import ReportPanel from "./ReportPanel";
 import { useExamImaging } from "./useExamImaging";
 import { useReaderShortcuts } from "./useReaderShortcuts";
+import { getWeasisStatus, openInWeasis } from "../api/weasis";
 import { parseAnnotations } from "../detail/MeasurementPanel";
 import MeasurementPanel from "../detail/MeasurementPanel";
 import { KeyboardShortcuts } from "../detail/KeyboardShortcuts";
@@ -121,6 +123,14 @@ function ReadingConsole() {
   const [teachOpen, setTeachOpen] = useState(false);
   const [teachSaving, setTeachSaving] = useState(false);
   const [teachForm] = Form.useForm();
+  // ADR-028: show the Weasis launch action only when the connector
+  // integration is enabled; a failed probe hides the button.
+  const [weasisEnabled, setWeasisEnabled] = useState(false);
+  useEffect(() => {
+    getWeasisStatus()
+      .then((s) => setWeasisEnabled(s.enabled))
+      .catch(() => setWeasisEnabled(false));
+  }, []);
   const [FlagCriticalModal, setFlagCriticalModal] = useState<React.ComponentType<any> | null>(null);
   useEffect(() => {
     if (!criticalOpen) return;
@@ -708,6 +718,19 @@ function ReadingConsole() {
             <Button size="small" aria-pressed={immersive} onClick={toggleImmersive}>
               {immersive ? "Exit immersive" : "Immersive"}
             </Button>
+            {/* ADR-028: launch the loaded study in the Weasis web viewer — the
+                study the exam's imaging tree selected (the DICOMweb console in
+                StudyBrowser does the same). The backend re-checks
+                DICOMWEB_READ on /weasis/launch. */}
+            {weasisEnabled && selectedStudy?.study_instance_uid && (
+              <Button
+                size="small"
+                icon={<DesktopOutlined />}
+                onClick={() => openInWeasis(selectedStudy.study_instance_uid!)}
+              >
+                Weasis
+              </Button>
+            )}
             {/* Sign stays in the header so it remains reachable while the
                 report pane is collapsed ([). A submitted report swaps the
                 sign affordance for the attending's review pair: co-sign or

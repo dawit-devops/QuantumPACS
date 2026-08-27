@@ -23,6 +23,13 @@ vi.mock("../hooks", () => ({
   useFetch: () => ({ exec: vi.fn() }),
 }));
 
+const mockOpenInWeasis = vi.hoisted(() => vi.fn());
+vi.mock("../api/weasis", () => ({
+  getWeasisStatus: () => Promise.resolve({ enabled: true, launch_url: "http://weasis" }),
+  weasisLaunchUrl: (uid: string) => `http://weasis/launch?studyUID=${uid}`,
+  openInWeasis: mockOpenInWeasis,
+}));
+
 const mockExam = {
   id: "e1",
   patient_id: "P001",
@@ -728,5 +735,52 @@ describe("ReadingConsole", () => {
         })
       );
     });
+  });
+
+  it("shows a Weasis launch button for the loaded study (ADR-028)", async () => {
+    // Exam with a resolved imaging tree — the study carries a DICOM UID so
+    // the header Weasis action appears next to Immersive.
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/e1") {
+        return Promise.resolve({ data: { exam: mockExam, report: mockReport } });
+      }
+      if (url === "reports/e1/images") {
+        return Promise.resolve({
+          data: {
+            imaging: true,
+            patient: {
+              studies: [
+                {
+                  id: 97,
+                  accession_number: "E2E-RAD-CT-1",
+                  study_instance_uid: "1.2.3.4",
+                  series: [
+                    {
+                      id: 88,
+                      files: [{ id: 71, name: "ct-001.dcm" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+      }
+      if (url === "reports/templates") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "reports/reading-list") {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderConsole();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /weasis/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /weasis/i }));
+    expect(mockOpenInWeasis).toHaveBeenCalledWith("1.2.3.4");
   });
 });

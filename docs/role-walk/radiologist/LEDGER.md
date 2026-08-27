@@ -51,5 +51,7 @@ Zero console errors across all walked pages.
 2. R3: ADD PHI read audit (report.opened / images_opened / priors_opened / peer_review.opened) (1ff0e7a)
 3. R5: FIX dev `hf` DB (create + migrate) so teleradiologist cross-tenant doesn't 500 (69e45e0)
 4. Tenants DB-credential leak → STRIP for non-platform roles (66085fe)
-5. DICOMweb admin API → FIX backend gate to admin-scoped (66085fe)
+5. DICOMweb admin API → REVERSED: grant radiologist access (remove admin-scoped gate), align sidebar + route to plain DICOMWEB_READ (0f1ff97)
 6. R1 (ADR update), R7 (auditor docs) → DEFER
+7. **Reading worklist → patient image linkage**: seed a worklist exam linked to the E2E-RAD-CT-1 study (accession + MRN match, no final report) so the demo shows Cornerstone3D rendering actual pixels
+8. **Weasis button in ReadingConsole**: add a "Weasis" launch button (gated on weasisEnabled && DICOMWEB_READ && selectedStudy.study_instance_uid) mirroring Detail.tsx — the radiologist can launch the study in the Weasis web viewer from the reading console
