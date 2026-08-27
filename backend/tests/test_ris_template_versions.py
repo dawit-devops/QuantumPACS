@@ -127,7 +127,7 @@ class TestTemplateVersionApi:
             ],
             middleware=[Middleware(_FakeAuth,
                                    user=User({'id': 7, 'tenant': 'default',
-                                              'permissions': ['REPORT_WRITE']}))],
+                                              'permissions': ['REPORT_TEMPLATE_ADMIN']}))],
         )
 
     def test_publish_endpoint(self):

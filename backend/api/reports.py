@@ -322,6 +322,20 @@ class ExamReportHandler(HTTPEndpoint):
                 return not_found('Exam not found')
             report = await Reports(conn).get_by_exam(exam_id)
             report = await _with_person_names(conn, dict(report) if report else None)
+            # HIPAA §164.312(b): audit PHI reads — who opened which report.
+            await AuditLog(conn).log_event(
+                event_type='report.opened',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=str((report or {}).get('id') or ''),
+                details={
+                    'exam_id': exam_id,
+                    'status': (report or {}).get('status'),
+                    'accession_number': exam.get('accession_number'),
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         return ok({'data': {'exam': exam, 'report': report}})
 
     @requires_permission(Permission.REPORT_WRITE)
@@ -675,6 +689,19 @@ class ExamImagesHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             patient = await _exam_imaging(conn, exam)
+            # HIPAA §164.312(b): audit imaging reads (DICOM tree resolution).
+            await AuditLog(conn).log_event(
+                event_type='report.images_opened',
+                actor_id=request.user.id,
+                resource_type='exam',
+                resource_id=exam_id,
+                details={
+                    'accession_number': exam.get('accession_number'),
+                    'imaging': patient is not None,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         if patient is None:
             return ok({'data': {'imaging': False}})
         return ok({'data': {'imaging': True, 'patient': patient}})
@@ -697,7 +724,7 @@ class ReportTemplatesHandler(HTTPEndpoint):
             templates = await RisReportTemplates(conn).list_templates(modality)
         return ok({'data': templates})
 
-    @requires_permission(Permission.REPORT_WRITE)
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
     async def post(self, request):
         data = await request.json()
         if not data.get('name') or not data.get('modality'):
@@ -801,6 +828,16 @@ class PriorReportsHandler(HTTPEndpoint):
             priors = await Reports(conn).list_priors(
                 patient_id=patient_id, modality=modality,
                 exclude_exam_id=exclude_exam_id,
+            )
+            # HIPAA §164.312(b): audit prior-report PHI reads.
+            await AuditLog(conn).log_event(
+                event_type='report.priors_opened',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient_id,
+                details={'modality': modality, 'count': len(priors or [])},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
             )
         return ok({'data': priors})
 
@@ -980,6 +1017,16 @@ class PeerReviewHandler(HTTPEndpoint):
             if not (is_reviewer or is_author or request.user.admin):
                 return forbidden('Only the assigned reviewer can open this review')
             exam = await Exams(conn).get(report['exam_id']) if report else None
+            # HIPAA §164.312(b): audit peer-review PHI open.
+            await AuditLog(conn).log_event(
+                event_type='peer_review.opened',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={'report_id': review.get('report_id')},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         return ok({
             'data': {
                 **review,
@@ -1113,7 +1160,7 @@ class TemplateVersionsHandler(HTTPEndpoint):
 class TemplatePublishHandler(HTTPEndpoint):
     """R2-02-09: POST .../publish — snapshot + activate a new version."""
 
-    @requires_permission(Permission.REPORT_WRITE)
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
     async def post(self, request):
         from api.validate import parse_body
         from api.schemas.reports import PublishTemplateRequest
@@ -1136,7 +1183,7 @@ class TemplatePublishHandler(HTTPEndpoint):
 class TemplateRollbackHandler(HTTPEndpoint):
     """R2-02-09: POST .../rollback — one-click re-activation."""
 
-    @requires_permission(Permission.REPORT_WRITE)
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
     async def post(self, request):
         from api.validate import parse_body
         from api.schemas.reports import RollbackTemplateRequest
