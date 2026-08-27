@@ -27,11 +27,18 @@ Date: 2026-08-27
 | 21 | Files | `/` | FILE_READ/STUDY_READ | File browser | (spot) | PASS | — | — |
 | 22 | Billing (decision #1) | `/billing/*` | BILLING_READ | Open to admin roles | Billing Queue opens for super_admin; all billing routes now PermissionRoute | REFINE→PASS | All billing routes ClinicalRoute→PermissionRoute (user decision) | `bf792dd` |
 | 23 | Tenant scoping (G7) | all data-plane | — | No cross-tenant leak | CRITICAL leak found + fixed in staff-schedule; staff-time-off + coverage-gaps verified scoped | REFINE→PASS | See #3 | `d90b911` |
+| 24 | Billing Reconciliation (O8) | `/billing/reconciliation` | BILLING_READ | Signed-vs-charged snapshot | New page: 3 stat cards (signed 0, charged 0, capture 100%); API 200; fixed reports JOIN (no tenant_id col) | REFINE→PASS | Built page + JOIN fix | `56bd560` `cd32686` |
+| 25 | Denial Import (O9) | `/billing/denials` | BILLING_WRITE | 835-style denial intake | Import button + modal; records denial, shows clean reason; fixed DataError→404 on bad UUID; parse_denial keeps explicit reason | REFINE→PASS | Built modal + 2 backend fixes | `56bd560` `cd32686` |
+| 26 | Backend inventory (5a) | all routes | — | Find orphaned/unsurfaced handlers | 344 routes × 245 FE call paths; 19 ORPHANED, 6 DUPLICATE/DEAD; user: wire O8+O9, defer rest, keep D2/D3, defer D1/D4 removal | COMPLETE | BACKEND-INVENTORY.md + decisions | `56bd560` |
 
 ## Browser walk summary
-- 23 surfaces: 19 PASS, 4 REFINE→PASS (staff-schedule, report-templates, billing, tenant-scoping).
-- 1 console warning total (Chart.js Filler) across all pages walked — no errors.
-- Design decisions made by user: (1) open Billing to admin roles, (2) open Report Templates to admin roles.
+- 25 surfaces walked: 21 PASS + 4 REFINE→PASS + inventory row.
+- Zero console errors across billing pages (1 antd Statistic deprecation fixed).
+
+## Design decisions made by user
+1. Open Billing to admin roles (bf792dd)
+2. Open Report Templates to admin roles (bf792dd)
+3. Backend inventory: WIRE O8 (Reconciliation) + O9 (Denial Import); DEFER equipment module, patient merge/check-in, reviewer pickers, duplicate registries, small orphans; KEEP D2/D3; DEFER D1/D4 removal to cleanup sprint.
 
 ## Open items (Phase 3 recommendations, pending user decision)
 - G1 (MEDIUM): `users.admin` parallel super-admin path — converge on SYSTEM_ADMIN permission
