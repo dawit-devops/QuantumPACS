@@ -76,7 +76,6 @@ Replacing the `users.admin` boolean:
 | `radiologist` | files/patients/studies: read + write; logs: read | Can view, annotate, edit studies |
 | `technologist` | files/patients/studies: read + write | Can upload, cannot delete, cannot manage users |
 | `referring_physician` | files/patients/studies: read | View-only access |
-| `auditor` | logs: read; files: read (metadata only) | Read-only audit trail access |
 
 ### Token Changes
 
@@ -104,7 +103,7 @@ Replacing the `users.admin` boolean:
 ### Positive
 
 - **Enterprise SSO** — Hospitals can use existing identity infrastructure; no per-user account management.
-- **Fine-grained access** — Role-permission model supports radiologist, technologist, referring physician, and auditor use cases without over-provisioning.
+- **Fine-grained access** — Role-permission model supports radiologist, technologist, and referring physician use cases without over-provisioning.
 - **Token revocation** — Compromised tokens can be blocked within seconds.
 - **Backward compatibility** — v2 JWT tokens (without `jti`, `role`, `permissions`) are still accepted during transition, treated as `admin` according to the `admin` boolean (which remains in the DB).
 

@@ -43,8 +43,8 @@ Date: 2026-08-27
 3. Backend inventory: WIRE O8 (Reconciliation) + O9 (Denial Import); DEFER equipment module, patient merge/check-in, reviewer pickers, duplicate registries, small orphans; KEEP D2/D3; DEFER D1/D4 removal to cleanup sprint.
 4. Frontend inventory: B1 legacy `/frontdesk/visits` → REDIRECT to `/frontdesk/schedule` (cc297a2); C1/C4 deferred.
 
-## Open items (Phase 3 recommendations, pending user decision)
-- G1 (MEDIUM): `users.admin` parallel super-admin path — converge on SYSTEM_ADMIN permission
-- G2 (LOW): ADR-017 documents `auditor` role not in code — update ADR or add role
-- G3 (HIGH): no MFA (H-1), localStorage access token (H-2), token in login body (M-5)
-- G6 (MEDIUM): tenant create doesn't provision a real per-tenant DB in dev (shared DB)
+## Open items (Phase 3 recommendations)
+- G1 (MEDIUM, DEFER): `users.admin` parallel super-admin path — converge on SYSTEM_ADMIN in IAM-hardening sprint
+- G2 (LOW, UPDATE-ADR): ADR-017 `auditor` role removed from docs (aspirational, not in code)
+- G3 (HIGH, DEFER): no MFA (H-1), localStorage access token (H-2), token in login body (M-5) — dedicated sprint
+- G6 (MEDIUM, DEFER): tenant create doesn't provision a real per-tenant DB in dev (shared DB) — tenants walk
