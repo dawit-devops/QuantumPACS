@@ -58,6 +58,11 @@ function Backups() {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verification, setVerification] = useState<any>(null);
   const [verifying, setVerifying] = useState(false);
+  // ADM-11: Restore confirmation state.
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<Backup | null>(null);
+  const [restoreResult, setRestoreResult] = useState<any>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -110,9 +115,30 @@ function Backups() {
     }
   };
 
+  // ADM-11: Open restore confirmation — shows verification report before
+  // the user decides to download the artifact as the recovery path.
+  const openRestore = (record: Backup) => {
+    setRestoreTarget(record);
+    setRestoreResult(null);
+    setRestoreOpen(true);
+  };
+
+  const runRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    try {
+      const res = await verifyBackup(restoreTarget.id);
+      setRestoreResult(res.verification);
+    } catch (e: any) {
+      message.error(e.message);
+      setRestoreOpen(false);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const newest = data.find((b) => b.status === "completed");
-  const stale =
-    newest && new Date(newest.created_at).getTime() < Date.now() - 7 * 86400000;
+  const stale = newest && new Date(newest.created_at).getTime() < Date.now() - 7 * 86400000;
 
   return (
     <Content style={{ padding: 24 }}>
@@ -205,11 +231,16 @@ function Backups() {
                     </Button>
                     <Button
                       size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => openRestore(record)}
+                    >
+                      Restore
+                    </Button>
+                    <Button
+                      size="small"
                       icon={<DownloadOutlined />}
                       onClick={() =>
-                        downloadBackup(record.id).catch((e) =>
-                          message.error(e.message),
-                        )
+                        downloadBackup(record.id).catch((e) => message.error(e.message))
                       }
                     >
                       Download
@@ -246,15 +277,11 @@ function Backups() {
               <Descriptions.Item label="Backup ID">
                 <Text code>{verification.backup_id}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Kind">
-                {verification.kind ?? "—"}
-              </Descriptions.Item>
+              <Descriptions.Item label="Kind">{verification.kind ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="Generated at">
                 {verification.generated_at ?? "—"}
               </Descriptions.Item>
-              <Descriptions.Item label="Files">
-                {verification.files}
-              </Descriptions.Item>
+              <Descriptions.Item label="Files">{verification.files}</Descriptions.Item>
               <Descriptions.Item label="Archive bytes">
                 {formatBytes(verification.bytes)}
               </Descriptions.Item>
@@ -271,6 +298,93 @@ function Backups() {
             showIcon
             title="Artifact verified — download it to recover this snapshot"
           />
+        )}
+      </Modal>
+
+      {/* ADM-11: Restore confirmation — shows verification report then
+          offers download as the actual recovery path. */}
+      <Modal
+        title={`Restore from backup${restoreTarget ? ` (${restoreTarget.id})` : ""}`}
+        open={restoreOpen}
+        onCancel={() => {
+          setRestoreOpen(false);
+          setRestoreResult(null);
+        }}
+        footer={
+          restoreResult?.valid ? (
+            <Space>
+              <Button
+                onClick={() => {
+                  setRestoreOpen(false);
+                  setRestoreResult(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                onClick={() => {
+                  if (restoreTarget) {
+                    downloadBackup(restoreTarget.id).catch((e: any) => message.error(e.message));
+                  }
+                  setRestoreOpen(false);
+                  setRestoreResult(null);
+                }}
+              >
+                Download Artifact
+              </Button>
+            </Space>
+          ) : (
+            <Button
+              type="primary"
+              onClick={() => {
+                setRestoreOpen(false);
+                setRestoreResult(null);
+              }}
+            >
+              Close
+            </Button>
+          )
+        }
+      >
+        {restoring ? (
+          <Text type="secondary">Verifying artifact…</Text>
+        ) : restoreResult ? (
+          <>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Backup ID">
+                <Text code>{restoreResult.backup_id}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Files">{restoreResult.files}</Descriptions.Item>
+              <Descriptions.Item label="Archive bytes">
+                {formatBytes(restoreResult.bytes)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Generated at">
+                {restoreResult.generated_at ?? "—"}
+              </Descriptions.Item>
+            </Descriptions>
+            {restoreResult.valid ? (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="success"
+                showIcon
+                title="Artifact verified — download to recover this snapshot"
+              />
+            ) : (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="error"
+                showIcon
+                title="Artifact is corrupt or unavailable — cannot restore"
+              />
+            )}
+          </>
+        ) : (
+          <Text type="secondary">
+            This will verify the backup artifact. If valid, you can download it as the recovery
+            path. In-place restore is not yet supported.
+          </Text>
         )}
       </Modal>
     </Content>
