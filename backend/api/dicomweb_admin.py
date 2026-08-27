@@ -4,7 +4,7 @@ import json
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok
+from api.response import ok, forbidden
 from api.dicomweb import VALID_MODALITIES
 from db.conn import get_conn
 from db.hl7_message import period_to_interval
@@ -13,6 +13,20 @@ from log import get_logger
 log = get_logger(__name__)
 
 _PERIODS = {'24h': '24 hours', '7d': '7 days', '30d': '30 days'}
+
+# Mirrors ADMIN_SCOPED_ROLES in frontend/src/navigator.ts — the DICOMweb admin
+# console is admin-scoped only (clinical roles hold legacy DICOMWEB_READ but the
+# UI hides the console; the backend must match, not just the sidebar).
+_ADMIN_SCOPED_ROLE_SLUGS = frozenset({
+    'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'dept_manager',
+})
+
+
+def _require_admin_scoped(request):
+    role = getattr(request.user, 'role_slug', '') or ''
+    if not (getattr(request.user, 'admin', False) or role in _ADMIN_SCOPED_ROLE_SLUGS):
+        return forbidden('DICOMweb console is admin-scoped only')
+    return None
 
 
 def _get_qido_search_params():
@@ -41,6 +55,9 @@ def _get_wado_features():
 class DicomWebAdminHandler(HTTPEndpoint):
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        err = _require_admin_scoped(request)
+        if err:
+            return err
         return ok({
             'qido': {
                 'enabled': True,
@@ -95,6 +112,9 @@ class DicomWebRequestsHandler(HTTPEndpoint):
 
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        err = _require_admin_scoped(request)
+        if err:
+            return err
         kind = request.query_params.get('kind')
         status_filter = request.query_params.get('status')
         period_key = request.query_params.get('period', '')
@@ -173,6 +193,9 @@ class DicomWebMetricsHandler(HTTPEndpoint):
 
     @requires_permission(Permission.DICOMWEB_READ)
     async def get(self, request):
+        err = _require_admin_scoped(request)
+        if err:
+            return err
         period_key = request.query_params.get('period', '24h')
         interval = period_to_interval(_PERIODS.get(period_key, '24 hours'))
 

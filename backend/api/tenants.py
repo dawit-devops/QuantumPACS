@@ -128,6 +128,13 @@ class TenantsHandler(HTTPEndpoint):
                 # alerts can fire (get_stats already computes both).
                 'storage_used_bytes', 'storage_pct',
             )})
+            # DB connection details are platform-internal — the tenant switcher
+            # only needs slug/name/domain/status. Never leak db_host/db_port/
+            # db_user/db_password (and db_name) to clinical CROSS_TENANT_READ
+            # holders (teleradiologist etc.).
+            if not _is_platform_admin(user):
+                for _k in ('db_name', 'db_host', 'db_port', 'db_user', 'db_password'):
+                    row.pop(_k, None)
             enriched.append(row)
         return ok({'data': enriched})
 
