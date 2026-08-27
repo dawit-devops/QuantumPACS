@@ -206,3 +206,63 @@ class TestOAuthProviderHandler:
         client = TestClient(self._make_app(user=user))
         resp = client.delete('/oauth/providers/p1')
         assert resp.status_code == 403
+
+    def test_test_connection(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'id': 'p1', 'issuer': 'https://idp.example.com',
+            'client_id': 'abc', 'jwks_uri': 'https://idp.example.com/jwks',
+        })
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {'jwks_uri': 'https://idp.example.com/jwks'}
+        with _patch_get_conn('api.oauth_providers', mock_conn), \
+             patch('api.oauth_providers.httpx.AsyncClient') as MockClient:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            MockClient.return_value = mock_client
+            client = TestClient(self._make_app())
+            resp = client.post('/oauth/providers/p1')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['ok'] is True
+        assert body['results']['discovery']['ok'] is True
+        assert body['results']['jwks']['ok'] is True
+
+    def test_test_connection_not_found(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        with _patch_get_conn('api.oauth_providers', mock_conn):
+            client = TestClient(self._make_app())
+            resp = client.post('/oauth/providers/nonexistent')
+        assert resp.status_code == 404
+
+    def test_test_connection_missing_permission(self):
+        user = User({'id': 1, 'permissions': []})
+        client = TestClient(self._make_app(user=user))
+        resp = client.post('/oauth/providers/p1')
+        assert resp.status_code == 403
+
+    def test_test_connection_discovery_fails(self):
+        mock_conn = _mock_conn()
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'id': 'p1', 'issuer': 'https://idp.example.com',
+            'client_id': 'abc', 'jwks_uri': '',
+        })
+        with _patch_get_conn('api.oauth_providers', mock_conn), \
+             patch('api.oauth_providers.httpx.AsyncClient') as MockClient:
+            mock_client = AsyncMock()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_client.get = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            MockClient.return_value = mock_client
+            client = TestClient(self._make_app())
+            resp = client.post('/oauth/providers/p1')
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body['ok'] is False
+        assert body['results']['discovery']['ok'] is False
