@@ -46,7 +46,8 @@ Sources: `frontend/src/navigator.ts`, `backend/api/permissions.py`, `frontend/sr
 
 ## Not reachable (by design)
 
-- Clinical workspaces: Reading (`/reading*`, `/teaching`, `/peer-review`, `/critical`), Acquisition (`/exams`, `/worklist`, `/tracking`, `/schedule*`), QA (`/qa/*`), Coordination (`/orders`, `/prior-auth`, `/reminders`, `/care-plans`, `/communications`, `/nursing`), Front Desk (`/frontdesk/*`), Portal (`/portal*`), Billing (`/billing/*`) — excluded via `NON_ADMIN_WORKSPACES` sidebar filter + `ClinicalRoute` excludedRoles, even though super_admin holds every permission.
+- Clinical workspaces: Reading (`/reading*`, `/teaching`, `/peer-review`, `/critical`), Acquisition (`/exams`, `/worklist`, `/tracking`, `/schedule*`), QA (`/qa/*`), Coordination (`/orders`, `/prior-auth`, `/reminders`, `/care-plans`, `/communications`, `/nursing`), Front Desk (`/frontdesk/*`), Portal (`/portal*`) — excluded via `NON_ADMIN_WORKSPACES` sidebar filter + `ClinicalRoute` excludedRoles, even though super_admin holds every permission.
+- **Billing was opened to admin roles by user decision (`bf792dd`)** — the 7 billing surfaces (Queue/Claims/Revenue/Unbilled/Denials/Fee-Schedule/Reconciliation) are now reachable; this section predates that decision.
 
 ## Notes for the walk
 

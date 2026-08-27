@@ -30,15 +30,18 @@ Date: 2026-08-27
 | 24 | Billing Reconciliation (O8) | `/billing/reconciliation` | BILLING_READ | Signed-vs-charged snapshot | New page: 3 stat cards (signed 0, charged 0, capture 100%); API 200; fixed reports JOIN (no tenant_id col) | REFINE→PASS | Built page + JOIN fix | `56bd560` `cd32686` |
 | 25 | Denial Import (O9) | `/billing/denials` | BILLING_WRITE | 835-style denial intake | Import button + modal; records denial, shows clean reason; fixed DataError→404 on bad UUID; parse_denial keeps explicit reason | REFINE→PASS | Built modal + 2 backend fixes | `56bd560` `cd32686` |
 | 26 | Backend inventory (5a) | all routes | — | Find orphaned/unsurfaced handlers | 344 routes × 245 FE call paths; 19 ORPHANED, 6 DUPLICATE/DEAD; user: wire O8+O9, defer rest, keep D2/D3, defer D1/D4 removal | COMPLETE | BACKEND-INVENTORY.md + decisions | `56bd560` |
+| 27 | Frontend inventory (5b) | all pages | — | Triage every page A/B/C | 83 routes × 245 calls; ZERO bucket-A (all resolve); B1 legacy Visits page → redirect; C1 logs filter + C4 antd deprecation deferred | COMPLETE | FRONTEND-INVENTORY.md + decisions | `cc297a2` |
+| 28 | User guide (6) | all surfaces | — | Capability-complete manual | 29 surfaces documented with how-to + status; 8 workflows; perms; troubleshooting | COMPLETE | docs/user-guides/super_admin.md | `(pending)` |
 
 ## Browser walk summary
-- 25 surfaces walked: 21 PASS + 4 REFINE→PASS + inventory row.
+- 25 surfaces walked: 21 PASS + 4 REFINE→PASS + inventory rows.
 - Zero console errors across billing pages (1 antd Statistic deprecation fixed).
 
 ## Design decisions made by user
 1. Open Billing to admin roles (bf792dd)
 2. Open Report Templates to admin roles (bf792dd)
 3. Backend inventory: WIRE O8 (Reconciliation) + O9 (Denial Import); DEFER equipment module, patient merge/check-in, reviewer pickers, duplicate registries, small orphans; KEEP D2/D3; DEFER D1/D4 removal to cleanup sprint.
+4. Frontend inventory: B1 legacy `/frontdesk/visits` → REDIRECT to `/frontdesk/schedule` (cc297a2); C1/C4 deferred.
 
 ## Open items (Phase 3 recommendations, pending user decision)
 - G1 (MEDIUM): `users.admin` parallel super-admin path — converge on SYSTEM_ADMIN permission
