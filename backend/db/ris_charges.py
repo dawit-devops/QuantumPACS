@@ -218,8 +218,9 @@ class RisCharges(Table):
     async def reconciliation(self, tenant_id='default'):
         """S11-13: signed reports vs charges — capture-rate inputs."""
         signed = await self.conn.fetchval(
-            "SELECT count(*) FROM reports"
-            " WHERE tenant_id = $1 AND status = 'final'",
+            "SELECT count(*) FROM reports r"
+            " JOIN exams e ON r.exam_id = e.id"
+            " WHERE e.tenant_id = $1 AND r.status = 'final'",
             tenant_id,
         )
         charged = await self.conn.fetchval(
@@ -424,6 +425,9 @@ def parse_denial(payload):
 
     Accepts flat {code, reason} or X12-flavored keys; unknown shapes map
     to code OTHER with the serialized payload preserved as the reason.
+    When the caller passes an explicit reason without a code, that reason
+    is used verbatim (keeps the rework queue readable instead of showing
+    the raw payload as JSON).
     """
     code = str(payload.get('code')
                or payload.get('claim_adjustment_reason_code') or '').strip()
@@ -431,6 +435,8 @@ def parse_denial(payload):
                  or payload.get('reason_text') or '').strip()
     if not code:
         import json as _json
+        if reason:
+            return {'code': 'OTHER', 'reason': reason[:500]}
         return {'code': 'OTHER',
                 'reason': _json.dumps(payload, default=str)[:500]}
     if code not in _KNOWN_DENIAL_CODES:

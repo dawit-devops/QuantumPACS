@@ -31,6 +31,7 @@ from db.billing import money
 from db.conn import get_conn
 from log import request_id_var
 from api.tenant_middleware import effective_tenant
+from asyncpg.exceptions import DataError
 
 from api.telemetry import (
     ris_unbilled_over_5d, ris_unbilled_over_10d,
@@ -1287,7 +1288,12 @@ class RisDenialImportHandler(HTTPEndpoint):
         parsed = parse_denial(payload)
         async with get_conn() as conn:
             from db.ris_charges import RisClaims
-            claim = await RisClaims(conn).get(claim_id, tenant)
+            try:
+                claim = await RisClaims(conn).get(claim_id, tenant)
+            except DataError:
+                # Malformed claim ids against a UUID column raise asyncpg
+                # DataError (500); treat them as not-found for a clean 404.
+                claim = None
             if not claim:
                 return not_found('Claim not found')
             result = await RisClaims(conn).record_denial_with_event(
