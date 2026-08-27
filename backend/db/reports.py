@@ -352,11 +352,11 @@ class Reports(Table):
                       count(*) FILTER (WHERE e.priority = 'stat'
                          AND r.signed_at - e.completed_at < interval '60 minutes')
                           AS stat_within_sla
-               FROM reports r JOIN exams e ON e.id = r.exam_id
+                FROM reports r JOIN exams e ON e.id = r.exam_id
                WHERE r.signed_by::text = $1::text AND r.status = 'final'
                  AND r.signed_at >= now() - ($2 || ' days')::interval
                GROUP BY e.priority""",
-            uid, int(days),
+            uid, str(int(days)),
         )
         avg_tat = {r['priority']: float(r['avg_tat'])
                    if r['avg_tat'] is not None else None for r in tat_rows}
@@ -373,7 +373,7 @@ class Reports(Table):
                WHERE r.signed_by::text = $1::text AND r.status = 'final'
                  AND r.signed_at >= now() - ($2 || ' days')::interval
                GROUP BY day ORDER BY day""",
-            uid, int(days),
+            uid, str(int(days)),
         )
         feedback_received = await self.conn.fetchval(
             """SELECT count(*) FROM reports
