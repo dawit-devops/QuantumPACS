@@ -130,3 +130,55 @@ export const createHandoffNote = async (data: {
 export const markHandoffNoteRead = async (id: string): Promise<void> => {
   await request(`ris/handoff-notes/${id}/read`, { method: "PATCH" });
 };
+
+/* ── Referral Tracking (CC-05) ────────────────────────────────────────── */
+
+export interface Referral {
+  id: string;
+  patient_id: string;
+  from_provider: string;
+  to_specialist: string;
+  specialty: string;
+  status: "pending" | "accepted" | "completed" | "cancelled";
+  order_id: string;
+  report_id: string;
+  notes: string;
+  tenant_id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const listReferrals = async (params?: {
+  status?: string;
+  patient_id?: string;
+}): Promise<Referral[]> => {
+  const query: Record<string, string> = {};
+  if (params?.status) query.status = params.status;
+  if (params?.patient_id) query.patient_id = params.patient_id;
+  const body = await request<{ data: Referral[] }>("ris/referrals", { query });
+  return body.data;
+};
+
+export const createReferral = async (data: {
+  patient_id: string;
+  from_provider?: string;
+  to_specialist: string;
+  specialty?: string;
+  order_id?: string;
+  report_id?: string;
+  notes?: string;
+}): Promise<Referral> => {
+  const body = await request<{ data: Referral }>("ris/referrals", {
+    method: "POST",
+    data,
+  });
+  return body.data;
+};
+
+export const updateReferral = async (
+  id: string,
+  data: { status: string; notes?: string }
+): Promise<void> => {
+  await request(`ris/referrals/${id}`, { method: "PATCH", data });
+};

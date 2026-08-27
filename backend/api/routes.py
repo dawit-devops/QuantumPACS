@@ -140,6 +140,7 @@ from api.care_plans import (
     CarePlanDetailHandler,
 )
 from api.handoff_notes import HandoffNotesHandler, HandoffNoteReadHandler
+from api.referrals import ReferralsHandler, ReferralDetailHandler
 from api.encounters import EncounterHandler
 from api.communications import CommunicationHandler
 from api.equipment import (
@@ -385,6 +386,8 @@ _V1_ROUTES = [
     v2(Route('/ris/handoff-notes', endpoint=HandoffNotesHandler)),
     v2(Route('/ris/handoff-notes/{id}/read', endpoint=HandoffNoteReadHandler,
              methods=['PATCH'])),
+    v2(Route('/ris/referrals', endpoint=ReferralsHandler)),
+    v2(Route('/ris/referrals/{id}', endpoint=ReferralDetailHandler, methods=['PATCH'])),
     v2(Route('/ris/encounters', endpoint=EncounterHandler)),
     v2(Route('/ris/communications', endpoint=CommunicationHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
