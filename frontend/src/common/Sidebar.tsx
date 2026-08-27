@@ -437,6 +437,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <FundOutlined />,
         permissions: ["BILLING_READ"],
       },
+      {
+        // S11-13: signed-vs-charged reconciliation snapshot.
+        key: "billing-reconciliation",
+        path: "/billing/reconciliation",
+        label: "Reconciliation",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
     ],
   },
   {

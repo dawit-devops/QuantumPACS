@@ -125,6 +125,7 @@ const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
 const FeeSchedule = React.lazy(() => import("./billing/FeeSchedule"));
+const Reconciliation = React.lazy(() => import("./billing/Reconciliation"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -607,6 +608,15 @@ function ThemedApp() {
                       element={
                         <PermissionRoute permission="BILLING_READ">
                           <FeeSchedule />
+                        </PermissionRoute>
+                      }
+                    />
+                    {/* S11-13: signed-vs-charged reconciliation snapshot */}
+                    <Route
+                      path="/billing/reconciliation"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <Reconciliation />
                         </PermissionRoute>
                       }
                     />

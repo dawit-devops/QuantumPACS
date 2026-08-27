@@ -286,3 +286,25 @@ export const getContractComparison = (): Promise<ContractComparisonRow[]> =>
   request<{ data: ContractComparisonRow[] }>("ris/billing/contracts/comparison").then(
     (res) => res?.data ?? []
   );
+
+// S11-13: signed-vs-charged reconciliation snapshot (Billing → Reconciliation).
+export interface ReconciliationSnapshot {
+  signed_reports: number;
+  charged_reports: number;
+  capture_rate_pct: number;
+}
+
+export const getReconciliation = (): Promise<ReconciliationSnapshot> =>
+  request<ReconciliationSnapshot>("ris/billing/reconciliation").then((res) => res);
+
+// R2-02-01: 835-style denial intake — records a denial on a claim with the
+// payer's reason code so the rework trail starts at intake (BILLING_WRITE).
+export const importDenial = (body: {
+  claim_id: string;
+  reason_code?: string;
+  reason?: string;
+}): Promise<{ id: string; status: string; code: string }> =>
+  request<{ data: { id: string; status: string; code: string } }>("ris/billing/denials/import", {
+    method: "POST",
+    data: body,
+  }).then((res) => res?.data ?? { id: "", status: "DENIED", code: "" });
