@@ -1,3 +1,18 @@
+/* Single-page reading room: the console shares one viewport with the viewer
+   (no page scroll). The app chrome (ant-layout + .page-content) must clamp to
+   the window rather than growing with its content; body-scoped so every other
+   route keeps normal document scrolling. */
+body.reading-console-single .ant-layout {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.reading-console-single .page-content {
+  min-height: 0;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .reading-console {
   gap: 0;
 }
@@ -48,7 +63,7 @@
 .reading-viewport-pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
 }
 
@@ -87,7 +102,7 @@
 .reading-report-pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   background: var(--bg-surface, #fff);
   border-left: 1px solid var(--border-color, #f0f0f0);

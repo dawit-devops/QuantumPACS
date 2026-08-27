@@ -5,6 +5,137 @@
   min-height: 0;
 }
 
+/* Single-page ergonomic editor: fills the pane height so viewer + report
+   editor share one viewport with no page scroll. The toolbar/meta rows stay
+   compact at the top and the three textarea fields flex-fill the remaining
+   space (each scrolling internally instead of the page). */
+.report-panel-editor {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 12px;
+  overflow: hidden;
+  gap: 8px;
+}
+
+.report-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+
+.report-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.report-editor-toolbar .report-steps {
+  margin: 0;
+}
+
+/* Compact lifecycle indicator for the single-page editor — the full antd
+   Steps wrap to ~3 lines inside the narrow report pane; a row of dots +
+   the current label takes one line instead. */
+.report-editor-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #8c8c8c);
+}
+
+.report-editor-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-color, #d9d9d9);
+}
+
+.report-editor-status-dot.done {
+  background: var(--color-primary, #1677ff);
+}
+
+.report-editor-status-dot.current {
+  background: var(--color-primary, #1677ff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #1677ff) 20%, transparent);
+}
+
+.report-editor-status-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-primary, #262626);
+}
+
+.report-editor-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--text-secondary, #8c8c8c);
+}
+
+.report-editor-patient {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-editor-fields {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+
+.report-field {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 4px;
+}
+
+.report-field-findings {
+  flex: 5;
+}
+
+.report-field-impression {
+  flex: 3;
+}
+
+.report-field-recommendations {
+  flex: 2;
+}
+
+.report-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #262626);
+  flex: 0 0 auto;
+}
+
+.report-field .report-textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+.report-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
 .report-steps {
   margin: 16px 0 0;
 }
@@ -12,11 +143,4 @@
 .report-template-hint {
   color: var(--text-secondary, #8c8c8c);
   font-size: 13px;
-}
-
-.report-actions {
-  margin-top: 16px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
 }

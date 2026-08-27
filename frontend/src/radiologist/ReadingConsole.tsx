@@ -513,6 +513,16 @@ function ReadingConsole() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Single-page reading room: the console must fit one viewport (no page
+  // scroll) — the viewer and the report editor share the height, so the
+  // app chrome (.page-content) must clamp to the window instead of growing
+  // with its content. Body-scoped like immersive mode so other routes keep
+  // normal scrolling.
+  useEffect(() => {
+    document.body.classList.add("reading-console-single");
+    return () => document.body.classList.remove("reading-console-single");
+  }, []);
+
   const handleAnnotationsChange = useCallback((annotations: any[]) => {
     setRawAnnotations(annotations || []);
   }, []);
