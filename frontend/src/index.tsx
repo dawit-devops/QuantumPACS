@@ -806,25 +806,25 @@ function ThemedApp() {
                     <Route
                       path="/dicomweb"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <DicomWebAdmin />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/store"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <StowUpload />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/browser"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <StudyBrowser />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route

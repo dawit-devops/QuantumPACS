@@ -631,14 +631,13 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         // INTERFACE_ADMIN were dropped from the gate: tenant_admin and
         // pacs_admin hold them but the route and the
         // /api/dicomweb* backend guards all require DICOMWEB_READ.
-        // adminOnly: the console is admin-scoped; clinical roles (radiologist,
-        // physician) carry legacy DICOMWEB_READ but must not see it — the
-        // same scope the AdminConsoleRoute and navigator.ts apply.
+        // Not adminOnly: DICOMWEB_READ is granted to clinical roles
+        // (radiologist/teleradiologist/physician via legacy grants) and the
+        // console is intentionally reachable for them (user decision 2026-08-27).
         key: "dicomweb",
         label: "DICOMweb",
         icon: <CloudServerOutlined />,
         permissions: ["DICOMWEB_READ"],
-        adminOnly: true,
         children: [
           {
             key: "dicomweb-server",

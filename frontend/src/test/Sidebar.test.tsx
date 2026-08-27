@@ -37,11 +37,7 @@ vi.mock("../helpers", () => ({
   stopRefreshTimer: () => {},
 }));
 
-function setSession(opts: {
-  role?: string;
-  admin?: boolean;
-  permissions?: string[];
-}) {
+function setSession(opts: { role?: string; admin?: boolean; permissions?: string[] }) {
   localStorage.setItem("token", "t");
   localStorage.setItem("userId", "u1");
   localStorage.setItem("admin", String(opts.admin ?? false));
@@ -83,10 +79,7 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "tenant_admin");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["TENANT_READ", "USER_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["TENANT_READ", "USER_READ"]));
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Admin")).toBeInTheDocument();
     await user.click(screen.getByText("Admin"));
@@ -101,10 +94,7 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "cashier");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["PATIENT_READ", "PATIENT_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["PATIENT_READ", "PATIENT_WRITE"]));
     renderWithAuth(<Sidebar />);
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
   });
@@ -192,13 +182,7 @@ describe("Sidebar", () => {
   it("hides clinical sections for a tenant_admin even with clinical grants", () => {
     setSession({
       role: "tenant_admin",
-      permissions: [
-        "REPORT_READ",
-        "EXAM_READ",
-        "QA_READ",
-        "WORKLIST_READ",
-        "USER_READ",
-      ],
+      permissions: ["REPORT_READ", "EXAM_READ", "QA_READ", "WORKLIST_READ", "USER_READ"],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
@@ -321,18 +305,20 @@ describe("Sidebar", () => {
     expect(screen.getByText("Logs")).toBeInTheDocument();
   });
 
-  it("hides the DICOMweb console from a clinical role even with DICOMWEB_READ", async () => {
+  it("shows the DICOMweb console to a clinical role with DICOMWEB_READ", async () => {
     const user = userEvent.setup();
     // radiologist and physician carry legacy DICOMWEB_READ; the console is
-    // admin-scoped (adminOnly) so it never appears in clinical nav.
+    // reachable for them (user decision 2026-08-27 — the submenu is no longer
+    // adminOnly) and the backend re-checks DICOMWEB_WRITE on STOW itself.
     setSession({
       role: "radiologist",
       permissions: ["DICOMWEB_READ", "REPORT_READ"],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Reading")).toBeInTheDocument();
-    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
-    expect(screen.queryByText("DICOMweb")).not.toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("DICOMweb")).toBeInTheDocument();
     expect(user).toBeDefined();
   });
 
