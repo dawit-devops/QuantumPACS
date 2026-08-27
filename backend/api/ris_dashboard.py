@@ -15,8 +15,8 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created
-from datetime import date, datetime
+from api.response import ok, created, not_found, api_error
+from datetime import date, datetime, timedelta
 from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
 
@@ -345,3 +345,116 @@ class RisDashboardKpiHandler(HTTPEndpoint):
             },
             'denial_rate': float(denial_rate or 0),
         })
+
+
+class StaffTimeOffHandler(HTTPEndpoint):
+    """DM-07: staff time-off requests — create and list."""
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        status = request.query_params.get('status')
+        from db.ris_staff_time_off import RisStaffTimeOff
+        async with get_conn() as conn:
+            rows = await RisStaffTimeOff(conn).list_for_tenant(tenant, status)
+        return ok({'data': rows})
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.ris_scheduling import CreateStaffTimeOffRequest
+        from db.ris_staff_time_off import RisStaffTimeOff
+        body = await parse_body(CreateStaffTimeOffRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            row = await RisStaffTimeOff(conn).create({
+                'tenant_id': tenant,
+                'staff_id': body.staff_id,
+                'staff_name': body.staff_name,
+                'modality': body.modality,
+                'start_date': body.start_date,
+                'end_date': body.end_date,
+                'reason': body.reason,
+                'created_by': getattr(request.user, 'email', '') or str(getattr(request.user, 'id', '')),
+            })
+        if not row:
+            return api_error('CREATE_FAILED', 'Failed to create time-off request', status=500)
+        return created({'data': row})
+
+
+class StaffTimeOffStatusHandler(HTTPEndpoint):
+    """DM-07: approve/reject/cancel a time-off request."""
+
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def patch(self, request):
+        from api.validate import parse_body
+        from api.schemas.ris_scheduling import UpdateStaffTimeOffStatusRequest
+        from db.ris_staff_time_off import RisStaffTimeOff
+        entry_id = request.path_params['id']
+        body = await parse_body(UpdateStaffTimeOffStatusRequest, request)
+        async with get_conn() as conn:
+            repo = RisStaffTimeOff(conn)
+            existing = await repo.get(entry_id)
+            if not existing:
+                return not_found('Time-off request not found')
+            row = await repo.update_status(entry_id, body.status)
+        return ok({'data': row})
+
+
+class StaffCoverageGapsHandler(HTTPEndpoint):
+    """DM-07: coverage-gap detection — flags modality/date combinations where
+    approved time-off removes a scheduled technologist from a day that has
+    active exam demand.
+
+    Detection model: for each date in the window, load the set of
+    technologists assigned to exams that day (from worklist_entries) and the
+    set of staff on approved time-off (modality-scoped). A gap is flagged
+    when a technologist is both scheduled for an exam and on approved time-off
+    (i.e. the assignment cannot be covered), or when a modality has approved
+    time-off but no remaining scheduled coverage.
+    """
+
+    @requires_permission(Permission.SCHEDULE_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        modality = request.query_params.get('modality') or None
+        from db.ris_staff_time_off import RisStaffTimeOff
+        async with get_conn() as conn:
+            repo = RisStaffTimeOff(conn)
+            affected = await repo.approved_in_range(tenant, start_date, end_date, modality)
+            # Exam demand per now-flagged staff for each overlapping date.
+            gaps = []
+            for a in affected:
+                if not a.get('start_date') or not a.get('end_date'):
+                    continue
+                s = a['start_date']
+                e = a['end_date']
+                if isinstance(s, datetime):
+                    s = s.date()
+                if isinstance(e, datetime):
+                    e = e.date()
+                day = s
+                while day <= e:
+                    exam_rows = await conn.fetch(
+                        """SELECT COUNT(*) AS exam_count, modality
+                           FROM worklist_entries
+                           WHERE tenant_id = $1
+                             AND assigned_technologist = $2
+                             AND scheduled_date = $3
+                             AND status != 'cancelled'
+                           GROUP BY modality""",
+                        tenant, a['staff_name'], day.isoformat(),
+                    )
+                    if exam_rows:
+                        for r in exam_rows:
+                            gaps.append({
+                                'date': day.isoformat(),
+                                'staff_id': a['staff_id'],
+                                'staff_name': a['staff_name'],
+                                'modality': r['modality'] or a['modality'],
+                                'scheduled_exams': r['exam_count'],
+                            })
+                    day += timedelta(days=1)
+        return ok({'data': gaps, 'count': len(gaps)})

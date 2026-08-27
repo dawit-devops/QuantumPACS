@@ -125,6 +125,7 @@ from api.billing import (
 from api.ris_dashboard import (
     RisDashboardKpiHandler, DeptWorkloadHandler, DeptTatDrilldownHandler,
     DeptEquipmentUtilHandler, DeptStaffScheduleHandler,
+    StaffTimeOffHandler, StaffTimeOffStatusHandler, StaffCoverageGapsHandler,
 )
 from api.prior_auth import (
     PriorAuthHandler,
@@ -380,6 +381,9 @@ _V1_ROUTES = [
     v2(Route('/ris/analytics/tat-drilldown', endpoint=DeptTatDrilldownHandler)),
     v2(Route('/ris/analytics/equipment-util', endpoint=DeptEquipmentUtilHandler)),
     v2(Route('/ris/staff-schedule', endpoint=DeptStaffScheduleHandler)),
+    v2(Route('/ris/staff-time-off', endpoint=StaffTimeOffHandler)),
+    v2(Route('/ris/staff-time-off/coverage-gaps', endpoint=StaffCoverageGapsHandler)),
+    v2(Route('/ris/staff-time-off/{id}/status', endpoint=StaffTimeOffStatusHandler)),
     # R2-01: Prior authorization — request lifecycle + payer decisions.
     v2(Route('/ris/scheduling/chargeback', endpoint=RisChargebackHandler)),
     v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),

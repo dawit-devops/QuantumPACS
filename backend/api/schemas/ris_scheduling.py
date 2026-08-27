@@ -155,3 +155,25 @@ class UpdateWaitlistStatusRequest(BaseModel):
         if v not in ('NOTIFIED', 'BOOKED', 'EXPIRED', 'CANCELLED'):
             raise ValueError(f'Invalid status {v!r}')
         return v
+
+
+class CreateStaffTimeOffRequest(BaseModel):
+    """DM-07: request staff time-off."""
+    staff_id: str = Field(..., min_length=1, max_length=128)
+    staff_name: str = Field('', max_length=128)
+    modality: str = Field('', max_length=10)
+    start_date: str = Field(..., description='YYYY-MM-DD')
+    end_date: str = Field(..., description='YYYY-MM-DD')
+    reason: str = Field('', max_length=500)
+
+
+class UpdateStaffTimeOffStatusRequest(BaseModel):
+    """DM-07: approve/reject/cancel a time-off request."""
+    status: str = Field(..., max_length=20)
+
+    @field_validator('status')
+    @classmethod
+    def _valid_status(cls, v):
+        if v not in ('APPROVED', 'REJECTED', 'CANCELLED'):
+            raise ValueError(f'Invalid status {v!r}')
+        return v
