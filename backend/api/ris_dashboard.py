@@ -183,17 +183,18 @@ class DeptStaffScheduleHandler(HTTPEndpoint):
     async def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        tenant = effective_tenant(request) or 'default'
         async with get_conn() as conn:
-            where = []
-            params = []
-            idx = 1
+            where = ["w.tenant_id = $1"]
+            params = [tenant]
+            idx = 2
             if start_date:
-                where.append(f"scheduled_date >= ${idx}")
-                params.append(start_date)
+                where.append(f"w.scheduled_date >= ${idx}")
+                params.append(date.fromisoformat(start_date))
                 idx += 1
             if end_date:
-                where.append(f"scheduled_date <= ${idx}")
-                params.append(end_date)
+                where.append(f"w.scheduled_date <= ${idx}")
+                params.append(date.fromisoformat(end_date))
                 idx += 1
             clause = f"WHERE {' AND '.join(where)}" if where else ''
             rows = await conn.fetch(
@@ -213,6 +214,9 @@ class DeptStaffScheduleHandler(HTTPEndpoint):
         from api.validate import parse_body
         from api.schemas.scheduling import StaffScheduleRequest
         body = await parse_body(StaffScheduleRequest, request)
+        # Tenant is derived from the request scope, never trusted from the
+        # body — a client must not be able to write into another tenant.
+        tenant = effective_tenant(request) or 'default'
         async with get_conn() as conn:
             # Create a worklist entry for the staff schedule assignment
             row = await conn.fetchrow(
@@ -224,7 +228,7 @@ class DeptStaffScheduleHandler(HTTPEndpoint):
                    RETURNING id""",
                 body.patient_name, body.accession_number, body.modality,
                 body.scheduled_date, body.scheduled_time,
-                body.station_ae, body.technologist, body.tenant_id,
+                body.station_ae, body.technologist, tenant,
             )
         return created({'data': {'id': str(row['id'])}})
 

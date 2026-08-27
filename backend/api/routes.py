@@ -369,6 +369,7 @@ _V1_ROUTES = [
     v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportCollection)),
     v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportRead)),
     v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportSearch)),
+    v2(Route('/ris/report-templates', endpoint=ReportTemplatesHandler)),
     v2(Route('/ris/report-templates/{id}/versions', endpoint=TemplateVersionsHandler)),
     v2(Route('/ris/report-templates/{id}/publish', endpoint=TemplatePublishHandler, methods=['POST'])),
     v2(Route('/ris/report-templates/{id}/rollback', endpoint=TemplateRollbackHandler, methods=['POST'])),
