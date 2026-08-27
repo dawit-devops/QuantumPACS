@@ -16,7 +16,7 @@ from api.validate import parse_body
 from api.schemas.reports import (
     SaveReportRequest, SignReportRequest, ReturnReportRequest,
     AssignRadiologistRequest, CreatePeerReviewRequest, SubmitPeerReviewRequest,
-    DeclinePeerReviewRequest, TeachingFileRequest,
+    DeclinePeerReviewRequest, TeachingFileRequest, ReportImageRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn, get_tenant_slug
@@ -705,6 +705,129 @@ class ExamImagesHandler(HTTPEndpoint):
         if patient is None:
             return ok({'data': {'imaging': False}})
         return ok({'data': {'imaging': True, 'patient': patient}})
+
+
+class ReportImagesHandler(HTTPEndpoint):
+    """Representative key images attached to a reading-list exam's report.
+
+    The radiologist captures 2-3 images from the live viewer and they land
+    here (image_data is a data: URL / base64 PNG produced client-side). They
+    render inside the final report document, so reads and writes share the
+    report's PHI scope — REPORT_READ lists, REPORT_WRITE mutates (same split
+    the report body uses).
+    """
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        exam_id = request.path_params['exam_id']
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            rows = []
+            if report:
+                rows = await conn.fetch(
+                    """SELECT id, image_data, caption, position, created_at
+                       FROM report_images
+                       WHERE report_id = $1
+                       ORDER BY position, id""",
+                    report['id'],
+                )
+        return ok({'data': [
+            {
+                'id': r['id'],
+                'dataUrl': r['image_data'],
+                'caption': r['caption'],
+                'position': r['position'],
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
+            }
+            for r in rows
+        ]})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['exam_id']
+        body = await parse_body(ReportImageRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return not_found('No report exists for this exam yet')
+            if report.get('status') in ('submitted', 'final'):
+                return validation_error(
+                    'Report is submitted or signed — key images are locked '
+                    'with the report.',
+                )
+            count = await conn.fetchval(
+                'SELECT count(*) FROM report_images WHERE report_id = $1',
+                report['id'],
+            )
+            if count >= 3:
+                return validation_error(
+                    'A report supports up to 3 representative images',
+                )
+            image_id = await conn.fetchval(
+                """INSERT INTO report_images
+                       (report_id, image_data, caption, position, created_by)
+                   VALUES ($1, $2, $3, $4, $5)
+                   RETURNING id""",
+                report['id'], body.image_data, body.caption or '',
+                body.position if body.position is not None else int(count),
+                str(request.user.id),
+            )
+            await AuditLog(conn).log_event(
+                event_type='report.image_added',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'accession_number': exam.get('accession_number'),
+                    'image_id': image_id,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return created({'data': {'id': image_id}})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def delete(self, request):
+        exam_id = request.path_params['exam_id']
+        image_id = request.path_params.get('image_id')
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return not_found('No report exists for this exam yet')
+            if report.get('status') in ('submitted', 'final'):
+                return validation_error(
+                    'Report is submitted or signed — key images are locked '
+                    'with the report.',
+                )
+            deleted = await conn.execute(
+                'DELETE FROM report_images WHERE id = $1 AND report_id = $2',
+                image_id, report['id'],
+            )
+            if deleted == 'DELETE 0':
+                return not_found('Key image not found')
+            await AuditLog(conn).log_event(
+                event_type='report.image_removed',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'image_id': image_id,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': {'deleted': True}})
 
 
 class ReportTemplatesHandler(HTTPEndpoint):

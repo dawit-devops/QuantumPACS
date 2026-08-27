@@ -90,7 +90,7 @@ from api.exams import (
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
     ExamReportSubmitHandler, ExamReportReturnHandler,
-    ExamAssignHandler, ExamImagesHandler,
+    ExamAssignHandler, ExamImagesHandler, ReportImagesHandler,
     ReportTemplatesHandler, ReportVersionsHandler, ReportVersionRestoreHandler,
     PriorReportsHandler, ReadingStatsHandler,
     TeachingFilesHandler, TeachingFileHandler,
@@ -468,6 +468,9 @@ _V1_ROUTES = [
     v2(Route('/reports/{exam_id}/submit', endpoint=ExamReportSubmitHandler)),
     v2(Route('/reports/{exam_id}/return', endpoint=ExamReportReturnHandler)),
     v2(Route('/reports/{exam_id}/images', endpoint=ExamImagesHandler)),
+    v2(Route('/reports/{exam_id}/key-images', endpoint=ReportImagesHandler)),
+    v2(Route('/reports/{exam_id}/key-images/{image_id}', endpoint=ReportImagesHandler,
+             methods=['DELETE'])),
     v2(Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler)),
     v2(Route('/peer-reviews', endpoint=PeerReviewsHandler)),
     v2(Route('/peer-reviews/{id}', endpoint=PeerReviewHandler)),

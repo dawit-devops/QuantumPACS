@@ -14,6 +14,7 @@ import {
   Input,
   Form,
   Select,
+  Dropdown,
 } from "antd";
 import {
   FileTextOutlined,
@@ -24,6 +25,10 @@ import {
   AlertOutlined,
   BookOutlined,
   DesktopOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  MoreOutlined,
+  PictureOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -116,6 +121,16 @@ function ReadingConsole() {
   const [feedback, setFeedback] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Viewer full-screen: the report pane is hidden and the viewport takes the
+  // whole console width (independent of immersive, which only collapses the
+  // sidebar). The report stays mounted underneath — toggling back restores
+  // the split without losing the draft.
+  const [viewerFullscreen, setViewerFullscreen] = useState(false);
+  // Representative key images (2-3) captured from the live viewer and attached
+  // to the report — they render inside the final document.
+  const [keyImages, setKeyImages] = useState<any[]>([]);
+  const [capturing, setCapturing] = useState(false);
+  const [keyImagesOpen, setKeyImagesOpen] = useState(false);
   // CR-6: "Flag Critical" opens the S10 critical-results modal for the
   // exam currently loaded in the console.
   const [criticalOpen, setCriticalOpen] = useState(false);
@@ -164,6 +179,42 @@ function ReadingConsole() {
       .then((res: any) => setQueue(Array.isArray(res.data) ? res.data : []))
       .catch(() => setQueue([]));
   }, [queueQuery]);
+
+  // Load representative key images for this exam.
+  useEffect(() => {
+    if (!examId) return;
+    request(`reports/${examId}/key-images`)
+      .then((res: any) => setKeyImages(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setKeyImages([]));
+  }, [examId]);
+
+  const captureKeyImage = async () => {
+    const canvas = document.querySelector(".viewportElement canvas") as HTMLCanvasElement | null;
+    if (!canvas) return;
+    setCapturing(true);
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      await request(`reports/${examId}/key-images`, {
+        method: "POST",
+        data: { image_data: dataUrl },
+      });
+      const res = await request(`reports/${examId}/key-images`);
+      setKeyImages(Array.isArray(res.data) ? res.data : []);
+    } catch (e: any) {
+      message?.error?.(e.message || "Failed to capture key image");
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const removeKeyImage = async (imageId: number) => {
+    try {
+      await request(`reports/${examId}/key-images/${imageId}`, { method: "DELETE" });
+      setKeyImages((prev) => prev.filter((k) => k.id !== imageId));
+    } catch (e: any) {
+      message?.error?.(e.message || "Failed to remove key image");
+    }
+  };
 
   const saveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   // The autosave interval is registered once; read the live dirty flag AND the
@@ -573,6 +624,17 @@ function ReadingConsole() {
           </Badge>
           Measures
         </Button>
+        <Button
+          size="small"
+          onClick={() => setKeyImagesOpen(true)}
+          aria-expanded={keyImagesOpen}
+          title="Representative key images for the report"
+        >
+          <Badge count={keyImages.length} size="small" offset={[2, -4]}>
+            <PictureOutlined />
+          </Badge>
+          Key images
+        </Button>
       </div>
       <div className="reading-viewport-body">
         <div className="reading-viewport-main">
@@ -718,15 +780,26 @@ function ReadingConsole() {
               {exam.protocol_name || "No protocol"}
             </span>
           </div>
-          <Space>
+          <Space wrap>
             {savedAt && (
               <span className="reading-console-saved">
-                <SaveOutlined /> saved {savedAt.toLocaleTimeString()}
+                <SaveOutlined /> {savedAt.toLocaleTimeString()}
               </span>
             )}
-            {/* §5.1 manual immersive toggle (Space also toggles). */}
+            {/* §5.1 manual immersive toggle (Space also toggles). Collapses
+                the sidebar to icon-only and darkens the reading room. */}
             <Button size="small" aria-pressed={immersive} onClick={toggleImmersive}>
               {immersive ? "Exit immersive" : "Immersive"}
+            </Button>
+            {/* Viewer full-screen: expand the viewport to the whole console
+                width, hiding the report pane (the draft stays mounted). */}
+            <Button
+              size="small"
+              aria-pressed={viewerFullscreen}
+              onClick={() => setViewerFullscreen((v) => !v)}
+              title={viewerFullscreen ? "Exit viewer full-screen" : "Full-screen viewer"}
+            >
+              {viewerFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
             </Button>
             {/* ADR-028: launch the loaded study in the Weasis web viewer — the
                 study the exam's imaging tree selected (the DICOMweb console in
@@ -752,10 +825,10 @@ function ReadingConsole() {
                   icon={<CheckCircleOutlined />}
                   onClick={() => setSignOpen(true)}
                 >
-                  Approve & Co-sign
+                  Co-sign
                 </Button>
                 <Button icon={<RollbackOutlined />} onClick={() => setReturnOpen(true)}>
-                  Return for revision
+                  Return
                 </Button>
               </>
             )}
@@ -768,16 +841,39 @@ function ReadingConsole() {
                 Sign Report
               </Button>
             )}
-            {canWrite && report && (
-              <Button danger icon={<AlertOutlined />} onClick={() => setCriticalOpen(true)}>
-                Flag Critical
-              </Button>
-            )}
-            {canWrite && (
-              <Button icon={<BookOutlined />} onClick={() => setTeachOpen(true)}>
-                Submit to Teaching File
-              </Button>
-            )}
+            {/* Secondary actions condensed into a More menu so the header
+                stays one row and the viewer/editor keep the vertical space. */}
+            {(canWrite && report) || canWrite ? (
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    ...(canWrite && report
+                      ? [
+                          {
+                            key: "critical",
+                            icon: <AlertOutlined />,
+                            label: "Flag Critical",
+                            onClick: () => setCriticalOpen(true),
+                          },
+                        ]
+                      : []),
+                    ...(canWrite
+                      ? [
+                          {
+                            key: "teaching",
+                            icon: <BookOutlined />,
+                            label: "Submit to Teaching File",
+                            onClick: () => setTeachOpen(true),
+                          },
+                        ]
+                      : []),
+                  ],
+                }}
+              >
+                <Button size="small" aria-label="More actions" icon={<MoreOutlined />} />
+              </Dropdown>
+            ) : null}
           </Space>
         </header>
       )}
@@ -829,6 +925,58 @@ function ReadingConsole() {
         />
       )}
 
+      {/* Representative key images (2-3) captured from the live viewer —
+          rendered inside the final report document. */}
+      <Modal
+        title="Representative Key Images"
+        open={keyImagesOpen}
+        onCancel={() => setKeyImagesOpen(false)}
+        footer={null}
+        width={480}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title="Capture up to 3 images from the live viewer"
+          description="Use the 'Capture current view' button below, then Sign to include them in the final report."
+        />
+        <div className="reading-key-images-grid">
+          {keyImages.map((img, i) => (
+            <div key={img.id} className="reading-key-image-card">
+              <div className="reading-key-image-index"># {i + 1}</div>
+              <img src={img.dataUrl || ""} alt={img.caption || `Key image ${i + 1}`} />
+              <Button
+                type="text"
+                danger
+                size="small"
+                onClick={() => removeKeyImage(img.id)}
+                disabled={!canWrite}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+        {keyImages.length === 0 && (
+          <p style={{ color: "var(--text-secondary, #8c8c8c)" }}>
+            No key images yet — capture one from the viewer.
+          </p>
+        )}
+        <div className="report-actions">
+          <Button
+            type="primary"
+            icon={<PictureOutlined />}
+            loading={capturing}
+            onClick={captureKeyImage}
+            disabled={!canWrite || keyImages.length >= 3}
+          >
+            Capture current view
+          </Button>
+        </div>
+      </Modal>
+
       {loading && !exam ? (
         <div className="report-loading">
           <Spin size="large" />
@@ -848,6 +996,11 @@ function ReadingConsole() {
             </div>
             <div className="reading-console-mobile-report">{reportContent}</div>
           </div>
+        ) : viewerFullscreen ? (
+          // Viewer full-screen: the viewport spans the whole console width.
+          // The report pane stays mounted (hidden) so toggling back restores
+          // the split without losing the draft.
+          <div className="reading-console-fullscreen">{viewportPane}</div>
         ) : (
           <ResizableSplit
             storageKey="reading-console-split"

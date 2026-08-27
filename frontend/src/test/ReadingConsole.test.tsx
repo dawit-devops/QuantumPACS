@@ -82,8 +82,24 @@ function mockNoImaging() {
     if (url === "reports/e1/images") {
       return Promise.resolve({ data: { imaging: false } });
     }
+    if (url === "reports/e1/key-images") {
+      return Promise.resolve({ data: [] });
+    }
     return Promise.resolve({ data: [] });
   });
+}
+
+// The rich-text editor renders a contentEditable div carrying the field's
+// placeholder in data-placeholder (no native textarea/placeholder attribute),
+// so the old getByPlaceholderText/getByDisplayValue queries no longer match.
+function rte(placeholder: string): HTMLElement {
+  return document.querySelector(`[data-placeholder="${placeholder}"]`) as HTMLElement;
+}
+
+function setRte(placeholder: string, value: string) {
+  const el = rte(placeholder);
+  el.innerHTML = value;
+  fireEvent.input(el);
 }
 
 describe("ReadingConsole", () => {
@@ -109,7 +125,9 @@ describe("ReadingConsole", () => {
     await waitFor(() => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
-    expect(screen.getByDisplayValue("Initial findings")).toBeInTheDocument();
+    expect(rte("Structured findings — per template or free text…").innerHTML).toContain(
+      "Initial findings"
+    );
     expect(screen.getByText("DRAFT")).toBeInTheDocument();
   });
 
@@ -120,7 +138,9 @@ describe("ReadingConsole", () => {
     await waitFor(() => {
       expect(screen.getByText(/No imaging available/)).toBeInTheDocument();
     });
-    expect(screen.getByDisplayValue("Initial findings")).toBeInTheDocument();
+    expect(rte("Structured findings — per template or free text…").innerHTML).toContain(
+      "Initial findings"
+    );
   });
 
   it("disables sign until an impression is entered", async () => {
@@ -138,9 +158,10 @@ describe("ReadingConsole", () => {
       .find((b) => (b as HTMLButtonElement).disabled === true);
     expect(signBtn).toBeDefined();
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "No acute intracranial abnormality." },
-    });
+    setRte(
+      "Impression / conclusion (required before signing)…",
+      "No acute intracranial abnormality."
+    );
 
     await waitFor(() => {
       const btn = screen
@@ -162,9 +183,7 @@ describe("ReadingConsole", () => {
       });
       expect(screen.getByText("John Doe")).toBeInTheDocument();
 
-      fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-        target: { value: "Normal head CT." },
-      });
+      setRte("Impression / conclusion (required before signing)…", "Normal head CT.");
 
       // Autosave cadence is 3s; advance past it and flush the async save.
       await act(async () => {
@@ -211,9 +230,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "Normal." },
-    });
+    setRte("Impression / conclusion (required before signing)…", "Normal.");
 
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
@@ -280,9 +297,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "Normal." },
-    });
+    setRte("Impression / conclusion (required before signing)…", "Normal.");
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -348,9 +363,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "Normal." },
-    });
+    setRte("Impression / conclusion (required before signing)…", "Normal.");
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -404,9 +417,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "Normal." },
-    });
+    setRte("Impression / conclusion (required before signing)…", "Normal.");
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -488,9 +499,7 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/Impression/), {
-      target: { value: "Normal." },
-    });
+    setRte("Impression / conclusion (required before signing)…", "Normal.");
 
     const submitBtn = screen
       .getAllByRole("button", { name: /submit for review/i })
@@ -649,7 +658,9 @@ describe("ReadingConsole", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByDisplayValue("Older draft text")).toBeInTheDocument();
+      expect(rte("Structured findings — per template or free text…").innerHTML).toContain(
+        "Older draft text"
+      );
     });
   });
 
@@ -716,7 +727,9 @@ describe("ReadingConsole", () => {
       expect(screen.getByText("John Doe")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /submit to teaching file/i }));
+    // The secondary actions live in the condensed More menu in the header.
+    fireEvent.click(screen.getByRole("button", { name: /more actions/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /submit to teaching file/i }));
 
     fireEvent.change(await screen.findByLabelText("Case title"), {
       target: { value: "Classic subdural" },

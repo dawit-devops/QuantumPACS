@@ -3,7 +3,6 @@ import {
   Card,
   Descriptions,
   Tag,
-  Input,
   Select,
   Button,
   Steps,
@@ -24,6 +23,7 @@ import {
 import { request } from "../helpers";
 import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
+import RichTextEditor from "./RichTextEditor";
 
 interface ReportPanelProps {
   exam: any;
@@ -36,6 +36,7 @@ interface ReportPanelProps {
   impression: string;
   recommendations: string;
   templates: any[];
+  templateName?: string;
   dirty: boolean;
   reviewFeedback?: string;
   onFindingsChange: (v: string) => void;
@@ -71,6 +72,7 @@ export default function ReportPanel({
   impression,
   recommendations,
   templates,
+  templateName,
   dirty,
   reviewFeedback,
   onFindingsChange,
@@ -235,6 +237,7 @@ export default function ReportPanel({
             <Select
               placeholder="Apply a template"
               style={{ width: 220, flexShrink: 0 }}
+              value={templateName || undefined}
               onChange={onApplyTemplate}
               options={templates.map((t) => ({
                 value: t.name,
@@ -388,10 +391,9 @@ export default function ReportPanel({
           <div className="report-editor-fields">
             <div className="report-field report-field-findings">
               <span className="report-field-label">Findings</span>
-              <Input.TextArea
-                className="report-textarea"
+              <RichTextEditor
                 value={findings}
-                onChange={(e) => onFindingsChange(e.target.value)}
+                onChange={onFindingsChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Structured findings — per template or free text…"
               />
@@ -399,10 +401,9 @@ export default function ReportPanel({
 
             <div className="report-field report-field-impression">
               <span className="report-field-label">Impression</span>
-              <Input.TextArea
-                className="report-textarea"
+              <RichTextEditor
                 value={impression}
-                onChange={(e) => onImpressionChange(e.target.value)}
+                onChange={onImpressionChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Impression / conclusion (required before signing)…"
                 status={!impression.trim() ? "warning" : ""}
@@ -411,10 +412,9 @@ export default function ReportPanel({
 
             <div className="report-field report-field-recommendations">
               <span className="report-field-label">Recommendations</span>
-              <Input.TextArea
-                className="report-textarea"
+              <RichTextEditor
                 value={recommendations}
-                onChange={(e) => onRecommendationsChange(e.target.value)}
+                onChange={onRecommendationsChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Optional recommendations for follow-up…"
               />

@@ -35,6 +35,12 @@ class AssignRadiologistRequest(BaseModel):
     radiologist_id: str = Field('', description="User id to assign; empty = assign the requesting user")
 
 
+class ReportImageRequest(BaseModel):
+    image_data: str = Field(..., description="data: URL (base64 PNG) captured from the viewer")
+    caption: str = Field('', description="Optional caption for the representative image")
+    position: int | None = Field(None, ge=0, le=2, description="Slot 0-2; default appends")
+
+
 class CreatePeerReviewRequest(BaseModel):
     report_id: str = Field(..., description="Report to review")
     reviewer_id: str = Field(..., description="User id of the peer reviewer")
