@@ -1,16 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router";
-import {
-  App,
-  Layout,
-  Menu,
-  Breadcrumb,
-  Grid,
-  Spin,
-  Badge,
-  Tooltip,
-} from "antd";
+import { App, Layout, Menu, Breadcrumb, Grid, Spin, Badge, Tooltip, Radio } from "antd";
 import {
   EyeOutlined,
   TableOutlined,
@@ -19,6 +10,7 @@ import {
   LockOutlined,
   DashboardOutlined,
   DesktopOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import { useTheme } from "../common/ThemeProvider";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
@@ -42,6 +34,7 @@ import { isAdminScopedRole } from "../navigator";
 import { API_URL } from "../config";
 import { getWeasisStatus, openInWeasis } from "../api/weasis";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
+const StudyCompare = React.lazy(() => import("./viewer/StudyCompare"));
 import KeyValueTable from "./KeyValueTable";
 import Changes from "./Changes";
 import Share from "./Share";
@@ -84,10 +77,16 @@ function Detail() {
 
   const [rawAnnotations, setRawAnnotations] = useState<any[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(
-    null,
-  );
+  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(null);
   const [weasisEnabled, setWeasisEnabled] = useState(false);
+
+  // R-12: Multi-study comparison mode.
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareLayout, setCompareLayout] = useState<"2x1" | "2x2">("2x1");
+  const [priorStudyUid, setPriorStudyUid] = useState<string | null>(null);
+  const [priorStudies, setPriorStudies] = useState<
+    Array<{ uid: string; description: string; date: string }>
+  >([]);
 
   // ADR-028: show the Weasis launch action only when the connector
   // integration is enabled; a failed probe hides the button.
@@ -290,6 +289,17 @@ function Detail() {
                   },
                 ]
               : []),
+            // R-12: Multi-study compare toggle (visible when a study is loaded).
+            ...(!tempKey && study?.study_instance_uid
+              ? [
+                  {
+                    key: "compare",
+                    icon: <SwapOutlined />,
+                    label: compareMode ? "Exit Compare" : "Compare",
+                    onClick: () => setCompareMode(!compareMode),
+                  },
+                ]
+              : []),
             ...(!tempKey && !isAdminScoped
               ? [
                   {
@@ -302,11 +312,7 @@ function Detail() {
                     label: (
                       <>
                         <Tooltip title="Toggle measurements panel">
-                          <Badge
-                            count={measurements.length}
-                            size="small"
-                            offset={[2, -4]}
-                          >
+                          <Badge count={measurements.length} size="small" offset={[2, -4]}>
                             <DashboardOutlined />
                           </Badge>
                         </Tooltip>
@@ -318,6 +324,27 @@ function Detail() {
               : []),
           ]}
         />
+        {/* R-12: Compare mode controls — layout toggle + prior study picker. */}
+        {compareMode && study?.study_instance_uid && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              padding: "4px 16px",
+              background: "var(--viewer-bg)",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
+            <Radio.Group
+              size="small"
+              value={compareLayout}
+              onChange={(e) => setCompareLayout(e.target.value)}
+            >
+              <Radio.Button value="2x1">2×1</Radio.Button>
+              <Radio.Button value="2x2">2×2</Radio.Button>
+            </Radio.Group>
+          </div>
+        )}
         {data && data.patient && ["image"].includes(tab) && (
           <Breadcrumb
             style={{
@@ -374,24 +401,33 @@ function Detail() {
                 />
               }
             >
-              <CornerstoneElement
-                file={data}
-                files={series?.files || null}
-                changeFile={(v: number) => {
-                  const target = series?.files?.[v];
-                  if (target) navigate(`/files/${target.id}`);
-                }}
-                image={image}
-                progressive={true}
-                visible={tab === "image"}
-                onRequestHelp={() => setShowShortcuts(true)}
-                onAnnotationsChange={handleAnnotationsChange}
-                focusAnnotationUID={focusAnnotationUID}
-                isMobile={isMobile}
-                enableReadingPresets={
-                  !isAdminScoped && hasPermission("REPORT_READ")
-                }
-              />
+              {compareMode ? (
+                <StudyCompare
+                  images={[
+                    { label: "Current", imageUrl: image },
+                    ...(priorStudyUid ? [{ label: "Prior", imageUrl: priorStudyUid }] : []),
+                  ]}
+                  layout={compareLayout}
+                  onClose={() => setCompareMode(false)}
+                />
+              ) : (
+                <CornerstoneElement
+                  file={data}
+                  files={series?.files || null}
+                  changeFile={(v: number) => {
+                    const target = series?.files?.[v];
+                    if (target) navigate(`/files/${target.id}`);
+                  }}
+                  image={image}
+                  progressive={true}
+                  visible={tab === "image"}
+                  onRequestHelp={() => setShowShortcuts(true)}
+                  onAnnotationsChange={handleAnnotationsChange}
+                  focusAnnotationUID={focusAnnotationUID}
+                  isMobile={isMobile}
+                  enableReadingPresets={!isAdminScoped && hasPermission("REPORT_READ")}
+                />
+              )}
             </Suspense>
           </div>
           {!isAdminScoped && (
@@ -413,13 +449,8 @@ function Detail() {
         />
         {tab === "changes" && <Changes file={data}></Changes>}
         {tab === "share" && <Share file={data}></Share>}
-        {tab === "admin" && hasPermission("USER_ADMIN") && (
-          <Management file={data}></Management>
-        )}
-        <KeyboardShortcuts
-          open={showShortcuts}
-          onClose={() => setShowShortcuts(false)}
-        />
+        {tab === "admin" && hasPermission("USER_ADMIN") && <Management file={data}></Management>}
+        <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       </PageState>
     </Content>
   );
