@@ -27,6 +27,11 @@ description: |
   until the user has been presented the finding + the agent's recommendation and
   has chosen (fix / update docs / defer / reject / redesign).
 
+  Throughout, INVOKE RECOMMENDED SKILLS: load the agent skills mapped to the role
+  and to each feature/layer touched (see ROLE & FEATURE SKILL MAP) via the `skill`
+  tool before/while working on that surface, so domain guidance (IAM, HIPAA,
+  DICOMweb, antd, Postgres, etc.) is applied at the point of use.
+
   Each phase produces a committed document under docs/role-walk/{role}/; the user
   guide is a standalone deliverable.
 
@@ -43,11 +48,19 @@ description: |
   - "frontend feature inventory"
   - "user manual for <role>"
   - "user guide for <role>"
+  - "which skills apply to <role>"
+  - "load skills for <role>"
+  - "role skill map for <role>"
 
 metadata:
   author: quantumrad
-  version: "2.3.0"
+  version: "2.4.0"
   changelog: |
+    v2.4.0 — 2026-08-27:
+    - Added ROLE & FEATURE SKILL MAP: load recommended agent skills per role and
+      per feature/layer at the point of use (via `skill` tool).
+    - Phase 1 now loads role-level skills; Phase 5a/5b load feature-level skills
+      per surface during the walk.
     v2.3.0 — 2026-08-27:
     - Phase 6 (BACKEND INVENTORY) merged into Phase 5a (backend walk).
     - Phase 7 (FRONTEND INVENTORY) merged into Phase 5b (frontend walk).
@@ -127,6 +140,9 @@ produce a role-specific user manual. Fix any layer only after the user decides.
 7. **Facts over screenshots.** Use `take_snapshot` (a11y tree) for actions;
    `take_screenshot` only when visual layout is the question. Always `list_pages`
    first (browser restarts change page ids).
+8. **Invoke skills at the point of use.** Load the agent's built-in skills mapped
+   to the role (Phase 1) and to each feature/layer (Phase 5), via the `skill`
+   tool, so domain guidance is applied when you need it — not as a separate pass.
 
 ## ROLE PROFILE CARD (fill once per role; keep visible all session)
 
@@ -140,6 +156,7 @@ produce a role-specific user manual. Fix any layer only after the user decides.
 | Excluded from | surfaces the role cannot open (ClinicalRoute / NON_ADMIN_WORKSPACES) |
 | Tenant model | platform owner vs tenant-bound vs clinical data-plane |
 | Seeded login | `acme.<role>` / `Test@123456` |
+| Relevant skills | role-level skills from the ROLE & FEATURE SKILL MAP (load in Phase 1) |
 
 ## Walk Artifacts
 
@@ -160,6 +177,63 @@ docs/user-guides/{role}.md ← Phase 6: capability-complete user manual
 
 ---
 
+# ROLE & FEATURE SKILL MAP (invoke recommended skills at the point of use)
+
+Load the agent skills relevant to the role and to each feature/layer you touch via
+the `skill` tool — BEFORE or WHILE working on that surface — so domain guidance is
+applied when needed, not as a separate pass. Use the map below; when a skill is
+missing from the session, attempt to load it by name (fall back gracefully if the
+skill is unavailable and note it in the phase doc).
+
+## Role → Skills (load in Phase 1; record in the ROLE PROFILE CARD)
+
+| Role | Recommended skills (load via `skill`) |
+|---|---|
+| super_admin | iam-audit, multi-tenant-saas, hipaa-compliance, security-fastapi, fullstack-guardian, user-feature-review, documentation-writer |
+| auditor | iam-audit, hipaa-compliance, security-fastapi, documentation-writer |
+| radiologist | cornerstone3d-viewer, dicom-web-query, pacs-workflow, pydicom, hipaa-compliance, user-feature-review |
+| technologist | pacs-workflow, dicom-web-query, pydicom, hipaa-compliance, user-feature-review |
+| physician | pacs-workflow, dicom-web-query, fhir-developer-skill, hipaa-compliance, user-feature-review |
+| coordinator | pacs-workflow, fullstack-guardian, hipaa-compliance, user-feature-review |
+| receptionist | fullstack-guardian, hipaa-compliance, user-feature-review |
+| cashier | fullstack-guardian, hipaa-compliance, user-feature-review |
+| patient | user-feature-review, hipaa-compliance |
+
+## Feature / Layer → Skills (load in Phase 5a/5b before touching that surface)
+
+| Layer / concern | Recommended skills (load via `skill`) |
+|---|---|
+| Backend API handler / schema | python-backend, fastapi, security-fastapi, rest-api-design, python-testing-patterns |
+| DB schema / migration / query | postgres, postgresql-table-design |
+| Auth / RBAC / permissions / gates | iam-audit, security-fastapi |
+| Multi-tenant isolation / provisioning | multi-tenant-saas |
+| PHI / compliance (any clinical or billing surface) | hipaa-compliance |
+| DICOM query / retrieve / worklists | dicom-web-query, pacs-workflow |
+| DICOM file / pixel processing | pydicom |
+| Viewer (Cornerstone3D) | cornerstone3d-viewer |
+| FHIR endpoints / resources | fhir-developer-skill |
+| Frontend component / UI / UX | ant-design, frontend-react-best-practices, ui-ux-pro-max, frontend-design |
+| Frontend types / review | typescript-react-reviewer |
+| E2E / browser automation | playwright-e2e-testing, e2e-testing-patterns, webapp-testing |
+| Requirements / user stories (role features) | pacs-requirements-architect, prd, prd-to-spec |
+| Docs / ADRs | documentation-and-adrs, documentation-writer |
+| Production readiness | production-hardening |
+| XSS / output encoding | xss-prevention |
+
+## Invocation rules
+1. Phase 1: load the role-level skills from the Role table; record them in the
+   ROLE PROFILE CARD ("Relevant skills" row).
+2. Phase 5a/5b: for each surface you exercise or refine, load the feature/layer
+   skills that match the layer(s) you will touch (e.g. antd before a UI change,
+   postgres before a schema decision, hipaa-compliance before any clinical/billing
+   surface). Load lazily — only what that surface needs.
+3. Add a `Skills invoked: ...` line to each phase doc and to every LEDGER.md row
+   where a skill influenced the work.
+4. If a mapped skill is not available in the environment, proceed with its
+   principles from context and note the miss in the phase doc.
+
+---
+
 # PHASE 1 — Role Selection & Scope Enumeration
 
 ## Steps
@@ -172,6 +246,9 @@ docs/user-guides/{role}.md ← Phase 6: capability-complete user manual
 4. Read `frontend/src/common/Sidebar.tsx`: enumerate every nav item the role can
    see (filter by `permissions`, `adminOnly`).
 5. Fill the ROLE PROFILE CARD and write SCOPE.md.
+6. **Load role-level skills** — from the ROLE & FEATURE SKILL MAP, load the
+   mapped skills for the selected role via the `skill` tool. Add a `Skills invoked`
+   line to SCOPE.md. If a skill is unavailable, note it and proceed.
 
 ## SCOPE.md template
 ```markdown
@@ -274,11 +351,15 @@ API calls (method + path + status), and acceptance.
 
 ## 5a. Unsupervised backend/API walk + Backend Feature Inventory
 1. Login `acme.<role>` / `Test@123456` → `POST /api/v2/login` with `{"tenant":"acme"}`.
-2. For every endpoint the role's surfaces call, `curl` with the bearer token:
+2. **Load feature/layer skills** — for the endpoints you will walk, load the
+   mapped skills from the ROLE & FEATURE SKILL MAP (e.g. postgres before a schema
+   check, security-fastapi before an auth check, hipaa-compliance for clinical or
+   billing endpoints) via the `skill` tool.
+3. For every endpoint the role's surfaces call, `curl` with the bearer token:
    - Expected 2xx for permitted routes; 403/404 for excluded ones.
    - Verify tenant scoping (no cross-tenant leak — critical for platform roles).
    - Verify response shape matches the frontend's expected DTO.
-3. **Backend feature inventory** — find backend capabilities that exist (handlers
+4. **Backend feature inventory** — find backend capabilities that exist (handlers
    + routes) but have no frontend UI:
    a. Enumerate ALL registered routes from `backend/api/routes.py` (method + path
       + handler class). This is the backend surface.
@@ -294,7 +375,7 @@ API calls (method + path + status), and acceptance.
         frontend) → recommend removal or wiring (decision gate).
    d. Record results in BACKEND-INVENTORY.md (below). **Decision gate** per
       orphaned/dead item (wire / remove / defer).
-4. Record endpoint walk results in LEDGER.md.
+5. Record endpoint walk results in LEDGER.md.
 
 ### BACKEND-INVENTORY.md template
 ```markdown
@@ -308,14 +389,18 @@ each and the user decision recorded.
 For each function in PLAN.md order, live with the user via chrome-devtools
 (or playwright) MCP:
 1. **State** — `list_pages`; ensure one tab at the function's route.
-2. **Discuss intent** — state the Intended row; confirm/redirect with the user
+2. **Load feature/layer skills** — for this surface, load the mapped skills from
+   the ROLE & FEATURE SKILL MAP via the `skill` tool (e.g. antd before a UI change,
+   cornerstone3d-viewer before a viewer surface, hipaa-compliance before a clinical
+   or billing surface).
+3. **Discuss intent** — state the Intended row; confirm/redirect with the user
    before interacting on design-sensitive surfaces.
-3. **Exercise** — `navigate_page` → `take_snapshot` → interact (`fill_form`,
+4. **Exercise** — `navigate_page` → `take_snapshot` → interact (`fill_form`,
    `click`, `hover`, `wait_for`). Watch `list_console_messages` +
    `list_network_requests` for 500s / failed API calls.
-4. **Record actual** — rendered output, API statuses, console errors.
-5. **User steers** — capture design/behavior change requests.
-6. **Frontend feature inventory** — as you walk each page, triage it into one bucket:
+5. **Record actual** — rendered output, API statuses, console errors.
+6. **User steers** — capture design/behavior change requests.
+7. **Frontend feature inventory** — as you walk each page, triage it into one bucket:
    - **A — wire**: page renders but its primary data call 404s/500s/returns a
      shape the UI can't consume → needs backend wiring.
    - **B — omit/reduce**: duplicated surfaces (two list pages for the same data),
@@ -325,11 +410,11 @@ For each function in PLAN.md order, live with the user via chrome-devtools
      (seeded placeholder rows showing to users).
    Record each in FRONTEND-INVENTORY.md. **Decision gate** per item
    (wire / omit / refine / defer / reject).
-7. **Decision gate** — before ANY refinement, present the finding + recommended
+8. **Decision gate** — before ANY refinement, present the finding + recommended
    fix to the user; get their choice.
-8. **Refine/fix** across layers as decided. Run gates: backend `pytest`+`ruff`
+9. **Refine/fix** across layers as decided. Run gates: backend `pytest`+`ruff`
    from `backend/`; frontend `npx vitest run`+`tsc`+`prettier`.
-9. **Commit** (logical groups). Update LEDGER.md row.
+10. **Commit** (logical groups). Update LEDGER.md row.
 
 ### FRONTEND-INVENTORY.md template
 ```markdown
@@ -350,8 +435,8 @@ For each function in PLAN.md order, live with the user via chrome-devtools
 
 ## LEDGER.md template
 ```markdown
-| # | UI Function | Route | Permissions | Intended | Actual | Status | Refinement (layer) | Commit |
-|---|---|---|---|---|---|---|---|---|
+| # | UI Function | Route | Permissions | Intended | Actual | Status | Refinement (layer) | Skills | Commit |
+|---|---|---|---|---|---|---|---|---|---|---|
 ```
 Status: PASS | REFINE | BLOCKED | DEFERRED (with reason).
 
@@ -454,6 +539,8 @@ limit) to reduce interruption; but each change still needs an explicit decision.
 - Phase 5 inventories (backend in 5a, frontend in 5b) are resumable from their
   markdown (last categorized row).
 - Phase 6 guide is resumable from the guide file (mark incomplete surfaces).
+- Re-load the role-level skills and the feature-level skills for the surface you
+  resume on (Skill Map) — skills are per-session and do not persist.
 - Always re-login fresh (tokens expire; backend may have restarted).
 
 ---
@@ -490,5 +577,7 @@ limit) to reduce interruption; but each change still needs an explicit decision.
 - Every enumerated UI function has a ledger row; every gap maps to a recommendation;
   every backend route and frontend page is inventoried.
 - Each REFINE/BLOCKED/ORPHANED/WIRE-ITEM has a user decision recorded.
+- Role-level skills loaded in Phase 1 and feature-level skills loaded per surface
+  in Phase 5 (each recorded in `Skills invoked`); unavailability noted.
 - Role-specific user guide written to docs/user-guides/{role}.md.
 - All backend pytest + frontend vitest/tsc pass.
