@@ -89,6 +89,7 @@ const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
 const HandoffNotes = React.lazy(() => import("./coordinator/HandoffNotes"));
 const ReferralTracking = React.lazy(() => import("./coordinator/ReferralTracking"));
+const DischargeChecklists = React.lazy(() => import("./coordinator/DischargeChecklists"));
 const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
 const Communications = React.lazy(() => import("./coordinator/Communications"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
@@ -453,6 +454,17 @@ function ThemedApp() {
                         // create/update gates on PATIENT_WRITE server-side.
                         <ClinicalRoute permission="PATIENT_READ">
                           <ReferralTracking />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/discharge-checklists"
+                      element={
+                        // CC-06: discharge planning checklists. Browse is
+                        // PATIENT_READ; create/update gates on PATIENT_WRITE
+                        // server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <DischargeChecklists />
                         </ClinicalRoute>
                       }
                     />

@@ -182,3 +182,60 @@ export const updateReferral = async (
 ): Promise<void> => {
   await request(`ris/referrals/${id}`, { method: "PATCH", data });
 };
+
+/* ── Discharge Planning Checklists (CC-06) ────────────────────────────── */
+
+export interface DischargeItem {
+  label: string;
+  done: boolean;
+}
+
+export interface DischargeChecklist {
+  id: string;
+  patient_id: string;
+  title: string;
+  status: "open" | "completed";
+  items: DischargeItem[];
+  notes: string;
+  tenant_id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const DEFAULT_DISCHARGE_ITEMS: DischargeItem[] = [
+  { label: "Follow-up appointment scheduled", done: false },
+  { label: "Medication reconciliation", done: false },
+  { label: "Patient education provided", done: false },
+];
+
+export const listDischargeChecklists = async (params?: {
+  status?: string;
+  patient_id?: string;
+}): Promise<DischargeChecklist[]> => {
+  const query: Record<string, string> = {};
+  if (params?.status) query.status = params.status;
+  if (params?.patient_id) query.patient_id = params.patient_id;
+  const body = await request<{ data: DischargeChecklist[] }>("ris/discharge-checklists", { query });
+  return body.data;
+};
+
+export const createDischargeChecklist = async (data: {
+  patient_id: string;
+  title?: string;
+  items?: DischargeItem[];
+  notes?: string;
+}): Promise<DischargeChecklist> => {
+  const body = await request<{ data: DischargeChecklist }>("ris/discharge-checklists", {
+    method: "POST",
+    data,
+  });
+  return body.data;
+};
+
+export const updateDischargeChecklist = async (
+  id: string,
+  data: { status: string; items?: DischargeItem[]; notes?: string }
+): Promise<void> => {
+  await request(`ris/discharge-checklists/${id}`, { method: "PATCH", data });
+};
