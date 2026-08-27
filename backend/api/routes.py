@@ -144,6 +144,10 @@ from api.referrals import ReferralsHandler, ReferralDetailHandler
 from api.discharge import (
     DischargeChecklistsHandler, DischargeChecklistDetailHandler,
 )
+from api.bookmarks import (
+    BookmarkCollectionsHandler, StudyBookmarksHandler,
+    StudyBookmarkDeleteHandler,
+)
 from api.encounters import EncounterHandler
 from api.communications import CommunicationHandler
 from api.equipment import (
@@ -394,6 +398,10 @@ _V1_ROUTES = [
     v2(Route('/ris/discharge-checklists', endpoint=DischargeChecklistsHandler)),
     v2(Route('/ris/discharge-checklists/{id}', endpoint=DischargeChecklistDetailHandler,
              methods=['PATCH'])),
+    v2(Route('/ris/bookmark-collections', endpoint=BookmarkCollectionsHandler)),
+    v2(Route('/ris/bookmarks', endpoint=StudyBookmarksHandler)),
+    v2(Route('/ris/bookmarks/{id}', endpoint=StudyBookmarkDeleteHandler,
+             methods=['DELETE'])),
     v2(Route('/ris/encounters', endpoint=EncounterHandler)),
     v2(Route('/ris/communications', endpoint=CommunicationHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),

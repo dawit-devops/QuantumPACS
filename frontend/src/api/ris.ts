@@ -239,3 +239,68 @@ export const updateDischargeChecklist = async (
 ): Promise<void> => {
   await request(`ris/discharge-checklists/${id}`, { method: "PATCH", data });
 };
+
+/* ── Study Bookmarks / Collections (R-08) ─────────────────────────────── */
+
+export interface BookmarkCollection {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  is_shared: boolean;
+  created_at: string;
+}
+
+export interface StudyBookmark {
+  id: string;
+  user_id: string;
+  study_uid: string;
+  study_desc: string;
+  collection_id: string;
+  notes: string;
+  created_at: string;
+}
+
+export const listBookmarkCollections = async (): Promise<BookmarkCollection[]> => {
+  const body = await request<{ data: BookmarkCollection[] }>("ris/bookmark-collections");
+  return body.data;
+};
+
+export const createBookmarkCollection = async (data: {
+  name: string;
+  description?: string;
+}): Promise<BookmarkCollection> => {
+  const body = await request<{ data: BookmarkCollection }>("ris/bookmark-collections", {
+    method: "POST",
+    data,
+  });
+  return body.data;
+};
+
+export const listStudyBookmarks = async (params?: {
+  collection_id?: string;
+}): Promise<StudyBookmark[]> => {
+  const query: Record<string, string> = {};
+  if (params?.collection_id) query.collection_id = params.collection_id;
+  const body = await request<{ data: StudyBookmark[] }>("ris/bookmarks", {
+    query,
+  });
+  return body.data;
+};
+
+export const createStudyBookmark = async (data: {
+  study_uid: string;
+  study_desc?: string;
+  collection_id?: string;
+  notes?: string;
+}): Promise<StudyBookmark> => {
+  const body = await request<{ data: StudyBookmark }>("ris/bookmarks", {
+    method: "POST",
+    data,
+  });
+  return body.data;
+};
+
+export const deleteStudyBookmark = async (id: string): Promise<void> => {
+  await request(`ris/bookmarks/${id}`, { method: "DELETE" });
+};

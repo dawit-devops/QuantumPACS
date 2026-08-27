@@ -88,6 +88,7 @@ const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
 const Reminders = React.lazy(() => import("./coordinator/Reminders"));
 const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
 const HandoffNotes = React.lazy(() => import("./coordinator/HandoffNotes"));
+const StudyBookmarks = React.lazy(() => import("./radiologist/StudyBookmarks"));
 const ReferralTracking = React.lazy(() => import("./coordinator/ReferralTracking"));
 const DischargeChecklists = React.lazy(() => import("./coordinator/DischargeChecklists"));
 const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
@@ -525,6 +526,17 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="PEER_REVIEW_READ">
                           <PeerReviewInbox />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/study-bookmarks"
+                      element={
+                        // R-08: study bookmarks / case collections. Browse
+                        // is PATIENT_READ; create/delete gates on
+                        // PATIENT_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <StudyBookmarks />
                         </ClinicalRoute>
                       }
                     />
