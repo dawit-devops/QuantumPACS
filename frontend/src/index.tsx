@@ -555,59 +555,59 @@ function ThemedApp() {
                     <Route
                       path="/billing/queue"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <BillingQueue />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     {/* B-06: claim lifecycle tracking. */}
                     <Route
                       path="/billing/claims"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <ClaimsStatus />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     {/* B-07: revenue trends + AR aging. */}
                     <Route
                       path="/billing/revenue"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <RevenueDashboard />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/admin/report-templates"
                       element={
-                        <ClinicalRoute permission="REPORT_WRITE">
+                        <PermissionRoute permission="REPORT_WRITE">
                           <TemplateManager />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/billing/denials"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <DenialRework />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/billing/unbilled"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <UnbilledAging />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/billing/fee-schedule"
                       element={
-                        <ClinicalRoute permission="BILLING_READ">
+                        <PermissionRoute permission="BILLING_READ">
                           <FeeSchedule />
-                        </ClinicalRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
