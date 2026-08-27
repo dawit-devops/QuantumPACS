@@ -53,7 +53,7 @@ function Reconciliation() {
               title="Signed Reports"
               value={data?.signed_reports ?? 0}
               prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: "#1677ff" }}
+              styles={{ content: { color: "#1677ff" } }}
             />
           </Card>
         </Col>
@@ -63,7 +63,7 @@ function Reconciliation() {
               title="Charged Reports"
               value={data?.charged_reports ?? 0}
               prefix={<DollarOutlined />}
-              valueStyle={{ color: "#52c41a" }}
+              styles={{ content: { color: "#52c41a" } }}
             />
           </Card>
         </Col>
@@ -75,8 +75,10 @@ function Reconciliation() {
               precision={1}
               suffix="%"
               prefix={<PercentageOutlined />}
-              valueStyle={{
-                color: (data?.capture_rate_pct ?? 100) >= 90 ? "#52c41a" : "#faad14",
+              styles={{
+                content: {
+                  color: (data?.capture_rate_pct ?? 100) >= 90 ? "#52c41a" : "#faad14",
+                },
               }}
             />
           </Card>

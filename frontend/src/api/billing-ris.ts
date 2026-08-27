@@ -299,12 +299,13 @@ export const getReconciliation = (): Promise<ReconciliationSnapshot> =>
 
 // R2-02-01: 835-style denial intake — records a denial on a claim with the
 // payer's reason code so the rework trail starts at intake (BILLING_WRITE).
+// Response is the bare object { id, status, code } (not wrapped in `data`).
 export const importDenial = (body: {
   claim_id: string;
   reason_code?: string;
   reason?: string;
 }): Promise<{ id: string; status: string; code: string }> =>
-  request<{ data: { id: string; status: string; code: string } }>("ris/billing/denials/import", {
+  request<{ id: string; status: string; code: string }>("ris/billing/denials/import", {
     method: "POST",
     data: body,
-  }).then((res) => res?.data ?? { id: "", status: "DENIED", code: "" });
+  }).then((res) => res ?? { id: "", status: "DENIED", code: "" });
