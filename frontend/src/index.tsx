@@ -1,7 +1,7 @@
 import { App as AntdApp, ConfigProvider, Spin } from "antd";
 import React, { Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router";
 
 import "./common/tokens.css";
 import "./common/report.css";
@@ -94,7 +94,6 @@ const DischargeChecklists = React.lazy(() => import("./coordinator/DischargeChec
 const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
 const Communications = React.lazy(() => import("./coordinator/Communications"));
 const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
-const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
 const FrontDeskSchedule = React.lazy(() => import("./frontdesk/ScheduleToday"));
 const PatientPortal = React.lazy(() => import("./portal/PortalHome"));
@@ -680,7 +679,9 @@ function ThemedApp() {
                       path="/frontdesk/visits"
                       element={
                         <ClinicalRoute permission="REGISTRATION_READ">
-                          <FrontDeskVisits />
+                          {/* S4-rename: Visits surface became Today's
+                              Schedule; preserve old URL as a redirect. */}
+                          <Navigate to="/frontdesk/schedule" replace />
                         </ClinicalRoute>
                       }
                     />
