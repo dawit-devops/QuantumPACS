@@ -429,6 +429,14 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <ExceptionOutlined />,
         permissions: ["BILLING_READ"],
       },
+      {
+        // B-08/B-09: fee schedule master data + payer contracts (contracts tab).
+        key: "billing-fee-schedule",
+        path: "/billing/fee-schedule",
+        label: "Fee Schedule",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
     ],
   },
   {

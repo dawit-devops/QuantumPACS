@@ -498,6 +498,38 @@ async def seed_charges(conn):
     print(f'  charges: {len(CHARGES)}')
 
 
+async def seed_claims(conn):
+    """ris_claims rows so the B-08 charge-vs-contract comparison has payers
+    to match against. Charges with BILLED/PAID status get a claim bound to a
+    payer that has a seeded contract (payer name must match PAYERS)."""
+    for pid, name, desc, cpt, amount, status, acc in CHARGES:
+        if status not in ('BILLED', 'PAID'):
+            continue
+        payer_id, payer_name = _payer_for(cpt)
+        charge_id = await conn.fetchval(
+            "SELECT id FROM ris_charges WHERE tenant_id = $1 AND accession_number = $2",
+            TENANT, acc,
+        )
+        if not charge_id:
+            continue
+        await conn.execute(
+            """INSERT INTO ris_claims
+                   (tenant_id, charge_id, claim_number, payer_id, payer_name,
+                    submitted_at, status, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, now(), $6, now(), now())
+               ON CONFLICT DO NOTHING""",
+            TENANT, charge_id, f'CLM-{acc}', payer_id, payer_name,
+            'SUBMITTED' if status == 'BILLED' else 'PAID',
+        )
+    print('  claims: 2 (BILLED/PAID charges)')
+
+
+def _payer_for(cpt):
+    """Pick a payer deterministically so claims match seeded contracts."""
+    idx = sum(ord(ch) for ch in cpt) % len(PAYERS)
+    return PAYERS[idx][0], PAYERS[idx][1]
+
+
 async def seed_prior_auth(conn):
     """ris_prior_auth_requests for prior-auth + reminders pages.
     Requires a ris_orders row (order_id FK)."""
@@ -564,16 +596,27 @@ async def reset_seed_data(conn):
     ON CONFLICT DO NOTHING on tables without unique keys, so a delete-then-
     insert is the reliable reset. Conflict-keyed tables (patients, resources,
     worklist_entries, ris_orders) are left intact."""
+    # Claims are bound to seed charges (no created_by column); delete by the
+    # charge ids BEFORE the charges are removed so the subquery still resolves.
+    await conn.execute(
+        'DELETE FROM ris_claims WHERE tenant_id = $1 '
+        'AND charge_id IN (SELECT id FROM ris_charges WHERE tenant_id = $1 AND created_by = $2)',
+        TENANT, 'seed')
     for tbl in (
         'ris_staff_time_off', 'ris_waitlist', 'ris_protocols',
         'ris_corrective_actions', 'care_plans', 'ris_referrals',
         'ris_handoff_notes', 'ris_discharge_checklists', 'ris_charges',
+        'ris_payer_contracts',
     ):
         await conn.execute(
             f'DELETE FROM {tbl} WHERE tenant_id = $1 AND created_by = $2',
             TENANT, 'seed')
     await conn.execute(
         'DELETE FROM ris_prior_auth_requests WHERE tenant_id = $1 AND requested_by = $2',
+        TENANT, 'seed')
+    # Fee-schedule history tracks changed_by (no created_by column).
+    await conn.execute(
+        'DELETE FROM ris_fee_schedule_history WHERE tenant_id = $1 AND changed_by = $2',
         TENANT, 'seed')
     # Bookmark collections are created under the acme super_admin user.
     await conn.execute(
@@ -612,6 +655,7 @@ async def seed(allow_docker: bool = False):
             await seed_discharge_checklists(conn)
             await seed_patients_and_worklist(conn)
             await seed_charges(conn)
+            await seed_claims(conn)
             await seed_prior_auth(conn)
             await seed_bookmarks(conn)
         print('\nAcme seed complete.')

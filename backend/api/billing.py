@@ -1608,22 +1608,29 @@ class PayerContractComparisonHandler(HTTPEndpoint):
         tenant = effective_tenant(request) or 'default'
         async with get_conn() as conn:
             rows = await conn.fetch(
-                """SELECT c.id AS charge_id,
-                          c.procedure_code,
-                          c.payer_name,
-                          c.amount AS charged_amount,
+                """SELECT DISTINCT ON (c.id)
+                          c.id AS charge_id,
+                          c.cpt_code AS procedure_code,
+                          COALESCE(cl.payer_name, pc.payer_name, '') AS payer_name,
+                          c.charge_amount AS charged_amount,
                           pc.contracted_rate,
                           c.created_at
                      FROM ris_charges c
+                     LEFT JOIN ris_claims cl ON cl.charge_id = c.id
                      JOIN ris_payer_contracts pc
                        ON pc.tenant_id = $1
-                      AND pc.procedure_code = c.procedure_code
+                      AND pc.procedure_code = c.cpt_code
                       AND pc.active = TRUE
-                     WHERE c.tenant_id = $1
-                       AND (pc.payer_name = '' OR c.payer_name = '' OR
-                            c.payer_name ILIKE '%' || pc.payer_name || '%')
-                     ORDER BY c.created_at DESC
-                     LIMIT 200""",
+                      AND (cl.payer_id IS NULL OR cl.payer_id = ''
+                           OR pc.payer_id = cl.payer_id
+                           OR cl.payer_name ILIKE '%' || pc.payer_name || '%')
+                    WHERE c.tenant_id = $1
+                    ORDER BY c.id,
+                             CASE WHEN pc.payer_id = cl.payer_id THEN 0
+                                  WHEN pc.payer_name = '' THEN 1
+                                  ELSE 2 END,
+                             pc.contracted_rate ASC
+                    LIMIT 200""",
                 tenant,
             )
         items = []
