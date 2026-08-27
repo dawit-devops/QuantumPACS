@@ -70,6 +70,10 @@ from api.hl7_admin import (
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
 from api.mpps_events import MppsEventsHandler
+from api.qa import (
+    ProtocolHandler, ProtocolListHandler, ProtocolDefaultHandler,
+    CorrectiveActionHandler, CorrectiveActionListHandler, EscalationHandler,
+)
 from api.worklist import (
     WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler,
     WorklistSyncHandler,
@@ -582,6 +586,14 @@ _V1_ROUTES = [
     v2(Route('/admin/backups', endpoint=AdminBackupsHandler)),
     v2(Route('/admin/backups/{id}', endpoint=AdminBackupHandler)),
     v2(Route('/admin/backups/{id}/restore', endpoint=AdminBackupRestoreHandler, methods=['POST'])),
+    # QA-09 Protocol Registry
+    v2(Route('/ris/protocols', endpoint=ProtocolListHandler)),
+    v2(Route('/ris/protocols/{id}', endpoint=ProtocolHandler)),
+    v2(Route('/ris/protocols/{id}/default', endpoint=ProtocolDefaultHandler, methods=['POST'])),
+    # QA-11 Corrective Actions
+    v2(Route('/ris/corrective-actions', endpoint=CorrectiveActionListHandler)),
+    v2(Route('/ris/corrective-actions/escalate', endpoint=EscalationHandler, methods=['GET'])),
+    v2(Route('/ris/corrective-actions/{id}', endpoint=CorrectiveActionHandler)),
     v2(Route('/ws_token', endpoint=WSToken)),
     v2(WebSocketRoute('/ws', endpoint=WebsocketHandler)),
 ]
