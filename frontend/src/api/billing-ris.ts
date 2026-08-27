@@ -193,3 +193,96 @@ export const batchSubmitClaims = (
     method: "POST",
     data: { charge_ids: chargeIds },
   }).then((res) => res?.data ?? { submitted: [], missing: [] });
+
+// B-09: Procedure Fee Schedule — list/edit/import/history.
+export interface FeeScheduleItem {
+  id: string;
+  procedure_code: string;
+  description: string;
+  list_price: number;
+  active: boolean;
+}
+
+export interface FeeScheduleHistoryRow {
+  procedure_code: string;
+  description: string;
+  list_price: number;
+  changed_by: string;
+  changed_at: string;
+}
+
+export const listFeeSchedule = (query: Record<string, string> = {}): Promise<FeeScheduleItem[]> =>
+  request<{ data: FeeScheduleItem[] }>("ris/billing/fee-schedule", { query }).then(
+    (res) => res?.data ?? []
+  );
+
+export const updateFeeScheduleItem = (
+  code: string,
+  body: { list_price?: number; description?: string }
+): Promise<FeeScheduleItem> =>
+  request<{ data: FeeScheduleItem }>(`ris/billing/fee-schedule/${code}`, {
+    method: "PUT",
+    data: body,
+  }).then((res) => res?.data);
+
+export const importFeeSchedule = (rows: FeeScheduleItem[]): Promise<{ imported: number }> =>
+  request<{ data: { imported: number } }>("ris/billing/fee-schedule/import", {
+    method: "POST",
+    data: { rows },
+  }).then((res) => res?.data ?? { imported: 0 });
+
+export const getFeeScheduleHistory = (code: string): Promise<FeeScheduleHistoryRow[]> =>
+  request<{ data: FeeScheduleHistoryRow[] }>(`ris/billing/fee-schedule/history/${code}`).then(
+    (res) => res?.data ?? []
+  );
+
+// B-08: Payer Contract Rates — list/create/update/deactivate/comparison.
+export interface PayerContract {
+  id: string;
+  payer_id: string;
+  payer_name: string;
+  procedure_code: string;
+  contracted_rate: number;
+  effective_date: string;
+  active: boolean;
+}
+
+export interface ContractComparisonRow {
+  charge_id: string;
+  procedure_code: string;
+  payer_name: string;
+  charged_amount: number;
+  contracted_rate: number;
+  variance: number;
+  flag: "under_charge" | "over_charge" | "at_rate";
+}
+
+export const listPayerContracts = (query: Record<string, string> = {}): Promise<PayerContract[]> =>
+  request<{ data: PayerContract[] }>("ris/billing/contracts", { query }).then(
+    (res) => res?.data ?? []
+  );
+
+export const createPayerContract = (body: Partial<PayerContract>): Promise<PayerContract> =>
+  request<{ data: PayerContract }>("ris/billing/contracts", {
+    method: "POST",
+    data: body,
+  }).then((res) => res?.data);
+
+export const updatePayerContract = (
+  id: string,
+  body: { contracted_rate?: number; effective_date?: string; active?: boolean }
+): Promise<PayerContract> =>
+  request<{ data: PayerContract }>(`ris/billing/contracts/${id}`, {
+    method: "PUT",
+    data: body,
+  }).then((res) => res?.data);
+
+export const deletePayerContract = (id: string): Promise<{ id: string; active: boolean }> =>
+  request<{ data: { id: string; active: boolean } }>(`ris/billing/contracts/${id}`, {
+    method: "DELETE",
+  }).then((res) => res?.data);
+
+export const getContractComparison = (): Promise<ContractComparisonRow[]> =>
+  request<{ data: ContractComparisonRow[] }>("ris/billing/contracts/comparison").then(
+    (res) => res?.data ?? []
+  );

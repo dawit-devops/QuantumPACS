@@ -21,14 +21,21 @@ function withSidebar(Comp: React.ComponentType<any>) {
     // CC-13: the patient quick-search overlay serves every staff persona
     // that works patient-by-patient — coordination (orders, prior auth,
     // reminders) and billing ride the same global mount as front desk.
-    const onCoordination =
-      ["/orders", "/prior-auth", "/reminders", "/care-plans",
-       "/communications", "/teaching"].some((p) =>
-        location.pathname.startsWith(p),
-      );
+    const onCoordination = [
+      "/orders",
+      "/prior-auth",
+      "/reminders",
+      "/care-plans",
+      "/communications",
+      "/teaching",
+    ].some((p) => location.pathname.startsWith(p));
     const onBilling = [
-      "/billing/queue", "/billing/claims", "/billing/revenue",
-      "/billing/denials", "/billing/unbilled",
+      "/billing/queue",
+      "/billing/claims",
+      "/billing/revenue",
+      "/billing/denials",
+      "/billing/unbilled",
+      "/billing/fee-schedule",
     ].some((p) => location.pathname.startsWith(p));
     return (
       <Layout
@@ -86,9 +93,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
           <Comp {...props} />
         </div>
         {isMobile && !tempKey && <MobileNav />}
-        {(onFrontDesk || onCoordination || onBilling) && (
-          <PatientSearchOverlay />
-        )}
+        {(onFrontDesk || onCoordination || onBilling) && <PatientSearchOverlay />}
       </Layout>
     );
   }

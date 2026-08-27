@@ -124,6 +124,7 @@ const RevenueDashboard = React.lazy(() => import("./billing/RevenueDashboard"));
 const DenialRework = React.lazy(() => import("./billing/DenialRework"));
 const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
 const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
+const FeeSchedule = React.lazy(() => import("./billing/FeeSchedule"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -598,6 +599,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="BILLING_READ">
                           <UnbilledAging />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/fee-schedule"
+                      element={
+                        <ClinicalRoute permission="BILLING_READ">
+                          <FeeSchedule />
                         </ClinicalRoute>
                       }
                     />
