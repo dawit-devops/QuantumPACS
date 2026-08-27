@@ -77,6 +77,10 @@ class RisAppointments(Table):
         await self.conn.execute(
             "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
             "checked_in_at TIMESTAMPTZ")
+        # Portal appointment reminder emitter: track when reminder was sent.
+        await self.conn.execute(
+            "ALTER TABLE ris_appointments ADD COLUMN IF NOT EXISTS "
+            "reminder_sent_at TIMESTAMPTZ")
 
     async def create(self, data):
         now = datetime.now(timezone.utc)

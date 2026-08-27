@@ -319,3 +319,55 @@ class Portal:
             """,
             status, follow_up_id, user_id,
         )
+
+    async def emit_appointment_reminders(
+        self,
+        window_hours: int = 24,
+    ) -> int:
+        """Emit appointment reminders for upcoming appointments.
+
+        Scans for SCHEDULED appointments in the next `window_hours` hours
+        that haven't had a reminder sent yet. Sends a portal notification
+        to the patient via the notification system and marks
+        reminder_sent_at on the appointment.
+
+        Returns the number of reminders emitted.
+        """
+        from api.notify import notify_patient_scoped
+
+        # Find appointments in the window that need reminders
+        rows = await self.conn.fetch(
+            """
+            SELECT a.id, a.patient_id, a.start_time, a.reason
+            FROM ris_appointments a
+            JOIN patients p ON p.patient_id = a.patient_id
+            WHERE a.status = 'SCHEDULED'
+              AND a.reminder_sent_at IS NULL
+              AND a.start_time >= now()
+              AND a.start_time <= now() + ($1 || ' hours')::interval
+              AND p.meta->>'consent_results' = 'true'
+            ORDER BY a.start_time ASC
+            """,
+            window_hours,
+        )
+
+        emitted = 0
+        for row in rows:
+            # Emit notification to patient's care team
+            await notify_patient_scoped(
+                self.conn,
+                row['patient_id'],
+                'appointment.reminder',
+                'Upcoming Appointment Reminder',
+                f'You have an appointment scheduled for {row["start_time"].strftime("%Y-%m-%d %H:%M")}. '
+                f'Reason: {row["reason"] or "Not specified"}',
+                f'/portal/appointments/{row["id"]}',
+            )
+            # Mark reminder as sent
+            await self.conn.execute(
+                "UPDATE ris_appointments SET reminder_sent_at = now() WHERE id = $1",
+                row['id'],
+            )
+            emitted += 1
+
+        return emitted
