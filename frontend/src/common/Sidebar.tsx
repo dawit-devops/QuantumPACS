@@ -939,6 +939,16 @@ function Sidebar() {
       if (isAdminScoped && NON_ADMIN_WORKSPACES.has(section.key)) {
         return false;
       }
+      // referring_physician walk (sidebar refinement): the Acquisition section
+      // (Modality Worklist / Tracking / Schedule / Calendar / Resources) is
+      // the technologist/scheduler's operational surface. The referring
+      // physician holds WORKLIST_READ/SCHEDULE_READ (they open the reading +
+      // coordination surfaces) but does not operate the acquisition workflow —
+      // hide the section so its nav items don't advertise surfaces outside the
+      // role's clinical referrer workspace.
+      if (user?.role === "referring_physician" && section.key === "acquisition") {
+        return false;
+      }
       return true;
     });
 

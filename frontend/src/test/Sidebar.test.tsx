@@ -73,6 +73,21 @@ describe("Sidebar", () => {
     expect(screen.getByText("Account")).toBeInTheDocument();
   });
 
+  it("hides the Acquisition section from a referring_physician with WORKLIST_READ/SCHEDULE_READ", () => {
+    // referring_physician walk (sidebar refinement): the Acquisition section is
+    // the technologist/scheduler's operational surface. The referring physician
+    // holds WORKLIST_READ/SCHEDULE_READ but does not operate the acquisition
+    // workflow — hide the section while keeping Reading + Coordination.
+    setSession({
+      role: "referring_physician",
+      permissions: ["REPORT_READ", "WORKLIST_READ", "SCHEDULE_READ", "ORDER_READ", "PATIENT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.getByText("Coordination")).toBeInTheDocument();
+  });
+
   it("renders Account nav item", () => {
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
