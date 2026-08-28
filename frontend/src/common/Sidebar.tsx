@@ -933,6 +933,14 @@ function Sidebar() {
     // clinical landing. The clinical sections (reading/acquisition/qa/
     // coordination) stay visible for clinical roles.
     .filter(({ section }) => {
+      // patient walk (sidebar refinement): the patient portal is the only
+      // workspace the patient should navigate. The SCHEDULE_READ grant (needed
+      // for the portal's own appointments) leaks the Acquisition section
+      // (Schedule Board / Calendar / Resources) and the Front Desk Today's
+      // Schedule — both are staff/clinical surfaces, not patient-facing.
+      if (user?.role === "patient" && (section.key === "acquisition" || section.key === "frontdesk")) {
+        return false;
+      }
       if (section.key === "frontdesk" || section.key === "portal") {
         return !isAdminScoped && !isClinicalScoped;
       }

@@ -181,18 +181,22 @@ describe("Sidebar", () => {
     expect(screen.queryByText("QA Queue")).not.toBeInTheDocument();
   });
 
-  it("renders no PACS sections for a patient role", () => {
+  it("renders only Portal and Account sections for a patient role", () => {
+    // patient walk R1: the patient portal is the only workspace — hide the
+    // Acquisition and Front Desk sections that leak via SCHEDULE_READ.
     setSession({
       role: "patient",
-      permissions: ["FILE_READ", "PORTAL_READ", "RESULTS_READ"],
+      permissions: ["PORTAL_READ", "SCHEDULE_READ", "RESULTS_READ", "CHART_READ"],
     });
     renderWithAuth(<Sidebar />);
-    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getAllByText("My Records").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Account")).toBeInTheDocument();
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
     expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
     expect(screen.queryByText("QA")).not.toBeInTheDocument();
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
     expect(screen.queryByText("Analytics")).not.toBeInTheDocument();
     expect(screen.queryByText("Metrics")).not.toBeInTheDocument();
   });

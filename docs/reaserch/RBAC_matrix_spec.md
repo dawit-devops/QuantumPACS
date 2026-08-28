@@ -252,6 +252,11 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | PORTAL_READ, CHART_READ (own), RESULTS_READ (released), MED_ORDER_READ (own), SCHEDULE_READ (own), VIEWER_READ (share) | ✓ | | ✓ |
 | **All clinical writes** (PATIENT_WRITE, ORDER_WRITE, REPORT_*, MAR_*, …) | ✓ | — (no clinical writes) | — |
 
+> **PATIENT addendum (patient walk, 2026-08-29):** code grants two self-scoped
+> grants beyond the matrix row — `FOLLOW_UP_SELF` (own follow-up tasks) and
+> `NOTIFICATIONS_SELF` (own notification preferences/feed). Both are strictly
+> own-data scoped (`MATRIX_C_PATIENT`, permissions.py).
+
 ---
 
 ## 6. Tenant Scoping & Cross-Tenant Policy
