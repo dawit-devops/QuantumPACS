@@ -1,7 +1,8 @@
 # referring_physician — Walk Plan & Results (Phases 4–5)
 Date: 2026-08-29 | Credential used: test.referring_physician / Test@123456 (platform-side, tenant NULL) | Baseline commit: b4f9249
 
-## Phase 6 — user guide (pending)
+## Phase 6 — user guide (COMPLETE)
+`docs/user-guides/referring_physician.md` written (sections 1-7: role, sign-in, nav, 8 surfaces, 4 workflows, permissions, troubleshooting).
 
 ## Walk order (planned; sidebar order; one line of exercise detail each)
 1. Reading Worklist `/reading` — list unread exams, filters, pagination
