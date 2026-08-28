@@ -32,10 +32,7 @@ const mockList = vi.mocked(listCarePlans);
 function renderCarePlans() {
   localStorage.setItem("userId", "1");
   localStorage.setItem("username", "test");
-  localStorage.setItem(
-    "permissions",
-    JSON.stringify(["PATIENT_READ", "CARE_PLAN_WRITE"]),
-  );
+  localStorage.setItem("permissions", JSON.stringify(["PATIENT_READ", "CARE_PLAN_WRITE"]));
   localStorage.setItem("tenant_id", "t1");
   return render(
     <MemoryRouter>
@@ -46,7 +43,7 @@ function renderCarePlans() {
           </ThemeProvider>
         </AuthProvider>
       </App>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -127,7 +124,7 @@ describe("CarePlans", () => {
           patient_id: "8675310",
           title: "Legacy string payload",
           status: "active",
-          tasks: "[{\"label\":\"Call patient\",\"done\":false}]" as unknown as [],
+          tasks: '[{"label":"Call patient","done":false}]' as unknown as [],
           responsible_provider: "Dr. Rivera",
           follow_up_at: null,
           notes: "",

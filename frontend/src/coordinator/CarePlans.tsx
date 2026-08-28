@@ -18,12 +18,7 @@ import { ReloadOutlined, PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import withSidebar from "../common/base";
 import { PageState } from "../common/PageState";
-import {
-  listCarePlans,
-  createCarePlan,
-  updateCarePlan,
-  type CarePlan,
-} from "../api/care-plans";
+import { listCarePlans, createCarePlan, updateCarePlan, type CarePlan } from "../api/care-plans";
 import "./CarePlans.css";
 
 const Content = Layout.Content;
@@ -95,16 +90,12 @@ function CarePlans() {
       patient_id: values.patient_id,
       title: values.title,
       status: values.status || "active",
-      tasks: (values.tasks || []).map(
-        (t: { label: string; done?: boolean }) => ({
-          label: t.label,
-          done: !!t.done,
-        }),
-      ),
+      tasks: (values.tasks || []).map((t: { label: string; done?: boolean }) => ({
+        label: t.label,
+        done: !!t.done,
+      })),
       responsible_provider: values.responsible_provider || "",
-      follow_up_at: values.follow_up_at
-        ? values.follow_up_at.toISOString()
-        : null,
+      follow_up_at: values.follow_up_at ? values.follow_up_at.toISOString() : null,
       notes: values.notes || "",
     };
     try {
@@ -138,9 +129,7 @@ function CarePlans() {
       dataIndex: "status",
       width: "12%",
       render: (s: string) => (
-        <Tag color={STATUS_COLORS[s] || "default"}>
-          {(s || "").replace("_", " ").toUpperCase()}
-        </Tag>
+        <Tag color={STATUS_COLORS[s] || "default"}>{(s || "").replace("_", " ").toUpperCase()}</Tag>
       ),
     },
     {
@@ -159,8 +148,7 @@ function CarePlans() {
       title: "Follow-Up",
       dataIndex: "follow_up_at",
       width: "14%",
-      render: (v: string) =>
-        v ? dayjs(v).format("YYYY-MM-DD") : "-",
+      render: (v: string) => (v ? dayjs(v).format("YYYY-MM-DD") : "-"),
     },
     {
       title: "",
@@ -230,9 +218,7 @@ function CarePlans() {
                   status: editing.status,
                   tasks: editing.tasks || [],
                   responsible_provider: editing.responsible_provider,
-                  follow_up_at: editing.follow_up_at
-                    ? dayjs(editing.follow_up_at)
-                    : undefined,
+                  follow_up_at: editing.follow_up_at ? dayjs(editing.follow_up_at) : undefined,
                   notes: editing.notes,
                 }
               : { status: "active", tasks: [] }
@@ -271,9 +257,7 @@ function CarePlans() {
                   <Space key={field.key} align="baseline">
                     <Form.Item
                       name={[field.name, "label"]}
-                      rules={[
-                        { required: true, message: "Task label is required" },
-                      ]}
+                      rules={[{ required: true, message: "Task label is required" }]}
                     >
                       <Input placeholder="Task" />
                     </Form.Item>
@@ -283,9 +267,7 @@ function CarePlans() {
                     <Button onClick={() => remove(field.name)}>Remove</Button>
                   </Space>
                 ))}
-                <Button onClick={() => add({ label: "", done: false })}>
-                  Add Task
-                </Button>
+                <Button onClick={() => add({ label: "", done: false })}>Add Task</Button>
               </>
             )}
           </Form.List>
