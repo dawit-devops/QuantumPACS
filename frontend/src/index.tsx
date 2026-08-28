@@ -581,7 +581,7 @@ function ThemedApp() {
                     <Route
                       path="/admin/report-templates"
                       element={
-                        <PermissionRoute permission="REPORT_WRITE">
+                        <PermissionRoute permission={["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"]}>
                           <TemplateManager />
                         </PermissionRoute>
                       }

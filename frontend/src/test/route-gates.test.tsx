@@ -130,6 +130,16 @@ function WorkspaceRouteTable() {
           </PermissionRoute>
         }
       />
+      {/* Mirrors index.tsx: tenant_admin (REPORT_TEMPLATE_ADMIN) and
+          radiologist (REPORT_WRITE) both reach the template library. */}
+      <Route
+        path="/admin/report-templates"
+        element={
+          <PermissionRoute permission={["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"]}>
+            <div data-testid="template-page" />
+          </PermissionRoute>
+        }
+      />
     </Routes>
   );
 }
@@ -437,6 +447,35 @@ describe("PACS workspace route gates", () => {
     const result = renderAt("/reading");
     expect(screen.getByTestId("account-page")).toBeInTheDocument();
     expect(screen.queryByTestId("reading-page")).toBeNull();
+    result.unmount();
+  });
+
+  it("lets a tenant_admin open the report template library with REPORT_TEMPLATE_ADMIN", () => {
+    // R3: the backend gates template CRUD on REPORT_TEMPLATE_ADMIN, which the
+    // tenant_admin grant holds without REPORT_WRITE — the frontend gate now
+    // accepts either code (user decision 2026-08-28).
+    seedUser({ role: "tenant_admin", admin: false, permissions: ["REPORT_TEMPLATE_ADMIN"] });
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("template-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("lets a radiologist open the template library with REPORT_WRITE", () => {
+    seedUser({ role: "radiologist", admin: false, permissions: ["REPORT_WRITE"] });
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("template-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("blocks a user without either template permission from the library", () => {
+    seedUser({ role: "technologist", admin: false, permissions: ["WORKLIST_READ"] });
+    landingRouteForMock.mockImplementation(() => "/account");
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("account-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("template-page")).toBeNull();
     result.unmount();
   });
 });

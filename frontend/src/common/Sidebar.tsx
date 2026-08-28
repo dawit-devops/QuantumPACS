@@ -457,7 +457,10 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/admin/report-templates",
         label: "Report Templates",
         icon: <FileTextOutlined />,
-        permissions: ["REPORT_WRITE"],
+        // The backend gates create/publish/rollback on REPORT_TEMPLATE_ADMIN
+        // (not REPORT_WRITE) — accept either so tenant_admin/pacs_admin (who
+        // hold REPORT_TEMPLATE_ADMIN but not REPORT_WRITE) reach the library.
+        permissions: ["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"],
       },
       {
         // The dashboard is the landing home of every admin-scoped role; it
