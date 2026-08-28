@@ -187,8 +187,8 @@ function Replicas() {
     {
       title: "ID",
       dataIndex: "id",
-      render: (id: string) => (
-        <code style={{ fontSize: 12 }}>{id.slice(0, 8)}</code>
+      render: (id: any) => (
+        <code style={{ fontSize: 12 }}>{String(id).slice(0, 8)}</code>
       ),
     },
     { title: "Type", dataIndex: "type" },

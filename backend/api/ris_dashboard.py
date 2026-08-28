@@ -54,17 +54,18 @@ class DeptWorkloadHandler(HTTPEndpoint):
                 """SELECT e.modality,
                           COUNT(*) AS total,
                           COUNT(*) FILTER (WHERE e.status = 'completed') AS completed,
-                          COUNT(*) FILTER (WHERE e.status IN ('scheduled', 'arrived')) AS pending
+                          COUNT(*) FILTER (WHERE e.status IN ('ready', 'in_progress')) AS pending
                    FROM exams e
                    WHERE e.tenant_id = $1
-                     AND e.scheduled_date = current_date
+                     AND e.created_at::date = current_date
                    GROUP BY e.modality
                    ORDER BY total DESC""",
                 tenant,
             )
-            # Workload by room/resource
+            # Workload by room/resource (ris_appointments references the
+            # resource by id; join ris_resources to surface the room name)
             by_room = await conn.fetch(
-                """SELECT a.room AS room,
+                """SELECT rr.name AS room,
                           COUNT(*) AS total,
                           COUNT(*) FILTER (
                             WHERE a.status IN ('ARRIVED', 'IN_PROGRESS')
@@ -73,10 +74,11 @@ class DeptWorkloadHandler(HTTPEndpoint):
                             WHERE a.status = 'COMPLETED'
                           ) AS completed
                    FROM ris_appointments a
+                   JOIN ris_resources rr ON rr.id = a.resource_id
                    WHERE a.tenant_id = $1
                      AND a.start_time >= current_date
                      AND a.start_time < current_date + interval '1 day'
-                   GROUP BY a.room
+                   GROUP BY rr.name
                    ORDER BY active DESC""",
                 tenant,
             )

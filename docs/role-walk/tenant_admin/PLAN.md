@@ -31,8 +31,8 @@ Date: 2026-08-28 | Credential used: test.tenant_admin / Test@123456 via POST /ap
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Report Templates | /admin/report-templates | REPORT_WRITE, REPORT_TEMPLATE_ADMIN | List, versions, publish, rollback | GET /api/ris/report-templates → 200; GET /api/ris/report-templates/{id}/versions → 200; POST /api/ris/report-templates/{id}/publish → 200; POST /api/ris/report-templates/{id}/rollback → 200 |PASS| | | |
 | 2 | Dashboard | /admin | ADMIN_DASHBOARD_PERMISSIONS + adminOnly | Health strip, KPI cards, charts, replicas, recent activity, quick links, auto-refresh | GET /api/v2/dashboard/health → 200; GET /api/v2/dashboard/metrics?range=30d → 200; GET /api/users?offset=0&limit=1 → 200; GET /api/dicomweb/admin/metrics?period=24h → 200; GET /api/replicas → 200; GET /api/logs?limit=8 → 200 |PASS| | | |
-| 3 | RIS Dashboard | /admin/ris-dashboard | REPORT_READ + adminOnly | TAT, utilization, volume, workload drill-down | GET /api/ris/dashboard/kpi → 200; GET /api/ris/analytics/workload → 200; GET /api/ris/analytics/tat-drilldown → 200; GET /api/ris/analytics/equipment-util → 200 |PASS| | | |
-| 4 | Replicas | /replicas | REPLICA_READ | List, status/delay; error paths on writes | GET /api/replicas → 200; POST /api/replicas → 403 (no REPLICA_WRITE); PUT /api/replicas/{id} → 403; DELETE /api/replicas/{id} → 403 |PASS| | | |
+| 3 | RIS Dashboard | /admin/ris-dashboard | REPORT_READ + adminOnly | TAT, utilization, volume, workload drill-down | GET /api/ris/dashboard/kpi → 200; GET /api/ris/analytics/workload → 200; GET /api/ris/analytics/tat-drilldown → 200; GET /api/ris/analytics/equipment-util → 200 |PASS-AFTER-FIX| Workload tab 500'd (F5: `e.scheduled_date`/`a.room` don't exist); fixed. Equipment tab degrades gracefully (EQUIPMENT_READ not granted) | backend (ris_dashboard.py) | |
+| 4 | Replicas | /replicas | REPLICA_READ | List, status/delay; error paths on writes | GET /api/replicas → 200; POST /api/replicas → 403 (no REPLICA_WRITE); PUT /api/replicas/{id} → 403; DELETE /api/replicas/{id} → 403 |PASS-AFTER-FIX| Page crashed (F6: `id.slice` on numeric id); fixed. Renders 1 replica (Master, ACTIVE) | frontend (Replicas.tsx) | |
 | 5 | Users | /users | USER_READ | List w/ filters/pagination, create, assign role, deactivate, reset password, batch status | GET /api/users?offset&limit&q → 200; POST /api/users → 200 (USER_WRITE); PUT /api/users/role → 200; POST /api/users/deactivate → 200; POST /api/users/new_password → 200; POST /api/users/batch-status → 200 |PASS| | | |
 | 6 | Tenants | /tenants | TENANT_READ | List, health, usage panel; error paths on create/delete | GET /api/tenants → 200 (no db_* fields); GET /api/tenants/health → 200; GET /api/tenants/{id}/usage → 200 (METERING_READ); POST /api/tenants → 403 (platform-only); DELETE /api/tenants/{id} → 403 (no TENANT_WRITE) |PASS| | | |
 | 7 | Roles | /roles | ROLE_READ | List, permissions, create custom role, edit (non-builtin), delete (non-builtin), role users | GET /api/roles → 200; GET /api/permissions → 200; POST /api/roles → 200 (ROLE_WRITE); PUT /api/roles/{id} → 200 (non-builtin); DELETE /api/roles/{id} → 200 (ROLE_DELETE, non-builtin); GET /api/roles/{id}/users → 200 |PASS| | | |
@@ -59,47 +59,47 @@ Date: 2026-08-28 | Credential used: test.tenant_admin / Test@123456 via POST /ap
 > The redirect/block verdicts are verified in the Phase 5b browser walk, not by curl.
 
 | Route | Expected | Actual | Verdict |
-|---|---|---|---|
-| /patients/:id | ClinicalRoute w/ PATIENT_ROUTE_PERMISSIONS + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /reading | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /reading/:examId | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /reading/home | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /reading/progress | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /teaching | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /peer-review | ClinicalRoute w/ PEER_REVIEW_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /critical | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /exams | ClinicalRoute w/ EXAM_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /exams/:id | ClinicalRoute w/ EXAM_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /worklist | ClinicalRoute w/ WORKLIST_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /tracking | ClinicalRoute w/ WORKLIST_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | |
-| /schedule-board | ClinicalRoute w/ WORKLIST_READ/SCHEDULE_READ + excludedRoles → redirect to /admin | | |
-| /schedule | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | |
-| /schedule/resources | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | |
-| /orders | ClinicalRoute w/ ORDER_READ + excludedRoles → redirect to /admin | | |
-| /prior-auth | ClinicalRoute w/ PRIOR_AUTH_READ + excludedRoles → redirect to /admin | | |
-| /nursing | ClinicalRoute w/ NURSING_READ + excludedRoles → redirect to /admin | | |
-| /care-plans | ClinicalRoute w/ PATIENT_READ + excludedRoles → redirect to /admin | | |
-| /communications | ClinicalRoute w/ PATIENT_READ + excludedRoles → redirect to /admin | | |
-| /qa/queue | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /qa/review/:examId | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /qa/protocols | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /qa/incidents | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /qa/actions | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /qa/analytics | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | |
-| /frontdesk/registration | ClinicalRoute w/ REGISTRATION_READ + excludedRoles → redirect to /admin | | |
-| /frontdesk/schedule | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | |
-| /frontdesk/queue | ClinicalRoute w/ QUEUE_READ + excludedRoles → redirect to /admin | | |
-| /portal | ClinicalRoute w/ PORTAL_READ + excludedRoles → redirect to /admin | | |
-| /portal/* | ClinicalRoute w/ PORTAL_READ + excludedRoles → redirect to /admin | | |
-| /admin/staff-schedule | AdminConsoleRoute w/ SCHEDULE_READ + excludedRoles (CLINICAL_SCOPED_ROLES) → redirect to /admin | | |
-| /admin/maintenance | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
-| /admin/backups | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
-| /admin/settings | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
-| /fhir/config | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
-| /fhir/monitoring | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
-| /fhir/docs | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | |
+|---|---|---|---|---|
+| /patients/:id | ClinicalRoute w/ PATIENT_ROUTE_PERMISSIONS + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT (browser SPA navigates to /admin) |
+| /reading | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | Browser: navigated to /admin | PASS |
+| /reading/:examId | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /reading/home | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /reading/progress | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /teaching | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /peer-review | ClinicalRoute w/ PEER_REVIEW_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /critical | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /exams | ClinicalRoute w/ EXAM_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /exams/:id | ClinicalRoute w/ EXAM_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /worklist | ClinicalRoute w/ WORKLIST_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | Browser: navigated to /admin | PASS |
+| /tracking | ClinicalRoute w/ WORKLIST_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /schedule-board | ClinicalRoute w/ WORKLIST_READ/SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /schedule | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /schedule/resources | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /orders | ClinicalRoute w/ ORDER_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /prior-auth | ClinicalRoute w/ PRIOR_AUTH_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /nursing | ClinicalRoute w/ NURSING_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /care-plans | ClinicalRoute w/ PATIENT_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /communications | ClinicalRoute w/ PATIENT_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /qa/queue | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | Browser: navigated to /admin | PASS |
+| /qa/review/:examId | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /qa/protocols | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /qa/incidents | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /qa/actions | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /qa/analytics | ClinicalRoute w/ QA_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /frontdesk/registration | ClinicalRoute w/ REGISTRATION_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /frontdesk/schedule | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /frontdesk/queue | ClinicalRoute w/ QUEUE_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /portal | ClinicalRoute w/ PORTAL_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /portal/* | ClinicalRoute w/ PORTAL_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /admin/staff-schedule | AdminConsoleRoute w/ SCHEDULE_READ + excludedRoles (CLINICAL_SCOPED_ROLES) → redirect to /admin | | REDIRECT |
+| /admin/maintenance | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | Browser: navigated to /admin | PASS |
+| /admin/backups | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
+| /admin/settings | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
+| /fhir/config | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
+| /fhir/monitoring | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
+| /fhir/docs | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
 | /integrations | PermissionRoute w/ SYSTEM_ADMIN | REOPENED: gate widened to [SYSTEM_ADMIN, TENANT_ADMIN] (O1) — Webhooks tab hidden for non-SYSTEM_ADMIN | FIXED (O1) |
-| /files/:id | PermissionRoute w/ VIEWER_ROUTE_PERMISSIONS (no excludedRoles) → reachable, renders with reduced features for admin-scoped | PASS (browser) | |
+| /files/:id | PermissionRoute w/ VIEWER_ROUTE_PERMISSIONS (no excludedRoles) → reachable, renders with reduced features for admin-scoped | PASS (browser) | REACHABLE |
 | / | PermissionRoute w/ VIEWER_ROUTE_PERMISSIONS (no excludedRoles) → reachable, renders with reduced features for admin-scoped | | |
 
 ## Findings & decisions (cross-cutting; appended in ANY phase)
@@ -111,3 +111,5 @@ Date: 2026-08-28 | Credential used: test.tenant_admin / Test@123456 via POST /ap
 | F3 | 5a | API-key creation 500s for every role: `api_keys.created_by` column is UUID but `users.id` is SERIAL integer → `DatatypeMismatchError`. | backend/db/api_keys.py:73; migration 016_api_keys.py:42 | FIX: migration 114 alters `created_by` to BIGINT (table empty, no data cast). | FIX (approved) | (pending) |
 | O1 | 5a | ORPHANED surface: tenant_admin holds TENANT_ADMIN and backend `/api/v2/oauth/providers*` returns 200 (verified via curl), but the only UI that calls it (Integrations page) was gated SYSTEM_ADMIN at both the route (`frontend/src/index.tsx:833`) and nav item (`frontend/src/common/Sidebar.tsx:587`) — a granted, tenant-scoped capability (OIDC provider CRUD + test-connection, ADM-16) with no reachable surface. Webhooks backend endpoints are SYSTEM_ADMIN-gated, so widening must not expose them. | backend/api/oauth_providers.py (TENANT_ADMIN gate); frontend/src/integrations/Integrations.tsx:77; frontend/src/api/integrations.ts:23-43 | FIX: route + nav gate widened to [SYSTEM_ADMIN, TENANT_ADMIN]; Webhooks tab rendered conditionally on SYSTEM_ADMIN (default tab = oauth for tenant_admin). Browser-verified: /integrations loads for tenant_admin, only OAuth Providers tab shows, webhooks API still 403. | FIX (approved) | (pending) |
 | O2 | 5a | DEAD grants: `STORAGE_ADMIN` and `CDS_ADMIN` are in tenant_admin's (and pacs_admin's) grant set but no route gates on either — only permissions.py references them. Nothing in the backend is unlocked by them. | backend/api/permissions.py (enum + grant sets); grep across backend/api/*.py shows no gate sites | TRIM from MATRIX_C_TENANT_ADMIN (least-privilege). | KEEP (recorded; user chose to keep grants as-is) | — |
+| F5 | 5b | RIS Dashboard Workload tab 500s: `by_modality` query references `e.scheduled_date` (does not exist on `exams`) and `by_room` query references `a.room` (does not exist on `ris_appointments`; resource name is in `ris_resources.name` via `resource_id`). Also status values `'scheduled'/'arrived'` don't match the exams CHECK constraint (`'ready'/'in_progress'`). | backend/api/ris_dashboard.py:53-64 (by_modality), 66-82 (by_room); backend/migrations/versions/033_exams.py:46-74 (exams schema), 069_ris_appointments.py:38-68 (ris_appointments schema) | FIX: `e.scheduled_date` → `e.created_at::date`, `e.status IN ('scheduled','arrived')` → `IN ('ready','in_progress')`, `a.room` → `JOIN ris_resources rr ON rr.id = a.resource_id` + `rr.name AS room`. | FIX (approved) | (pending) |
+| F6 | 5b | Replicas page crashes with `TypeError: id.slice is not a function` — the API returns `id` as integer (`1`), not string, but the ID column render calls `id.slice(0, 8)`. Replicas is unreachable for every role. | frontend/src/replicas/Replicas.tsx:191; curl confirms `"id": 1` (integer) | FIX: `String(id).slice(0, 8)` | FIX (approved) | (pending) |
