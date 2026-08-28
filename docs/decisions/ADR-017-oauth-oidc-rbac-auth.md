@@ -75,7 +75,7 @@ Replacing the `users.admin` boolean:
 | `tenant_admin` | Tenant-scoped operational admin: users/roles/tenants/logs/metrics/interface, no clinical writes, no `SYSTEM_ADMIN`, no `REPORT_WRITE` (Matrix C: `LEGACY_TENANT_ADMIN` + `MATRIX_C_TENANT_ADMIN` in `backend/api/permissions.py`) | Cannot access other tenants or registry, cannot create/annotate reports, cannot delete users
 | `radiologist` | files/patients/studies: read + write; logs: read | Can view, annotate, edit studies |
 | `technologist` | files/patients/studies: read + write | Can upload, cannot delete, cannot manage users |
-| `referring_physician` | files/patients/studies: read | View-only access |
+| `referring_physician` | patients/studies/viewer: read; files (via viewer grants) | View-only access — no FILE_READ grant, Files page opens via STUDY_READ/VIEWER_READ |
 
 ### Token Changes
 
