@@ -84,9 +84,21 @@ class TestMatrixA:
         # R2-16: facility admins (pacs_admin) get role management over the
         # clinical/operational built-ins and custom roles.
         assert {'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'} <= perms('pacs_admin')
-        # ...but stay ops-only: no report signing, no clinical writes.
+        # pacs_admin walk F2: `_can_assign_role` needs the target's grants to
+        # be a subset of the caller's, so the operational built-ins it assigns
+        # (receptionist → PATIENT_WRITE, cashier → BILLING_WRITE, technologist →
+        # EXAM_WRITE, ...) force those grants onto pacs_admin. Clinical-scope
+        # exclusion still hides the clinical surfaces for this admin role.
+        assert {'PATIENT_WRITE', 'BILLING_WRITE', 'EXAM_READ', 'EXAM_WRITE',
+                'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+                'SCHEDULE_WRITE', 'NURSING_READ', 'NURSING_WRITE',
+                'ORDER_WRITE', 'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE'} <= perms('pacs_admin')
+        # ...but never signs reports, and cannot assign clinical readers/EMR
+        # writers (their grants are not a subset of pacs_admin's).
         assert 'REPORT_SIGN' not in perms('pacs_admin')
-        assert 'PATIENT_WRITE' not in perms('pacs_admin')
+        assert 'REPORT_WRITE' not in perms('pacs_admin')
+        assert not ({'CROSS_TENANT_READ', 'MED_ORDER_WRITE', 'NOTE_SIGN',
+                     'MAR_READ', 'RESULTS_RELEASE', 'SYSTEM_ADMIN'} & perms('pacs_admin'))
 
     def test_tenant_admin_reaches_interface_surfaces(self):
         """P1-2 (tenant_admin review C2): the facility operator must actually

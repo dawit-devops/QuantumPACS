@@ -262,6 +262,24 @@ MATRIX_A_PACSADM = {
     # meant to unlock. CRITICAL_RESULTS_WRITE + WORKLIST_WRITE trimmed (R3/R6):
     # the exam console / MWL are clinical-scoped, hidden for this admin role.
     'DICOMWEB_READ', 'DICOMWEB_WRITE', 'HL7_READ', 'REPLICA_READ', 'ROUTING_READ',
+    # pacs_admin walk (Phase 5a, F3): the Admin Dashboard is the role's landing
+    # page — METRICS_READ renders its health/KPI/modality panels (tenant_admin
+    # reaches the same via LEGACY_TENANT_ADMIN).
+    'METRICS_READ',
+    # pacs_admin walk (Phase 5a, F2): `_can_assign_role` requires the target
+    # role's grants to be a subset of the caller's. These operational built-in
+    # grants (technologist/receptionist/cashier/care_coordinator/dept_manager)
+    # make R2-16 exercisable — the facility admin can assign operational roles
+    # without holding clinical/EMR write power (radiologist/physician grants,
+    # REPORT_SIGN, CROSS_TENANT_READ etc. remain out of scope). Clinical-scope
+    # exclusion still hides the clinical surfaces for this admin role.
+    'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE',
+    'EXAM_READ', 'EXAM_WRITE',
+    'PATIENT_WRITE', 'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+    'SCHEDULE_WRITE', 'BILLING_WRITE',
+    'NURSING_READ', 'NURSING_WRITE', 'ORDER_WRITE',
+    'CARE_PLAN_WRITE', 'ENCOUNTER_WRITE', 'MED_ORDER_READ', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
+    'ANALYTICS_READ', 'EQUIPMENT_READ',
     # R2-16: facility admins (pacs_admin) manage roles of the clinical/
     # operational built-ins (radiologist, technologist, ...) plus custom roles.
     'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',
