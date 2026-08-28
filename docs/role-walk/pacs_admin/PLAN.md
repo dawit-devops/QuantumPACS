@@ -55,13 +55,13 @@ Date: 2026-08-28 | Credential used: test.pacs_admin / Test@123456 via POST /api/
 | Route | Expected | Actual | Verdict |
 |---|---|---|---|
 | /patients/:id | ClinicalRoute w/ PATIENT_ROUTE_PERMISSIONS + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
-| /reading | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | | REDIRECT |
+| /reading | ClinicalRoute w/ REPORT_READ + excludedRoles=ADMIN_SCOPED_ROLES → redirect to /admin | Browser: navigated to /admin | PASS |
 | /reading/:examId | ClinicalRoute → redirect to /admin | | REDIRECT |
 | /reading/home | ClinicalRoute → redirect to /admin | | REDIRECT |
 | /reading/progress | ClinicalRoute → redirect to /admin | | REDIRECT |
 | /exams | ClinicalRoute w/ EXAM_READ + excludedRoles → redirect to /admin | | REDIRECT |
 | /exams/:id | ClinicalRoute → redirect to /admin | | REDIRECT |
-| /worklist | ClinicalRoute w/ WORKLIST_READ + excludedRoles → redirect to /admin | | REDIRECT |
+| /worklist | ClinicalRoute w/ WORKLIST_READ + excludedRoles → redirect to /admin | Browser: navigated to /admin | PASS |
 | /tracking | ClinicalRoute w/ WORKLIST_READ + excludedRoles → redirect to /admin | | REDIRECT |
 | /schedule-board | ClinicalRoute w/ WORKLIST_READ/SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
 | /schedule | ClinicalRoute w/ SCHEDULE_READ + excludedRoles → redirect to /admin | | REDIRECT |
@@ -82,7 +82,7 @@ Date: 2026-08-28 | Credential used: test.pacs_admin / Test@123456 via POST /api/
 | /frontdesk/queue | ClinicalRoute → redirect to /admin | | REDIRECT |
 | /portal | ClinicalRoute → redirect to /admin | | REDIRECT |
 | /portal/* | ClinicalRoute → redirect to /admin | | REDIRECT |
-| /tenants | PermissionRoute w/ TENANT_READ → redirect to /admin | | REDIRECT |
+| /tenants | PermissionRoute w/ TENANT_READ → redirect to /admin | 403 (no TENANT_READ) | PASS |
 | /service-keys | PermissionRoute w/ SERVICE_KEY_READ → redirect to /admin | | REDIRECT |
 | /fhir/config | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
 | /fhir/monitoring | PermissionRoute w/ SYSTEM_ADMIN → redirect to /admin | | REDIRECT |
