@@ -1,7 +1,8 @@
 # receptionist — Walk Plan & Results (Phases 4–5)
 Date: 2026-08-29 | Credential used: acme.receptionist / Test@123456 (tenant-scoped acme) | Baseline commit: d92268c
 
-## Phase 6 — user guide (pending)
+## Phase 6 — user guide (COMPLETE)
+`docs/user-guides/receptionist.md` written (sections 1-7: role, sign-in, nav, 7 surfaces, 4 workflows, permissions, troubleshooting).
 
 ## Walk order (planned; sidebar order; one line of exercise detail each)
 1. Registration `/frontdesk/registration` — patient search, create patient, register
