@@ -59,6 +59,20 @@ describe("Sidebar", () => {
     expect(screen.getByText("Files")).toBeInTheDocument();
   });
 
+  it("hides the Files item from a referring_physician with only STUDY_READ/VIEWER_READ", () => {
+    // referring_physician walk F2: the role holds STUDY_READ/VIEWER_READ which
+    // pass the Files route gate, but the backend /api/files* endpoints require
+    // FILE_READ → the page would 403 on every data load. Gate the nav item on
+    // FILE_READ so the dead item is hidden (route stays deep-linkable).
+    setSession({
+      role: "referring_physician",
+      permissions: ["STUDY_READ", "VIEWER_READ", "REPORT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
+  });
+
   it("renders Account nav item", () => {
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");

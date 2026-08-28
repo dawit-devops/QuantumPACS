@@ -50,7 +50,6 @@ import QuantumLogo from "./QuantumLogo";
 import { useTheme } from "./ThemeProvider";
 import { logout } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
-import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import TenantSelector from "../auth/TenantSelector";
 import { request } from "../helpers";
 import {
@@ -995,7 +994,13 @@ function Sidebar() {
               path: "/",
               label: "Files",
               icon: <FileSearchOutlined />,
-              permissions: [...VIEWER_ROUTE_PERMISSIONS],
+              // referring_physician walk F2: gate on FILE_READ only, not the
+              // VIEWER_ROUTE_PERMISSIONS any-of. Roles holding only
+              // STUDY_READ/VIEWER_READ (referring_physician, ed_physician) pass
+              // the route gate but get 403 on every /api/files* call (backend
+              // requires FILE_READ) — advertising the page that can't load
+              // data is a dead nav item. The route stays deep-linkable.
+              permissions: ["FILE_READ"],
             },
             hasPermission,
             isAdminScoped
