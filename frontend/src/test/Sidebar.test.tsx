@@ -296,6 +296,25 @@ describe("Sidebar", () => {
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
+  it("hides Acquisition but keeps Coordination for a receptionist with WORKLIST_READ/ORDER_READ", () => {
+    // receptionist walk R1: the Acquisition section (MWL/Tracking/Schedule/
+    // Calendar/Resources) is the technologist's operational surface, not the
+    // front-office workspace. Coordination (Orders/Care Plans/Communications)
+    // stays visible — the receptionist uses Orders during registration flow.
+    setSession({
+      role: "receptionist",
+      permissions: [
+        "REGISTRATION_READ", "REGISTRATION_WRITE", "QUEUE_READ",
+        "SCHEDULE_READ", "SCHEDULE_WRITE", "PATIENT_READ",
+        "WORKLIST_READ", "ORDER_READ",
+      ],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Front Desk")).toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.getByText("Coordination")).toBeInTheDocument();
+  });
+
   it("hides Front Desk and My Records from a physician even with SCHEDULE_READ/PATIENT_READ", async () => {
     // physician walk R1: clinical-scoped roles hold SCHEDULE_READ and
     // PATIENT_READ (they open clinical and coordination surfaces), but the

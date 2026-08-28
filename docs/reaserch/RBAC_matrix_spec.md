@@ -191,6 +191,12 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 > grants that enable the actual PACS-ops surfaces. `CRITICAL_RESULTS_WRITE` and
 > `WORKLIST_WRITE` were trimmed (the exam console / MWL are clinical-scoped, hidden
 > for this admin role).
+>
+> **RECEPT addendum (receptionist walk, 2026-08-29):** code grants RECEPT four R08
+> front-desk grants beyond the matrix row — `QUEUE_READ` (privacy-projected waiting
+> queue), `REGISTRATION_READ`/`REGISTRATION_WRITE` (patient registration), and
+> `SCHEDULE_WRITE` (appointment booking with capacity conflict detection). These are
+> documented in `MATRIX_A_RECEPT` (permissions.py).
 
 ### Matrix B — EMR roles
 

@@ -949,6 +949,14 @@ function Sidebar() {
       if (user?.role === "referring_physician" && section.key === "acquisition") {
         return false;
       }
+      // receptionist walk (sidebar refinement): the Acquisition section is
+      // the technologist/scheduler's operational surface. The receptionist
+      // holds WORKLIST_READ/SCHEDULE_READ (needed for the schedule board)
+      // but does not operate the modality worklist / tracking / scheduling
+      // workflow — hide the section so the front-office sidebar stays clean.
+      if (user?.role === "receptionist" && section.key === "acquisition") {
+        return false;
+      }
       return true;
     });
 
