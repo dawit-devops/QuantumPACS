@@ -168,10 +168,15 @@ class Worklist(Table):
                      date_from=None, date_to=None,
                      time_from=None, time_to=None, search=None, patient_id=None,
                      patient_name=None, requested_procedure_id=None,
-                     accession=None, page=1, per_page=20):
+                     accession=None, page=1, per_page=20, tenant_id=None):
         from pypika import Query as PypikaQuery, functions as fn
 
         conditions = []
+        # F2: row-level tenant scope (role-walk technologist). Callers pass
+        # the effective tenant; legacy callers that don't keep the old
+        # unscoped behaviour (DICOM C-FIND path stamps entries at create).
+        if tenant_id:
+            conditions.append(self.table.tenant_id == tenant_id)
         if status:
             conditions.append(self.table.status == status)
         if modality:

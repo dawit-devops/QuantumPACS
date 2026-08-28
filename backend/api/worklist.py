@@ -43,6 +43,9 @@ class WorklistHandler(HTTPEndpoint):
                 status=status, modality=modality,
                 date_from=date_from, date_to=date_to,
                 search=search, page=page, per_page=per_page,
+                # F2: row-level tenant scope — shared-DB tenants share one
+                # table, so pool isolation alone leaks other tenants' PHI.
+                tenant_id=effective_tenant(request) or 'default',
             )
         return ok({'data': entries, 'total': total, 'page': page, 'per_page': per_page})
 
@@ -185,6 +188,11 @@ class TrackingHandler(HTTPEndpoint):
         conditions = []
         params = []
         idx = 1
+        # F2: row-level tenant scope for the tracking board (same surface
+        # family as the worklist — shared-DB tenants share one table).
+        conditions.append(f'w.tenant_id = ${idx}')
+        params.append(effective_tenant(request) or 'default')
+        idx += 1
         if modality:
             conditions.append(f'w.modality = ${idx}')
             params.append(modality)
@@ -284,31 +292,40 @@ class TrackingKpiHandler(HTTPEndpoint):
 
     @requires_permission(Permission.WORKLIST_READ)
     async def get(self, request):
+        # F2: KPI counts must match the board's tenant scope — otherwise the
+        # strip counts other tenants' rows (acme showed Overdue=318 from
+        # perf-*/e2e-* slugs while its own board was empty).
+        tenant = effective_tenant(request) or 'default'
         async with get_conn() as conn:
             volume = await conn.fetchval(
                 "SELECT count(*) FROM worklist_entries"
-                " WHERE scheduled_date = current_date"
+                " WHERE scheduled_date = current_date AND tenant_id = $1",
+                tenant,
             ) or 0
             in_progress = await conn.fetchval(
                 "SELECT count(*) FROM worklist_entries"
                 " WHERE status = 'in_progress'"
-                " AND scheduled_date = current_date"
+                " AND scheduled_date = current_date AND tenant_id = $1",
+                tenant,
             ) or 0
             awaiting_read = await conn.fetchval(
                 "SELECT count(*) FROM worklist_entries"
                 " WHERE status = 'performed'"
-                " AND scheduled_date = current_date"
+                " AND scheduled_date = current_date AND tenant_id = $1",
+                tenant,
             ) or 0
             overdue = await conn.fetchval(
                 "SELECT count(*) FROM worklist_entries"
                 " WHERE status = 'scheduled'"
-                " AND scheduled_date < current_date"
+                " AND scheduled_date < current_date AND tenant_id = $1",
+                tenant,
             ) or 0
             stat_count = await conn.fetchval(
                 "SELECT count(*) FROM worklist_entries"
                 " WHERE requested_procedure_priority IN ('STAT','S')"
-                " AND scheduled_date = current_date"
-                " AND status NOT IN ('cancelled','performed')"
+                " AND scheduled_date = current_date AND tenant_id = $1"
+                " AND status NOT IN ('cancelled','performed')",
+                tenant,
             ) or 0
             # FD-05: patients waiting >30 minutes in the queue.
             overdue_wait = await conn.fetchval(
@@ -316,6 +333,8 @@ class TrackingKpiHandler(HTTPEndpoint):
                 " WHERE status = 'ARRIVED'"
                 " AND checked_in_at < now() - interval '30 minutes'"
                 " AND start_time >= date_trunc('day', now())"
+                " AND tenant_id = $1",
+                tenant,
             ) or 0
 
         return ok({

@@ -109,6 +109,46 @@ class TestExamPermissions:
         assert resp.status_code == 403
 
 
+class TestExamListTenantScope:
+    def test_list_scopes_to_effective_tenant(self):
+        # F1: list_for_technologist must filter by the caller's tenant —
+        # shared-DB tenants share one table, so pool isolation alone leaks.
+        from db.conn import set_tenant_slug, reset_tenant_slug
+        captured = {}
+
+        async def fake_list_for_technologist(**kwargs):
+            # repo is called with positional/keyword mix — capture query only
+            return []
+
+        async def fake_fetch(q, *a):
+            captured['q'] = q
+            return []
+
+        async def fake_fetchval(q, *a):
+            return 0
+
+        set_tenant_slug('acme')
+        try:
+            client = TestClient(_make_app(TECH))
+            with _conn(fetch=fake_fetch, fetchval=fake_fetchval):
+                resp = client.get('/exams')
+        finally:
+            reset_tenant_slug()
+        assert resp.status_code == 200
+        assert 'tenant_id' in captured.get('q', ''), (
+            'exam list query must carry a tenant_id filter')
+
+    def test_list_filters_by_status(self):
+        client = TestClient(_make_app(TECH))
+        async def fake_fetch(q, *a):
+            return []
+        async def fake_fetchval(q, *a):
+            return 0
+        with _conn(fetch=fake_fetch, fetchval=fake_fetchval):
+            resp = client.get('/exams?status=ready')
+        assert resp.status_code == 200
+
+
 class TestExamCreate:
     def test_create_requires_identity(self):
         client = TestClient(_make_app(TECH))

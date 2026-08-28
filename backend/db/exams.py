@@ -140,17 +140,24 @@ class Exams(Table):
         which every technologist sees so nobody misses a STAT. `assigned`
         narrows that: 'mine' -> only this technologist's rows, 'pool' -> only
         the unassigned ones, so the UI can label ownership honestly.
+
+        F1: the list is row-level tenant-scoped (role-walk technologist).
+        Shared-DB tenants (uses_main_database) share one pool AND one table,
+        so pool-level isolation is not enough — without this filter an acme
+        technologist sees every other tenant's exams.
         """
         from pypika import Query as PypikaQuery
 
+        tenant = get_tenant_slug() or 'default'
         assigned_me = self.table.assigned_technologist == username
         unassigned = self.table.assigned_technologist == ''
+        conditions = [self.table.tenant_id == tenant]
         if assigned == 'mine':
-            conditions = [assigned_me]
+            conditions.append(assigned_me)
         elif assigned == 'pool':
-            conditions = [unassigned]
+            conditions.append(unassigned)
         else:
-            conditions = [assigned_me | unassigned]
+            conditions.append(assigned_me | unassigned)
         if status:
             conditions.append(self.table.status == status)
         if modality:

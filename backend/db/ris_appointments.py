@@ -103,7 +103,11 @@ class RisAppointments(Table):
 
     async def for_date_range(self, range_start, range_end):
         """S-03: all appointments in a date range across all resources.
-        Used by the week/month calendar views."""
+        Used by the week/month calendar views.
+
+        F3: row-level tenant scope (role-walk technologist) — shared-DB
+        tenants share one table, so without this filter an acme calendar
+        renders every other tenant's bookings."""
         rows = await self.conn.fetch(
             """
             SELECT a.*, o.priority AS priority, r.name AS resource_name,
@@ -111,16 +115,19 @@ class RisAppointments(Table):
             FROM ris_appointments a
             LEFT JOIN ris_orders o ON o.id = a.order_id
             LEFT JOIN ris_resources r ON r.id = a.resource_id
-            WHERE a.start_time < $2 AND a.end_time > $1
+            WHERE a.tenant_id = $3
+              AND a.start_time < $2 AND a.end_time > $1
             ORDER BY a.start_time
             """,
-            range_start, range_end,
+            range_start, range_end, get_tenant_slug() or 'default',
         )
         return [dict(r) for r in rows]
 
     async def for_resource(self, resource_id, day_start, day_end):
         # C4: LEFT JOIN the order's priority onto each block so the day
         # view can render STAT/URGENT badges without a second round-trip.
+        # F3: resource ids are tenant-scoped (ris_resources.tenant_id), so
+        # a resource-scoped query can only return the caller's tenant rows.
         rows = await self.conn.fetch(
             """
             SELECT a.*, o.priority AS priority
@@ -140,9 +147,10 @@ class RisAppointments(Table):
         the front-desk "Today's Schedule". Joins ris_resources for
         modality/room and patients for display name; optional filters
         apply before ordering."""
-        conditions = ["a.start_time < $2", "a.end_time > $1"]
-        params = [day_start, day_end]
-        idx = 3
+        conditions = ["a.start_time < $2", "a.end_time > $1",
+                      "a.tenant_id = $3"]
+        params = [day_start, day_end, get_tenant_slug() or 'default']
+        idx = 4
         if modality:
             conditions.append(f"r.modality = ${idx}")
             params.append(modality)

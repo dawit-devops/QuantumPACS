@@ -380,3 +380,50 @@ class TestForDayAggregate:
                 await teardown()
 
         asyncio.run(run())
+
+    def test_for_day_scopes_to_current_tenant(self):
+        """F3: for_day/for_date_range must filter by the caller's tenant
+        slug — a shared-DB tenant (acme) must not see rows stamped for
+        another tenant."""
+        async def run():
+            try:
+                await setup()
+            except Exception:
+                pytest.skip('dev database unavailable')
+
+            from db.conn import get_conn, set_tenant_slug, reset_tenant_slug
+            from db.ris_appointments import RisAppointments
+
+            set_tenant_slug('acme')
+            try:
+                async with get_conn() as conn:
+                    tx = conn.transaction()
+                    await tx.start()
+                    try:
+                        await self._schema(conn)
+                        await conn.execute(
+                            'INSERT INTO ris_appointments '
+                            '(tenant_id, patient_id, start_time, end_time) '
+                            "VALUES ('default', 'MRN-DEF', "
+                            "'2026-09-02 09:00+00', '2026-09-02 09:30+00')")
+                        await conn.execute(
+                            'INSERT INTO ris_appointments '
+                            '(tenant_id, patient_id, start_time, end_time) '
+                            "VALUES ('acme', 'MRN-ACME', "
+                            "'2026-09-02 10:00+00', '2026-09-02 10:30+00')")
+                        repo = RisAppointments(conn)
+                        day_start = datetime.fromisoformat(
+                            '2026-09-02T00:00:00+00:00')
+                        day_end = datetime.fromisoformat(
+                            '2026-09-03T00:00:00+00:00')
+                        rows = await repo.for_day(day_start, day_end)
+                        assert [r['patient_id'] for r in rows] == ['MRN-ACME']
+                        ranged = await repo.for_date_range(day_start, day_end)
+                        assert [r['patient_id'] for r in ranged] == ['MRN-ACME']
+                    finally:
+                        await tx.rollback()
+                        reset_tenant_slug()
+            finally:
+                await teardown()
+
+        asyncio.run(run())

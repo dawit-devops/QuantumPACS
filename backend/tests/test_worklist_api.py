@@ -121,6 +121,20 @@ class TestWorklistList:
                 _, kwargs = mock_wl.search.call_args
                 assert kwargs.get('modality') == 'CT'
 
+    def test_list_scopes_search_to_effective_tenant(self):
+        # F2: the list must pass the caller's tenant to search() — shared-DB
+        # tenants share one table, so pool isolation alone leaks PHI.
+        user = User({'id': 1, 'permissions': ['WORKLIST_READ'], 'tenant': 'acme'})
+        client = TestClient(_make_app(user))
+        with patch('api.worklist.Worklist') as mock_wl_cls:
+            mock_wl = AsyncMock()
+            mock_wl.search.return_value = ([], 0)
+            mock_wl_cls.return_value = mock_wl
+            with patch('api.worklist.get_conn'):
+                client.get('/worklist')
+                _, kwargs = mock_wl.search.call_args
+                assert kwargs.get('tenant_id') == 'acme'
+
 
 class TestWorklistUpdate:
     def test_update_requires_worklist_write(self):
