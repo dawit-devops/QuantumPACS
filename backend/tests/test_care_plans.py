@@ -187,3 +187,28 @@ class TestCarePlanApi:
                 '/ris/care-plans/nope',
                 json={'patient_id': '1', 'title': 'X', 'status': 'active'})
         assert resp.status_code == 404
+
+    def test_get_parses_jsonb_tasks_string(self, conn):
+        # F6: asyncpg decodes jsonb to str by default — the list endpoint
+        # must parse it back or the frontend crashes on tasks.filter.
+        from api.care_plans import CarePlanHandler
+        conn.set_fetch([{'id': 'cp-1', 'patient_id': '8675309',
+                         'title': 'Post-op', 'status': 'active',
+                         'tasks': '[{"label": "Call", "done": false}]'}])
+        app = _make_app(_user(Permission.PATIENT_READ),
+                        [('/ris/care-plans', CarePlanHandler,
+                          ['GET', 'POST'])])
+        client = TestClient(app)
+        with patch('api.care_plans.get_conn', return_value=conn):
+            resp = client.get('/ris/care-plans')
+        assert resp.status_code == 200
+        plan = resp.json()['data'][0]
+        assert isinstance(plan['tasks'], list)
+        assert plan['tasks'][0]['label'] == 'Call'
+
+    def test_get_tasks_list_passthrough_and_bad_json_falls_back(self):
+        from api.care_plans import _serialize
+        # already-decoded list passes through; corrupt string degrades to []
+        assert _serialize({'tasks': [{'label': 'A', 'done': True}]})[
+            'tasks'] == [{'label': 'A', 'done': True}]
+        assert _serialize({'tasks': 'not-json'})['tasks'] == []

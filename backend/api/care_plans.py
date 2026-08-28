@@ -49,7 +49,7 @@ class CarePlanHandler(HTTPEndpoint):
             from db.care_plans import CarePlans
             rows = await CarePlans(conn).list(
                 tenant, status=status, patient_id=patient_id)
-        return ok({'data': rows})
+        return ok({'data': [_serialize(r) for r in rows]})
 
     @requires_permission(Permission.CARE_PLAN_WRITE)
     async def post(self, request):
@@ -76,7 +76,7 @@ class CarePlanHandler(HTTPEndpoint):
                 resource_id=row['id'],
                 tenant=tenant,
             )
-        return created({'data': row})
+        return created({'data': _serialize(row)})
 
 
 class CarePlanDetailHandler(HTTPEndpoint):

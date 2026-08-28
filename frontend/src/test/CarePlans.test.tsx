@@ -118,4 +118,31 @@ describe("CarePlans", () => {
       expect(screen.getByText("Edit Care Plan")).toBeInTheDocument();
     });
   });
+
+  it("renders '-' instead of crashing when tasks arrives as a legacy string (F6)", async () => {
+    mockList.mockResolvedValue({
+      data: [
+        {
+          id: "cp-2",
+          patient_id: "8675310",
+          title: "Legacy string payload",
+          status: "active",
+          tasks: "[{\"label\":\"Call patient\",\"done\":false}]" as unknown as [],
+          responsible_provider: "Dr. Rivera",
+          follow_up_at: null,
+          notes: "",
+          tenant_id: "t1",
+          created_by: "1",
+          created_at: "2026-08-20T10:00:00Z",
+          updated_at: "2026-08-22T10:00:00Z",
+        },
+      ],
+    });
+    renderCarePlans();
+    await waitFor(() => {
+      expect(screen.getByText("Legacy string payload")).toBeInTheDocument();
+    });
+    // the Tasks cell renders '-' (row 0 tasks) without throwing
+    expect(screen.getAllByText("-").length).toBeGreaterThan(0);
+  });
 });

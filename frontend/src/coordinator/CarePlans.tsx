@@ -123,7 +123,9 @@ function CarePlans() {
   };
 
   const taskProgress = (tasks: CarePlan["tasks"]) => {
-    if (!tasks || tasks.length === 0) return "-";
+    // Defense in depth: the API now parses the jsonb tasks list, but an
+    // older payload (or a legacy row) can still hand back a raw string.
+    if (!Array.isArray(tasks) || tasks.length === 0) return "-";
     const done = tasks.filter((t) => t.done).length;
     return `${done}/${tasks.length}`;
   };
