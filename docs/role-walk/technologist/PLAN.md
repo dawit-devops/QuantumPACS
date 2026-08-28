@@ -28,24 +28,26 @@ Date: 2026-08-28 | Credential used: `acme.technologist` / `Test@123456` (seed_ua
 | 7 | Resource Manager | `/schedule/resources` | ClinicalRoute SCHEDULE_READ | View resources | GET `/ris/resources`→200 | PASS | 8 Acme resource cards (type, modality, location, status, created) with type/modality filters. No Create/Save buttons rendered (SCHEDULE_WRITE-gated in ResourceManager.tsx) — correct. | | |
 | 8 | Orders | `/orders` | ClinicalRoute ORDER_READ | Order list view | GET `/orders`→200 | REFINE | List renders w/ status alert (3 open · 3 waiting >24h), status/modality filters, search. BUT row click navigates `/patients/{patient_id}` (MRN string) → GET `/patients/{id}` 500: `api/utils.get_id` does `int(id)` and blows up on non-numeric MRN (backend/api/utils.py:6, frontend Orders.tsx:227). `patient_db_id` is always null (patients table has no row for the order's MRN) so the `?? r.patient_id` fallback always fires. Also Schedule button visible — routes to schedule-board (fine). → Finding F5 (frontend+backend fix). | F5 (frontend fix: stop navigating on bad id; backend: 404 not 500) | |
 | 9 | Care Plans | `/care-plans` | ClinicalRoute PATIENT_READ | Browse plans | GET `/ris/care-plans`→200 | REFINE | Page crashes: ErrorBoundary "Something went wrong". GET returns `tasks` as a JSON **string** (asyncpg jsonb→str default; api/care_plans.py:31 returns rows raw), frontend `taskProgress` calls `tasks.filter` → TypeError (CarePlans.tsx:104-108). 5 acme plans never render. → Finding F6 (backend serialize tasks; frontend defensive parse). | F6 (backend fix) | |
-| 10 | Communications | `/communications` | ClinicalRoute PATIENT_READ | Patient-scoped correspondence | GET `/ris/communications?patient_id=`→200; GET without→422 | PENDING | | | |
-| 11 | Patient Search | overlay | PATIENT_READ | Quick lookup | GET `/patients?search=`→200 | PENDING | | | |
-| 12 | File Browser | `/` | VIEWER_ROUTE_PERMISSIONS | Browse DICOM files | POST `/files/search`→200; GET `/studies`→200 | PENDING | | | |
-| 13 | Detail Viewer | `/files/:id` | VIEWER_ROUTE_PERMISSIONS | Cornerstone3D render | GET `/files/{id}`→200; WADO-RS retrieve→200 | PENDING | | | |
+| 10 | Communications | `/communications` | ClinicalRoute PATIENT_READ | Patient-scoped correspondence | GET `/ris/communications?patient_id=`→200; GET without→422 | PASS | Patient-ID search box, Log Communication + Refresh buttons render; search w/ ACMEP-001 → 200, honest "No communications logged" empty state (log Communication correctly gated — ENCOUNTER_WRITE missing server-side, Log button opens but would fail — no write attempted). | | |
+| 11 | Patient Search | overlay | PATIENT_READ | Quick lookup | GET `/patients/search?...`→200 | PASS | Floating search button opens Patient Search dialog; "ACMEP" query returns 10 seeded Acme patients (name · MRN · DOB); close works. | | |
+| 12 | File Browser | `/` | VIEWER_ROUTE_PERMISSIONS | Browse DICOM files | POST `/files` (ES)→200 w/ `search_available:false`; GET `/files?page&per_page`→200 | REFINE | Page renders w/ Upload/Download buttons, Advanced toggle. ES is offline in dev so POST search returns `search_available:false` — frontend shows "No files match your search" (notice renders per Files.tsx:601 but bare empty-state dominated). GET `/files` (DB path) works and returns 240 default-tenant files — but all tenant='default', so the technologist's **detail view 404s** on every file: `_outside_effective_tenant` compares file.tenant 'default' vs effective 'acme' (backend/api/files.py:344-353, 363). In a shared-DB deployment this hides ALL seeded files from acme users → Finding F7. | F7 | |
+| 11 | Patient Search (dup row — superseded by row 11 above) | overlay | PATIENT_READ | — | — | PASS | walked as part of Communications surface (row 11 above) | | |
+| 12 | File Browser (dup row — superseded by row 12 above) | `/` | VIEWER_ROUTE_PERMISSIONS | — | — | REFINE | see row 12 above | F7 | |
+| 13 | Detail Viewer | `/files/:id` | VIEWER_ROUTE_PERMISSIONS | Cornerstone3D render | GET `/files/{id}`→404 (tenant guard); WADO-RS n/a | BLOCKED(reason: F7 tenant guard) | `/files/370` (valid default-tenant MR file) → 404 from `_outside_effective_tenant` (backend/api/files.py:344-353,363). Viewer page shell renders (Detail title, toolbars) but no image loads; Cornerstone render untestable as acme. Same flow → 200 for test.super_admin (default tenant). | F7 | |
 
 ## Excluded routes (planned Phase 4; verified in 5a)
 | Route | Expected | Actual | Verdict |
 |---|---|---|---|
-| `/ris/billing/fee-schedule` | 403 (no BILLING_READ) | PENDING | |
-| `/ris/billing/claims` | 403 | PENDING | |
-| `/qa/*` (queue) | 403/404 (no QA_READ) | PENDING | |
-| `/reports` | 403/404 (no REPORT_READ) | PENDING | |
-| `/reports/critical` | 403 | PENDING | |
-| `/nursing/prep-list` | 403 (no NURSING_READ) | PENDING | |
-| `/ris/prior-auth` | 403 (no PRIOR_AUTH_READ) | PENDING | |
-| `/tenants` | 403 | PENDING | |
-| `/users` | 403 | PENDING | |
-| `/reading/*` (REPORT_READ) | 403/404 | PENDING | |
+| `/ris/billing/fee-schedule` | 403 (no BILLING_READ) | 403 FORBIDDEN | ✅ enforced |
+| `/ris/billing/claims` | 403 | 403 | ✅ enforced |
+| `/qa/*` (queue) | 403/404 (no QA_READ) | 404 (path not probed earlier: `/ris/qa/dashboard` 404, `/qa/queue` 403) | ✅ enforced |
+| `/reports` | 403/404 (no REPORT_READ) | 404 (no list route); `/reports/critical` 403 | ✅ enforced |
+| `/nursing/prep-list` | 403 (no NURSING_READ) | 403 | ✅ enforced |
+| `/ris/prior-auth` | 403 (no PRIOR_AUTH_READ) | 403 | ✅ enforced |
+| `/tenants` | 403 | 403 (fires on every page load from sidebar probe — cosmetic console noise, see row 1) | ✅ enforced |
+| `/users` | 403 | 403 | ✅ enforced |
+| `/reading/*` (REPORT_READ) | 403/404 | `/reports/peer-review/queue` 404 | ✅ enforced |
+| POST `/ris/resources` | 403 (no SCHEDULE_WRITE) | not curl-probed; UI hides Create (ResourceManager) — gate is SCHEDULE_WRITE | ✅ UI-verified |
 
 ## Findings & decisions (cross-cutting; appended in ANY phase)
 | # | Phase | Finding | Evidence (file:line) | Recommendation | Decision | Commit |
@@ -56,3 +58,4 @@ Date: 2026-08-28 | Credential used: `acme.technologist` / `Test@123456` (seed_ua
 | F4 | 5a | CSRF middleware allows fallback `csrf_token=1` double-submit for any client — weakens CSRF protection to presence-check only | backend/app.py:157-161 | Remove '1' fallback / require real cookie | **DEFERRED 2026-08-28** — MEDIUM hardening item; verify frontend sets real cookie first | |
 | F5 | 5b | Orders row click → `/patients/{MRN}` → 500. `get_id()` does `int()` on a non-numeric MRN; `patient_db_id` null for visit-order patients (no patients row) | frontend/src/coordinator/Orders.tsx:227; backend/api/utils.py:6; backend/api/orders.py (patient_db_id unpopulated) | Backend: PatientHandler return 404 for non-numeric id (or Orders coalesce to a valid patient key). Frontend: only navigate when `patient_db_id` present, else no-op/tooltip. | **RECORDED 2026-08-28** — decision gate pending | |
 | F6 | 5b | Care Plans page crashes — `tasks` JSONB returned as string by API (asyncpg default), frontend calls `.filter` on it | backend/api/care_plans.py:31 (raw `dict(r)` passthrough); frontend/src/coordinator/CarePlans.tsx:104-108 | Backend: `json.loads` tasks when str before returning (match db/nursing.py:113 pattern); frontend: guard `Array.isArray`. | **RECORDED 2026-08-28** — decision gate pending | |
+| F7 | 5b | Detail Viewer blocked for shared-DB tenants: `_outside_effective_tenant` denies every file seeded with tenant='default' when accessed as acme (`effective_tenant != file.tenant`) — list shows the file, detail 404s it (inconsistent UX) | backend/api/files.py:344-353,363 | Align file visibility with the shared-DB pool model (same root cause as F1–F3): either stamp seeded files with the accessing tenant, or treat shared-DB tenants as one visibility domain. | **RECORDED 2026-08-28** — decision gate pending | |
