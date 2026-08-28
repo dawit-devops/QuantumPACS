@@ -37,12 +37,12 @@ def _http_exception(request, exc):
     return JSONResponse({'error': exc.detail}, status_code=exc.status_code)
 
 
-def _make_app(user=None):
+def _make_app(user=None, state=None):
     from starlette.exceptions import HTTPException
     from api.validate import validation_exception_handler, _ValidationException
     return Starlette(
         routes=[Route('/api/files/{id}', FileHandler, methods=['GET'])],
-        middleware=[Middleware(_FakeAuth, user=user)],
+        middleware=[Middleware(_FakeAuth, user=user, state=state)],
         exception_handlers={
             HTTPException: _http_exception,
             _ValidationException: validation_exception_handler,
@@ -152,6 +152,16 @@ class TestFilesIndexerTenantTag:
         indexer.assert_called_once_with(42, delete=True, tenant_slug='acme')
 
 
+def _fake_tenant_info(slug):
+    """Both shared-DB tenants resolve to the main database config — the
+    shape uses_main_database() compares against config's db_* values."""
+    if slug in ('', None):
+        return None
+    return {'slug': slug, 'db_name': 'quantumpacs', 'db_host': '127.0.0.1',
+            'db_user': 'quantumpacs', 'db_port': 5432,
+            'db_password': '974e03eb34f334cc36859c9d910c0dace7f04c60'}
+
+
 class TestFilesTenantGuard:
     """HI-2: the file get guard now sees the real files.tenant value."""
 
@@ -170,11 +180,11 @@ class TestFilesTenantGuard:
         row.update(over)
         return row
 
-    def _get(self, user, row):
+    def _get(self, user, row, state=None):
         conn = _mock_conn()
         conn.fetch = AsyncMock(return_value=[row])
         with _patch_get_conn(conn):
-            client = TestClient(_make_app(user=user))
+            client = TestClient(_make_app(user=user, state=state))
             return client.get('/api/files/1')
 
     def test_tenant_scoped_get_rejects_other_tenant_row(self):
@@ -208,6 +218,44 @@ class TestFilesTenantGuard:
         user = User({'id': 1, 'permissions': ['FILE_READ']})
         resp = self._get(user, self._row(tenant=None))
         assert resp.status_code == 200
+
+    def test_shared_db_tenant_reads_main_store_row(self):
+        # F7: a shared-DB tenant (acme, data store = main database) shares
+        # the files table with the seeded 'default'-stamped rows — the guard
+        # must not 404 them or no seeded file is ever openable.
+        user = User({'id': 1, 'tenant': 'acme', 'permissions': ['FILE_READ']})
+        state = {'tenant_slug': 'acme'}
+        conn = _mock_conn()
+        conn.fetch = AsyncMock(return_value=[self._row(tenant='default')])
+        with _patch_get_conn(conn), \
+                patch('api.files._tenant_info_async',
+                      new=AsyncMock(side_effect=_fake_tenant_info)):
+            client = TestClient(_make_app(user=user, state=state))
+            resp = client.get('/api/files/1')
+        assert resp.status_code == 200
+
+    def test_cross_db_tenant_row_still_refused(self):
+        # Tenants with their own database stay strictly separated: an acme
+        # caller must never read a row stamped with a foreign tenant slug.
+        user = User({'id': 1, 'tenant': 'acme', 'permissions': ['FILE_READ']})
+        state = {'tenant_slug': 'acme'}
+
+        async def info(slug):
+            if slug == 'acme':
+                # acme resolves to its own database (not the main one)
+                return {'slug': 'acme', 'db_name': 'acme_db',
+                        'db_host': 'db.internal', 'db_user': 'acme_user',
+                        'db_port': 5432, 'db_password': 'x'}
+            return {'slug': slug, 'db_name': 'quantumpacs',
+                    'db_host': '127.0.0.1', 'db_user': 'quantumpacs',
+                    'db_port': 5432, 'db_password': '974e03eb'}
+        conn = _mock_conn()
+        conn.fetch = AsyncMock(return_value=[self._row(tenant='other')])
+        with _patch_get_conn(conn), \
+                patch('api.files._tenant_info_async', new=info):
+            client = TestClient(_make_app(user=user, state=state))
+            resp = client.get('/api/files/1')
+        assert resp.status_code == 404
 
 
 class TestUploadTagsRowWithTenant:

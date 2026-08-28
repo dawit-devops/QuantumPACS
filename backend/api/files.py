@@ -30,7 +30,7 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
 from db.notifications import Notifications
-from db.tenants import Tenants
+from db.tenants import Tenants, uses_main_database
 from api.ws import broadcast_to_user
 from dcm.file import parse_dcm
 from es import es
@@ -341,16 +341,62 @@ class FilesHandler(HTTPEndpoint):
         return ok(results)
 
 
-def _outside_effective_tenant(request, user, file_tenant):
+async def _outside_effective_tenant(request, user, file_tenant):
     """True when a file belongs to a tenant outside the request's current
     scope. The middleware has already authorized that scope (JWT claim,
     admin, or an R2-03 cross-tenant grant via X-Tenant-ID) — here we only
     refuse files belonging to a different tenant than the one this request
     is operating in. Files without a tenant stay accessible exactly as
-    before."""
+    before.
+
+    F7 (role-walk technologist): tenants whose data store IS the main
+    database (db/tenants.uses_main_database) share one `files` table, and
+    the seeders stamp rows 'default'. Comparing raw slugs would hide every
+    seeded file from any other shared-DB tenant (list shows it, detail
+    404s it). Such tenants are one visibility domain: slug equality only
+    separates tenants with their own database. Registry rows are read on
+    the main pool (the registry is not tenant data) and memoized on
+    request.state so repeated checks on one request hit the cache."""
+    effective = effective_tenant(request)
     if not file_tenant or user.admin:
         return False
-    return effective_tenant(request) != file_tenant
+    if effective == file_tenant:
+        return False
+    cache = getattr(request.state, '_tenant_info_cache', None)
+    if cache is None:
+        cache = {}
+        try:
+            request.state._tenant_info_cache = cache
+        except AttributeError:
+            pass
+
+    async def _lookup(slug):
+        if slug not in cache:
+            cache[slug] = await _tenant_info_async(slug)
+        return cache[slug]
+
+    effective_info = await _lookup(effective)
+    if effective_info is not None and uses_main_database(effective_info):
+        # The requesting scope runs on the main DB: it shares the table with
+        # every other main-DB tenant, so a differently-stamped main-DB row
+        # is not a foreign-tenant row.
+        file_info = await _lookup(file_tenant)
+        if file_info is None or uses_main_database(file_info):
+            return False
+    return True
+
+
+async def _tenant_info_async(slug):
+    """Registry row for a tenant slug, or None when unknown. Reads the
+    global registry on the main pool (the registry is not tenant data)."""
+    if not slug:
+        return None
+    db = get_database()
+    if not db.pool:
+        return None
+    async with db.pool.acquire() as conn:
+        row = await conn.fetchrow('SELECT * FROM tenants WHERE slug = $1', slug)
+    return dict(row) if row else None
 
 
 async def get_file_by_id(request):
@@ -360,7 +406,7 @@ async def get_file_by_id(request):
         if not file or file['deleted']:
             return None
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             return None
         return file
 
@@ -456,7 +502,7 @@ class ServeFile(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             raise HTTPException(status_code=403)
 
         async with get_conn() as conn:
@@ -552,7 +598,7 @@ class ServeThumbnail(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             raise HTTPException(status_code=403)
 
         tmp = await storage.fetch(file)
