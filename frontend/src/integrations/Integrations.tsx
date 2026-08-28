@@ -27,6 +27,7 @@ import {
   SendOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import { useAuth } from "../auth/AuthContext";
 import {
   listOauthProviders,
   createOauthProvider,
@@ -50,6 +51,8 @@ const { TextArea } = Input;
 
 function Integrations(props: any) {
   const { message } = App.useApp();
+  const { user } = useAuth();
+  const isSystemAdmin = user?.admin || user?.permissions?.includes("SYSTEM_ADMIN");
   // ---- OAuth Providers ----
   const [providers, setProviders] = useState<OauthProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
@@ -335,11 +338,11 @@ function Integrations(props: any) {
     },
   ];
 
-  return (
-    <Content className="integrations" style={{ padding: 24 }}>
-      <Tabs
-        defaultActiveKey="webhooks"
-        items={[
+  const defaultTab = isSystemAdmin ? "webhooks" : "oauth";
+
+  const tabItems = [
+    ...(isSystemAdmin
+      ? [
           {
             key: "webhooks",
             label: (
@@ -382,54 +385,59 @@ function Integrations(props: any) {
               </div>
             ),
           },
-          {
-            key: "oauth",
-            label: (
-              <span>
-                <ApiOutlined /> OAuth Providers
-              </span>
-            ),
-            children: (
-              <div>
-                <div
-                  style={{
-                    marginBottom: 12,
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {providers.length} provider
-                    {providers.length !== 1 ? "s" : ""}
-                  </span>
-                  <Space>
-                    <Button icon={<ReloadOutlined />} onClick={fetchProviders}>
-                      Refresh
-                    </Button>
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={() => openProviderModal()}
-                    >
-                      Add Provider
-                    </Button>
-                  </Space>
-                </div>
-                <Table
-                  dataSource={providers}
-                  columns={provColumns}
-                  rowKey="id"
-                  loading={providersLoading}
-                  pagination={false}
-                  locale={{
-                    emptyText: "No OAuth providers configured. Add a provider to enable SSO.",
-                  }}
-                />
-              </div>
-            ),
-          },
-        ]}
-      />
+        ]
+      : []),
+    {
+      key: "oauth",
+      label: (
+        <span>
+          <ApiOutlined /> OAuth Providers
+        </span>
+      ),
+      children: (
+        <div>
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ color: "var(--text-secondary)" }}>
+              {providers.length} provider
+              {providers.length !== 1 ? "s" : ""}
+            </span>
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={fetchProviders}>
+                Refresh
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openProviderModal()}
+              >
+                Add Provider
+              </Button>
+            </Space>
+          </div>
+          <Table
+            dataSource={providers}
+            columns={provColumns}
+            rowKey="id"
+            loading={providersLoading}
+            pagination={false}
+            locale={{
+              emptyText: "No OAuth providers configured. Add a provider to enable SSO.",
+            }}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <Content className="integrations" style={{ padding: 24 }}>
+      <Tabs defaultActiveKey={defaultTab} items={tabItems} />
 
       {/* OAuth Provider Modal */}
       <Modal

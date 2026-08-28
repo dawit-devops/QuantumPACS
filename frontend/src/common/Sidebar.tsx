@@ -584,7 +584,7 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/integrations",
         label: "Integrations",
         icon: <ApiOutlined />,
-        permissions: ["SYSTEM_ADMIN"],
+        permissions: ["SYSTEM_ADMIN", "TENANT_ADMIN"],
       },
       {
         key: "hl7",

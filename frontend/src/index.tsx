@@ -830,7 +830,7 @@ function ThemedApp() {
                     <Route
                       path="/integrations"
                       element={
-                        <PermissionRoute permission="SYSTEM_ADMIN">
+                        <PermissionRoute permission={["SYSTEM_ADMIN", "TENANT_ADMIN"]}>
                           <Integrations />
                         </PermissionRoute>
                       }

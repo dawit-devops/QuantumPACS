@@ -1211,7 +1211,7 @@ class RisRevenueHandler(HTTPEndpoint):
             )
             by_payer = await conn.fetch(
                 """SELECT payer_name,
-                          COALESCE(SUM(charge_amount), 0) AS paid
+                          COALESCE(SUM(paid_amount), 0) AS paid
                    FROM ris_claims
                    WHERE tenant_id = $1 AND status = 'PAID'
                    GROUP BY payer_name ORDER BY paid DESC""",
