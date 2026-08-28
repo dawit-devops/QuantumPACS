@@ -251,11 +251,17 @@ MATRIX_A_BILL = {
 }
 MATRIX_A_PACSADM = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ',
-    'WORKLIST_READ', 'WORKLIST_WRITE', 'REPORT_READ', 'BILLING_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'BILLING_READ',
     'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
     'STUDY_EXPORT', 'STORAGE_ADMIN', 'INTERFACE_MONITOR', 'INTERFACE_ADMIN',
     'AUDIT_READ', 'CHART_READ', 'RESULTS_READ',
-    'USER_READ', 'USER_WRITE', 'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN',
+    'USER_READ', 'USER_WRITE', 'REPORT_TEMPLATE_ADMIN',
+    # pacs_admin walk (Phase 3, R1): the role is the facility PACS operator —
+    # reach the DICOMweb console/STOW/browser, HL7 console, Interface Health,
+    # Replicas and Routing that its STORAGE_ADMIN / INTERFACE_ADMIN grants were
+    # meant to unlock. CRITICAL_RESULTS_WRITE + WORKLIST_WRITE trimmed (R3/R6):
+    # the exam console / MWL are clinical-scoped, hidden for this admin role.
+    'DICOMWEB_READ', 'DICOMWEB_WRITE', 'HL7_READ', 'REPLICA_READ', 'ROUTING_READ',
     # R2-16: facility admins (pacs_admin) manage roles of the clinical/
     # operational built-ins (radiologist, technologist, ...) plus custom roles.
     'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',

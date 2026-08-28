@@ -161,8 +161,8 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | REPORT_WRITE | ✓ | | | | | | | | ✓ | | |
 | REPORT_SIGN | ✓ | | | | | | | | | | |
 | CRITICAL_RESULTS_WRITE | ✓ | ✓ | | | | ✓ | | | ✓ | | |
-| REPORT_TEMPLATE_ADMIN | ✓ | | | | | | | | ✓ | | ✓ |
-| BILLING_READ | | | | | | | ✓ | ✓ | ✓ | | ✓ |
+| REPORT_TEMPLATE_ADMIN | ✓ | | | | | | | | ✓ | ✓ | ✓ |
+| BILLING_READ | | | | | | | ✓ | ✓ | ✓ | ✓ | ✓ |
 | BILLING_WRITE | | | | | | | ✓ | | | | |
 | VIEWER_READ | ✓ | ✓ | | | ✓ | ✓ | | | ✓ | ✓ | ✓ |
 | STUDY_READ | ✓ | ✓ | | | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ |
@@ -175,6 +175,7 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | METERING_READ | | | | | | | | ✓ | ✓ | | ✓ |
 | CHART_READ / RESULTS_READ | ✓ | ✓ | | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | USER_READ / USER_WRITE | | | | | | | | | ✓ | ✓ | |
+| ROLE_READ / ROLE_WRITE / ROLE_DELETE | | | | | | | | | ✓ | ✓ | |
 | ENCOUNTER_WRITE | | | | | | ✓ | | | ✓ | | |
 | NOTE_SIGN | | | | | | ✓ | | | | | |
 | MED_ORDER_READ | ✓ | | | | | ✓ | | | ✓ | | |
@@ -183,6 +184,13 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | ADMIN | | | | | | | | | ✓ | | |
 
 > **ED_PHYSICIAN scope note:** this role spans three personas — PACS-P07 / RIS-P09 (view + critical alerts) and **EMR-P10 (full ED scope: chart, STAT ordering, ED notes)** per `requrements/EMR/01_persona_catalog.md` §EMR-P10 and EMR-US-P10-01. The matrix above grants the **union** (view/alert + ENCOUNTER_WRITE, NOTE_SIGN, MED_ORDER_READ/WRITE, ORDER_WRITE, MAR_READ). Sites preferring separation may assign ED physicians the `PHYSICIAN` role in the EMR context instead, and keep `ED_PHYSICIAN` view-only.
+>
+> **PACSADM addendum (pacs_admin walk, 2026-08-28):** The facility PACS operator role additionally holds
+> `DICOMWEB_READ`/`DICOMWEB_WRITE` (DICOMweb console + STOW), `HL7_READ` (HL7 console +
+> Interface Health), `REPLICA_READ` (Replicas), `ROUTING_READ` (Routing) — code-level
+> grants that enable the actual PACS-ops surfaces. `CRITICAL_RESULTS_WRITE` and
+> `WORKLIST_WRITE` were trimmed (the exam console / MWL are clinical-scoped, hidden
+> for this admin role).
 
 ### Matrix B — EMR roles
 

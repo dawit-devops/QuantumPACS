@@ -17,7 +17,9 @@ Skills invoked: iam-audit, multi-tenant-saas, postgres
 | Credential used | `test.pacs_admin` / `Test@123456` (platform-side, no tenant scope) |
 | Relevant skills | iam-audit, multi-tenant-saas, postgres |
 
-## Reachable Surfaces (sidebar-visible, 15 surfaces)
+## Reachable Surfaces (sidebar-visible, 15 surfaces — Phase 1; +6 PACS-ops after R1 = 21)
+
+Phase 1 (before R1): 15 surfaces. Phase 3 R1 added DICOMWEB_READ/HL7_READ/REPLICA_READ/ROUTING_READ, unlocking 6 more PACS-ops surfaces (rows 16-21).
 
 | # | Section | UI Function | Route | Gate (permissions) | Intended (one line) |
 |---|---|---|---|---|---|
@@ -36,6 +38,12 @@ Skills invoked: iam-audit, multi-tenant-saas, postgres
 | 13 | Billing | Denial Rework | `/billing/denials` | BILLING_READ | Denial list, history |
 | 14 | Billing | Fee Schedule | `/billing/fee-schedule` | BILLING_READ | Fee schedule list, payer contracts, comparison |
 | 15 | Billing | Reconciliation | `/billing/reconciliation` | BILLING_READ | Signed-vs-charged snapshot |
+| 16 | Admin | DICOMweb Server | `/dicomweb` | DICOMWEB_READ (R1) | Server info, metrics, request log |
+| 17 | Admin | DICOMweb Store (STOW-RS) | `/dicomweb/store` | DICOMWEB_READ (R1) | Upload DICOM via STOW-RS |
+| 18 | Admin | DICOMweb Study Browser | `/dicomweb/browser` | DICOMWEB_READ (R1) | Search studies, series/instances, WADO-RS render, archive, Weasis |
+| 19 | Admin | HL7 | `/hl7` | HL7_READ (R1) | Message list, detail, metrics, status, config |
+| 20 | Admin | Interface Health | `/admin/interfaces` | HL7_READ (R1) | Interface list, message browser, metrics, exception queue |
+| 21 | Admin | Replicas | `/replicas` | REPLICA_READ (R1) | Replica sync state, status/delay |
 
 ## Not reachable (by design — admin-scoped hides clinical)
 
@@ -52,17 +60,17 @@ Skills invoked: iam-audit, multi-tenant-saas, postgres
 
 | Surface | Route | Required | pacs_admin has? |
 |---|---|---|---|
-| Replicas | `/replicas` | REPLICA_READ | No |
 | Tenants | `/tenants` | TENANT_READ | No |
 | Service Keys | `/service-keys` | SERVICE_KEY_READ | No |
-| Routing | `/routing` | ROUTING_READ | No |
 | FHIR | `/fhir/*` | SYSTEM_ADMIN | No |
 | Integrations | `/integrations` | SYSTEM_ADMIN, TENANT_ADMIN | No |
-| HL7 | `/hl7` | HL7_READ | No |
-| Interface Health | `/admin/interfaces` | HL7_READ | No |
-| DICOMweb (Server/Store/Browser) | `/dicomweb*` | DICOMWEB_READ | No |
+| Routing | `/routing` | ROUTING_READ → now held (R1) | **Yes — newly reachable** |
 | Maintenance/Backups/Settings | `/admin/maintenance` etc. | SYSTEM_ADMIN | No |
 | Metrics | `/metrics` | METRICS_READ, ANALYTICS_READ | No |
+| DICOMweb Server/Store/Browser | `/dicomweb*` | DICOMWEB_READ → now held (R1) | **Yes — newly reachable** |
+| HL7 | `/hl7` | HL7_READ → now held (R1) | **Yes — newly reachable** |
+| Interface Health | `/admin/interfaces` | HL7_READ → now held (R1) | **Yes — newly reachable** |
+| Replicas | `/replicas` | REPLICA_READ → now held (R1) | **Yes — newly reachable** |
 
 ## Key observations (Phase 2 candidates)
 
