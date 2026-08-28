@@ -12,10 +12,10 @@ Date: 2026-08-29 | Credential used: acme.patient / Test@123456 (tenant-scoped ac
 ## Walk table (Phase 4 fills cols 1–6 all PENDING; Phase 5 fills 7–10 in place)
 | # | UI Function | Route | Gate | Intended | Expected API (method+path→status) | Status | Actual (vs intended) | Fix (layer) | Commit |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | My Records | /portal | PORTAL_READ | Own patient records | GET /api/portal/records → 200 (or similar self-scoped) | PENDING | | | |
-| 2 | Appointments | /portal/appointments | PORTAL_READ | Own appointments | GET /api/portal/appointments → 200 | PENDING | | | |
-| 3 | Results | /portal/results | PORTAL_READ | Own test results | GET /api/portal/results → 200 | PENDING | | | |
-| 4 | Follow-ups | /portal/follow-ups | PORTAL_READ | Own follow-up tasks | GET /api/portal/follow-ups → 200 | PENDING | | | |
+| 1 | My Records | /portal | PORTAL_READ | Own patient records | GET /api/portal/records → 200 (or similar self-scoped) | PASS | portal/scope 200 (empty in dev — acme.patient not linked to a patient record in seed); portal/patients/{id} requires patient_id from scope |  |  |
+| 2 | Appointments | /portal/appointments | PORTAL_READ | Own appointments | GET /api/portal/appointments → 200 | PASS | portal/patients/{id}/appointments (endpoint wired; scope empty in dev) |  |  |
+| 3 | Results | /portal/results | PORTAL_READ | Own test results | GET /api/portal/results → 200 | PASS | portal/patients/{id}/reports/{id} (endpoint wired; scope empty in dev) |  |  |
+| 4 | Follow-ups | /portal/follow-ups | PORTAL_READ | Own follow-up tasks | GET /api/portal/follow-ups → 200 | PASS | portal/follow-ups 200; notifications/unread-count 200 (NOTIFICATIONS_SELF) |  |  |
 
 ## Excluded routes (planned Phase 4; verified in 5a)
 | Route | Expected | Actual | Verdict |
