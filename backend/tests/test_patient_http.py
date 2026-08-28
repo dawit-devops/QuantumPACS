@@ -78,6 +78,13 @@ class TestPatientHandler:
             resp = client.get('/patients/999')
         assert resp.status_code == 404
 
+    def test_get_non_numeric_id_is_404(self):
+        # F5: an MRN routed at the numeric-id endpoint is a client error —
+        # the handler must 404, not crash with ValueError → 500.
+        client = TestClient(self._make_app())
+        resp = client.get('/patients/E2E-CC-1786993844260')
+        assert resp.status_code == 404
+
     def test_missing_permission(self):
         user = User({'id': 1, 'permissions': []})
         client = TestClient(self._make_app(user=user))

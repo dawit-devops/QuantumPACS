@@ -224,8 +224,17 @@ function Orders() {
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({
             // The patient route key is the patients table id, not the MRN.
-            onClick: () => navigate(`/patients/${r.patient_db_id ?? r.patient_id}`),
-            style: { cursor: "pointer" },
+            // Orders created before the patient was registered have no
+            // patients row (patient_db_id null) — falling back to the MRN
+            // 500s server-side (numeric-id endpoint), so skip navigation.
+            onClick: () => {
+              if (r.patient_db_id != null && r.patient_db_id !== "") {
+                navigate(`/patients/${r.patient_db_id}`);
+              }
+            },
+            style: {
+              cursor: r.patient_db_id != null && r.patient_db_id !== "" ? "pointer" : "default",
+            },
           })}
           locale={{
             emptyText:

@@ -211,4 +211,49 @@ describe("Orders board summary + filters (CS8)", () => {
     const scheduleBtns = screen.getAllByRole("button", { name: /^Schedule Doe\^Jane$/ });
     expect(scheduleBtns).toHaveLength(3);
   });
+
+  it("does not navigate to /patients when patient_db_id is missing (F5)", async () => {
+    // Orders created before patient registration carry no patients row:
+    // the MRN fallback used to route to /patients/{MRN} and 500 the server.
+    const Spy = () => {
+      const loc = useLocation();
+      return <span data-testid="spy-loc">{loc.pathname}</span>;
+    };
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/orders"]}>
+          <Spy />
+          <Orders />
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+    await screen.findByText("P1");
+    fireEvent.click(screen.getByText("P1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spy-loc").textContent).toBe("/orders");
+    });
+  });
+
+  it("navigates to the patient page via patient_db_id when present", async () => {
+    mockRequest.mockResolvedValue({
+      data: [row({ patient_db_id: 594 })],
+    });
+    const Spy = () => {
+      const loc = useLocation();
+      return <span data-testid="spy-loc">{loc.pathname}</span>;
+    };
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/orders"]}>
+          <Spy />
+          <Orders />
+        </MemoryRouter>
+      </ThemeProvider>
+    );
+    await screen.findByText("P1");
+    fireEvent.click(screen.getByText("P1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spy-loc").textContent).toBe("/patients/594");
+    });
+  });
 });
