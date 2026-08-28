@@ -225,6 +225,11 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | CDS_ADMIN / REPORT_TEMPLATE_ADMIN | | | | | | | | | ✓ |
 | METERING_READ / TENANT_READ | | | | | | | | | ✓ |
 
+> **PHYS addendum (physician walk, 2026-08-28):** code grants PHYS two legacy additions beyond the matrix row —
+> `FILE_READ` (the always-visible Files page, held by every viewer role) and `DICOMWEB_READ` (intentional legacy reach,
+> user decision 2026-08-27 — the DICOMweb console is open to clinical roles despite being an admin surface). Both are
+> documented in `LEGACY_PHYSICIAN` (permissions.py).
+
 ### Matrix C — Platform roles
 
 | Permission | SYSTEM_ADMIN | TENANT_ADMIN | PATIENT |

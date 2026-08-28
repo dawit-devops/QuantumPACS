@@ -57,6 +57,7 @@ import {
   ADMIN_DASHBOARD_PERMISSIONS,
   workspaceFor,
   isAdminScopedRole,
+  isClinicalScopedRole,
   NON_ADMIN_WORKSPACES,
 } from "../navigator";
 import NotificationBell from "../notifications/NotificationBell";
@@ -916,6 +917,7 @@ function Sidebar() {
   // sections (Reading / Acquisition / QA) are always hidden for them — even
   // when their grants would pass — mirroring navigator.ts landing rules.
   const isAdminScoped = isAdminScopedRole(user?.role);
+  const isClinicalScoped = isClinicalScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
@@ -923,7 +925,23 @@ function Sidebar() {
     ),
   }))
     .filter(({ section, items }) => userWorkspace === section.key || items.length > 0)
-    .filter(({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key));
+    // physician walk R1: the front-desk and portal surfaces belong to
+    // non-admin staff / patient roles. Admin-scoped roles never see them
+    // (existing rule, NON_ADMIN_WORKSPACES); clinical-scoped roles (physician
+    // via SCHEDULE_READ / PATIENT_READ) must not see them either — the
+    // underlying grants unlock the routes but the surfaces are not their
+    // workspace. Mirrors navigator.ts, which excludes frontdesk/portal from
+    // clinical landing. The clinical sections (reading/acquisition/qa/
+    // coordination) stay visible for clinical roles.
+    .filter(({ section }) => {
+      if (section.key === "frontdesk" || section.key === "portal") {
+        return !isAdminScoped && !isClinicalScoped;
+      }
+      if (isAdminScoped && NON_ADMIN_WORKSPACES.has(section.key)) {
+        return false;
+      }
+      return true;
+    });
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);

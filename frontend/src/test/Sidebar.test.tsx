@@ -267,6 +267,22 @@ describe("Sidebar", () => {
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
+  it("hides Front Desk and My Records from a physician even with SCHEDULE_READ/PATIENT_READ", async () => {
+    // physician walk R1: clinical-scoped roles hold SCHEDULE_READ and
+    // PATIENT_READ (they open clinical and coordination surfaces), but the
+    // front-office/patient UIs are not their workspace — hide the sections
+    // while keeping the underlying routes deep-linkable.
+    const user = userEvent.setup();
+    setSession({
+      role: "physician",
+      permissions: ["SCHEDULE_READ", "PATIENT_READ", "PORTAL_READ", "REPORT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
   it("shows the Metrics item for a custom role holding only ANALYTICS_READ", () => {
     setSession({
       role: "analytics_officer",

@@ -5,6 +5,10 @@ provider, follow-up). GET is gated by PATIENT_READ (browse-access for
 coordinator); POST and PATCH gate on CARE_PLAN_WRITE.
 """
 
+from datetime import date, datetime, time
+from uuid import UUID
+import json
+
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
@@ -14,6 +18,23 @@ from api.validate import parse_body
 from api.schemas.ris_care_plans import CarePlanRequest
 from db.conn import get_conn
 from api.tenant_middleware import effective_tenant
+
+
+def _serialize(row):
+    """DB row → JSON dict. asyncpg decodes jsonb to str by default, so the
+    tasks list must be parsed here or the frontend renders/crashes on a
+    string (CarePlans taskProgress calls .filter on it)."""
+    d = dict(row)
+    tasks = d.get('tasks')
+    if isinstance(tasks, str):
+        try:
+            d['tasks'] = json.loads(tasks)
+        except (ValueError, TypeError):
+            d['tasks'] = []
+    for k, v in d.items():
+        if isinstance(v, (date, datetime, time, UUID)):
+            d[k] = str(v)
+    return d
 
 
 class CarePlanHandler(HTTPEndpoint):
