@@ -1,7 +1,8 @@
 # pacs_admin — Walk Plan & Results (Phases 4–5)
 Date: 2026-08-28 | Credential used: test.pacs_admin / Test@123456 via POST /api/v2/login {"tenant":"acme"} | Baseline commit: 19012b3
 
-## Phase 6 — user guide (pending)
+## Phase 6 — user guide (COMPLETE)
+`docs/user-guides/pacs_admin.md` written (sections 1-7: role, sign-in, nav, 16 surfaces, 5 workflows, permissions, troubleshooting). All grants documented with read/write verdicts.
 
 ## Walk order (planned; sidebar order; one line of exercise detail each)
 1. Dashboard `/admin` — health strip, KPI cards, modality/ingestion charts, replicas table, recent activity, quick links, auto-refresh
