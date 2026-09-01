@@ -28,6 +28,19 @@
   flex: 0 0 auto;
 }
 
+/* Chrome economy inside the reading console: each field's formatting
+   toolbar only exists while that field has focus — the three always-on
+   toolbars cost two rows of vertical space for a function used a few
+   times per report. Outside .report-field (standalone usage) the toolbar
+   stays always visible. */
+.report-field .rte-wrapper .rte-toolbar {
+  display: none;
+}
+
+.report-field .rte-wrapper:focus-within .rte-toolbar {
+  display: flex;
+}
+
 .rte-btn {
   display: inline-flex;
   align-items: center;

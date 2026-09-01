@@ -190,28 +190,35 @@ export default function ReportPanel({
   // header rows, and each field scrolls internally instead.
   const editable = canWrite && !submitted && !isFinal;
 
+  // Condensed header: the console topbar owns patient identity, so this row
+  // carries only lifecycle state + the two record tools as icon buttons.
   const versionPriorButtons = report?.id ? (
-    <Space size="small" wrap>
+    <Space size={2}>
       <Button
         size="small"
+        type="text"
         icon={<HistoryOutlined />}
         onClick={toggleVersions}
         aria-expanded={showVersions}
-      >
-        Version history
-      </Button>
+        aria-label="Version history"
+      />
       {exam?.patient_id && (
         <Button
           size="small"
+          type="text"
           icon={<AuditOutlined />}
           onClick={togglePriors}
           aria-expanded={showPriors}
-        >
-          Prior reports
-        </Button>
+          aria-label="Prior reports"
+        />
       )}
     </Space>
   ) : null;
+
+  // Sign-readiness hint: the primary action's disabled state is visible, but
+  // the reason is spelled out (docs/viewer spec — unsafe states are blocked
+  // AND explained).
+  const signHint = !impression.trim() ? "Impression required to sign" : "Ready to sign";
 
   return (
     <div
@@ -223,6 +230,8 @@ export default function ReportPanel({
 
       {editable ? (
         <div className="report-editor">
+          {/* One condensed header row: lifecycle dots + label, template
+              select, and the version/priors tools as icon buttons. */}
           <div className="report-editor-toolbar">
             <span className="report-editor-status" title={steps[step]?.title}>
               {steps.map((s, i) => (
@@ -236,7 +245,7 @@ export default function ReportPanel({
             </span>
             <Select
               placeholder="Apply a template"
-              style={{ width: 220, flexShrink: 0 }}
+              style={{ width: 200, flexShrink: 0 }}
               value={templateName || undefined}
               onChange={onApplyTemplate}
               options={templates.map((t) => ({
@@ -245,17 +254,6 @@ export default function ReportPanel({
               }))}
               showSearch={{ optionFilterProp: "label" }}
             />
-          </div>
-          <div className="report-editor-meta">
-            <span className="report-editor-patient">
-              <strong className="report-editor-patient-name">{exam.patient_name || "—"}</strong>
-              <span className="report-editor-patient-detail">
-                {" "}
-                · {exam.patient_id || "—"} · {exam.patient_birth_date || "—"} ·{" "}
-                {exam.patient_sex || "—"} · {exam.accession_number || "—"}
-                {exam.completed_at ? ` · ${new Date(exam.completed_at).toLocaleString()}` : ""}
-              </span>
-            </span>
             {versionPriorButtons}
           </div>
 
@@ -440,6 +438,13 @@ export default function ReportPanel({
                 Submit for Review
               </Button>
             )}
+            <span
+              className="report-sign-hint"
+              data-state={signHint === "Ready to sign" ? "ok" : "warn"}
+            >
+              {signHint}
+            </span>
+            <span className="report-footer-spacer" />
             {canSign && !isResident && (
               <Button
                 type="primary"

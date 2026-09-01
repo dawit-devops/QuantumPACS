@@ -2,6 +2,7 @@ import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
+  ConfigProvider,
   Layout,
   Tag,
   Button,
@@ -15,12 +16,14 @@ import {
   Form,
   Select,
   Dropdown,
+  theme as antTheme,
+  Tooltip,
 } from "antd";
 import {
+  ArrowLeftOutlined,
   FileTextOutlined,
   CheckCircleOutlined,
   SaveOutlined,
-  DashboardOutlined,
   RollbackOutlined,
   AlertOutlined,
   BookOutlined,
@@ -29,6 +32,8 @@ import {
   FullscreenExitOutlined,
   MoreOutlined,
   PictureOutlined,
+  DashboardOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -52,6 +57,40 @@ const PRIORITY_COLORS: Record<string, string> = {
   stat: "red",
   urgent: "orange",
   routine: "default",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  final: "green",
+  preliminary: "purple",
+  submitted: "cyan",
+  draft: "gold",
+};
+
+// Reading-room antd theme (docs/viewer spec): the console is a dark
+// instrument panel in BOTH app themes — the chrome sits at low luminance so
+// it never competes with grayscale image contrast. Scoped to this route via
+// a nested ConfigProvider; tokens mirror the CSS custom properties below.
+const readingRoomTheme = {
+  algorithm: antTheme.darkAlgorithm,
+  token: {
+    colorPrimary: "#4CC3C9",
+    colorInfo: "#4CC3C9",
+    colorSuccess: "#6BBF8A",
+    colorWarning: "#DBA75A",
+    colorError: "#E2635A",
+    colorBgContainer: "#171B21",
+    colorBgElevated: "#1D222A",
+    colorBgLayout: "#08090B",
+    colorBorder: "#262B34",
+    colorBorderSecondary: "#1C2028",
+    colorText: "#E6E9EE",
+    colorTextSecondary: "#8992A3",
+    colorTextTertiary: "#565D6B",
+    borderRadius: 3,
+    fontFamily:
+      "'IBM Plex Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontSize: 13,
+  },
 };
 
 // NFR-R12-10: report autosave cadence ≤ 10s; drafts must never be lost.
@@ -613,28 +652,34 @@ function ReadingConsole() {
           onSeriesChange={selectSeries}
           onFileChange={selectFile}
         />
-        <Button
-          size="small"
-          onClick={() => setPanelOpen(!panelOpen)}
-          aria-expanded={panelOpen}
-          className="reading-measures-toggle"
-        >
-          <Badge count={measurements.length} size="small" offset={[2, -4]}>
-            <DashboardOutlined />
-          </Badge>
-          Measures
-        </Button>
-        <Button
-          size="small"
-          onClick={() => setKeyImagesOpen(true)}
-          aria-expanded={keyImagesOpen}
-          title="Representative key images for the report"
-        >
-          <Badge count={keyImages.length} size="small" offset={[2, -4]}>
-            <PictureOutlined />
-          </Badge>
-          Key images
-        </Button>
+        <Tooltip title="Measurements">
+          <Button
+            size="small"
+            type="text"
+            onClick={() => setPanelOpen(!panelOpen)}
+            aria-expanded={panelOpen}
+            aria-label="Measurements"
+            className="reading-measures-toggle"
+          >
+            <Badge count={measurements.length} size="small" offset={[2, -4]}>
+              <DashboardOutlined />
+            </Badge>
+          </Button>
+        </Tooltip>
+        <Tooltip title="Representative key images for the report">
+          <Button
+            size="small"
+            type="text"
+            onClick={() => setKeyImagesOpen(true)}
+            aria-expanded={keyImagesOpen}
+            aria-label="Key images"
+            title="Representative key images for the report"
+          >
+            <Badge count={keyImages.length} size="small" offset={[2, -4]}>
+              <PictureOutlined />
+            </Badge>
+          </Button>
+        </Tooltip>
       </div>
       <div className="reading-viewport-body">
         <div className="reading-viewport-main">
@@ -663,6 +708,7 @@ function ReadingConsole() {
                 focusAnnotationUID={focusAnnotationUID}
                 isMobile={isMobile}
                 enableReadingPresets={hasPermission("REPORT_READ")}
+                compactViewport
               />
             </Suspense>
           ) : (
@@ -676,6 +722,22 @@ function ReadingConsole() {
           onToggle={() => setPanelOpen(false)}
           visible
         />
+      </div>
+      {/* Mono readout footer — series/instance position plus the core
+          interaction hints, mirroring the docs/viewer spec's viewport footer. */}
+      <div className="reading-viewport-footer">
+        <span className="reading-viewport-readout">
+          {selectedStudy?.description || selectedStudy?.study_id || "Study"}
+          {selectedSeries
+            ? ` · Series ${selectedSeries.number ?? "—"}${
+                selectedSeries.description ? ` · ${selectedSeries.description}` : ""
+              }`
+            : ""}
+          {files.length > 0 ? ` · ${Math.max(0, fileIndex) + 1}/${files.length}` : ""}
+        </span>
+        <span className="reading-viewport-hint">
+          drag = active tool · <b>[ ]</b> report · <b>F1</b> help
+        </span>
       </div>
     </div>
   );
@@ -739,7 +801,7 @@ function ReadingConsole() {
     <Content
       className={`reading-console${immersive ? " immersive" : ""}`}
       style={{
-        padding: 24,
+        padding: 0,
         flex: 1,
         minHeight: 0,
         display: "flex",
@@ -747,363 +809,413 @@ function ReadingConsole() {
       }}
       role="main"
     >
-      {exam && (
-        <header className="reading-console-header">
-          <Button onClick={goBack} className="report-back">
-            ← Back to worklist
-          </Button>
-          <div className="reading-console-header-title">
-            <h2>
-              <FileTextOutlined /> Report — {exam.accession_number || exam.id.slice(0, 8)}
+      <ConfigProvider theme={readingRoomTheme}>
+        {exam && (
+          <header className="reading-console-header">
+            <Tooltip title="Back to worklist">
+              <Button
+                type="text"
+                className="reading-back"
+                icon={<ArrowLeftOutlined />}
+                onClick={goBack}
+                aria-label="Back to worklist"
+              />
+            </Tooltip>
+            <div className="reading-console-header-title">
+              <span className="reading-console-patient">
+                {exam.patient_name || exam.patient_id || "—"}
+              </span>
+              <span className="reading-console-meta">
+                {[
+                  exam.patient_id,
+                  exam.patient_sex,
+                  exam.patient_birth_date,
+                  exam.accession_number,
+                  exam.modality,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
               <Tag
                 color={PRIORITY_COLORS[exam.priority]}
-                className={exam.priority === "stat" ? "report-stat-tag" : undefined}
+                className={`reading-pill${exam.priority === "stat" ? " report-stat-tag" : ""}`}
               >
                 {(exam.priority || "routine").toUpperCase()}
               </Tag>
-              <Tag
-                color={
-                  isFinal
-                    ? "green"
-                    : status === "preliminary"
-                      ? "purple"
-                      : status === "submitted"
-                        ? "cyan"
-                        : "gold"
-                }
-              >
+              <Tag color={STATUS_COLORS[status] || "gold"} className="reading-pill">
                 {status.toUpperCase()}
               </Tag>
-            </h2>
-            <span className="reading-console-subtitle">
-              {exam.patient_name || exam.patient_id} · {exam.modality} ·{" "}
-              {exam.protocol_name || "No protocol"}
-            </span>
-          </div>
-          <Space wrap>
-            {savedAt && (
-              <span className="reading-console-saved">
-                <SaveOutlined /> {savedAt.toLocaleTimeString()}
-              </span>
-            )}
-            {/* §5.1 manual immersive toggle (Space also toggles). Collapses
-                the sidebar to icon-only and darkens the reading room. */}
-            <Button size="small" aria-pressed={immersive} onClick={toggleImmersive}>
-              {immersive ? "Exit immersive" : "Immersive"}
-            </Button>
-            {/* Viewer full-screen: expand the viewport to the whole console
-                width, hiding the report pane (the draft stays mounted). */}
-            <Button
-              size="small"
-              aria-pressed={viewerFullscreen}
-              onClick={() => setViewerFullscreen((v) => !v)}
-              title={viewerFullscreen ? "Exit viewer full-screen" : "Full-screen viewer"}
-            >
-              {viewerFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            </Button>
-            {/* ADR-028: launch the loaded study in the Weasis web viewer — the
-                study the exam's imaging tree selected (the DICOMweb console in
-                StudyBrowser does the same). The backend re-checks
-                DICOMWEB_READ on /weasis/launch. */}
-            {weasisEnabled && selectedStudy?.study_instance_uid && (
-              <Button
-                size="small"
-                icon={<DesktopOutlined />}
-                onClick={() => openInWeasis(selectedStudy.study_instance_uid!)}
-              >
-                Weasis
-              </Button>
-            )}
-            {/* Sign stays in the header so it remains reachable while the
-                report pane is collapsed ([). A submitted report swaps the
-                sign affordance for the attending's review pair: co-sign or
-                return. */}
-            {!isFinal && canSign && status === "submitted" && (
-              <>
+            </div>
+            <Space wrap size={4} className="reading-console-actions">
+              {savedAt && (
+                <span className="reading-console-saved" title="Last autosave">
+                  <SaveOutlined /> {savedAt.toLocaleTimeString()}
+                </span>
+              )}
+              {/* §5.1 manual immersive toggle (Space also toggles). Collapses
+                  the sidebar to icon-only and darkens the reading room. */}
+              <Tooltip title={immersive ? "Exit immersive (Space)" : "Immersive (Space)"}>
                 <Button
+                  size="small"
+                  type="text"
+                  icon={<DesktopOutlined />}
+                  aria-pressed={immersive}
+                  aria-label="Immersive mode"
+                  onClick={toggleImmersive}
+                />
+              </Tooltip>
+              {/* Viewer full-screen: expand the viewport to the whole console
+                  width, hiding the report pane (the draft stays mounted). */}
+              <Tooltip title={viewerFullscreen ? "Exit viewer full-screen" : "Full-screen viewer"}>
+                <Button
+                  size="small"
+                  type="text"
+                  aria-pressed={viewerFullscreen}
+                  aria-label="Toggle viewer full-screen"
+                  onClick={() => setViewerFullscreen((v) => !v)}
+                  icon={viewerFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                />
+              </Tooltip>
+              {/* ADR-028: launch the loaded study in the Weasis web viewer — the
+                  study the exam's imaging tree selected (the DICOMweb console in
+                  StudyBrowser does the same). The backend re-checks
+                  DICOMWEB_READ on /weasis/launch. */}
+              {weasisEnabled && selectedStudy?.study_instance_uid && (
+                <Tooltip title="Open in Weasis">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<DesktopOutlined />}
+                    aria-label="Weasis"
+                    onClick={() => openInWeasis(selectedStudy.study_instance_uid!)}
+                  />
+                </Tooltip>
+              )}
+              {/* Sign stays in the header so it remains reachable while the
+                  report pane is collapsed ([). A submitted report swaps the
+                  sign affordance for the attending's review pair: co-sign or
+                  return. */}
+              {!isFinal && canSign && status === "submitted" && (
+                <>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<CheckCircleOutlined />}
+                    onClick={() => setSignOpen(true)}
+                  >
+                    Co-sign
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<RollbackOutlined />}
+                    onClick={() => setReturnOpen(true)}
+                  >
+                    Return
+                  </Button>
+                </>
+              )}
+              {!isFinal && canSign && status !== "submitted" && (
+                <Button
+                  size="small"
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   onClick={() => setSignOpen(true)}
                 >
-                  Co-sign
+                  Sign Report
                 </Button>
-                <Button icon={<RollbackOutlined />} onClick={() => setReturnOpen(true)}>
-                  Return
-                </Button>
-              </>
-            )}
-            {!isFinal && canSign && status !== "submitted" && (
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={() => setSignOpen(true)}
-              >
-                Sign Report
-              </Button>
-            )}
-            {/* Secondary actions condensed into a More menu so the header
-                stays one row and the viewer/editor keep the vertical space. */}
-            {(canWrite && report) || canWrite ? (
-              <Dropdown
-                trigger={["click"]}
-                menu={{
-                  items: [
-                    ...(canWrite && report
-                      ? [
-                          {
-                            key: "critical",
-                            icon: <AlertOutlined />,
-                            label: "Flag Critical",
-                            onClick: () => setCriticalOpen(true),
-                          },
-                        ]
-                      : []),
-                    ...(canWrite
-                      ? [
-                          {
-                            key: "teaching",
-                            icon: <BookOutlined />,
-                            label: "Submit to Teaching File",
-                            onClick: () => setTeachOpen(true),
-                          },
-                        ]
-                      : []),
-                  ],
-                }}
-              >
-                <Button size="small" aria-label="More actions" icon={<MoreOutlined />} />
-              </Dropdown>
-            ) : null}
-          </Space>
-        </header>
-      )}
-
-      {/* R-11: submit this case to the teaching file library. */}
-      <Modal
-        title="Submit to Teaching File"
-        open={teachOpen}
-        onCancel={() => setTeachOpen(false)}
-        onOk={submitTeachingFile}
-        confirmLoading={teachSaving}
-        okText="Submit case"
-      >
-        <Form form={teachForm} layout="vertical">
-          <Form.Item
-            name="title"
-            label="Case title"
-            rules={[{ required: true, message: "A title is required" }]}
-          >
-            <Input placeholder="e.g. Classic subdural hematoma" />
-          </Form.Item>
-          <Form.Item name="diagnosis" label="Teaching diagnosis">
-            <Input placeholder="Primary diagnosis" />
-          </Form.Item>
-          <Form.Item name="difficulty" label="Difficulty" initialValue="medium">
-            <Select
-              options={["easy", "medium", "hard"].map((d) => ({
-                value: d,
-                label: d,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="teaching_points" label="Teaching points (one per line)">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item name="differential_diagnosis" label="Differential diagnosis (one per line)">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {FlagCriticalModal && (
-        <FlagCriticalModal
-          visible={criticalOpen}
-          exam={exam}
-          report={report}
-          onClose={() => setCriticalOpen(false)}
-          onSuccess={() => {}}
-        />
-      )}
-
-      {/* Representative key images (2-3) captured from the live viewer —
-          rendered inside the final report document. */}
-      <Modal
-        title="Representative Key Images"
-        open={keyImagesOpen}
-        onCancel={() => setKeyImagesOpen(false)}
-        footer={null}
-        width={480}
-        destroyOnHidden
-      >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          title="Capture up to 3 images from the live viewer"
-          description="Use the 'Capture current view' button below, then Sign to include them in the final report."
-        />
-        <div className="reading-key-images-grid">
-          {keyImages.map((img, i) => (
-            <div key={img.id} className="reading-key-image-card">
-              <div className="reading-key-image-index"># {i + 1}</div>
-              <img src={img.dataUrl || ""} alt={img.caption || `Key image ${i + 1}`} />
-              <Button
-                type="text"
-                danger
-                size="small"
-                onClick={() => removeKeyImage(img.id)}
-                disabled={!canWrite}
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-        </div>
-        {keyImages.length === 0 && (
-          <p style={{ color: "var(--text-secondary, #8c8c8c)" }}>
-            No key images yet — capture one from the viewer.
-          </p>
+              )}
+              {/* Secondary actions condensed into a More menu so the header
+                  stays one row and the viewer/editor keep the vertical space. */}
+              {(canWrite && report) || canWrite ? (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      ...(canWrite && report
+                        ? [
+                            {
+                              key: "critical",
+                              icon: <AlertOutlined />,
+                              label: "Flag Critical",
+                              onClick: () => setCriticalOpen(true),
+                            },
+                          ]
+                        : []),
+                      ...(canWrite
+                        ? [
+                            {
+                              key: "teaching",
+                              icon: <BookOutlined />,
+                              label: "Submit to Teaching File",
+                              onClick: () => setTeachOpen(true),
+                            },
+                          ]
+                        : []),
+                    ],
+                  }}
+                >
+                  <Button
+                    size="small"
+                    type="text"
+                    aria-label="More actions"
+                    icon={<MoreOutlined />}
+                  />
+                </Dropdown>
+              ) : null}
+              <Tooltip title="Keyboard shortcuts (F1)">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<QuestionCircleOutlined />}
+                  aria-label="Keyboard shortcuts"
+                  onClick={() => setShowShortcuts(true)}
+                />
+              </Tooltip>
+            </Space>
+          </header>
         )}
-        <div className="report-actions">
-          <Button
-            type="primary"
-            icon={<PictureOutlined />}
-            loading={capturing}
-            onClick={captureKeyImage}
-            disabled={!canWrite || keyImages.length >= 3}
-          >
-            Capture current view
-          </Button>
-        </div>
-      </Modal>
 
-      {loading && !exam ? (
-        <div className="report-loading">
-          <Spin size="large" />
-        </div>
-      ) : error && !exam ? (
-        <div>
-          <Alert type="error" title="Failed to load exam" description={error} showIcon />
-          <Button style={{ marginTop: 12 }} onClick={goBack}>
-            Back to worklist
-          </Button>
-        </div>
-      ) : !exam ? null : imaging ? (
-        isMobile ? (
-          <div className="reading-console-mobile">
-            <div className="reading-console-mobile-viewport" style={{ minHeight: "55vh" }}>
-              {viewportPane}
-            </div>
-            <div className="reading-console-mobile-report">{reportContent}</div>
-          </div>
-        ) : viewerFullscreen ? (
-          // Viewer full-screen: the viewport spans the whole console width.
-          // The report pane stays mounted (hidden) so toggling back restores
-          // the split without losing the draft.
-          <div className="reading-console-fullscreen">{viewportPane}</div>
-        ) : (
-          <ResizableSplit
-            storageKey="reading-console-split"
-            left={viewportPane}
-            right={reportPane}
-            ariaLabel="Resize report panel"
+        {/* R-11: submit this case to the teaching file library. */}
+        <Modal
+          title="Submit to Teaching File"
+          open={teachOpen}
+          onCancel={() => setTeachOpen(false)}
+          onOk={submitTeachingFile}
+          confirmLoading={teachSaving}
+          okText="Submit case"
+        >
+          <Form form={teachForm} layout="vertical">
+            <Form.Item
+              name="title"
+              label="Case title"
+              rules={[{ required: true, message: "A title is required" }]}
+            >
+              <Input placeholder="e.g. Classic subdural hematoma" />
+            </Form.Item>
+            <Form.Item name="diagnosis" label="Teaching diagnosis">
+              <Input placeholder="Primary diagnosis" />
+            </Form.Item>
+            <Form.Item name="difficulty" label="Difficulty" initialValue="medium">
+              <Select
+                options={["easy", "medium", "hard"].map((d) => ({
+                  value: d,
+                  label: d,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item name="teaching_points" label="Teaching points (one per line)">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+            <Form.Item name="differential_diagnosis" label="Differential diagnosis (one per line)">
+              <Input.TextArea rows={2} />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {FlagCriticalModal && (
+          <FlagCriticalModal
+            visible={criticalOpen}
+            exam={exam}
+            report={report}
+            onClose={() => setCriticalOpen(false)}
+            onSuccess={() => {}}
           />
-        )
-      ) : (
-        <div className="reading-console-full">
+        )}
+
+        {/* Representative key images (2-3) captured from the live viewer —
+          rendered inside the final report document. */}
+        <Modal
+          title="Representative Key Images"
+          open={keyImagesOpen}
+          onCancel={() => setKeyImagesOpen(false)}
+          footer={null}
+          width={480}
+          destroyOnHidden
+        >
           <Alert
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            title="No imaging available"
-            description="No DICOM study matched this exam yet. The report is shown in full width — images will appear here once the study is stored."
+            title="Capture up to 3 images from the live viewer"
+            description="Use the 'Capture current view' button below, then Sign to include them in the final report."
           />
-          {reportContent}
-        </div>
-      )}
+          <div className="reading-key-images-grid">
+            {keyImages.map((img, i) => (
+              <div key={img.id} className="reading-key-image-card">
+                <div className="reading-key-image-index"># {i + 1}</div>
+                <img src={img.dataUrl || ""} alt={img.caption || `Key image ${i + 1}`} />
+                <Button
+                  type="text"
+                  danger
+                  size="small"
+                  onClick={() => removeKeyImage(img.id)}
+                  disabled={!canWrite}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+          {keyImages.length === 0 && (
+            <p style={{ color: "var(--text-secondary, #8c8c8c)" }}>
+              No key images yet — capture one from the viewer.
+            </p>
+          )}
+          <div className="report-actions">
+            <Button
+              type="primary"
+              icon={<PictureOutlined />}
+              loading={capturing}
+              onClick={captureKeyImage}
+              disabled={!canWrite || keyImages.length >= 3}
+            >
+              Capture current view
+            </Button>
+          </div>
+        </Modal>
 
-      <Modal
-        title={status === "submitted" ? "Approve & Co-sign" : "Sign Report"}
-        open={signOpen}
-        onCancel={() => setSignOpen(false)}
-        okText="Sign & Finalize"
-        okButtonProps={{ loading: signing, disabled: !impression.trim() }}
-        destroyOnHidden
-        footer={[
-          <Button key="cancel" onClick={() => setSignOpen(false)}>
-            Cancel
-          </Button>,
-          <Button
-            key="next"
-            type="primary"
-            loading={signing}
-            disabled={!impression.trim()}
-            onClick={() => signReport(true)}
-          >
-            Sign & Next
-          </Button>,
-          <Button
-            key="finalize"
-            disabled={!impression.trim()}
-            loading={signing}
-            onClick={() => signReport(false)}
-          >
-            Sign & Finalize
-          </Button>,
-        ]}
-      >
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          title={
-            status === "submitted"
-              ? "Co-signing finalizes the resident's submitted report as FINAL and records you as the signing radiologist."
-              : "Signing makes this report FINAL and records you as the signing radiologist."
-          }
-        />
-        <p>
-          Impression preview: <em>{impression || "(empty — required to sign)"}</em>
-        </p>
-      </Modal>
+        {loading && !exam ? (
+          <div className="report-loading">
+            <Spin size="large" />
+          </div>
+        ) : error && !exam ? (
+          <div>
+            <Alert type="error" title="Failed to load exam" description={error} showIcon />
+            <Button style={{ marginTop: 12 }} onClick={goBack}>
+              Back to worklist
+            </Button>
+          </div>
+        ) : !exam ? null : imaging ? (
+          isMobile ? (
+            <div className="reading-console-mobile">
+              <div className="reading-console-mobile-viewport" style={{ minHeight: "55vh" }}>
+                {viewportPane}
+              </div>
+              <div className="reading-console-mobile-report">{reportContent}</div>
+            </div>
+          ) : viewerFullscreen ? (
+            // Viewer full-screen: the viewport spans the whole console width.
+            // The report pane stays mounted (hidden) so toggling back restores
+            // the split without losing the draft.
+            <div className="reading-console-fullscreen">{viewportPane}</div>
+          ) : (
+            <ResizableSplit
+              storageKey="reading-console-split"
+              left={viewportPane}
+              right={reportPane}
+              ariaLabel="Resize report panel"
+            />
+          )
+        ) : (
+          <div className="reading-console-full">
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              title="No imaging available"
+              description="No DICOM study matched this exam yet. The report is shown in full width — images will appear here once the study is stored."
+            />
+            {reportContent}
+          </div>
+        )}
 
-      <Modal
-        title="Return Report for Revision"
-        open={returnOpen}
-        onCancel={() => setReturnOpen(false)}
-        onOk={returnReport}
-        okText="Return & Reopen Draft"
-        okButtonProps={{ loading: returning, disabled: !feedback.trim() }}
-        destroyOnHidden
-      >
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          title="The report reopens as an editable draft for the resident, with your feedback attached."
-        />
-        <Input.TextArea
-          rows={4}
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          placeholder="What should the resident revise? (required)"
-        />
-      </Modal>
+        <Modal
+          title={status === "submitted" ? "Approve & Co-sign" : "Sign Report"}
+          open={signOpen}
+          onCancel={() => setSignOpen(false)}
+          okText="Sign & Finalize"
+          okButtonProps={{ loading: signing, disabled: !impression.trim() }}
+          destroyOnHidden
+          footer={[
+            <Button key="cancel" onClick={() => setSignOpen(false)}>
+              Cancel
+            </Button>,
+            <Button
+              key="next"
+              type="primary"
+              loading={signing}
+              disabled={!impression.trim()}
+              onClick={() => signReport(true)}
+            >
+              Sign & Next
+            </Button>,
+            <Button
+              key="finalize"
+              disabled={!impression.trim()}
+              loading={signing}
+              onClick={() => signReport(false)}
+            >
+              Sign & Finalize
+            </Button>,
+          ]}
+        >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            title={
+              status === "submitted"
+                ? "Co-signing finalizes the resident's submitted report as FINAL and records you as the signing radiologist."
+                : "Signing makes this report FINAL and records you as the signing radiologist."
+            }
+          />
+          <p>
+            Impression preview: <em>{impression || "(empty — required to sign)"}</em>
+          </p>
+        </Modal>
 
-      <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+        <Modal
+          title="Return Report for Revision"
+          open={returnOpen}
+          onCancel={() => setReturnOpen(false)}
+          onOk={returnReport}
+          okText="Return & Reopen Draft"
+          okButtonProps={{ loading: returning, disabled: !feedback.trim() }}
+          destroyOnHidden
+        >
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            title="The report reopens as an editable draft for the resident, with your feedback attached."
+          />
+          <Input.TextArea
+            rows={4}
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="What should the resident revise? (required)"
+          />
+        </Modal>
 
-      {immersive && (
+        <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+        {/* §5.1 fixed shortcut status bar — always on (not immersive-only): the
+          spec's statusbar is the console's at-a-glance keyboard map. */}
         <div className="reading-status-bar" data-testid="reader-status-bar">
-          <span>Space immersive</span>
-          <span>[ ] report</span>
-          <span>Ctrl+S save</span>
-          <span>Ctrl+Enter sign</span>
-          <span>Ctrl+Shift+S submit</span>
-          <span>←/→ exam</span>
-          <span>Ctrl+Shift+W worklist</span>
-          <span>F1 help</span>
+          <span className="reading-status-context">
+            {exam ? `${exam.modality || ""} ${exam.protocol_name || ""}` : ""}
+          </span>
+          <span className="reading-status-spacer" />
+          <span className="kbd-hint">
+            <b>Space</b> immersive
+          </span>
+          <span className="kbd-hint">
+            <b>[ ]</b> report
+          </span>
+          <span className="kbd-hint">
+            <b>Ctrl+S</b> save
+          </span>
+          <span className="kbd-hint">
+            <b>Ctrl+⏎</b> sign
+          </span>
+          <span className="kbd-hint">
+            <b>←/→</b> exam
+          </span>
+          <span className="kbd-hint">
+            <b>F1</b> help
+          </span>
         </div>
-      )}
+      </ConfigProvider>
     </Content>
   );
 }

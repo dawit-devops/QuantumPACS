@@ -1,3 +1,40 @@
+/* ═══════════════════════════════════════════════════════════
+   Reading Console — dark reading-room instrument panel
+   Visual spec: docs/viewer/radiology-viewer-design-spec.md
+   (tokens, 3-row shell, mono-for-data type, 3px radius).
+   The console is dark in BOTH app themes: chrome luminance
+   stays low so it never competes with grayscale image contrast.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Reading-room token overrides — scoped to this route only. */
+.reading-console {
+  --bg-void: #08090b;
+  --panel: #111318;
+  --panel-2: #171b21;
+  --panel-3: #1d222a;
+  --rc-border: #262b34;
+  --border-soft: #1c2028;
+  --rc-text: #e6e9ee;
+  --text-dim: #8992a3;
+  --text-faint: #565d6b;
+  --accent: #4cc3c9;
+  --accent-dim: #2c8489;
+  --accent-glow: rgba(76, 195, 201, 0.14);
+  --warn: #dba75a;
+  --critical: #e2635a;
+  --ok: #6bbf8a;
+  --radius-inst: 3px;
+  --font-ui:
+    "IBM Plex Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  background: var(--bg-void);
+  color: var(--rc-text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  gap: 0;
+}
+
 /* Single-page reading room: the console shares one viewport with the viewer
    (no page scroll). The app chrome (ant-layout + .page-content) must clamp to
    the window rather than growing with its content; body-scoped so every other
@@ -13,43 +50,91 @@ body.reading-console-single .page-content {
   overflow: hidden;
 }
 
-.reading-console {
-  gap: 0;
-}
+/* ── Top bar (40px): identity, state pills, icon actions ── */
 
 .reading-console-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.report-back {
-  align-self: center;
-}
-
-.reading-console-header-title h2 {
+  flex: 0 0 40px;
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0;
-  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rc-border);
+  min-width: 0;
+  overflow: hidden;
 }
 
-.reading-console-subtitle {
-  color: var(--text-secondary, #8c8c8c);
+.reading-back {
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+
+.reading-back:hover {
+  color: var(--rc-text);
+  background: var(--panel-3);
+}
+
+.reading-console-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.reading-console-patient {
+  font-weight: 600;
   font-size: 13px;
+  color: var(--rc-text);
 }
 
-.reading-console-saved {
-  color: var(--text-secondary, #8c8c8c);
-  font-size: 12px;
+.reading-console-meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reading-pill.ant-tag {
+  margin: 0;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 16px;
+  border-radius: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 .report-stat-tag {
   font-weight: 700;
+}
+
+.reading-console-actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.reading-console-actions .ant-btn {
+  color: var(--text-dim);
+}
+
+.reading-console-actions .ant-btn:hover {
+  color: var(--accent);
+}
+
+.reading-console-actions .ant-btn-primary {
+  color: #06181a;
+}
+
+.reading-console-saved {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .report-loading {
@@ -58,30 +143,36 @@ body.reading-console-single .page-content {
   padding: 48px 0;
 }
 
-/* ---- Viewport pane (left of the split) ---- */
+/* ── Viewport pane (left of the split) ── */
 
 .reading-viewport-pane {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  background: var(--bg-void);
 }
 
 .reading-viewport-tools {
+  flex: 0 0 34px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  gap: 4px;
+  padding: 0 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rc-border);
 }
 
 .reading-viewport-tools .series-navigator {
   flex: 1;
   min-width: 0;
   border-bottom: none;
+  background: transparent;
 }
 
 .reading-measures-toggle {
-  margin-right: 8px;
+  margin-right: 0;
 }
 
 .reading-viewport-body {
@@ -94,18 +185,108 @@ body.reading-console-single .page-content {
 .reading-viewport-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   position: relative;
+  background: #000;
 }
 
-/* ---- Report pane (right of the split) ---- */
+/* Mono viewport footer (26px) — position readout + interaction hints. */
+.reading-viewport-footer {
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--rc-border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.reading-viewport-readout {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reading-viewport-hint {
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.reading-viewport-hint b,
+.reading-status-bar .kbd-hint b {
+  font-weight: 500;
+  color: var(--rc-text);
+  border: 1px solid var(--rc-border);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+/* CornerstoneElement's desktop .viewportElement is pinned to a fixed 700px
+   height, which overflows this console's 100dvh split — the canvas extends
+   below the visible pane and the overflow:hidden ancestor clips the lower
+   half of the image. In the reading room the viewport must flex-fill the
+   pane instead; the standalone Detail viewer keeps its fixed size. */
+.reading-viewport-main .detail-viewport-root {
+  display: flex;
+  flex-direction: column;
+  height: 100% !important;
+  overflow: hidden;
+}
+
+.reading-viewport-main .detail-viewport-root > [role="toolbar"] {
+  flex: 0 0 auto;
+}
+
+/* Compact reading-room mode: CornerstoneElement drops its own toolbar,
+   quick-tools, thumbnail strip, metadata and reading-presets chrome so the
+   image fills the whole viewport pane. The reading console already provides
+   SeriesNavigator (file/series picker) and the report panel next door; the
+   tools that remain meaningful (rotate/flip/invert) are reachable via the
+   console's immersive/fullscreen surfaces. */
+.reading-compact > [role="toolbar"] {
+  display: none !important;
+}
+
+.reading-compact > .thumbnail-strip {
+  display: none;
+}
+
+.reading-compact > .metadata-collapse {
+  display: none;
+}
+
+.reading-compact > .ant-collapse {
+  display: none;
+}
+
+.reading-compact .ce-primary-cell {
+  flex: 1 1 0%;
+  min-height: 0;
+  position: relative;
+  height: 100%;
+}
+
+.reading-compact .ce-primary-cell .viewportElement {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0;
+}
+
+/* ── Report pane (right of the split) ── */
 
 .reading-report-pane {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: var(--bg-surface, #fff);
-  border-left: 1px solid var(--border-color, #f0f0f0);
+  background: var(--panel);
+  border-left: 1px solid var(--rc-border);
 }
 
 .reading-report-tab {
@@ -114,19 +295,24 @@ body.reading-console-single .page-content {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 44px;
+  width: 32px;
   height: 100%;
   border: none;
-  border-left: 1px solid var(--border-color, #f0f0f0);
-  background: var(--bg-surface, #fff);
-  color: var(--text-secondary, #8c8c8c);
+  border-left: 1px solid var(--rc-border);
+  background: var(--panel);
+  color: var(--text-dim);
   cursor: pointer;
   writing-mode: vertical-rl;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
 }
 
 .reading-report-tab:hover {
-  color: var(--color-primary, #1677ff);
+  color: var(--accent);
+  background: var(--panel-2);
 }
 
 /* Viewer full-screen: the viewport spans the whole console width. */
@@ -137,7 +323,20 @@ body.reading-console-single .page-content {
   min-width: 0;
 }
 
-/* ---- No-imaging fallback ---- */
+/* Splitter — thin instrument seam, accent on hover/drag. */
+.reading-console .resizable-split-handle {
+  background: var(--panel);
+  border-left: 1px solid var(--rc-border);
+  transition: background 0.12s ease;
+}
+
+.reading-console .resizable-split-handle:hover,
+.reading-console .resizable-split-handle:focus-visible,
+.reading-console .resizable-split-handle:active {
+  background: var(--accent-dim);
+}
+
+/* ── No-imaging fallback ── */
 
 /* Representative key images captured from the live viewer. */
 .reading-key-images-grid {
@@ -149,8 +348,8 @@ body.reading-console-single .page-content {
 
 .reading-key-image-card {
   position: relative;
-  border: 1px solid var(--border-color, #f0f0f0);
-  border-radius: 8px;
+  border: 1px solid var(--rc-border);
+  border-radius: 4px;
   overflow: hidden;
   background: #000;
 }
@@ -169,6 +368,7 @@ body.reading-console-single .page-content {
   left: 6px;
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -190,7 +390,7 @@ body.reading-console-single .page-content {
   overflow-y: auto;
 }
 
-/* ---- Mobile: stack viewport over report ---- */
+/* ── Mobile: stack viewport over report ── */
 
 .reading-console-mobile {
   display: flex;
@@ -210,23 +410,16 @@ body.reading-console-single .page-content {
   flex-direction: column;
 }
 
-/* §5 Immersive reader mode — dark reading-room surface. The sidebar renders
-   outside this page's tree, so its 48px icon-strip collapse is driven by
-   body.immersive-reading (toggled by useReaderShortcuts). */
+/* ═══ Immersive reading mode ═══
+   §5: Space/[Space] toggles; the sidebar (outside this tree) collapses to a
+   48px icon strip via body.immersive-reading. The console is already dark —
+   immersive additionally deepens the void around the panels. */
 
-.reading-console.immersive {
-  background: #0a0a0a;
-  color: #e0e0e0;
-}
-
-.reading-console.immersive .reading-console-header {
-  background: #111;
-  border-bottom-color: #333;
-}
-
-.reading-console.immersive .reading-console-subtitle,
-.reading-console.immersive .reading-console-saved {
-  color: #9aa0aa;
+.reading-console.immersive .reading-console-header,
+.reading-console.immersive .reading-viewport-tools,
+.reading-console.immersive .reading-viewport-footer,
+.reading-console.immersive .reading-report-pane {
+  background: #0d0f12;
 }
 
 body.immersive-reading .ant-layout-sider {
@@ -241,20 +434,88 @@ body.immersive-reading .ant-layout-sider .nav-text {
   display: none;
 }
 
-/* §5.1 fixed shortcut status bar; left offset clears the collapsed strip. */
+/* §5.1 fixed shortcut status bar (26px) — always on; left offset clears the
+   collapsed strip only while immersive. */
 .reading-status-bar {
+  flex: 0 0 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--rc-border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+body.immersive-reading .reading-status-bar {
   position: fixed;
   bottom: 0;
   left: 48px;
   right: 0;
-  height: 28px;
-  background: #111;
-  color: #e0e0e0;
-  border-top: 1px solid #333;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  gap: 24px;
   z-index: 50;
+  background: #0d0f12;
+}
+
+.reading-status-context {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-dim);
+}
+
+.reading-status-spacer {
+  flex: 1;
+}
+
+.reading-status-bar .kbd-hint {
+  flex: 0 0 auto;
+}
+
+/* ── Focus visibility (a11y) — accent rings on every interactive element ── */
+
+.reading-console .ant-btn:focus-visible,
+.reading-console .resizable-split-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.reading-report-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Thin instrument-panel scrollbars, scoped to the console ── */
+
+.reading-console ::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.reading-console ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.reading-console ::-webkit-scrollbar-thumb {
+  background: var(--rc-border);
+  border-radius: 5px;
+}
+
+.reading-console ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+/* ── Reduced motion: kill the pulse/transition layer entirely ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-console *,
+  .reading-console *::before,
+  .reading-console *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

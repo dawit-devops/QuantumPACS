@@ -444,7 +444,8 @@ describe("ReadingConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      // The name renders twice (console topbar + branded report document).
+      expect(screen.getAllByText("John Doe").length).toBeGreaterThan(0);
     });
     expect(screen.getByText("Read-only report")).toBeInTheDocument();
     expect(screen.queryByText("Save Draft")).not.toBeInTheDocument();
@@ -557,7 +558,9 @@ describe("ReadingConsole", () => {
     renderConsole();
 
     await waitFor(() => {
-      expect(screen.getByText("John Doe")).toBeInTheDocument();
+      // The name renders twice (console topbar + branded report document for
+      // the submitted/locked report).
+      expect(screen.getAllByText("John Doe").length).toBeGreaterThan(0);
     });
     // The attending's review actions replace the plain sign button.
     expect(screen.getAllByRole("button", { name: /approve & co-sign/i }).length).toBeGreaterThan(0);
