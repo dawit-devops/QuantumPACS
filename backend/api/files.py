@@ -132,6 +132,19 @@ class Upload(HTTPEndpoint):
         file = up.file
 
         header = file.read(256)
+
+        # Real-world DICOM deliveries (CD/DVD, web downloads, modality export
+        # tools) arrive as .zip archives containing many instances. Detect by
+        # the PK\x03\x04 local-file-header magic (more robust than extension —
+        # some archives are named without it) and fan each member through the
+        # same persistence path as a single upload so dedup/quota all apply.
+        if header[:4] == b'PK\x03\x04' or (filename or '').lower().endswith('.zip'):
+            remaining = file.read()
+            content = header + remaining
+            if len(content) > max_bytes:
+                return api_error('FILE_TOO_LARGE', f'File exceeds {max_mb}MB limit', status=413)
+            return await self._process_zip_upload(request, content, max_bytes)
+
         if not header or not _is_dicom(header):
             return api_error('INVALID_FILE', 'Not a valid DICOM file', status=400)
 
@@ -237,6 +250,125 @@ class Upload(HTTPEndpoint):
                     {'type': 'notifications'},
                 )
         return ok({'id': filedata['id'], 'duplicate': False})
+
+    async def _process_zip_upload(self, request, content, max_bytes):
+        """Extract and store every DICOM member of a .zip upload.
+
+        A zip may mix DICOM instances with other content (patient folders,
+        manifests, hidden OS files). Each member is validated by the same
+        DICM magic check and required-tag check as a single upload, then
+        stored individually so one bad member never fails the whole archive.
+        """
+        from zipfile import ZipFile, BadZipFile
+
+        stored = 0
+        duplicates = 0
+        failed = 0
+        skipped = 0
+        errors = []
+
+        tenant_slug = getattr(request.state, 'tenant_slug', None)
+        tenant_info = getattr(request.state, 'tenant', None) or {}
+        quota_bytes = int(tenant_info.get('storage_quota_bytes') or 0)
+        current_used = None
+        if tenant_slug:
+            current_used = await _tenant_storage_used(request, tenant_info)
+
+        async def store_member(member_bytes, member_name):
+            nonlocal stored, duplicates, failed, current_used
+            if not _is_dicom(member_bytes):
+                skipped += 1
+                return
+            buf = io.BytesIO(member_bytes)
+            try:
+                ds = parse_dcm(buf)
+            except Exception as e:
+                failed += 1
+                errors.append(f'{member_name}: parse error: {e}')
+                return
+            missing = [t for t in _REQUIRED_DICOM_TAGS if not ds.get(t)]
+            if missing:
+                failed += 1
+                errors.append(f'{member_name}: missing tags: {", ".join(missing)}')
+                return
+            hsh = hash_file(buf)
+            new_bytes = len(member_bytes)
+            if tenant_slug and quota_bytes > 0 and current_used is not None:
+                if current_used + new_bytes > quota_bytes:
+                    failed += 1
+                    errors.append(f'{member_name}: tenant quota exceeded')
+                    return
+                current_used += new_bytes
+
+            result = await self._persist_zip_member(
+                buf, ds, member_name, new_bytes, hsh, tenant_slug,
+            )
+            if result == 'stored':
+                stored += 1
+            elif result == 'duplicate':
+                duplicates += 1
+            else:
+                failed += 1
+                errors.append(f'{member_name}: store failed')
+
+        try:
+            with ZipFile(io.BytesIO(content)) as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        skipped += 1
+                        continue
+                    try:
+                        member_bytes = zf.read(member)
+                    except Exception as e:
+                        failed += 1
+                        errors.append(f'{member.filename}: unreadable: {e}')
+                        continue
+                    if len(member_bytes) > max_bytes:
+                        failed += 1
+                        errors.append(f'{member.filename}: exceeds size limit')
+                        continue
+                    await store_member(member_bytes, member.filename)
+        except BadZipFile as e:
+            return api_error('INVALID_ZIP', f'Not a valid zip archive: {e}', status=400)
+
+        return ok({
+            'format': 'zip',
+            'stored': stored,
+            'duplicates': duplicates,
+            'failed': failed,
+            'skipped': skipped,
+            'errors': errors[:20],
+        })
+
+    async def _persist_zip_member(self, buf, ds, member_name, new_bytes, hsh, tenant_slug):
+        """Persist one zip member through the same storage path as a single upload."""
+        async with get_conn() as conn:
+            async with conn.transaction():
+                master = await Replica(conn).master()
+                if not master:
+                    return False
+                existing = await Files(conn).find_by_hash(hsh)
+                if existing:
+                    return 'duplicate'
+                file_data = {
+                    'name': os.path.basename(member_name),
+                    'master': master['id'],
+                    'hash': hsh,
+                }
+                file_data.update(ds)
+                file_data['size'] = new_bytes
+                file_data['tenant'] = tenant_slug or None
+                filedata = await Files(conn).insert_or_select(file_data)
+                buf.seek(0)
+                storage = await Storage.get(master)
+                try:
+                    ret = await storage.copy(buf, filedata)
+                except Exception:
+                    return False
+                await ReplicaFiles(conn).add(master['id'], [{'id': filedata['id'], **ret}])
+                if tenant_slug:
+                    await _persist_storage_used(conn, tenant_slug, new_bytes)
+                return 'stored'
 
 
 def zip_files(files, zipname):

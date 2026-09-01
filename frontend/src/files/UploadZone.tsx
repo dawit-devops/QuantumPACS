@@ -12,6 +12,13 @@ function nextFileId(): string {
   return `upload-${Date.now()}-${fileIdCounter}`;
 }
 
+function getCsrfToken(): string {
+  // Read the csrf_token cookie (non-HttpOnly, set on login) for the
+  // double-submit CSRF pattern; fall back to "1" (the dev-mode default).
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? match[1] || "1" : "1";
+}
+
 function uploadFile(
   file: File,
   onProgress: (pct: number) => void,
@@ -47,7 +54,7 @@ function uploadFile(
     xhr.open("POST", `${API_URL}/files/upload`);
     // IAM audit H-2: the HttpOnly access cookie authenticates the upload.
     xhr.withCredentials = true;
-    xhr.setRequestHeader("X-CSRF-Token", "1");
+    xhr.setRequestHeader("X-CSRF-Token", getCsrfToken());
     xhr.send(formData);
   });
 }
@@ -112,6 +119,27 @@ export function UploadZone({ reload }: UploadZoneProps) {
                 progress: 100,
                 error: "File already exists",
               });
+            } else if (json.format === "zip") {
+              // A .zip archive fans out into many instances server-side; show
+              // the per-archive tally instead of treating it as one file.
+              const summary = [
+                `${json.stored ?? 0} stored`,
+                `${json.duplicates ?? 0} duplicates`,
+                `${json.failed ?? 0} failed`,
+                `${json.skipped ?? 0} skipped`,
+              ].join(", ");
+              updateFile(id, {
+                status: json.failed > 0 ? "error" : "done",
+                progress: 100,
+                info: summary,
+                error:
+                  json.failed > 0
+                    ? `${json.failed} instance(s) failed`
+                    : undefined,
+              });
+              reload?.();
+              setTimeout(() => removeFile(id), 3000);
+              return;
             } else if (json.error) {
               updateFile(id, {
                 status: "error",
@@ -323,7 +351,7 @@ export function UploadZone({ reload }: UploadZoneProps) {
           id="upload-file-input"
           type="file"
           multiple
-          accept=".dcm,application/dicom"
+          accept=".dcm,application/dicom,.zip,application/zip"
           onChange={handleFileSelect}
           style={{ display: "none" }}
         />
@@ -335,7 +363,7 @@ export function UploadZone({ reload }: UploadZoneProps) {
           }}
         />
         <p style={{ margin: 0, fontWeight: 500 }}>
-          Drag & drop DICOM files here
+          Drag & drop DICOM or .zip files here
         </p>
         <p
           style={{

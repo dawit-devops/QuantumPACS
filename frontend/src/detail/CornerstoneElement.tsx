@@ -122,6 +122,11 @@ interface CEProps {
   isMobile?: boolean;
   /** Enables the FR-R12-15 reading-presets panel + layout grid for REPORT_READ holders. */
   enableReadingPresets?: boolean;
+  /** Compact reading-room mode: drop the viewer's own toolbar / thumbnail /
+   * metadata / presets chrome so the reading console's split gives the image
+   * and the report editor maximum space. The console provides its own
+   * SeriesNavigator for file/series selection. */
+  compactViewport?: boolean;
   [key: string]: any;
 }
 
@@ -880,7 +885,7 @@ export default function CornerstoneElement(props: CEProps) {
 
   return (
     <div
-      className="detail-viewport-root"
+      className={`detail-viewport-root${props.compactViewport ? " reading-compact" : ""}`}
       style={style}
       role="region"
       aria-label="DICOM image viewer"

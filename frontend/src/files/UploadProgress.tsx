@@ -17,6 +17,7 @@ export interface UploadFileItem {
   status: UploadStatus;
   progress: number;
   error?: string;
+  info?: string;
   controller?: AbortController;
 }
 
@@ -143,6 +144,14 @@ export function UploadProgress({
               {file.status === "error" && file.error && (
                 <Text type="danger" style={{ fontSize: 11, display: "block" }}>
                   {file.error}
+                </Text>
+              )}
+              {file.info && (
+                <Text
+                  type={file.status === "error" ? "danger" : "secondary"}
+                  style={{ fontSize: 11, display: "block" }}
+                >
+                  {file.info}
                 </Text>
               )}
             </div>
