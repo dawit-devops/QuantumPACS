@@ -82,15 +82,32 @@ async function uploadDicom(
  * Asserts the full happy-path render contract for an uploaded file id: the
  * header shows the stored name, the loading overlay clears, the WW/WC readout
  * goes live, the WebGL canvas is painted with multi-shade content, no error
- * alert appears, and the pixel payload was fetched via the wadouri route.
+ * alert appears, and the pixel payload was fetched via the wadouri route
+ * (or, with opts.expectWadors, via WADO-RS: /metadata registered + multipart
+ * pixel GET, and no wadouri fetch at all).
  */
-async function assertViewerRenders(page: Page, fileId: number) {
-  // The viewer must pull pixels via the self-contained wadouri route
-  // (/files/{id}/data) — a regression to the metadata-less wadors path is
-  // exactly the samplesPerPixel crash this pipeline used to have.
+async function assertViewerRenders(
+  page: Page,
+  fileId: number,
+  opts: { expectWadors?: boolean } = {},
+) {
   let wadouriFetched = false;
+  let metadataFetched = false;
+  let wadorsPixelFetched = false;
   page.on("request", (req) => {
-    if (req.url().includes(`/files/${fileId}/data`)) wadouriFetched = true;
+    const url = req.url();
+    if (url.includes(`/files/${fileId}/data`)) wadouriFetched = true;
+    if (opts.expectWadors && url.includes("/dicomweb/studies/")) {
+      if (url.endsWith("/metadata")) metadataFetched = true;
+      // Instance pixel GET — ends right after /instances/{sop} (the
+      // /metadata path above has an extra segment and cannot match).
+      if (
+        req.method() === "GET" &&
+        /\/instances\/[^/]+$/.test(new URL(url).pathname)
+      ) {
+        wadorsPixelFetched = true;
+      }
+    }
   });
 
   // Resolve the stored name from the API — hash-dedup can return an earlier
@@ -172,12 +189,21 @@ async function assertViewerRenders(page: Page, fileId: number) {
   expect(probe.distinct).toBeGreaterThan(1);
 
   // No load errors surfaced in the viewer surface (role=alert is the
-  // viewportError overlay), and the pixel payload was fetched once via the
-  // wadouri route.
+  // viewportError overlay), and the pixel payload was fetched via the
+  // expected route(s).
   await expect(
     page.locator(".detail-viewport-root [role='alert']"),
   ).toHaveCount(0);
-  expect(wadouriFetched).toBe(true);
+  if (opts.expectWadors) {
+    // F6.6a: the wadors path must have registered instance metadata and
+    // fetched pixels over WADO-RS multipart — and must NOT have fallen back
+    // to wadouri (a silent fallback would make this a false-positive pass).
+    expect(metadataFetched).toBe(true);
+    expect(wadorsPixelFetched).toBe(true);
+    expect(wadouriFetched).toBe(false);
+  } else {
+    expect(wadouriFetched).toBe(true);
+  }
 }
 
 /**
@@ -202,6 +228,22 @@ test.describe("DICOM viewer render", () => {
     await loginAsAdmin(page);
     const { id: fileId } = await uploadDicom(page);
     await assertViewerRenders(page, fileId);
+  });
+
+  test("wadors option renders the study via WADO-RS — metadata registered, multipart pixels, no wadouri fallback", async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    const { id: fileId } = await uploadDicom(page);
+    // F6.6a opt-in: the localStorage flag switches pixel retrieval from the
+    // per-file wadouri route to WADO-RS (instance /metadata registration +
+    // multipart pixel GET against /dicomweb/studies/...). The backend must
+    // answer with a transfer-syntax Content-Type parameter per PS3.18
+    // §11.4.1 or the loader misparses the Explicit VR LE pixels.
+    await page.addInitScript(() => {
+      localStorage.setItem("qpx.viewer.wadors", "1");
+    });
+    await assertViewerRenders(page, fileId, { expectWadors: true });
   });
 
   test("failed pixel fetch surfaces the error overlay instead of hanging", async ({

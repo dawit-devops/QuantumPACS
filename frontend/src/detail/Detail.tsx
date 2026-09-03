@@ -33,6 +33,7 @@ import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import { isAdminScopedRole } from "../navigator";
 import { API_URL } from "../config";
 import { getWeasisStatus, openInWeasis } from "../api/weasis";
+import { prepareWadoRsImage, wadorsRenderEnabled } from "./wadors";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
 const StudyCompare = React.lazy(() => import("./viewer/StudyCompare"));
 import KeyValueTable from "./KeyValueTable";
@@ -96,17 +97,19 @@ function Detail() {
       .catch(() => setWeasisEnabled(false));
   }, []);
 
-  // Pixels always come from the self-contained wadouri loader
-  // (`wadouri:/files/{id}/data`): the v5 dicom-image-loader naturalized path
-  // parses the served file and registers every metadata module (IMAGE_PIXEL
-  // included) itself, so no separate metadata fetch is needed. The DICOMweb
-  // `wadors:` route is NOT used for rendering — it requires the app to
-  // pre-register instance metadata (addDicomWebInstance) and the backend
-  // WADO-RS response to carry a transfer-syntax Content-Type parameter;
-  // without either, wadors imageIds crash in getImageFrame with "Cannot read
-  // properties of undefined (reading 'samplesPerPixel')". Study-level
-  // DICOMweb queries (searchStudies / StudyBrowser) are unaffected — only
-  // pixel retrieval is switched.
+  // Pixels come from the self-contained wadouri loader (`wadouri:/files/{id}/data`)
+  // by default: the v5 dicom-image-loader naturalized path parses the served
+  // file and registers every metadata module (IMAGE_PIXEL included) itself, so
+  // no separate metadata fetch is needed.
+  //
+  // F6.6a adds an opt-in WADO-RS path (localStorage `qpx.viewer.wadors=1`):
+  // the instance's /metadata dicom+json document is registered into the
+  // loader's metaDataManager and the wadors: imageId is rendered instead.
+  // The backend WADO-RS multipart response now carries a transfer-syntax
+  // Content-Type parameter per PS3.18 §11.4.1 (required for the loader to
+  // pick the stored Explicit VR LE decoding path). Any failure — missing
+  // UIDs, metadata fetch error, permission gap — falls back to wadouri, so
+  // the option can never brick the viewer.
   const imageUrl = image;
 
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
@@ -120,6 +123,40 @@ function Detail() {
     setTimeout(() => setFocusAnnotationUID(null), 100);
   }, []);
 
+  // Resolve the pixel source for the currently open file. Default: wadouri.
+  // F6.6a: when enabled, try WADO-RS (metadata registration + wadors imageId)
+  // and degrade to wadouri on any failure.
+  const resolvePixelSource = useCallback(
+    async (
+      file: FileRecord,
+      curStudy: FileStudy | null,
+      curSeries: FileSeries | null,
+    ): Promise<string> => {
+      const wadouri = `wadouri:${API_URL}/files/${file.id}/data`;
+      if (
+        !wadorsRenderEnabled() ||
+        !curStudy?.study_instance_uid ||
+        !curSeries?.series_instance_uid
+      ) {
+        return wadouri;
+      }
+      const node = (curSeries.files ?? []).find((f) => f.id === file.id);
+      if (!node?.sop_instance_uid) {
+        return wadouri;
+      }
+      try {
+        return await prepareWadoRsImage(
+          curStudy.study_instance_uid,
+          curSeries.series_instance_uid,
+          node.sop_instance_uid,
+        );
+      } catch {
+        return wadouri;
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     // Do not fetch the study without viewer perms: the DICOM payload itself
     // is the protected resource, so mounting the viewer must not pull it.
@@ -128,25 +165,31 @@ function Detail() {
     setError(null);
     const { id } = params;
 
-    setImage(`wadouri:${API_URL}/files/${id}/data`);
-
     getFile(id as string)
       .then((data: FileRecord) => {
         // Mount the viewer only once all metadata is in place: the remount
         // hack below used to force a second mount because the viewer could
         // initialize with empty props. CornerstoneElement now mounts
         // after-metadata and its checkReady loop covers engine readiness.
+        let curStudy: FileStudy | null = null;
+        let curSeries: FileSeries | null = null;
         for (const s of data.patient?.studies ?? []) {
           if (s.id === data.study_db_id) {
-            setStudy(s);
+            curStudy = s;
             for (const sr of s.series ?? []) {
               if (sr.id === data.series_db_id) {
-                setSeries(sr);
+                curSeries = sr;
               }
             }
           }
         }
+        setStudy(curStudy);
+        setSeries(curSeries);
         setData(data);
+        return resolvePixelSource(data, curStudy, curSeries);
+      })
+      .then((img: string) => {
+        setImage(img);
         setLoading(false);
       })
       .catch((e: Error) => {
