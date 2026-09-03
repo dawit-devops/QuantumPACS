@@ -49,6 +49,8 @@ import { getWeasisStatus, openInWeasis } from "../api/weasis";
 import { parseAnnotations } from "../detail/MeasurementPanel";
 import MeasurementPanel from "../detail/MeasurementPanel";
 import { KeyboardShortcuts } from "../detail/KeyboardShortcuts";
+import { sanitizeReportHtml } from "./sanitizeReportHtml";
+import ReportDocument from "../common/ReportDocument";
 import "./ReadingConsole.css";
 
 const Content = Layout.Content;
@@ -58,6 +60,9 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "orange",
   routine: "default",
 };
+
+// §5.2 cine: ~4 frames/second (250 ms), a comfortable review rate.
+const CINE_FPS_INTERVAL_MS = 250;
 
 const STATUS_COLORS: Record<string, string> = {
   final: "green",
@@ -150,8 +155,25 @@ function ReadingConsole() {
   const [status, setStatus] = useState("draft");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [dirty, setDirty] = useState(false);
+  // §4.4 autosave status string — flips to "Saving…" then "Autosaved just
+  // now" after an edit so the radiologist sees the draft is persisted.
+  const [autosaveStatus, setAutosaveStatus] = useState("");
   const [signOpen, setSignOpen] = useState(false);
   const [signing, setSigning] = useState(false);
+  // §4.3 / §5.2 cine play/pause — Space toggles; the interval advances the
+  // active series stack at ~4 fps. Cleaned up on unmount or when cine stops.
+  const [cinePlaying, setCinePlaying] = useState(false);
+  const cineTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // §5.2 Space toggles cine; stopping is also called on manual navigation.
+  const toggleCine = useCallback(() => {
+    setCinePlaying((prev) => !prev);
+  }, []);
+  const stopCine = useCallback(() => {
+    setCinePlaying(false);
+  }, []);
+  // §4.4 Preview renders the branded final report without signing (finalizing
+  // stays a separate, confirmed action).
+  const [previewOpen, setPreviewOpen] = useState(false);
   // R-16: per-recipient ORU delivery receipts fetched after signing.
   const [distribution, setDistribution] = useState<any[] | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -255,6 +277,22 @@ function ReadingConsole() {
     }
   };
 
+  // §4.3 Key Images → report bridge: "Insert →" appends a figure reference
+  // (index + caption) onto the Findings field as sanitized HTML, so the
+  // radiologist can cite a captured frame while reporting.
+  const insertKeyImageToReport = useCallback(
+    (img: any, index: number) => {
+      const caption = img.caption || `Key image ${index + 1}`;
+      const ref = `<div class="key-image-ref">▸ [Fig ${index + 1}] — ${caption}</div>`;
+      setFindings((prev) => sanitizeReportHtml(prev ? prev + ref : ref));
+      dirtyRef.current = true;
+      setDirty(true);
+      setKeyImagesOpen(false);
+      message?.success?.(`Key image ${index + 1} inserted into Findings`);
+    },
+    [setKeyImagesOpen]
+  );
+
   const saveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   // The autosave interval is registered once; read the live dirty flag AND the
   // latest saveDraft via refs so the interval closure never sees a stale value
@@ -296,6 +334,7 @@ function ReadingConsole() {
       if (!canWrite) return true;
       dirtyRef.current = false;
       setDirty(false);
+      setAutosaveStatus("Saving…");
       try {
         await request(`reports/${examId}`, {
           // ExamReportHandler only implements GET/PUT — POST returns 405
@@ -313,6 +352,7 @@ function ReadingConsole() {
           },
         });
         setSavedAt(new Date());
+        setAutosaveStatus("Autosaved just now");
         if (!silent) message?.success?.("Draft saved");
         return true;
       } catch (e: any) {
@@ -320,6 +360,7 @@ function ReadingConsole() {
         // the autosave loop retries (NFR-R12-10).
         dirtyRef.current = true;
         setDirty(true);
+        setAutosaveStatus("Save failed — retrying");
         if (!silent) message?.error?.(e.message || "Save failed");
         return false;
       }
@@ -584,7 +625,15 @@ function ReadingConsole() {
     goNextExam: () => navigateExam(nextExamId()),
     goToWorklist: goBack,
     showHelp: () => setShowShortcuts(true),
+    toggleCine,
   });
+
+  // Stop cine if the console unmounts mid-loop.
+  useEffect(() => {
+    return () => {
+      if (cineTimerRef.current) clearInterval(cineTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -626,6 +675,40 @@ function ReadingConsole() {
   const files = selectedSeries?.files ?? [];
   const fileIndex = files.findIndex((f) => f.id === selectedFile?.id);
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
+
+  // §5.2 cine loop — advance the active series stack on a timer while
+  // playing. Stops automatically when only one (or zero) frames exist, so
+  // Space on a single static image never appears to do nothing silently.
+
+  // Any manual navigation (series/study/file) must halt cine first, otherwise
+  // the timer keeps advancing a stack the user is no longer viewing.
+  const handleChangeFileCineGuard = useCallback(
+    (index: number) => {
+      if (cinePlaying) stopCine();
+      selectFile(index);
+    },
+    [cinePlaying, selectFile, stopCine]
+  );
+
+  useEffect(() => {
+    if (!cinePlaying || files.length <= 1) {
+      if (cineTimerRef.current) {
+        clearInterval(cineTimerRef.current);
+        cineTimerRef.current = null;
+      }
+      return;
+    }
+    cineTimerRef.current = setInterval(() => {
+      const next = (fileIndex + 1) % files.length;
+      selectFile(next);
+    }, CINE_FPS_INTERVAL_MS);
+    return () => {
+      if (cineTimerRef.current) {
+        clearInterval(cineTimerRef.current);
+        cineTimerRef.current = null;
+      }
+    };
+  }, [cinePlaying, files.length, fileIndex, selectFile]);
 
   // CornerstoneElement's `file` prop — the tree node enriched with the
   // series modality (reading presets) and patient context (metadata panel).
@@ -699,7 +782,7 @@ function ReadingConsole() {
               <CornerstoneElement
                 file={ceFile}
                 files={files}
-                changeFile={selectFile}
+                changeFile={handleChangeFileCineGuard}
                 image={imageUrl}
                 progressive={true}
                 visible
@@ -774,11 +857,13 @@ function ReadingConsole() {
       }}
       onApplyTemplate={applyTemplate}
       onSaveDraft={() => saveDraft(false)}
+      onPreview={() => setPreviewOpen(true)}
       onRestoreVersion={restoreVersion}
       onMarkPreliminary={markPreliminary}
       onSubmitDraft={submitReport}
       onRequestSign={() => setSignOpen(true)}
       onReturnClick={() => setReturnOpen(true)}
+      autosaveStatus={autosaveStatus}
     />
   );
 
@@ -821,6 +906,7 @@ function ReadingConsole() {
                 aria-label="Back to worklist"
               />
             </Tooltip>
+            <span className="reading-console-brand">QuantumPACS</span>
             <div className="reading-console-header-title">
               <span className="reading-console-patient">
                 {exam.patient_name || exam.patient_id || "—"}
@@ -1044,15 +1130,27 @@ function ReadingConsole() {
               <div key={img.id} className="reading-key-image-card">
                 <div className="reading-key-image-index"># {i + 1}</div>
                 <img src={img.dataUrl || ""} alt={img.caption || `Key image ${i + 1}`} />
-                <Button
-                  type="text"
-                  danger
-                  size="small"
-                  onClick={() => removeKeyImage(img.id)}
-                  disabled={!canWrite}
-                >
-                  Remove
-                </Button>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<FileTextOutlined />}
+                    aria-label={`Insert key image ${i + 1} into Findings`}
+                    onClick={() => insertKeyImageToReport(img, i)}
+                    disabled={!canWrite}
+                  >
+                    Insert →
+                  </Button>
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    onClick={() => removeKeyImage(img.id)}
+                    disabled={!canWrite}
+                  >
+                    Remove
+                  </Button>
+                </Space.Compact>
               </div>
             ))}
           </div>
@@ -1187,6 +1285,45 @@ function ReadingConsole() {
           />
         </Modal>
 
+        <Modal
+          title="Report Preview"
+          open={previewOpen}
+          onCancel={() => setPreviewOpen(false)}
+          footer={[
+            <Button key="close" onClick={() => setPreviewOpen(false)}>
+              Close
+            </Button>,
+          ]}
+          width={720}
+          destroyOnHidden
+        >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            title="This is how the signed report will appear — nothing is finalized until you sign."
+          />
+          {exam && (
+            <ReportDocument
+              meta={{
+                patient_name: exam.patient_name,
+                patient_id: exam.patient_id,
+                patient_birth_date: exam.patient_birth_date,
+                patient_sex: exam.patient_sex,
+                accession_number: exam.accession_number,
+                modality: exam.modality,
+                requested_procedure_desc: exam.requested_procedure_desc,
+                referring_physician: exam.referring_physician,
+                priority: exam.priority,
+                protocol_name: exam.protocol_name,
+              }}
+              findings={findings}
+              impression={impression}
+              recommendations={recommendations}
+            />
+          )}
+        </Modal>
+
         <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
         {/* §5.1 fixed shortcut status bar — always on (not immersive-only): the
@@ -1196,8 +1333,9 @@ function ReadingConsole() {
             {exam ? `${exam.modality || ""} ${exam.protocol_name || ""}` : ""}
           </span>
           <span className="reading-status-spacer" />
+          {cinePlaying && <span className="kbd-hint reading-cine-live">▶ CINE</span>}
           <span className="kbd-hint">
-            <b>Space</b> immersive
+            <b>Space</b> cine
           </span>
           <span className="kbd-hint">
             <b>[ ]</b> report
@@ -1212,7 +1350,13 @@ function ReadingConsole() {
             <b>←/→</b> exam
           </span>
           <span className="kbd-hint">
-            <b>F1</b> help
+            <b>?</b> help
+          </span>
+          <span className="kbd-hint">
+            <b>F</b> critical
+          </span>
+          <span className="kbd-hint">
+            <b>⇧A</b> AI findings
           </span>
         </div>
       </ConfigProvider>

@@ -22,6 +22,7 @@ export interface ReaderShortcutHandlers {
   goNextExam: () => void;
   goToWorklist: () => void;
   showHelp: () => void;
+  toggleCine: () => void;
 }
 
 /**
@@ -92,13 +93,15 @@ export function useReaderShortcuts(handlers: ReaderShortcutHandlers) {
         e.preventDefault();
         handlersRef.current.goNextExam();
       } else if (e.key === " ") {
+        // §5.2 Space = cine play/pause. The immersive toggle stays reachable
+        // via its header toolbar button (it was moved off Space deliberately).
         e.preventDefault();
-        toggleImmersive();
+        handlersRef.current.toggleCine();
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [toggleImmersive]);
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle("immersive-reading", immersive);

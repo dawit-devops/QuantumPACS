@@ -19,11 +19,30 @@ import {
   SaveOutlined,
   RollbackOutlined,
   HistoryOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import { request } from "../helpers";
 import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
 import RichTextEditor from "./RichTextEditor";
+
+// §4.4 macro chips — canned sentence fragments that append so common normal
+// findings never have to be typed from scratch. Written as literal insertable
+// phrases (not abstract command names) per §6, exactly as they land in the
+// report field.
+const FINDINGS_MACROS = [
+  "Normal lungs",
+  "No acute findings",
+  "No consolidation, effusion, or pneumothorax",
+  "Cardiomediastinal silhouette is normal",
+  "No fracture or lytic lesion",
+];
+const IMPRESSION_MACROS = [
+  "Normal study. No acute findings.",
+  "No acute cardiopulmonary abnormality.",
+  "Stable appearance. No interval change.",
+  "Correlate clinically.",
+];
 
 interface ReportPanelProps {
   exam: any;
@@ -44,12 +63,15 @@ interface ReportPanelProps {
   onRecommendationsChange: (v: string) => void;
   onApplyTemplate: (name: string) => void;
   onSaveDraft: () => void;
+  onPreview: () => void;
   onMarkPreliminary: () => void;
   onSubmitDraft: () => void;
   onRequestSign: () => void;
   onReturnClick: () => void;
   onRestoreVersion?: (version: number) => void;
   distribution?: any[] | null;
+  /** §4.4 autosave status string surfaced in the footer. */
+  autosaveStatus?: string;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
@@ -80,12 +102,14 @@ export default function ReportPanel({
   onRecommendationsChange,
   onApplyTemplate,
   onSaveDraft,
+  onPreview,
   onMarkPreliminary,
   onSubmitDraft,
   onRequestSign,
   onReturnClick,
   onRestoreVersion,
   distribution,
+  autosaveStatus,
 }: ReportPanelProps) {
   const isFinal = status === "final";
   const isResident = role === "resident";
@@ -395,6 +419,10 @@ export default function ReportPanel({
                 readOnly={!canWrite || submitted}
                 placeholder="Structured findings — per template or free text…"
               />
+              <MacroChips
+                section="findings"
+                onSelect={(phrase) => onFindingsChange(appendMacro(findings, phrase))}
+              />
             </div>
 
             <div className="report-field report-field-impression">
@@ -405,6 +433,10 @@ export default function ReportPanel({
                 readOnly={!canWrite || submitted}
                 placeholder="Impression / conclusion (required before signing)…"
                 status={!impression.trim() ? "warning" : ""}
+              />
+              <MacroChips
+                section="impression"
+                onSelect={(phrase) => onImpressionChange(appendMacro(impression, phrase))}
               />
             </div>
 
@@ -423,6 +455,9 @@ export default function ReportPanel({
             <Button icon={<SaveOutlined />} onClick={onSaveDraft} disabled={!dirty}>
               Save Draft
             </Button>
+            <Button icon={<EyeOutlined />} onClick={onPreview}>
+              Preview
+            </Button>
             {!isResident && (
               <Button onClick={onMarkPreliminary} disabled={isFinal}>
                 Mark Preliminary
@@ -437,6 +472,11 @@ export default function ReportPanel({
               >
                 Submit for Review
               </Button>
+            )}
+            {autosaveStatus && (
+              <span className="report-autosave-status" role="status">
+                {autosaveStatus}
+              </span>
             )}
             <span
               className="report-sign-hint"
@@ -629,6 +669,42 @@ export default function ReportPanel({
           </div>
         )}
       </Drawer>
+    </div>
+  );
+}
+
+// §4.4 / §6: append a macro phrase as a new paragraph to a rich-text report
+// field. Phrase fragments are literal insertable sentences; they land as a
+// new <p> so they never collide with existing text or markup.
+function appendMacro(current: string, phrase: string): string {
+  const paragraph = `<p>${phrase}</p>`;
+  return current && current.trim() ? `${current}${paragraph}` : paragraph;
+}
+
+// §4.4 macro chips — small pill buttons below Findings/Impression that append
+// a canned phrase on click, so common normal findings never have to be typed
+// from scratch. Kept literal (insertable sentences), not abstract commands.
+function MacroChips({
+  section,
+  onSelect,
+}: {
+  section: "findings" | "impression";
+  onSelect: (phrase: string) => void;
+}) {
+  const phrases = section === "findings" ? FINDINGS_MACROS : IMPRESSION_MACROS;
+  return (
+    <div className="report-macro-chips" data-testid={`macro-chips-${section}`}>
+      {phrases.map((phrase) => (
+        <button
+          type="button"
+          key={phrase}
+          className="report-macro-chip"
+          onClick={() => onSelect(phrase)}
+          aria-label={`Add macro: ${phrase}`}
+        >
+          + {phrase}
+        </button>
+      ))}
     </div>
   );
 }

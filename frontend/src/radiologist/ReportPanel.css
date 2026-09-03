@@ -170,3 +170,48 @@
   color: var(--text-secondary, #8992a3);
   font-size: 13px;
 }
+
+/* §4.4 macro chips — small pill buttons beneath Findings/Impression that
+   append a canned phrase. Literal sentence fragments (not command names). */
+.report-macro-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  flex: 0 0 auto;
+}
+
+.report-macro-chip {
+  appearance: none;
+  border: 1px solid var(--rc-border, #2a3140);
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-secondary, #8992a3);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.report-macro-chip:hover {
+  color: var(--accent, #4cc2ff);
+  border-color: var(--accent, #4cc2ff);
+  background: rgba(76, 194, 255, 0.06);
+}
+
+.report-macro-chip:focus-visible {
+  outline: 2px solid var(--accent, #4cc2ff);
+  outline-offset: 1px;
+}
+
+/* §4.4 autosave status string in the footer. */
+.report-autosave-status {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--ok, #6bbf8a);
+  white-space: nowrap;
+}

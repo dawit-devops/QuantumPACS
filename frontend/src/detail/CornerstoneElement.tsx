@@ -1012,38 +1012,54 @@ export default function CornerstoneElement(props: CEProps) {
           type="default"
           shape="round"
           size="small"
+          className="ce-tool-key"
           icon={<DragOutlined />}
           style={{ minWidth: 44, minHeight: 44 }}
           onClick={stopAndRun(activateDrag)}
-          aria-label="Pan tool"
-        />
+          aria-label="Pan tool (P)"
+          title="Pan (P)"
+        >
+          <b>P</b>
+        </Button>
         <Button
           type="default"
           shape="round"
           size="small"
+          className="ce-tool-key"
           icon={<LineOutlined />}
           style={{ minWidth: 44, minHeight: 44 }}
           onClick={stopAndRun(activateLine)}
-          aria-label="Length measurement"
-        />
+          aria-label="Length measurement (M)"
+          title="Length (M)"
+        >
+          <b>M</b>
+        </Button>
         <Button
           type="default"
           shape="round"
           size="small"
+          className="ce-tool-key"
           icon={<BorderOutlined />}
           style={{ minWidth: 44, minHeight: 44 }}
           onClick={stopAndRun(activateRect)}
-          aria-label="Rectangle ROI"
-        />
+          aria-label="Rectangle ROI (R)"
+          title="Rectangle ROI (R)"
+        >
+          <b>R</b>
+        </Button>
         <Button
           type="default"
           shape="round"
           size="small"
+          className="ce-tool-key"
           icon={<ScissorOutlined />}
           style={{ minWidth: 44, minHeight: 44 }}
           onClick={stopAndRun(activateEraser)}
-          aria-label="Eraser tool"
-        />
+          aria-label="Eraser tool (E)"
+          title="Eraser (E)"
+        >
+          <b>E</b>
+        </Button>
       </div>
       <ThumbnailStrip
         files={files}

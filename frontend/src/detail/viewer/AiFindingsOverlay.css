@@ -1,0 +1,164 @@
+/* ═══════════════════════════════════════════════════════════
+   AI Findings overlay (design spec Part B)
+   B.2 tokens: violet = AI-not-verified, across the whole product.
+   Accepted marks drop the AI styling (C.2 — acceptance destroys the
+   AI look, never the content) and take the radiologist's own amber.
+   Dismissed marks stay muted gray + strikethrough (C.6, dismissal
+   is a recorded decision, not a deletion).
+   ═══════════════════════════════════════════════════════════ */
+
+.ai-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* the whole layer is inert except tags/popover */
+  z-index: 4; /* above canvas + orientation (3), below loading/error (5) */
+  overflow: hidden;
+}
+
+/* One absolutely-positioned wrapper per mark; transform holds the rotated
+   canvas placement computed per-frame from the viewport. */
+.ai-mark {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.ai-mark-outline {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--ai-mark-stroke, #9b8cf0);
+  border-radius: 4px;
+  background: var(--ai-mark-fill, rgba(155, 140, 240, 0.18));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Numbered tag ①②③ pinned to the box corner. Interactive so a click opens
+   the mark popover; everything else on the layer passes clicks through. */
+.ai-mark-tag {
+  pointer-events: auto;
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  border: 1px solid #bdb0ff;
+  border-radius: 9px;
+  background: #5b4bb0;
+  color: #fff;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.ai-mark-tag:hover {
+  background: #6f5ed0;
+  border-color: #d6ccff;
+}
+
+/* ── Accepted: the AI look is gone; this is now the radiologist's own
+      annotation (amber, matching manual measurements). ── */
+.ai-mark.accepted .ai-mark-outline {
+  border-color: #ffd966;
+  background: rgba(255, 217, 102, 0.16);
+}
+
+.ai-mark.accepted .ai-mark-tag {
+  background: #8a6d1f;
+  border-color: #ffd966;
+  color: #fff;
+}
+
+/* ── Dismissed: muted gray, strikethrough tag, stays recoverable. ── */
+.ai-mark.dismissed .ai-mark-outline {
+  border-color: rgba(86, 93, 107, 0.5);
+  background: rgba(86, 93, 107, 0.12);
+  border-style: dashed;
+}
+
+.ai-mark.dismissed .ai-mark-tag {
+  background: #3a3f4a;
+  border-color: rgba(86, 93, 107, 0.6);
+  color: #aeb3bd;
+  text-decoration: line-through;
+}
+
+/* ── Compact mark popover (type, qualitative confidence, Accept/Dismiss) ── */
+
+.ai-pop {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 6;
+  top: 12px;
+  left: 12px;
+  width: 220px;
+  padding: 8px 10px;
+  background: #1d222a;
+  border: 1px solid var(--ai-border, rgba(155, 140, 240, 0.4));
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-ui, inherit);
+  color: #e6e9ee;
+}
+
+.ai-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-pop-kind {
+  font-weight: 600;
+  font-size: 12px;
+  color: #cfc7ff;
+}
+
+.ai-pop-conf {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 6px;
+  border-radius: 9px;
+}
+
+.ai-pop-conf.high {
+  color: #6bbf8a;
+  background: rgba(107, 191, 138, 0.12);
+}
+
+.ai-pop-conf.uncertain {
+  color: #dba75a;
+  background: rgba(219, 167, 90, 0.12);
+}
+
+.ai-pop-label {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8992a3;
+}
+
+.ai-pop-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ai-pop-actions .ant-btn {
+  font-size: 11px;
+  height: 24px;
+}
+
+.ai-pop-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #565d6b;
+}

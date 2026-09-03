@@ -27,6 +27,7 @@ function makeHandlers() {
     goNextExam: vi.fn(),
     goToWorklist: vi.fn(),
     showHelp: vi.fn(),
+    toggleCine: vi.fn(),
   };
 }
 
@@ -45,16 +46,18 @@ describe("useReaderShortcuts (§5)", () => {
 
   const render = () => renderHook(() => useReaderShortcuts(handlers));
 
-  it("starts non-immersive on a normal screen and toggles via Space", () => {
+  it("starts non-immersive on a normal screen; Space triggers cine, not immersive", () => {
     const { result } = render();
     expect(result.current.immersive).toBe(false);
+    // Space is rebound to cine per §5.2 — immersive stays a button-only toggle.
     act(() => {
       fireKey({ key: " " });
     });
-    expect(result.current.immersive).toBe(true);
-    expect(localStorage.getItem(STORAGE_KEY)).toBe("1");
-    // The body flag drives the global sidebar-strip CSS.
-    expect(document.body.classList.contains("immersive-reading")).toBe(true);
+    expect(handlers.toggleCine).toHaveBeenCalledTimes(1);
+    expect(result.current.immersive).toBe(false);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    // The body flag drives the global sidebar-strip CSS and stays off on Space.
+    expect(document.body.classList.contains("immersive-reading")).toBe(false);
   });
 
   it("auto-enters immersive on dual-monitor-class widths until opted out", () => {
@@ -97,7 +100,7 @@ describe("useReaderShortcuts (§5)", () => {
     expect(handlers.goNextExam).not.toHaveBeenCalled(); // viewer paging stays intact
 
     act(() => {
-      fireKey({ key: " " }); // enter immersive
+      result.current.toggleImmersive(); // enter immersive via the header button
     });
     act(() => fireKey({ key: "ArrowRight" }));
     expect(handlers.goNextExam).toHaveBeenCalledTimes(1);
