@@ -1,9 +1,20 @@
 /* ═══════════════════════════════════════════════════════════
    AI-drafted report blocks (Part A).
-   A.2 tokens: violet (#9b8cf0) = AI-not-verified, across the
-   whole product. Accepted blocks drop the violet styling and
-   become radiologist's own text (C.2).
+   A.2 / C.1 tokens: violet (#9b8cf0) = AI-not-verified, across the
+   whole product. The tokens below are the single source of truth for
+   the AI violet so image marks and draft text can never drift apart.
+   Accepted blocks drop the violet styling and become the radiologist's
+   own text (C.2). The same tokens are used by AiFindingsOverlay.css
+   (via var(--ai-*) + localStorage-style fallbacks).
    ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --ai-mark-stroke: #9b8cf0; /* the AI violet — nothing else may reuse it */
+  --ai-mark-fill: rgba(155, 140, 240, 0.18);
+  --ai-glow: rgba(155, 140, 240, 0.12); /* faint wash behind unreviewed AI */
+  --ai-border: rgba(155, 140, 240, 0.4);
+  --ai-text: #cfc7ff; /* lighter violet for titles over dim chrome */
+}
 
 /* ── Banner (A.4) — shown at the top of the editor while any
       unreviewed block exists. ── */
@@ -13,8 +24,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(155, 140, 240, 0.08);
-  border: 1px solid rgba(155, 140, 240, 0.3);
+  background: var(--ai-glow);
+  border: 1px solid var(--ai-border);
   border-radius: 4px;
   font-size: 12px;
   flex: 0 0 auto;
@@ -22,7 +33,7 @@
 
 .ai-draft-banner-title {
   font-weight: 600;
-  color: #cfc7ff;
+  color: var(--ai-text);
   white-space: nowrap;
 }
 
@@ -48,8 +59,8 @@
   display: flex;
   gap: 6px;
   padding: 6px 8px;
-  background: rgba(155, 140, 240, 0.08);
-  border-left: 3px solid rgba(155, 140, 240, 0.5);
+  background: var(--ai-glow);
+  border-left: 3px solid var(--ai-border);
   border-radius: 3px;
   align-items: flex-start;
 }
@@ -101,7 +112,7 @@
 .ai-draft-tag {
   font-size: 10px;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  color: #9b8cf0;
+  color: var(--ai-mark-stroke);
   letter-spacing: 0.02em;
 }
 
@@ -132,7 +143,7 @@
 }
 
 .ai-draft-regenerate:hover {
-  color: #cfc7ff;
+  color: var(--ai-text);
 }
 
 /* Clickable text body */
@@ -152,7 +163,7 @@
 }
 
 .ai-draft-text:hover {
-  border-color: rgba(155, 140, 240, 0.3);
+  border-color: var(--ai-border);
 }
 
 /* Editable textarea */
@@ -202,7 +213,7 @@
 }
 
 .ai-draft-log-toggle:hover {
-  color: #cfc7ff;
+  color: var(--ai-text);
 }
 
 .ai-draft-log {
@@ -260,4 +271,55 @@
   font-size: 11.5px;
   color: var(--warning, #dba75a);
   line-height: 1.4;
+}
+
+/* ── Rejected drafts (C.6: dismissal ≠ deletion) ──
+   Rejected blocks stay muted but visible and recoverable via the
+   "Show rejected" toggle + Reconsider action below. */
+
+.ai-draft-rejected-toggle {
+  font-size: 11px;
+  color: #8992a3;
+  padding: 0 4px;
+  height: 20px;
+}
+
+.ai-draft-rejected-toggle:hover {
+  color: var(--ai-text);
+}
+
+.ai-draft-rows-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.ai-draft-row-rejected {
+  background: rgba(86, 93, 107, 0.1);
+  border-left: 3px solid #565d6b;
+  opacity: 0.9;
+}
+
+.ai-draft-rejected-tag {
+  font-size: 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: #8992a3;
+  letter-spacing: 0.02em;
+}
+
+.ai-draft-rejected-tag .anticon {
+  font-size: 10px;
+}
+
+.ai-draft-rejected-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9aa3b0;
+  cursor: default;
+}
+
+.ai-draft-gutter .ai-draft-reconsider:hover {
+  color: var(--ai-text);
+  background: var(--ai-glow);
 }

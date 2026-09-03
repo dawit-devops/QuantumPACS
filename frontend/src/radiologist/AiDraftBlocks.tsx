@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button, Checkbox, Modal, Tag, Tooltip } from "antd";
+import { Button, Modal, Tag, Tooltip } from "antd";
 import {
   CheckOutlined,
   CloseOutlined,
@@ -31,7 +31,9 @@ interface AiDraftBlocksProps {
  */
 export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
   const blocks = draft.blocksForSection(section);
+  const rejected = draft.rejectedBlocksForSection(section);
   const [showLog, setShowLog] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
 
   // The changelog toggle stays reachable from the Findings section even when
   // every draft is resolved — A.7 requires the audit trail to remain
@@ -49,22 +51,67 @@ export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
       </Button>
     ) : null;
 
-  if (blocks.length === 0) {
-    return (
-      <>
-        {logToggle}
-        <AiDraftLog open={showLog} onClose={() => setShowLog(false)} draft={draft} />
-      </>
-    );
-  }
+  // Rejected drafts are never deleted (C.6) — a muted toggle re-opens them so
+  // the radiologist can restore (reconsider) rather than relying on memory.
+  const rejectedToggle =
+    rejected.length > 0 ? (
+      <Button
+        size="small"
+        type="text"
+        className="ai-draft-rejected-toggle"
+        icon={<DeleteOutlined />}
+        aria-expanded={showRejected}
+        onClick={() => setShowRejected((v) => !v)}
+      >
+        {showRejected ? "Hide" : "Show"} rejected ({rejected.length})
+      </Button>
+    ) : null;
 
   return (
     <div className="ai-draft-rows" data-testid={`ai-draft-${section}`}>
       {blocks.map((block) => (
         <AiDraftRow key={block.id} draft={draft} block={block} />
       ))}
-      {logToggle}
+      {showRejected &&
+        rejected.map((block) => <RejectedAiDraftRow key={block.id} draft={draft} block={block} />)}
+      <div className="ai-draft-rows-footer">
+        {rejectedToggle}
+        {logToggle}
+      </div>
       <AiDraftLog open={showLog} onClose={() => setShowLog(false)} draft={draft} />
+    </div>
+  );
+}
+
+/** C.6: a rejected block shown muted with a "Reconsider" restore action. The
+ *  text stays visible (dismissal ≠ deletion) until the radiologist restores
+ *  it to the unreviewed pool or the session ends. */
+function RejectedAiDraftRow({ draft, block }: { draft: AiReportDraftApi; block: AiDraftBlock }) {
+  return (
+    <div
+      className="ai-draft-row ai-draft-row-rejected"
+      data-testid={`ai-draft-rejected-${block.id}`}
+    >
+      <div className="ai-draft-gutter">
+        <Tooltip title="Reconsider — restore to review">
+          <Button
+            size="small"
+            type="text"
+            className="ai-draft-reconsider"
+            aria-label="Reconsider AI draft"
+            icon={<RedoOutlined />}
+            onClick={() => draft.considerRejectedBlock(block.id)}
+          />
+        </Tooltip>
+      </div>
+      <div className="ai-draft-body">
+        <div className="ai-draft-tagrow">
+          <span className="ai-draft-rejected-tag">
+            <CloseOutlined /> Rejected
+          </span>
+        </div>
+        <div className="ai-draft-rejected-text">{block.text}</div>
+      </div>
     </div>
   );
 }
@@ -214,8 +261,8 @@ function AiDraftRow({ draft, block }: { draft: AiReportDraftApi; block: AiDraftB
       >
         <p className="ai-draft-confirm-text">{block.text}</p>
         <p className="ai-draft-confirm-hint">
-          Accepting makes this your own report text — the AI-drafted styling is
-          removed and the action is recorded in the draft log.
+          Accepting makes this your own report text — the AI-drafted styling is removed and the
+          action is recorded in the draft log.
         </p>
       </Modal>
     </div>
@@ -239,7 +286,8 @@ export function AiDraftBanner({
         <ThunderboltOutlined /> AI draft — review before signing
       </span>
       <span className="ai-draft-banner-count">
-        {draft.unreviewedCount} block{draft.unreviewedCount === 1 ? "" : "s"} need{draft.unreviewedCount === 1 ? "s" : ""} review
+        {draft.unreviewedCount} block{draft.unreviewedCount === 1 ? "" : "s"} need
+        {draft.unreviewedCount === 1 ? "s" : ""} review
       </span>
       <Button size="small" type="primary" icon={<CheckSquareOutlined />} onClick={onAcceptAll}>
         Accept all

@@ -10,11 +10,15 @@ export interface AiReportDraftApi {
   unreviewedBlocks: AiDraftBlock[];
   /** Blocks awaiting review in a specific section. */
   blocksForSection: (section: AiDraftSection) => AiDraftBlock[];
+  /** Rejected blocks in a section (C.6: dismissal ≠ deletion — recoverable). */
+  rejectedBlocksForSection: (section: AiDraftSection) => AiDraftBlock[];
   /** A.5: sign is blocked while this is non-empty. */
   unreviewedCount: number;
   hasUnreviewed: boolean;
   acceptBlock: (id: string) => void;
   rejectBlock: (id: string) => void;
+  /** C.6: restore a rejected block to the unreviewed pool to re-decide it. */
+  considerRejectedBlock: (id: string) => void;
   acceptAll: () => void;
   rejectAll: () => void;
   /** A.6 regeneration history: cycles the block to its next draft version
@@ -41,7 +45,7 @@ function nextId(): string {
  */
 export function useAiReportDraft(
   examId: string | undefined,
-  applyText: (section: AiDraftSection, text: string) => void,
+  applyText: (section: AiDraftSection, text: string) => void
 ): AiReportDraftApi {
   const [blocks, setBlocks] = useState<AiDraftBlock[]>(() => {
     const { blocks: generated } = generateAiReportDraft(examId);
@@ -59,22 +63,16 @@ export function useAiReportDraft(
     setChangelog([]);
   }, [examId]);
 
-  const log = useCallback(
-    (entry: Omit<AiDraftChangelogEntry, "id" | "timestamp">) => {
-      setChangelog((prev) => [
-        { ...entry, id: nextId(), timestamp: new Date().toISOString() },
-        ...prev,
-      ]);
-    },
-    [],
-  );
+  const log = useCallback((entry: Omit<AiDraftChangelogEntry, "id" | "timestamp">) => {
+    setChangelog((prev) => [
+      { ...entry, id: nextId(), timestamp: new Date().toISOString() },
+      ...prev,
+    ]);
+  }, []);
 
-  const patchBlock = useCallback(
-    (id: string, patch: Partial<AiDraftBlock>) => {
-      setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-    },
-    [],
-  );
+  const patchBlock = useCallback((id: string, patch: Partial<AiDraftBlock>) => {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }, []);
 
   const acceptBlock = useCallback(
     (id: string) => {
@@ -84,7 +82,7 @@ export function useAiReportDraft(
       patchBlock(id, { status: "accepted", actedAt: new Date().toISOString() });
       log({ action: "accept", section: block.section, blockId: id, detail: block.text });
     },
-    [blocks, applyText, patchBlock, log],
+    [blocks, applyText, patchBlock, log]
   );
 
   const rejectBlock = useCallback(
@@ -92,9 +90,28 @@ export function useAiReportDraft(
       const block = blocks.find((b) => b.id === id);
       if (!block || block.status !== "unreviewed") return;
       patchBlock(id, { status: "rejected", actedAt: new Date().toISOString() });
-      log({ action: "reject", section: block.section, blockId: id });
+      // C.6: log the rejected text, not just that a rejection happened, so the
+      // audit trail always records what was declined.
+      log({
+        action: "reject",
+        section: block.section,
+        blockId: id,
+        detail: block.text,
+      });
     },
-    [blocks, patchBlock, log],
+    [blocks, patchBlock, log]
+  );
+
+  // C.6 recovery: a rejected block is never deleted — restore it to the
+  // unreviewed pool so the radiologist can re-decide it (edit-in-place or a
+  // fresh accept).
+  const considerRejectedBlock = useCallback(
+    (id: string) => {
+      const block = blocks.find((b) => b.id === id);
+      if (!block || block.status !== "rejected") return;
+      patchBlock(id, { status: "unreviewed", actedAt: undefined });
+    },
+    [blocks, patchBlock]
   );
 
   const acceptAll = useCallback(() => {
@@ -134,7 +151,7 @@ export function useAiReportDraft(
         detail: `v${nextVersion} of ${block.totalVersions}`,
       });
     },
-    [blocks, patchBlock, log],
+    [blocks, patchBlock, log]
   );
 
   const editInPlace = useCallback(
@@ -145,7 +162,7 @@ export function useAiReportDraft(
       patchBlock(id, { status: "accepted", text, actedAt: new Date().toISOString() });
       log({ action: "edit-in-place", section: block.section, blockId: id, detail: text });
     },
-    [blocks, applyText, patchBlock, log],
+    [blocks, applyText, patchBlock, log]
   );
 
   const unreviewedBlocks = blocks.filter((b) => b.status === "unreviewed");
@@ -154,17 +171,25 @@ export function useAiReportDraft(
   const blocksForSection = useCallback(
     (section: AiDraftSection) =>
       blocks.filter((b) => b.section === section && b.status === "unreviewed"),
-    [blocks],
+    [blocks]
+  );
+
+  const rejectedBlocksForSection = useCallback(
+    (section: AiDraftSection) =>
+      blocks.filter((b) => b.section === section && b.status === "rejected"),
+    [blocks]
   );
 
   return {
     blocks,
     unreviewedBlocks,
     blocksForSection,
+    rejectedBlocksForSection,
     unreviewedCount,
     hasUnreviewed: unreviewedCount > 0,
     acceptBlock,
     rejectBlock,
+    considerRejectedBlock,
     acceptAll,
     rejectAll,
     regenerateBlock,

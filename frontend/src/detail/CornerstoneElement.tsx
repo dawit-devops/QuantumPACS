@@ -17,6 +17,8 @@ import {
   SaveOutlined,
   CloseCircleOutlined,
   DownloadOutlined,
+  PlayCircleOutlined,
+  PauseCircleOutlined,
 } from "@ant-design/icons";
 import {
   getRenderingEngine,
@@ -34,6 +36,8 @@ import { ENGINE_ID, ensureGlobalInit } from "./viewer/setup";
 import {
   getToolGroup,
   activateDrag,
+  activateWl,
+  activateZoom,
   activateLine,
   activateRect,
   activateElipse,
@@ -50,13 +54,11 @@ import {
   flipViewport,
   invertViewport,
   zoomViewport,
+  rememberInitialVoi,
+  resetViewport,
 } from "./viewer/camera";
 import { layoutLabel, parseLayoutKey, readCurrentWL } from "./viewer/presets";
-import type {
-  LayoutConfig,
-  ReadingPreset,
-  WindowLevelConfig,
-} from "./viewer/presets";
+import type { LayoutConfig, ReadingPreset, WindowLevelConfig } from "./viewer/presets";
 import { useReadingPresets } from "./viewer/useReadingPresets";
 import type { ReadingPresetsApi } from "./viewer/useReadingPresets";
 import { ReadingPresetsPanel } from "./viewer/ReadingPresetsPanel";
@@ -128,6 +130,11 @@ interface CEProps {
    * and the report editor maximum space. The console provides its own
    * SeriesNavigator for file/series selection. */
   compactViewport?: boolean;
+  /** Cine playback state owned by the console (Space / phase rail). When set,
+   *  a play/pause toolbar toggle is rendered and calls onToggleCine. */
+  cinePlaying?: boolean;
+  /** Toggle cine playback (wired to the console's cine loop). */
+  onToggleCine?: () => void;
   [key: string]: any;
 }
 
@@ -140,9 +147,7 @@ export default function CornerstoneElement(props: CEProps) {
   const imageUrl = props.wadoRsImage || props.image;
 
   const elementRef = useRef<HTMLDivElement | null>(null);
-  const viewportIdRef = useRef(
-    `stack-viewport-${Math.random().toString(36).slice(2, 9)}`,
-  );
+  const viewportIdRef = useRef(`stack-viewport-${Math.random().toString(36).slice(2, 9)}`);
   const disposedRef = useRef(false);
   const imageRef = useRef<string | null>(imageUrl);
   const fileRef = useRef<any>(file);
@@ -209,13 +214,9 @@ export default function CornerstoneElement(props: CEProps) {
     const api = presetsRef.current;
     if (!api) return;
     const keys = ["1x1", "1x2", "2x2"];
-    const cur = api.activeLayout
-      ? layoutLabel(api.activeLayout.config as any)
-      : "1x1";
+    const cur = api.activeLayout ? layoutLabel(api.activeLayout.config as any) : "1x1";
     const nextKey = keys[(keys.indexOf(cur) + 1) % keys.length];
-    const existing = api.layoutPresets.find(
-      (p) => layoutLabel(p.config as any) === nextKey,
-    );
+    const existing = api.layoutPresets.find((p) => layoutLabel(p.config as any) === nextKey);
     if (existing) {
       api.applyLayout(existing);
       return;
@@ -241,6 +242,7 @@ export default function CornerstoneElement(props: CEProps) {
   const updateViewportInfo = useCallback(() => {
     const vp = getViewport();
     if (!vp) return;
+    rememberInitialVoi(vp);
     const info = readViewportInfo(vp);
     // The corner readouts are transient chrome: write them straight to the
     // DOM so a WL drag or cine loop (one IMAGE_RENDERED per frame) does not
@@ -302,7 +304,7 @@ export default function CornerstoneElement(props: CEProps) {
       if (loadedId && loadedId !== imageRef.current) return;
       onImageRendered();
     },
-    [onImageRendered],
+    [onImageRendered]
   );
 
   const onImageLoadError = useCallback((evt: any) => {
@@ -365,6 +367,15 @@ export default function CornerstoneElement(props: CEProps) {
     updateViewportInfo();
   }, [getViewport, updateViewportInfo]);
 
+  // §5: Reset (R) — return the image to how it read on load (zoom 1, no
+  // rotation, no flips, original W/L window).
+  const reset = useCallback(() => {
+    const vp = getViewport();
+    if (!vp) return;
+    resetViewport(vp);
+    updateViewportInfo();
+  }, [getViewport, updateViewportInfo]);
+
   const goToPrevFile = useCallback(() => {
     const { files: list, changeFile, file: current } = propsRef.current;
     if (!list || list.length <= 1) return;
@@ -382,9 +393,7 @@ export default function CornerstoneElement(props: CEProps) {
   }, [propsRef]);
 
   const toggleFullscreen = useCallback(() => {
-    const el =
-      document.querySelector(".detail-viewport-root") ||
-      document.documentElement;
+    const el = document.querySelector(".detail-viewport-root") || document.documentElement;
     if (!document.fullscreenElement) {
       el.requestFullscreen()
         .then(() => {
@@ -426,14 +435,12 @@ export default function CornerstoneElement(props: CEProps) {
       const key = e.key;
       const target = e.target as HTMLElement;
       const isInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
       // (R1-05) Never steal keys while focus sits inside an antd overlay —
       // selects, drawers, collapse panels, dialogs and menus own their
       // keystrokes (typing to filter a Select must not trip tool shortcuts).
       const inOverlay = !!document.activeElement?.closest(
-        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']",
+        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']"
       );
       if (isInput || inOverlay) return;
 
@@ -443,8 +450,41 @@ export default function CornerstoneElement(props: CEProps) {
         return;
       }
 
+      // Shift+W cycles W/L presets (a reading-preset power control, kept off
+      // the bare W tool bind below so the spec's "W = Window/Level tool" holds).
+      if (e.shiftKey && (key === "W" || key === "w")) {
+        e.preventDefault();
+        cycleWlPreset();
+        return;
+      }
+
       switch (key) {
         case "1":
+          e.preventDefault();
+          activateDrag();
+          break;
+        case "w":
+        case "W":
+          e.preventDefault();
+          activateWl();
+          break;
+        case "z":
+        case "Z":
+          e.preventDefault();
+          activateZoom();
+          break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          activateLine();
+          break;
+        case "r":
+        case "R":
+          e.preventDefault();
+          reset();
+          break;
+        case "p":
+        case "P":
           e.preventDefault();
           activateDrag();
           break;
@@ -486,11 +526,6 @@ export default function CornerstoneElement(props: CEProps) {
           e.preventDefault();
           activateCircleRoi();
           break;
-        case "r":
-        case "R":
-          e.preventDefault();
-          rotate();
-          break;
         case "h":
         case "H":
           e.preventDefault();
@@ -505,11 +540,6 @@ export default function CornerstoneElement(props: CEProps) {
         case "I":
           e.preventDefault();
           invert();
-          break;
-        case "p":
-        case "P":
-          e.preventDefault();
-          cycleWlPreset();
           break;
         case "l":
         case "L":
@@ -561,6 +591,7 @@ export default function CornerstoneElement(props: CEProps) {
       hflip,
       vflip,
       invert,
+      reset,
       cycleWlPreset,
       cycleLayout,
       persistToolsState,
@@ -571,7 +602,7 @@ export default function CornerstoneElement(props: CEProps) {
       zoomIn,
       zoomOut,
       propsRef,
-    ],
+    ]
   );
 
   // Viewport lifecycle: enable the element once, attach listeners, restore
@@ -607,42 +638,19 @@ export default function CornerstoneElement(props: CEProps) {
         const tg = getToolGroup();
         if (tg) tg.addViewport(viewportIdRef.current, ENGINE_ID);
 
-        const viewport = renderingEngine.getViewport(
-          viewportIdRef.current,
-        ) as StackViewport;
+        const viewport = renderingEngine.getViewport(viewportIdRef.current) as StackViewport;
 
         // Listeners MUST be attached before setStack so the load/render
         // events fired while the first image is displayed are not missed.
         eventTarget.addEventListener(EVENTS.IMAGE_LOADED, onImageLoaded);
         eventTarget.addEventListener(EVENTS.IMAGE_LOAD_ERROR, onImageLoadError);
-        elementRef.current.addEventListener(
-          EVENTS.STACK_NEW_IMAGE,
-          onImageRendered,
-        );
-        elementRef.current.addEventListener(
-          EVENTS.VOI_MODIFIED,
-          onImageRendered,
-        );
-        elementRef.current.addEventListener(
-          EVENTS.CAMERA_MODIFIED,
-          onImageRendered,
-        );
-        eventTarget.addEventListener(
-          ToolsEnums.Events.ANNOTATION_ADDED,
-          saveToolState,
-        );
-        eventTarget.addEventListener(
-          ToolsEnums.Events.ANNOTATION_MODIFIED,
-          saveToolState,
-        );
-        eventTarget.addEventListener(
-          ToolsEnums.Events.ANNOTATION_REMOVED,
-          saveToolState,
-        );
-        eventTarget.addEventListener(
-          ToolsEnums.Events.ANNOTATION_COMPLETED,
-          saveToolState,
-        );
+        elementRef.current.addEventListener(EVENTS.STACK_NEW_IMAGE, onImageRendered);
+        elementRef.current.addEventListener(EVENTS.VOI_MODIFIED, onImageRendered);
+        elementRef.current.addEventListener(EVENTS.CAMERA_MODIFIED, onImageRendered);
+        eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_ADDED, saveToolState);
+        eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_MODIFIED, saveToolState);
+        eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_REMOVED, saveToolState);
+        eventTarget.addEventListener(ToolsEnums.Events.ANNOTATION_COMPLETED, saveToolState);
         window.addEventListener("resize", onWindowResize);
 
         await viewport.setStack([imageRef.current as string]);
@@ -691,38 +699,14 @@ export default function CornerstoneElement(props: CEProps) {
       ws.removeEventListener(onStateUpdate);
       ws.removeOpenListener(openCb);
       eventTarget.removeEventListener(EVENTS.IMAGE_LOADED, onImageLoaded);
-      eventTarget.removeEventListener(
-        EVENTS.IMAGE_LOAD_ERROR,
-        onImageLoadError,
-      );
-      elementRef.current?.removeEventListener(
-        EVENTS.STACK_NEW_IMAGE,
-        onImageRendered,
-      );
-      elementRef.current?.removeEventListener(
-        EVENTS.VOI_MODIFIED,
-        onImageRendered,
-      );
-      elementRef.current?.removeEventListener(
-        EVENTS.CAMERA_MODIFIED,
-        onImageRendered,
-      );
-      eventTarget.removeEventListener(
-        ToolsEnums.Events.ANNOTATION_ADDED,
-        saveToolState,
-      );
-      eventTarget.removeEventListener(
-        ToolsEnums.Events.ANNOTATION_MODIFIED,
-        saveToolState,
-      );
-      eventTarget.removeEventListener(
-        ToolsEnums.Events.ANNOTATION_REMOVED,
-        saveToolState,
-      );
-      eventTarget.removeEventListener(
-        ToolsEnums.Events.ANNOTATION_COMPLETED,
-        saveToolState,
-      );
+      eventTarget.removeEventListener(EVENTS.IMAGE_LOAD_ERROR, onImageLoadError);
+      elementRef.current?.removeEventListener(EVENTS.STACK_NEW_IMAGE, onImageRendered);
+      elementRef.current?.removeEventListener(EVENTS.VOI_MODIFIED, onImageRendered);
+      elementRef.current?.removeEventListener(EVENTS.CAMERA_MODIFIED, onImageRendered);
+      eventTarget.removeEventListener(ToolsEnums.Events.ANNOTATION_ADDED, saveToolState);
+      eventTarget.removeEventListener(ToolsEnums.Events.ANNOTATION_MODIFIED, saveToolState);
+      eventTarget.removeEventListener(ToolsEnums.Events.ANNOTATION_REMOVED, saveToolState);
+      eventTarget.removeEventListener(ToolsEnums.Events.ANNOTATION_COMPLETED, saveToolState);
       const re = getRenderingEngine(ENGINE_ID);
       if (re) {
         re.disableElement(viewportIdRef.current);
@@ -816,9 +800,7 @@ export default function CornerstoneElement(props: CEProps) {
           clip: "rect(0,0,0,0)",
         }}
       >
-        {loading
-          ? "Loading image"
-          : `Zoom ${zoom.toFixed(1)}, Window ${ww} Level ${wc}`}
+        {loading ? "Loading image" : `Zoom ${zoom.toFixed(1)}, Window ${ww} Level ${wc}`}
       </div>
       {viewportError ? (
         <div
@@ -914,21 +896,76 @@ export default function CornerstoneElement(props: CEProps) {
             aria-label={`File ${fileIndex + 1} of ${files.length}`}
           />
         )}
+        {/* §4.3 primary view tools — the spec's core windowing/navigation
+            controls, each labelled with its shortcut key on the button itself
+            so no memorization is required. */}
+        <Button
+          type="default"
+          size="small"
+          className="ce-tool-key"
+          onClick={stopAndRun(activateWl)}
+          aria-label="Window/Level tool (W)"
+          title="Window/Level (W)"
+        >
+          <b>W</b>
+        </Button>
+        <Button
+          type="default"
+          size="small"
+          className="ce-tool-key"
+          onClick={stopAndRun(activateZoom)}
+          aria-label="Zoom tool (Z)"
+          title="Zoom (Z)"
+        >
+          <b>Z</b>
+        </Button>
+        <Button
+          type="default"
+          size="small"
+          className="ce-tool-key"
+          onClick={stopAndRun(activateDrag)}
+          aria-label="Pan tool (P)"
+          title="Pan (P)"
+        >
+          <b>P</b>
+        </Button>
+        <Button
+          type={props.cinePlaying ? "primary" : "default"}
+          size="small"
+          className="ce-tool-key"
+          onClick={props.onToggleCine}
+          aria-pressed={!!props.cinePlaying}
+          aria-label={props.cinePlaying ? "Pause cine" : "Play cine"}
+          title="Cine (Space)"
+          icon={props.cinePlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+        />
+        <Button
+          type="default"
+          size="small"
+          className="ce-tool-key"
+          onClick={reset}
+          aria-label="Reset view (R)"
+          title="Reset view (R)"
+        >
+          <b>R</b>
+        </Button>
+        <Button
+          type="default"
+          size="small"
+          className="ce-tool-key"
+          onClick={cycleLayout}
+          aria-label="Cycle layout (L)"
+          title="Cycle layout (L)"
+        >
+          <b>L</b>
+        </Button>
         <ActionBtn
           aria-label="Rotate 90 degrees clockwise"
           icon={<ReloadOutlined />}
           onClick={rotate}
         />
-        <ActionBtn
-          aria-label="Horizontal flip"
-          icon={<ColumnWidthOutlined />}
-          onClick={hflip}
-        />
-        <ActionBtn
-          aria-label="Vertical flip"
-          icon={<ColumnHeightOutlined />}
-          onClick={vflip}
-        />
+        <ActionBtn aria-label="Horizontal flip" icon={<ColumnWidthOutlined />} onClick={hflip} />
+        <ActionBtn aria-label="Vertical flip" icon={<ColumnHeightOutlined />} onClick={vflip} />
         <Button
           type="primary"
           shape="circle"
@@ -1075,11 +1112,7 @@ export default function CornerstoneElement(props: CEProps) {
           <b>E</b>
         </Button>
       </div>
-      <ThumbnailStrip
-        files={files}
-        currentFileId={file.id}
-        onSelect={props.changeFile}
-      />
+      <ThumbnailStrip files={files} currentFileId={file.id} onSelect={props.changeFile} />
       {cellCount > 1 ? (
         <div
           className="ce-layout-grid"
@@ -1130,15 +1163,9 @@ export default function CornerstoneElement(props: CEProps) {
                   <Descriptions.Item label="Patient">
                     {file?.patient?.name || "-"}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Study">
-                    {file?.study || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Series">
-                    {file?.series || "-"}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Modality">
-                    {file?.modality || "-"}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Study">{file?.study || "-"}</Descriptions.Item>
+                  <Descriptions.Item label="Series">{file?.series || "-"}</Descriptions.Item>
+                  <Descriptions.Item label="Modality">{file?.modality || "-"}</Descriptions.Item>
                   <Descriptions.Item label="Size">
                     {file?.size ? `${(file.size / 1024).toFixed(1)} KB` : "-"}
                   </Descriptions.Item>
@@ -1149,11 +1176,7 @@ export default function CornerstoneElement(props: CEProps) {
         />
       </div>
       {props.enableReadingPresets && (
-        <ReadingPresetsPanel
-          modality={modality}
-          presets={presets}
-          readCurrentWl={readCurrentWl}
-        />
+        <ReadingPresetsPanel modality={modality} presets={presets} readCurrentWl={readCurrentWl} />
       )}
     </div>
   );

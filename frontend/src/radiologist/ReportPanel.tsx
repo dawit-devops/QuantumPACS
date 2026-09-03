@@ -78,6 +78,9 @@ interface ReportPanelProps {
    *  the per-section draft rows + banner and hard-gates sign/submit until
    *  every unreviewed block is resolved. */
   draft?: AiReportDraftApi;
+  /** C.3: count of unresolved AI *finding marks* (neither accepted nor
+   *  dismissed) that equally gate sign/submit alongside draft text. */
+  aiUnresolvedMarks?: number;
   /** Ready-to-sign hint override (A.5) used while unreviewed AI blocks exist. */
   signGateHint?: string;
 }
@@ -119,6 +122,7 @@ export default function ReportPanel({
   distribution,
   autosaveStatus,
   draft,
+  aiUnresolvedMarks,
   signGateHint,
 }: ReportPanelProps) {
   const isFinal = status === "final";
@@ -253,9 +257,9 @@ export default function ReportPanel({
   // the reason is spelled out (docs/viewer spec — unsafe states are blocked
   // AND explained). A.5: while AI-drafted blocks remain unreviewed they gate
   // signing even when an impression is present.
-  const aiGate = !!draft && draft.unreviewedCount > 0;
+  const aiGate = !!draft && (draft.unreviewedCount > 0 || (aiUnresolvedMarks ?? 0) > 0);
   const signHint = aiGate
-    ? (signGateHint || "AI-drafted blocks need review before signing")
+    ? signGateHint || "AI-drafted blocks need review before signing"
     : !impression.trim()
       ? "Impression required to sign"
       : "Ready to sign";

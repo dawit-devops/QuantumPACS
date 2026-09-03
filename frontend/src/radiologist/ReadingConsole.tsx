@@ -512,12 +512,8 @@ function ReadingConsole() {
       message?.error?.("Impression is required before signing");
       return;
     }
-    if (aiBlocksPending) {
-      message?.error?.(
-        `${aiDraft.unreviewedCount} AI-drafted block${
-          aiDraft.unreviewedCount === 1 ? "" : "s"
-        } need review before signing (A.5)`,
-      );
+    if (aiPending) {
+      message?.error?.(describeAiGate("signing"));
       return;
     }
     setSigning(true);
@@ -585,12 +581,8 @@ function ReadingConsole() {
       message?.error?.("Impression is required before submitting for review");
       return;
     }
-    if (aiBlocksPending) {
-      message?.error?.(
-        `${aiDraft.unreviewedCount} AI-drafted block${
-          aiDraft.unreviewedCount === 1 ? "" : "s"
-        } need review before submitting (A.5)`,
-      );
+    if (aiPending) {
+      message?.error?.(describeAiGate("submitting for review"));
       return;
     }
     setSubmitting(true);
@@ -711,11 +703,11 @@ function ReadingConsole() {
   // pages the flattened stack).
   const phaseGroups = useMemo(
     () => (selectedStudy?.series?.length ? groupByPhase(selectedStudy.series) : []),
-    [selectedStudy],
+    [selectedStudy]
   );
   const [activePhaseKey, setActivePhaseKey] = useState<string | null>(null);
   const activePhase = activePhaseKey
-    ? phaseGroups.find((g) => g.key === activePhaseKey) ?? null
+    ? (phaseGroups.find((g) => g.key === activePhaseKey) ?? null)
     : null;
 
   // Flattened phase stack (file → owning series) so a single stack index can be
@@ -734,7 +726,7 @@ function ReadingConsole() {
   // current series' files. `viewFiles` drives CornerstoneElement's slider /
   // arrow paging and the AI detection generator; the index also feeds the
   // right-edge PhaseStackScroll.
-  const viewFiles = phaseStack ? phaseStack.map((e) => e.file) : selectedSeries?.files ?? [];
+  const viewFiles = phaseStack ? phaseStack.map((e) => e.file) : (selectedSeries?.files ?? []);
   const fileIndex = viewFiles.findIndex((f) => f.id === selectedFile?.id);
 
   // Selecting a phase lands the reader on its first image, atomically (the
@@ -745,7 +737,7 @@ function ReadingConsole() {
       setActivePhaseKey(group.key);
       selectSeriesFile(group.series[0], 0);
     },
-    [selectSeriesFile],
+    [selectSeriesFile]
   );
 
   // Leaving the phase rail (choosing a different study) returns to per-series
@@ -766,11 +758,10 @@ function ReadingConsole() {
     (index: number) => {
       const entry = phaseStack?.[index];
       if (!entry) return;
-      const localIdx =
-        entry.series.files?.findIndex((f: any) => f.id === entry.file.id) ?? 0;
+      const localIdx = entry.series.files?.findIndex((f: any) => f.id === entry.file.id) ?? 0;
       selectSeriesFile(entry.series, Math.max(0, localIdx));
     },
-    [phaseStack, selectSeriesFile],
+    [phaseStack, selectSeriesFile]
   );
 
   // §5.2 cine loop — advance the active view stack on a timer while playing.
@@ -785,7 +776,7 @@ function ReadingConsole() {
       if (phaseStack) changePhaseStackIndex(index);
       else selectFile(index);
     },
-    [cinePlaying, stopCine, phaseStack, changePhaseStackIndex, selectFile],
+    [cinePlaying, stopCine, phaseStack, changePhaseStackIndex, selectFile]
   );
 
   useEffect(() => {
@@ -837,6 +828,30 @@ function ReadingConsole() {
   }, []);
   const aiDraft = useAiReportDraft(examId, applyAiText);
   const aiBlocksPending = aiDraft.unreviewedCount > 0;
+  // C.3: the A.5 hard gate extends beyond draft text — an unresolved AI
+  // *finding mark* (neither accepted nor dismissed) equally blocks finalizing
+  // because a signed artifact must never travel with undecided AI output.
+  const aiMarksPending = ai.count > 0;
+  const aiPending = aiBlocksPending || aiMarksPending;
+  // Composed C.3 gate message covering both unreviewed draft text and
+  // undecided image marks so the blocked action names everything unresolved.
+  const describeAiGate = useCallback(
+    (verb: string) => {
+      const parts: string[] = [];
+      if (aiDraft.unreviewedCount > 0)
+        parts.push(
+          `${aiDraft.unreviewedCount} AI-drafted block${
+            aiDraft.unreviewedCount === 1 ? "" : "s"
+          } need review`
+        );
+      if (ai.count > 0)
+        parts.push(
+          `${ai.count} unreviewed AI finding mark${ai.count === 1 ? "" : "s"} need a decision`
+        );
+      return `${parts.join(", ")} before ${verb} (C.3)`;
+    },
+    [aiDraft.unreviewedCount, ai.count]
+  );
 
   // §5.2 / Part B: Shift+A toggles the AI Findings overlay (the status bar
   // advertises ⇧A). Shares the same focus guard so typing is never hijacked.
@@ -966,6 +981,8 @@ function ReadingConsole() {
                 isMobile={isMobile}
                 enableReadingPresets={hasPermission("REPORT_READ")}
                 compactViewport
+                cinePlaying={cinePlaying}
+                onToggleCine={toggleCine}
                 aiFindings={{
                   marks: ai.currentFileMarks,
                   visible: ai.visible,
@@ -1011,9 +1028,8 @@ function ReadingConsole() {
           {viewFiles.length > 0 ? ` · ${Math.max(0, fileIndex) + 1}/${viewFiles.length}` : ""}
         </span>
         <span className="reading-viewport-hint">
-          {activePhase
-            ? `phase ${activePhase.label.toLowerCase()} · `
-            : ""}drag = active tool · <b>[ ]</b> report · <b>F1</b> help
+          {activePhase ? `phase ${activePhase.label.toLowerCase()} · ` : ""}drag = active tool ·{" "}
+          <b>[ ]</b> report · <b>F1</b> help
         </span>
       </div>
     </div>
@@ -1059,13 +1075,8 @@ function ReadingConsole() {
       onReturnClick={() => setReturnOpen(true)}
       autosaveStatus={autosaveStatus}
       draft={aiDraft}
-      signGateHint={
-        aiBlocksPending
-          ? `${aiDraft.unreviewedCount} AI-drafted block${
-              aiDraft.unreviewedCount === 1 ? "" : "s"
-            } need review before signing`
-          : undefined
-      }
+      aiUnresolvedMarks={ai.count}
+      signGateHint={aiPending ? describeAiGate("signing") : undefined}
     />
   );
 
