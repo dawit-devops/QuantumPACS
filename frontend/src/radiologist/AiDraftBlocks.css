@@ -248,6 +248,12 @@
   font-size: 10px;
 }
 
+.ai-draft-log-actor {
+  color: #8992a3;
+  margin-left: 8px;
+  font-size: 10px;
+}
+
 .ai-draft-log-detail {
   margin-top: 2px;
   font-size: 11px;

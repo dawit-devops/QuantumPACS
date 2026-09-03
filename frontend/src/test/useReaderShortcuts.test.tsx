@@ -28,6 +28,7 @@ function makeHandlers() {
     goToWorklist: vi.fn(),
     showHelp: vi.fn(),
     toggleCine: vi.fn(),
+    flagCritical: vi.fn(),
   };
 }
 
@@ -92,6 +93,14 @@ describe("useReaderShortcuts (§5)", () => {
     expect(handlers.showHelp).toHaveBeenCalledTimes(1);
     act(() => fireKey({ key: "w", ctrlKey: true, shiftKey: true }));
     expect(handlers.goToWorklist).toHaveBeenCalledTimes(1);
+  });
+
+  it("binds F to open critical flagging (§5) and Space to cine", () => {
+    render();
+    act(() => fireKey({ key: "f" }));
+    expect(handlers.flagCritical).toHaveBeenCalledTimes(1);
+    act(() => fireKey({ key: " " }));
+    expect(handlers.toggleCine).toHaveBeenCalledTimes(1);
   });
 
   it("navigates the queue with arrows only while immersive", () => {

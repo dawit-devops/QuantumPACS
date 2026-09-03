@@ -20,6 +20,7 @@ import {
   RollbackOutlined,
   HistoryOutlined,
   EyeOutlined,
+  AudioOutlined,
 } from "@ant-design/icons";
 import { request } from "../helpers";
 import ReportDocument from "../common/ReportDocument";
@@ -56,6 +57,9 @@ interface ReportPanelProps {
   findings: string;
   impression: string;
   recommendations: string;
+  /** §4.4 Clinical History + Technique sections (numbered, editable). */
+  clinicalHistory?: string;
+  technique?: string;
   templates: any[];
   templateName?: string;
   dirty: boolean;
@@ -63,6 +67,8 @@ interface ReportPanelProps {
   onFindingsChange: (v: string) => void;
   onImpressionChange: (v: string) => void;
   onRecommendationsChange: (v: string) => void;
+  onClinicalHistoryChange?: (v: string) => void;
+  onTechniqueChange?: (v: string) => void;
   onApplyTemplate: (name: string) => void;
   onSaveDraft: () => void;
   onPreview: () => void;
@@ -104,6 +110,8 @@ export default function ReportPanel({
   findings,
   impression,
   recommendations,
+  clinicalHistory = "",
+  technique = "",
   templates,
   templateName,
   dirty,
@@ -111,6 +119,8 @@ export default function ReportPanel({
   onFindingsChange,
   onImpressionChange,
   onRecommendationsChange,
+  onClinicalHistoryChange,
+  onTechniqueChange,
   onApplyTemplate,
   onSaveDraft,
   onPreview,
@@ -152,6 +162,16 @@ export default function ReportPanel({
   const [diffV2, setDiffV2] = useState<number | undefined>();
   const [diff, setDiff] = useState<any>(null);
   const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
+
+  // §4.4 dictation: the report header carries a mic toggle. Speech recognition
+  // routes into whichever section currently holds focus ("typing also works" —
+  // the hint shown next to the toggle). State is local to this panel.
+  const [dictating, setDictating] = useState(false);
+  const [dictationLive, setDictationLive] = useState(false);
+  const [dictationError, setDictationError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<
+    "findings" | "impression" | "recommendations" | null
+  >(null);
 
   const loadVersions = useCallback(() => {
     if (!report?.id) return;
@@ -264,6 +284,64 @@ export default function ReportPanel({
       ? "Impression required to sign"
       : "Ready to sign";
 
+  // §4.4 dictation toggle. We render the affordance always; the live state is
+  // only reached when the host browser actually exposes a speech recognizer
+  // and grants mic access. Otherwise the toggle reports an honest "not
+  // available" reason instead of pretending to transcribe — the header also
+  // reminds the operator that keyboard input works everywhere.
+  const recognizer = () =>
+    typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
+  const startDictation = () => {
+    const rec = recognizer();
+    if (!rec) {
+      setDictating(true);
+      setDictationLive(false);
+      setDictationError(
+        "Dictation needs a speech backend your browser exposes. Type directly into any field instead."
+      );
+      return;
+    }
+    try {
+      // Created as a local const so TS keeps its non-null type through
+      // .start() — the declarative constructor throws on a dead recognizer.
+      const session = new rec({
+        continuous: true,
+        interimResults: true,
+        onerror: (_e: any) => {
+          setDictationLive(false);
+          setDictationError("Mic not available — check browser microphone permission.");
+        },
+        onresult: (r: any) => {
+          if (!r.isFinal) return;
+          const transcript = r.section?.text ?? "";
+          if (!transcript.trim()) return;
+          const field = focusedField ?? "findings";
+          if (field === "impression") onImpressionChange(impression + " " + transcript);
+          else if (field === "recommendations")
+            onRecommendationsChange(recommendations + " " + transcript);
+          else onFindingsChange(findings + " " + transcript);
+        },
+      });
+      session.start();
+      setDictating(true);
+      setDictationLive(true);
+      setDictationError(null);
+    } catch {
+      setDictating(true);
+      setDictationLive(false);
+      setDictationError(
+        "Could not start the speech recognizer — type directly into any field instead."
+      );
+    }
+  };
+  const stopDictation = () => {
+    setDictating(false);
+    setDictationLive(false);
+    setDictationError(null);
+  };
+
   return (
     <div
       className={`report-panel${editable ? " report-panel-editor" : ""}`}
@@ -299,6 +377,33 @@ export default function ReportPanel({
               showSearch={{ optionFilterProp: "label" }}
             />
             {versionPriorButtons}
+          </div>
+
+          {/* §4.4 dictation: a mic pill in the header. The live state makes the
+              whole row go red/pulsing so a dictating operator can see at a glance.
+              The always-on hint normalizes keyboard input beside the mic. */}
+          <div className={`report-dictation${dictationLive ? " live" : ""}`}>
+            <button
+              type="button"
+              className={`report-mic${dictationLive ? " rec" : ""}`}
+              aria-pressed={dictating}
+              aria-label={dictating ? "Stop dictation" : "Start dictation"}
+              onClick={dictating ? stopDictation : startDictation}
+            >
+              <AudioOutlined />
+              <span className="report-mic-text">
+                {dictationLive ? "Listening…" : dictating ? "Dictation unavailable" : "Dictate"}
+              </span>
+              {dictationLive && <span className="report-mic-rec-dot" aria-hidden="true" />}
+            </button>
+            <span className="report-dictation-hint">
+              …or type directly into any field — the report is editable by hand.
+            </span>
+            {dictationError && (
+              <span className="report-dictation-error" role="alert">
+                {dictationError}
+              </span>
+            )}
           </div>
 
           {!submitted && !isFinal && reviewFeedback && (
@@ -439,13 +544,51 @@ export default function ReportPanel({
               />
             )}
 
+            {/* §4.4 numbered sections — Clinical History (1), Technique (2),
+                Findings (3), Impression (4). Recommendations stays optional. */}
+            <div className="report-field report-field-clinical-history">
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  1
+                </span>
+                Clinical History
+              </span>
+              <RichTextEditor
+                value={clinicalHistory ?? ""}
+                onChange={(v) => onClinicalHistoryChange?.(v)}
+                readOnly={!canWrite || submitted}
+                placeholder="Indication / relevant history…"
+              />
+            </div>
+
+            <div className="report-field report-field-technique">
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  2
+                </span>
+                Technique
+              </span>
+              <RichTextEditor
+                value={technique ?? ""}
+                onChange={(v) => onTechniqueChange?.(v)}
+                readOnly={!canWrite || submitted}
+                placeholder="Acquisition / sequence technique…"
+              />
+            </div>
+
             <div className="report-field report-field-findings">
-              <span className="report-field-label">Findings</span>
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  3
+                </span>
+                Findings
+              </span>
               <RichTextEditor
                 value={findings}
                 onChange={onFindingsChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Structured findings — per template or free text…"
+                onFocusChange={(f) => setFocusedField(f ? "findings" : null)}
               />
               <MacroChips
                 section="findings"
@@ -455,13 +598,19 @@ export default function ReportPanel({
             </div>
 
             <div className="report-field report-field-impression">
-              <span className="report-field-label">Impression</span>
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  4
+                </span>
+                Impression
+              </span>
               <RichTextEditor
                 value={impression}
                 onChange={onImpressionChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Impression / conclusion (required before signing)…"
                 status={!impression.trim() ? "warning" : ""}
+                onFocusChange={(f) => setFocusedField(f ? "impression" : null)}
               />
               <MacroChips
                 section="impression"
@@ -477,6 +626,7 @@ export default function ReportPanel({
                 onChange={onRecommendationsChange}
                 readOnly={!canWrite || submitted}
                 placeholder="Optional recommendations for follow-up…"
+                onFocusChange={(f) => setFocusedField(f ? "recommendations" : null)}
               />
               {draft && <AiDraftBlocks draft={draft} section="recommendations" />}
             </div>
@@ -655,6 +805,8 @@ export default function ReportPanel({
                 findings={findings}
                 impression={impression}
                 recommendations={recommendations}
+                clinicalHistory={clinicalHistory}
+                technique={technique}
                 signedBy={report?.signed_by_name || report?.signed_by || undefined}
                 signedAt={report?.signed_at}
               />

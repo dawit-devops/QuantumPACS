@@ -122,6 +122,19 @@ export function useAiFindings(
     [updateMark],
   );
 
+  // C.6 "dismissal ≠ deletion": a dismissed mark is a recorded decision, not
+  // a deletion — the radiologist can reopen it as a neutral unreviewed finding
+  // to re-inspect (parallel to the Part A draft-text `considerRejectedBlock`).
+  // Reset clears `actedAt` too so the reopened mark no longer claims a prior
+  // decision and correctly blocks signing again until re-resolved (C.3).
+  const reconsiderMark = useCallback(
+    (mark: AiMarkFinding) => {
+      updateMark(mark.id, { status: "unreviewed", actedAt: undefined });
+      setInspectedId(null);
+    },
+    [updateMark],
+  );
+
   // ── Accept → B.5 inline choice modal ─────────────────────────────────────
 
   const sentences = useMemo(
@@ -232,6 +245,7 @@ export function useAiFindings(
     inspectedId,
     dismissMark,
     requestAccept,
+    reconsiderMark,
     displayedMarks,
     hiddenCount,
     revealMore,

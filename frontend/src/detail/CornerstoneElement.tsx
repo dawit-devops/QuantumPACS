@@ -167,7 +167,7 @@ export default function CornerstoneElement(props: CEProps) {
   const [viewportError, setViewportError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMobileToolbar, setShowMobileToolbar] = useState(false);
-  const [activeTool, setActiveTool] = useState("Pan");
+  const [activeTool, setActiveTool] = useState("WindowLevel");
   const { message } = App.useApp();
 
   // Keep latest props/file reachable from stable callbacks without re-binding
@@ -558,6 +558,10 @@ export default function CornerstoneElement(props: CEProps) {
           break;
         case "f":
         case "F":
+          // In the compact reading console the F key belongs to "flag
+          // critical" (spec §5), handled at the console level — do not
+          // consume it here. Standalone viewer keeps F = fullscreen.
+          if (propsRef.current.compactViewport) break;
           e.preventDefault();
           toggleFullscreen();
           break;
@@ -572,6 +576,17 @@ export default function CornerstoneElement(props: CEProps) {
           goToPrevFile();
           break;
         case "ArrowRight":
+          e.preventDefault();
+          goToNextFile();
+          break;
+        case "ArrowUp":
+          // §4.3/§5 "↑ / ↓ pages slices" — in this file-stack viewer slices
+          // are the frame/filestack, so the vertical arrows page it exactly
+          // like the horizontal ones.
+          e.preventDefault();
+          goToPrevFile();
+          break;
+        case "ArrowDown":
           e.preventDefault();
           goToNextFile();
           break;
@@ -873,6 +888,7 @@ export default function CornerstoneElement(props: CEProps) {
           onInspect={props.aiFindings.onInspect}
           onAccept={props.aiFindings.onAccept}
           onDismiss={props.aiFindings.onDismiss}
+          onReconsider={props.aiFindings.onReconsider}
           inspectedId={props.aiFindings.inspectedId}
         />
       )}
@@ -886,7 +902,7 @@ export default function CornerstoneElement(props: CEProps) {
       role="region"
       aria-label="DICOM image viewer"
     >
-      <div style={{ padding: "10px" }} role="toolbar" aria-label="Viewer tools">
+      <div className="ce-main-toolbar" style={{ padding: "10px" }} role="toolbar" aria-label="Viewer tools">
         {files && files.length > 1 && (
           <Slider
             max={files.length - 1}

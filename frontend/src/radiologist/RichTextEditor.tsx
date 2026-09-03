@@ -17,6 +17,7 @@ interface RichTextEditorProps {
   readOnly?: boolean;
   status?: "warning" | "error" | "";
   minHeight?: number;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export default function RichTextEditor({
@@ -26,6 +27,7 @@ export default function RichTextEditor({
   readOnly = false,
   status,
   minHeight = 80,
+  onFocusChange,
 }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
@@ -148,8 +150,14 @@ export default function RichTextEditor({
         className={`rte-editor${focused ? " rte-focused" : ""}`}
         contentEditable={!readOnly}
         onInput={onInput}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true);
+          onFocusChange?.(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onFocusChange?.(false);
+        }}
         data-placeholder={placeholder}
         role="textbox"
         aria-multiline="true"

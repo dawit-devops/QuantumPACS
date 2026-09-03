@@ -5,6 +5,8 @@ class SaveReportRequest(BaseModel):
     findings: str = Field('', description="Structured findings text")
     impression: str = Field('', description="Impression/conclusion text")
     recommendations: str = Field('', description="Recommendations (optional)")
+    clinical_history: str = Field('', description="Clinical history / indication")
+    technique: str = Field('', description="Acquisition / sequence technique")
     template_name: str = Field('', description="Template that seeded the draft")
     status: str = Field('draft', description="draft/preliminary (never final)")
 

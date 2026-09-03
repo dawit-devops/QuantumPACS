@@ -29,6 +29,8 @@ class Reports(Table):
             findings TEXT DEFAULT '',
             impression TEXT DEFAULT '',
             recommendations TEXT DEFAULT '',
+            clinical_history TEXT DEFAULT '',
+            technique TEXT DEFAULT '',
             template_name TEXT DEFAULT '',
             created_by TEXT DEFAULT '',
             signed_by TEXT DEFAULT '',
@@ -53,7 +55,9 @@ class Reports(Table):
             ADD COLUMN IF NOT EXISTS template_id UUID,
             ADD COLUMN IF NOT EXISTS distributed_at TIMESTAMPTZ,
             ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE,
-            ADD COLUMN IF NOT EXISTS body_part TEXT DEFAULT ''
+            ADD COLUMN IF NOT EXISTS body_part TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS clinical_history TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS technique TEXT DEFAULT ''
         """)
 
     async def create(self, exam_id, data, created_by):
@@ -64,6 +68,7 @@ class Reports(Table):
         # template and order linkage on the very first save.
         q = self.insert().columns(
             'exam_id', 'status', 'findings', 'impression', 'recommendations',
+            'clinical_history', 'technique',
             'template_name', 'template_id', 'ris_order_id', 'created_by',
             'signed_by', 'is_critical',
             'created_at', 'updated_at',
@@ -73,6 +78,8 @@ class Reports(Table):
             data.get('findings', ''),
             data.get('impression', ''),
             data.get('recommendations', ''),
+            data.get('clinical_history', ''),
+            data.get('technique', ''),
             data.get('template_name', ''),
             data.get('template_id'),
             data.get('ris_order_id'),
@@ -106,7 +113,7 @@ class Reports(Table):
         previous = await self.get(report_id)
         fields = ['updated_at']
         values = [datetime.now(timezone.utc)]
-        for k in ('status', 'findings', 'impression', 'recommendations', 'template_name', 'template_id', 'ris_order_id', 'is_critical'):
+        for k in ('status', 'findings', 'impression', 'recommendations', 'clinical_history', 'technique', 'template_name', 'template_id', 'ris_order_id', 'is_critical'):
             if k in data:
                 fields.append(k)
                 values.append(data[k])

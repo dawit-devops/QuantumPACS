@@ -45,4 +45,8 @@ export interface AiDraftChangelogEntry {
   section: AiDraftSection;
   blockId: string;
   detail?: string;
+  /** A.7 attribution — the operator who performed the action, so the audit
+   *  trail is answerable ("who decided") not just "when". Ordinary operators
+   *  omit it and the hook stamps the current user from getProfile(). */
+  actor?: string;
 }

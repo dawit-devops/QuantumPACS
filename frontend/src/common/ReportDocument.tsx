@@ -28,6 +28,8 @@ interface ReportDocumentProps {
   findings?: string;
   impression?: string;
   recommendations?: string;
+  clinicalHistory?: string;
+  technique?: string;
   signedBy?: string;
   signedAt?: string;
   /** Left rail for the masthead (used by staff surfaces); portal omits it. */
@@ -46,6 +48,8 @@ export default function ReportDocument({
   findings,
   impression,
   recommendations,
+  clinicalHistory,
+  technique,
   signedBy,
   signedAt,
   children,
@@ -153,6 +157,26 @@ export default function ReportDocument({
             </tr>
           </tbody>
         </table>
+
+        {clinicalHistory ? (
+          <section className="rpt-section">
+            <h2 className="rpt-label">Clinical History</h2>
+            <div
+              className="rpt-text"
+              dangerouslySetInnerHTML={{ __html: sanitizeReportHtml(clinicalHistory) }}
+            />
+          </section>
+        ) : null}
+
+        {technique ? (
+          <section className="rpt-section">
+            <h2 className="rpt-label">Technique</h2>
+            <div
+              className="rpt-text"
+              dangerouslySetInnerHTML={{ __html: sanitizeReportHtml(technique) }}
+            />
+          </section>
+        ) : null}
 
         <section className="rpt-section">
           <h2 className="rpt-label">Findings</h2>

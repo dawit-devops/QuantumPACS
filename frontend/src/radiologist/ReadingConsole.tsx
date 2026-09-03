@@ -111,7 +111,7 @@ const readingRoomTheme = {
 };
 
 // NFR-R12-10: report autosave cadence ≤ 10s; drafts must never be lost.
-const AUTOSAVE_MS = 3000;
+const AUTOSAVE_MS = 700;
 
 // The console reuses the Cornerstone viewer unchanged — Detail mounts it by
 // file id, the console mounts it with a file picked from the exam's imaging
@@ -164,6 +164,8 @@ function ReadingConsole() {
   const [findings, setFindings] = useState("");
   const [impression, setImpression] = useState("");
   const [recommendations, setRecommendations] = useState("");
+  const [clinicalHistory, setClinicalHistory] = useState("");
+  const [technique, setTechnique] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [status, setStatus] = useState("draft");
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -326,10 +328,21 @@ function ReadingConsole() {
     setFindings(report.findings || "");
     setImpression(report.impression || "");
     setRecommendations(report.recommendations || "");
+    setClinicalHistory(report.clinical_history || "");
+    setTechnique(report.technique || "");
     setTemplateName(report.template_name || "");
     setStatus(report.status || "draft");
     setSavedAt(report.updated_at ? new Date(report.updated_at) : null);
   }, [report]);
+
+  // §4.4 Clinical History: seed from the exam's indication when the loaded
+  // report carries no clinical history yet (blank report or first read).
+  useEffect(() => {
+    if (exam && !clinicalHistory.trim()) {
+      setClinicalHistory(exam.clinical_indication || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exam]);
 
   useEffect(() => {
     request("reports/templates", {
@@ -356,6 +369,8 @@ function ReadingConsole() {
             findings,
             impression,
             recommendations,
+            clinical_history: clinicalHistory,
+            technique,
             template_name: templateName,
             status:
               // CR-4: the backend rejects `final` and locks signed reports —
@@ -387,18 +402,21 @@ function ReadingConsole() {
   });
 
   useEffect(() => {
-    // Autosave loop: flush the local draft on an interval (FR-R12-09 /
-    // NFR-R12-10).
-    saveTimer.current = setInterval(() => {
-      if (dirtyRef.current && statusRef.current !== "submitted" && statusRef.current !== "final") {
-        saveDraftRef.current();
-      }
+    // Autosave debounce (FR-R12-09 / NFR-R12-10): the spec (§4.4) flushes the
+    // draft ~700ms after any edit. A timed debounce on `dirty` replaces the
+    // old fixed-interval poll, so a pause in typing actually persists rather
+    // than waiting out the whole tick. The status ref keeps it from writing a
+    // submitted/final report the backend rejects as locked.
+    if (!dirty || !dirtyRef.current) return;
+    if (statusRef.current === "submitted" || statusRef.current === "final") return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveDraftRef.current();
     }, AUTOSAVE_MS);
     return () => {
-      if (saveTimer.current) clearInterval(saveTimer.current);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dirty]);
 
   const applyTemplate = (name: string) => {
     const t = templates.find((x) => x.name === name);
@@ -647,6 +665,7 @@ function ReadingConsole() {
     goToWorklist: goBack,
     showHelp: () => setShowShortcuts(true),
     toggleCine,
+    flagCritical: () => setCriticalOpen(true),
   });
 
   // Stop cine if the console unmounts mid-loop.
@@ -826,7 +845,7 @@ function ReadingConsole() {
     dirtyRef.current = true;
     setDirty(true);
   }, []);
-  const aiDraft = useAiReportDraft(examId, applyAiText);
+  const aiDraft = useAiReportDraft(examId, applyAiText, user?.username);
   const aiBlocksPending = aiDraft.unreviewedCount > 0;
   // C.3: the A.5 hard gate extends beyond draft text — an unresolved AI
   // *finding mark* (neither accepted nor dismissed) equally blocks finalizing
@@ -990,6 +1009,7 @@ function ReadingConsole() {
                   onInspect: ai.inspectMark,
                   onAccept: ai.requestAccept,
                   onDismiss: ai.dismissMark,
+                  onReconsider: ai.reconsiderMark,
                   inspectedId: ai.inspectedId,
                 }}
               />
@@ -1046,6 +1066,8 @@ function ReadingConsole() {
       findings={findings}
       impression={impression}
       recommendations={recommendations}
+      clinicalHistory={clinicalHistory}
+      technique={technique}
       templates={templates}
       dirty={dirty}
       reviewFeedback={report?.review_feedback}
@@ -1062,6 +1084,16 @@ function ReadingConsole() {
       }}
       onRecommendationsChange={(v) => {
         setRecommendations(v);
+        dirtyRef.current = true;
+        setDirty(true);
+      }}
+      onClinicalHistoryChange={(v) => {
+        setClinicalHistory(v);
+        dirtyRef.current = true;
+        setDirty(true);
+      }}
+      onTechniqueChange={(v) => {
+        setTechnique(v);
         dirtyRef.current = true;
         setDirty(true);
       }}
@@ -1219,6 +1251,14 @@ function ReadingConsole() {
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   onClick={() => setSignOpen(true)}
+                  disabled={!impression.trim() || aiPending}
+                  title={
+                    aiPending
+                      ? "Unreviewed AI content or missing impression — open the report pane to review before signing"
+                      : !impression.trim()
+                        ? "Impression required to sign"
+                        : undefined
+                  }
                 >
                   Sign Report
                 </Button>
@@ -1533,6 +1573,8 @@ function ReadingConsole() {
               findings={findings}
               impression={impression}
               recommendations={recommendations}
+              clinicalHistory={clinicalHistory}
+              technique={technique}
             />
           )}
         </Modal>
@@ -1594,6 +1636,15 @@ function ReadingConsole() {
           <span className="reading-status-spacer" />
           {cinePlaying && <span className="kbd-hint reading-cine-live">▶ CINE</span>}
           <span className="kbd-hint">
+            <b>↑↓</b> slice
+          </span>
+          <span className="kbd-hint">
+            <b>W</b> W/L
+          </span>
+          <span className="kbd-hint">
+            <b>M</b> measure
+          </span>
+          <span className="kbd-hint">
             <b>Space</b> cine
           </span>
           <span className="kbd-hint">
@@ -1603,7 +1654,7 @@ function ReadingConsole() {
             <b>Ctrl+S</b> save
           </span>
           <span className="kbd-hint">
-            <b>Ctrl+⏎</b> sign
+            <b>⌘⏎</b> sign
           </span>
           <span className="kbd-hint">
             <b>←/→</b> exam

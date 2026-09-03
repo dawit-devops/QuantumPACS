@@ -180,7 +180,9 @@ describe("ReadingConsole", () => {
     });
 
     // Header Sign button + actions Sign button; the enabled state lives on the
-    // native <button> under the antd Button wrapper.
+    // native <button> under the antd Button wrapper. Both sign buttons are
+    // disabled until the impression field has content (A.5 / §4.4), so before
+    // typing at least one must read disabled.
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === true);
@@ -190,6 +192,11 @@ describe("ReadingConsole", () => {
       "Impression / conclusion (required before signing)…",
       "No acute intracranial abnormality."
     );
+
+    // Clear the A.5 AI gate (unreviewed draft blocks) so the impression alone
+    // keeps sign enabled — the header Sign Report is gated the same way as the
+    // footer, so both must un-disable together.
+    await resolveAiDraft();
 
     await waitFor(() => {
       const btn = screen

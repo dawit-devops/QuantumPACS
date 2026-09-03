@@ -8,7 +8,11 @@ interface ShortcutEntry {
 }
 
 const SHORTCUTS: ShortcutEntry[] = [
-  { key: "1", action: "Pan (default)", group: "Tool Selection" },
+  { key: "W", action: "Window / Level (default on load)", group: "Tool Selection" },
+  { key: "P", action: "Pan", group: "Tool Selection" },
+  { key: "Z", action: "Zoom", group: "Tool Selection" },
+  { key: "M", action: "Length measurement", group: "Tool Selection" },
+  { key: "1", action: "Pan", group: "Tool Selection" },
   { key: "2", action: "Length measurement", group: "Tool Selection" },
   { key: "3", action: "Rectangle ROI", group: "Tool Selection" },
   { key: "4", action: "Ellipse ROI", group: "Tool Selection" },
@@ -18,24 +22,21 @@ const SHORTCUTS: ShortcutEntry[] = [
   { key: "8", action: "Cobb angle measurement", group: "Tool Selection" },
   { key: "9", action: "Probe pixel value", group: "Tool Selection" },
   { key: "0", action: "Circle ROI", group: "Tool Selection" },
-  { key: "R", action: "Rotate 90° CW", group: "Viewer Controls" },
+  { key: "R", action: "Reset zoom / pan", group: "Viewer Controls" },
   { key: "H", action: "Horizontal flip", group: "Viewer Controls" },
   { key: "V", action: "Vertical flip", group: "Viewer Controls" },
   { key: "I", action: "Invert colors", group: "Viewer Controls" },
-  { key: "F", action: "Toggle fullscreen", group: "Viewer Controls" },
-  { key: "Esc", action: "Exit fullscreen", group: "Viewer Controls" },
-  { key: "P", action: "Cycle saved W/L presets", group: "Reading Presets" },
-  {
-    key: "L",
-    action: "Cycle layout grid (1×1 / 1×2 / 2×2)",
-    group: "Reading Presets",
-  },
+  { key: "Shift+W", action: "Cycle W/L presets", group: "Reading Presets" },
+  { key: "L", action: "Cycle layout grid (1×1 / 1×2 / 2×2)", group: "Reading Presets" },
   { key: "S", action: "Save annotations", group: "Annotations" },
   { key: "C", action: "Clear all annotations", group: "Annotations" },
-  { key: "← / →", action: "Previous / Next file", group: "Navigation" },
-  { key: "Ctrl+Scroll", action: "Zoom", group: "Navigation" },
-  { key: "Shift+Scroll", action: "Window / Level", group: "Navigation" },
-  { key: "+ / -", action: "Zoom in / Zoom out", group: "Navigation" },
+  { key: "← / → / ↑ / ↓", action: "Previous / Next file (slice)", group: "Navigation" },
+  { key: "F", action: "Flag critical (console)", group: "Reading Console" },
+  { key: "[ ]", action: "Toggle report pane", group: "Reading Console" },
+  { key: "Ctrl+S", action: "Save draft", group: "Reading Console" },
+  { key: "⌘⏎", action: "Sign report", group: "Reading Console" },
+  { key: "Space", action: "Cine play / pause", group: "Reading Console" },
+  { key: "⇧A", action: "Toggle AI findings", group: "Reading Console" },
   { key: "?", action: "Show this help", group: "Help" },
 ];
 
@@ -45,6 +46,7 @@ const GROUP_ORDER = [
   "Reading Presets",
   "Annotations",
   "Navigation",
+  "Reading Console",
   "Help",
 ];
 
@@ -59,7 +61,7 @@ export function KeyboardShortcuts({ open, onClose }: KeyboardShortcutsProps) {
       ...s,
       groupOrder: GROUP_ORDER.indexOf(s.group),
       rowKey: `${group}-${i}`,
-    })),
+    }))
   ).sort((a, b) => a.groupOrder - b.groupOrder);
 
   const columns = [

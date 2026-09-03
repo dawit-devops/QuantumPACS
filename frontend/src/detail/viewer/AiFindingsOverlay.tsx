@@ -4,6 +4,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   QuestionCircleOutlined,
+  RedoOutlined,
 } from "@ant-design/icons";
 import type { StackViewport } from "@cornerstonejs/core";
 import { EVENTS } from "@cornerstonejs/core";
@@ -20,6 +21,7 @@ interface AiFindingsOverlayProps {
   onInspect: (mark: AiMarkFinding) => void;
   onAccept: (mark: AiMarkFinding) => void;
   onDismiss: (mark: AiMarkFinding) => void;
+  onReconsider: (mark: AiMarkFinding) => void;
   inspectedId?: string | null;
 }
 
@@ -58,6 +60,7 @@ export default function AiFindingsOverlay({
   onInspect,
   onAccept,
   onDismiss,
+  onReconsider,
   inspectedId,
 }: AiFindingsOverlayProps) {
   const boxRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -174,15 +177,27 @@ export default function AiFindingsOverlay({
           </div>
           <div className="ai-pop-label">{inspected.label}</div>
           <div className="ai-pop-actions">
-            <Button
-              size="small"
-              type="primary"
-              icon={<CheckOutlined />}
-              className="ai-pop-accept"
-              onClick={() => onAccept(inspected)}
-            >
-              Accept
-            </Button>
+            {inspected.status === "dismissed" ? (
+              <Button
+                size="small"
+                type="primary"
+                icon={<RedoOutlined />}
+                className="ai-pop-reconsider"
+                onClick={() => onReconsider(inspected)}
+              >
+                Reconsider
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                type="primary"
+                icon={<CheckOutlined />}
+                className="ai-pop-accept"
+                onClick={() => onAccept(inspected)}
+              >
+                Accept
+              </Button>
+            )}
             <Button
               size="small"
               danger
@@ -193,7 +208,11 @@ export default function AiFindingsOverlay({
               Dismiss
             </Button>
           </div>
-          <div className="ai-pop-hint">Accepted links this finding to the report.</div>
+          <div className="ai-pop-hint">
+            {inspected.status === "dismissed"
+              ? "Reconsider returns this to the open-findings review list."
+              : "Accepted links this finding to the report."}
+          </div>
         </div>
       )}
     </div>

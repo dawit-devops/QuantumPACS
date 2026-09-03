@@ -144,6 +144,7 @@ function AiDraftLog({
               <span className="ai-draft-log-time">
                 {new Date(e.timestamp).toLocaleTimeString()}
               </span>
+              {e.actor && <span className="ai-draft-log-actor">by {e.actor}</span>}
               {e.detail && <div className="ai-draft-log-detail">{e.detail}</div>}
             </li>
           ))}

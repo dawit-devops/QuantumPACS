@@ -45,7 +45,8 @@ function nextId(): string {
  */
 export function useAiReportDraft(
   examId: string | undefined,
-  applyText: (section: AiDraftSection, text: string) => void
+  applyText: (section: AiDraftSection, text: string) => void,
+  actor?: string
 ): AiReportDraftApi {
   const [blocks, setBlocks] = useState<AiDraftBlock[]>(() => {
     const { blocks: generated } = generateAiReportDraft(examId);
@@ -63,12 +64,24 @@ export function useAiReportDraft(
     setChangelog([]);
   }, [examId]);
 
-  const log = useCallback((entry: Omit<AiDraftChangelogEntry, "id" | "timestamp">) => {
-    setChangelog((prev) => [
-      { ...entry, id: nextId(), timestamp: new Date().toISOString() },
-      ...prev,
-    ]);
-  }, []);
+  const log = useCallback(
+    (entry: Omit<AiDraftChangelogEntry, "id" | "timestamp">) => {
+      setChangelog((prev) => [
+        {
+          ...entry,
+          id: nextId(),
+          timestamp: new Date().toISOString(),
+          // A.7 attribution: stamp the logged-in operator on every entry so
+          // the audit trail records who acted, not just when. Falls back to a
+          // neutral tag when the caller supplies no identity.
+          actor: actor ?? entry.actor ?? "operator",
+        },
+        ...prev,
+      ]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [actor]
+  );
 
   const patchBlock = useCallback((id: string, patch: Partial<AiDraftBlock>) => {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
@@ -119,9 +132,9 @@ export function useAiReportDraft(
     for (const b of pending) {
       applyText(b.section, b.text);
       patchBlock(b.id, { status: "accepted", actedAt: new Date().toISOString() });
-    }
-    if (pending.length) {
-      log({ action: "accept-all", section: "findings", blockId: pending[0].id });
+      // A.7 granularity: one audit entry per accepted block, not a single
+      // aggregate — a bulk accept must be traceable per sentence.
+      log({ action: "accept", section: b.section, blockId: b.id, detail: b.text });
     }
   }, [blocks, applyText, patchBlock, log]);
 
@@ -129,9 +142,7 @@ export function useAiReportDraft(
     const pending = blocks.filter((b) => b.status === "unreviewed");
     for (const b of pending) {
       patchBlock(b.id, { status: "rejected", actedAt: new Date().toISOString() });
-    }
-    if (pending.length) {
-      log({ action: "reject-all", section: "findings", blockId: pending[0].id });
+      log({ action: "reject", section: b.section, blockId: b.id, detail: b.text });
     }
   }, [blocks, patchBlock, log]);
 

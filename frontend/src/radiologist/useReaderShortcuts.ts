@@ -23,6 +23,7 @@ export interface ReaderShortcutHandlers {
   goToWorklist: () => void;
   showHelp: () => void;
   toggleCine: () => void;
+  flagCritical: () => void;
 }
 
 /**
@@ -97,6 +98,12 @@ export function useReaderShortcuts(handlers: ReaderShortcutHandlers) {
         // via its header toolbar button (it was moved off Space deliberately).
         e.preventDefault();
         handlersRef.current.toggleCine();
+      } else if (key === "f") {
+        // §5 F = flag a finding for urgent critical callback. In the immersive
+        // console the viewer defers F (it would otherwise be fullscreen); the
+        // console owns this binding and opens the critical-flag modal.
+        e.preventDefault();
+        handlersRef.current.flagCritical();
       }
     };
     document.addEventListener("keydown", onKeyDown);

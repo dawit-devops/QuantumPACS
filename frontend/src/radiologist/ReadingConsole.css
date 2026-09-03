@@ -258,14 +258,37 @@ body.reading-console-single .page-content {
   flex: 0 0 auto;
 }
 
-/* Compact reading-room mode: CornerstoneElement drops its own toolbar,
-   quick-tools, thumbnail strip, metadata and reading-presets chrome so the
-   image fills the whole viewport pane. The reading console already provides
-   SeriesNavigator (file/series picker) and the report panel next door; the
-   tools that remain meaningful (rotate/flip/invert) are reachable via the
-   console's immersive/fullscreen surfaces. */
-.reading-compact > [role="toolbar"] {
+/* Compact reading-room mode: instead of discarding CornerstoneElement's own
+   chrome, the spec §4.3 view-tool toolbar is kept but floated as a thin
+   overlay strip along the top edge so the spec's "key on every button"
+   (W/Z/P/Cine/R/L) stays visible without stealing vertical image space.
+   The redundant bottom quick-bar, series thumbnails, metadata and presets
+   remain hidden — the console provides SeriesNavigator + the report panel
+   next door and needs the image itself as the hero. */
+.reading-compact > .ce-main-toolbar {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(17, 19, 24, 0.82);
+  border: 1px solid var(--rc-border, #262b34);
+  border-radius: 3px;
+  max-height: 30px;
+}
+
+.reading-compact > [role="toolbar"][aria-label="Quick tools"] {
   display: none !important;
+}
+
+.reading-compact > .thumbnail-strip {
+  display: none;
 }
 
 .reading-compact > .thumbnail-strip {
