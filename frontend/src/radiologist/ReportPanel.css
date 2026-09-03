@@ -1,4 +1,25 @@
+/* ─────────────────────────────────────────────────────────────
+   Reading Console dark-scoped token overrides.
+   The console forces dark chrome in both app themes (see
+   ReadingConsole.css). Custom CSS here (labels, editor, etc.)
+   references semantic tokens (--text-primary, --bg-surface, etc.)
+   that resolve to LIGHT fallbacks unless redefined in this scope.
+   ───────────────────────────────────────────────────────────── */
 .report-panel {
+  --text-primary: #e6e9ee;
+  --text-secondary: #8992a3;
+  --text-tertiary: #565d6b;
+  --bg-surface: #171b21;
+  --bg-elevated: #1d222a;
+  --bg-hover: rgba(76, 195, 201, 0.08);
+  --bg-active: rgba(76, 195, 201, 0.12);
+  --border-color: #262b34;
+  --border-color-strong: #2c8489;
+  --accent: #4cc3c9;
+  --color-success: #6bbf8a;
+  --warning: #dba75a;
+  --ok: #6bbf8a;
+
   padding: 16px 20px 24px;
   overflow-y: auto;
   flex: 1;
@@ -113,16 +134,86 @@
   gap: 2px;
 }
 
+.report-field-clinical-history,
+.report-field-technique {
+  flex: 0 0 auto;
+  max-height: 90px;
+}
+
+.report-field-clinical-history .rte-wrapper,
+.report-field-technique .rte-wrapper {
+  flex: 1;
+}
+
 .report-field-findings {
-  flex: 5;
+  flex: 8;
 }
 
 .report-field-impression {
-  flex: 3;
+  flex: 4;
 }
 
 .report-field-recommendations {
   flex: 2;
+}
+
+/* Focused field expands to give the active editor more room while the
+   sibling fields compress — a smooth transition avoids jarring jumps. */
+.report-field {
+  transition: flex 0.18s ease;
+}
+
+.report-field-findings.report-field-focused {
+  flex: 14;
+}
+
+.report-field-impression.report-field-focused {
+  flex: 7;
+}
+
+.report-field-recommendations.report-field-focused {
+  flex: 3;
+}
+
+/* Side-by-side layout: editor column (flex) + AI sidebar (fixed width). */
+.report-field-columns {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.report-field-editor-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 2px;
+}
+
+/* AI suggestions live in a fixed-width side rail beside the editor rather
+   than stacked underneath, so they never squeeze the typing area. */
+.report-field-with-ai .ai-draft-rows {
+  flex: 0 0 220px;
+  width: 220px;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* On narrow panes, fall back to stacked (AI under editor). */
+@media (max-width: 460px) {
+  .report-field-columns {
+    flex-direction: column;
+  }
+
+  .report-field-with-ai .ai-draft-rows {
+    flex: 0 0 auto;
+    width: 100%;
+    margin-bottom: 4px;
+  }
 }
 
 .report-field-label {
@@ -207,7 +298,7 @@
   padding: 2px 10px;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px;
-  color: var(--text-secondary, #8992a3);
+  color: #b3bcc9;
   cursor: pointer;
   transition:
     color 0.15s ease,

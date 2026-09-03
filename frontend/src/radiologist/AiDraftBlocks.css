@@ -50,8 +50,73 @@
   gap: 4px;
   margin-bottom: 4px;
   flex: 0 0 auto;
-  max-height: 200px;
+}
+
+/* When rendered in the side-by-side report layout, the AI panel is a fixed
+   side rail: it scrolls independently of the editor instead of sharing its
+   vertical budget. */
+.report-field-columns .ai-draft-rows {
   overflow-y: auto;
+  align-self: stretch;
+}
+
+/* Collapsed summary bar — compact one-line strip per section */
+.ai-draft-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--ai-border);
+  border-radius: 3px;
+  background: var(--ai-glow);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ai-text);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ai-draft-summary:hover {
+  border-color: var(--ai-mark-stroke);
+  background: rgba(155, 140, 240, 0.18);
+}
+
+.ai-draft-summary.expanded {
+  border-radius: 3px 3px 0 0;
+  border-bottom: none;
+}
+
+.ai-draft-summary-icon {
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+
+.ai-draft-summary-count {
+  flex: 1;
+  text-align: left;
+  font-weight: 500;
+}
+
+.ai-draft-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #e6e9ee;
+  margin-left: auto;
+}
+
+/* Expanded content wrapper — scrollable when blocks overflow */
+.ai-draft-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--ai-border);
+  border-top: none;
+  border-radius: 0 0 3px 3px;
+  padding: 4px;
 }
 
 /* Each draft row: gutter (accept/reject) + body (tag + text) */
@@ -84,7 +149,7 @@
   height: 20px;
   min-width: 20px;
   font-size: 11px;
-  color: #8992a3;
+  color: #e6e9ee;
 }
 
 .ai-draft-gutter .ai-draft-accept:hover {
@@ -207,7 +272,7 @@
 .ai-draft-log-toggle {
   margin-top: 2px;
   font-size: 11px;
-  color: #8992a3;
+  color: #e6e9ee;
   padding: 0 4px;
   height: 20px;
 }
@@ -285,7 +350,7 @@
 
 .ai-draft-rejected-toggle {
   font-size: 11px;
-  color: #8992a3;
+  color: #e6e9ee;
   padding: 0 4px;
   height: 20px;
 }

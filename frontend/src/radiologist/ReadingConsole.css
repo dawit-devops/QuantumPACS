@@ -276,11 +276,11 @@ body.reading-console-single .page-content {
   overflow-x: auto;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 4px 10px;
   background: rgba(17, 19, 24, 0.82);
   border: 1px solid var(--rc-border, #262b34);
   border-radius: 3px;
-  max-height: 30px;
+  max-height: 46px;
 }
 
 .reading-compact > [role="toolbar"][aria-label="Quick tools"] {

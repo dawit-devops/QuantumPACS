@@ -8,6 +8,8 @@ import {
   HistoryOutlined,
   CheckSquareOutlined,
   DeleteOutlined,
+  DownOutlined,
+  UpOutlined,
 } from "@ant-design/icons";
 import type { AiDraftBlock, AiDraftSection } from "./aiDraftTypes";
 import { AI_DRAFT_SECTION_LABELS } from "./aiDraftTypes";
@@ -28,12 +30,19 @@ interface AiDraftBlocksProps {
  *
  * A.4: per-block Accept (✓) / Reject (✕) in the left gutter, plus a
  * per-block regenerate (↻) that cycles the "v2 of N" version stepper.
+ *
+ * Blocks start collapsed to keep the report editor ergonomic — the collapsed
+ * bar shows a compact count and expands on click.
  */
 export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
   const blocks = draft.blocksForSection(section);
   const rejected = draft.rejectedBlocksForSection(section);
+  const [expanded, setExpanded] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+
+  const hasContent = blocks.length > 0 || rejected.length > 0;
+  if (!hasContent) return null;
 
   // The changelog toggle stays reachable from the Findings section even when
   // every draft is resolved — A.7 requires the audit trail to remain
@@ -45,7 +54,10 @@ export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
         type="text"
         className="ai-draft-log-toggle"
         icon={<HistoryOutlined />}
-        onClick={() => setShowLog(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowLog(true);
+        }}
       >
         AI draft log
       </Button>
@@ -61,7 +73,10 @@ export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
         className="ai-draft-rejected-toggle"
         icon={<DeleteOutlined />}
         aria-expanded={showRejected}
-        onClick={() => setShowRejected((v) => !v)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowRejected((v) => !v);
+        }}
       >
         {showRejected ? "Hide" : "Show"} rejected ({rejected.length})
       </Button>
@@ -69,15 +84,47 @@ export default function AiDraftBlocks({ draft, section }: AiDraftBlocksProps) {
 
   return (
     <div className="ai-draft-rows" data-testid={`ai-draft-${section}`}>
-      {blocks.map((block) => (
-        <AiDraftRow key={block.id} draft={draft} block={block} />
-      ))}
-      {showRejected &&
-        rejected.map((block) => <RejectedAiDraftRow key={block.id} draft={draft} block={block} />)}
-      <div className="ai-draft-rows-footer">
-        {rejectedToggle}
-        {logToggle}
-      </div>
+      {/* Collapsed summary bar — one line, click to expand */}
+      <button
+        type="button"
+        className={`ai-draft-summary${expanded ? " expanded" : ""}`}
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <ThunderboltOutlined className="ai-draft-summary-icon" />
+        <span className="ai-draft-summary-count">
+          {blocks.length} AI suggestion{blocks.length === 1 ? "" : "s"}
+        </span>
+        <span className="ai-draft-summary-toggle">
+          {expanded ? (
+            <>
+              Collapse <UpOutlined />
+            </>
+          ) : (
+            <>
+              Review <DownOutlined />
+            </>
+          )}
+        </span>
+      </button>
+
+      {/* Expanded block list */}
+      {expanded && (
+        <div className="ai-draft-expanded">
+          {blocks.map((block) => (
+            <AiDraftRow key={block.id} draft={draft} block={block} />
+          ))}
+          {showRejected &&
+            rejected.map((block) => (
+              <RejectedAiDraftRow key={block.id} draft={draft} block={block} />
+            ))}
+          <div className="ai-draft-rows-footer">
+            {rejectedToggle}
+            {logToggle}
+          </div>
+        </div>
+      )}
+
       <AiDraftLog open={showLog} onClose={() => setShowLog(false)} draft={draft} />
     </div>
   );

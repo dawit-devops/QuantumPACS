@@ -576,59 +576,77 @@ export default function ReportPanel({
               />
             </div>
 
-            <div className="report-field report-field-findings">
+            <div
+              className={`report-field report-field-findings report-field-with-ai${focusedField === "findings" ? " report-field-focused" : ""}`}
+            >
               <span className="report-field-label">
                 <span className="report-field-index" aria-hidden="true">
                   3
                 </span>
                 Findings
               </span>
-              <RichTextEditor
-                value={findings}
-                onChange={onFindingsChange}
-                readOnly={!canWrite || submitted}
-                placeholder="Structured findings — per template or free text…"
-                onFocusChange={(f) => setFocusedField(f ? "findings" : null)}
-              />
-              <MacroChips
-                section="findings"
-                onSelect={(phrase) => onFindingsChange(appendMacro(findings, phrase))}
-              />
-              {draft && <AiDraftBlocks draft={draft} section="findings" />}
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={findings}
+                    onChange={onFindingsChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Structured findings — per template or free text…"
+                    onFocusChange={(f) => setFocusedField(f ? "findings" : null)}
+                  />
+                  <MacroChips
+                    section="findings"
+                    onSelect={(phrase) => onFindingsChange(appendMacro(findings, phrase))}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="findings" />}
+              </div>
             </div>
 
-            <div className="report-field report-field-impression">
+            <div
+              className={`report-field report-field-impression report-field-with-ai${focusedField === "impression" ? " report-field-focused" : ""}`}
+            >
               <span className="report-field-label">
                 <span className="report-field-index" aria-hidden="true">
                   4
                 </span>
                 Impression
               </span>
-              <RichTextEditor
-                value={impression}
-                onChange={onImpressionChange}
-                readOnly={!canWrite || submitted}
-                placeholder="Impression / conclusion (required before signing)…"
-                status={!impression.trim() ? "warning" : ""}
-                onFocusChange={(f) => setFocusedField(f ? "impression" : null)}
-              />
-              <MacroChips
-                section="impression"
-                onSelect={(phrase) => onImpressionChange(appendMacro(impression, phrase))}
-              />
-              {draft && <AiDraftBlocks draft={draft} section="impression" />}
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={impression}
+                    onChange={onImpressionChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Impression / conclusion (required before signing)…"
+                    status={!impression.trim() ? "warning" : ""}
+                    onFocusChange={(f) => setFocusedField(f ? "impression" : null)}
+                  />
+                  <MacroChips
+                    section="impression"
+                    onSelect={(phrase) => onImpressionChange(appendMacro(impression, phrase))}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="impression" />}
+              </div>
             </div>
 
-            <div className="report-field report-field-recommendations">
+            <div
+              className={`report-field report-field-recommendations report-field-with-ai${focusedField === "recommendations" ? " report-field-focused" : ""}`}
+            >
               <span className="report-field-label">Recommendations</span>
-              <RichTextEditor
-                value={recommendations}
-                onChange={onRecommendationsChange}
-                readOnly={!canWrite || submitted}
-                placeholder="Optional recommendations for follow-up…"
-                onFocusChange={(f) => setFocusedField(f ? "recommendations" : null)}
-              />
-              {draft && <AiDraftBlocks draft={draft} section="recommendations" />}
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={recommendations}
+                    onChange={onRecommendationsChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Optional recommendations for follow-up…"
+                    onFocusChange={(f) => setFocusedField(f ? "recommendations" : null)}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="recommendations" />}
+              </div>
             </div>
           </div>
 
