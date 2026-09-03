@@ -16,6 +16,7 @@ from dcm.file import get_meta
 from log import get_logger
 from api.telemetry import dicom_cstore_throughput_bytes
 from services.ingestion.routing import evaluate_routing_rules
+from services.reading_handoff import ensure_reading_exam
 from storage.storage import Storage
 from utils import hash_file
 
@@ -291,6 +292,9 @@ async def store_instance(ds, data, tenant_id='', tenant_slug='', tenant_info=Non
 
                 await match_worklist_in_progress(ds, tenant_slug=tenant_slug)
                 await _bump_study_counts(conn, ds)
+                await ensure_reading_exam(
+                    conn, ds, tenant_slug=tenant_slug, source='dicom',
+                )
         # tenant scope ended — routing rules live in the main DB and must be
         # read from it, so routing evaluation happens outside the scope.
         routes = await evaluate_routing_rules(ds, tenant_id=tenant_id)

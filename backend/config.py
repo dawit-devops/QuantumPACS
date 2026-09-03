@@ -127,6 +127,15 @@ default_config = {
     'otel_bsp_max_export_batch_size': '512',
     'prometheus_enabled': 'true',
     'max_upload_size_mb': '500',
+    # When true, studies that land in the store outside the MWL -> handoff
+    # flow (zip uploads, single uploads, C-STORE without a worklist entry)
+    # are auto-bridged into the tenant's radiologist reading worklist
+    # (services/reading_handoff.py). Off leaves uploads invisible to /reading.
+    'auto_reading_handoff': 'true',
+    # Seconds a study must go without a new instance before the auto-handoff
+    # bridge flips its exam ready -> completed (partial multi-instance uploads
+    # are never listed while still arriving).
+    'auto_handoff_settle_seconds': '60',
     'max_stow_size_mb': '2048',
     'b2_cors_origins': 'http://localhost:5173',
     'ingestion_stream': 'events:ingestion',

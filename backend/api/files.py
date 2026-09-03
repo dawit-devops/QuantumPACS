@@ -229,6 +229,14 @@ class Upload(HTTPEndpoint):
                     if quota_bytes > 0 and new_total / quota_bytes >= 0.9:
                         await _notify_quota_breach(conn, tenant_slug, quota_bytes, new_total)
 
+                try:
+                    from services.reading_handoff import ensure_reading_exam
+                    await ensure_reading_exam(
+                        conn, ds, tenant_slug=tenant_slug or '', source='upload',
+                    )
+                except Exception:
+                    log.warning('Reading-handoff bridge failed for %s', filename, exc_info=True)
+
                 user_id = request.user.id
                 patient_name = ds.get('patient_name', ds.get('patientname', 'Unknown'))
                 # P1-1: the upload receipt is clinical noise for the platform
@@ -275,7 +283,7 @@ class Upload(HTTPEndpoint):
             current_used = await _tenant_storage_used(request, tenant_info)
 
         async def store_member(member_bytes, member_name):
-            nonlocal stored, duplicates, failed, current_used
+            nonlocal stored, duplicates, failed, current_used, skipped
             if not _is_dicom(member_bytes):
                 skipped += 1
                 return
@@ -305,6 +313,14 @@ class Upload(HTTPEndpoint):
             )
             if result == 'stored':
                 stored += 1
+                try:
+                    from services.reading_handoff import ensure_reading_exam
+                    async with get_conn() as conn:
+                        await ensure_reading_exam(
+                            conn, ds, tenant_slug=tenant_slug or '', source='zip',
+                        )
+                except Exception:
+                    log.warning('Reading-handoff bridge failed for %s', member_name, exc_info=True)
             elif result == 'duplicate':
                 duplicates += 1
             else:
