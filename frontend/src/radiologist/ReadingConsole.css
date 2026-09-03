@@ -175,6 +175,22 @@ body.reading-console-single .page-content {
   margin-right: 0;
 }
 
+/* B.3 AI Findings control strip — shown only while the overlay is enabled.
+   Sits between the tool rail and the viewport body. */
+.reading-ai-panel {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rc-border);
+  font-size: 12px;
+}
+.reading-ai-panel .reading-ai-toggle {
+  margin-right: 0;
+}
+
 .reading-viewport-body {
   display: flex;
   flex: 1;

@@ -64,6 +64,7 @@ import { CompanionViewportGrid } from "./viewer/CompanionViewportGrid";
 import { useAnnotationSync } from "./viewer/useAnnotationSync";
 import ThumbnailStrip from "./ThumbnailStrip";
 import { MobileToolbar } from "./MobileToolbar";
+import AiFindingsOverlay from "./viewer/AiFindingsOverlay";
 import "./CornerstoneElement.css";
 
 const bottomLeftStyle: React.CSSProperties = {
@@ -879,6 +880,19 @@ export default function CornerstoneElement(props: CEProps) {
             </div>
           </div>
         )
+      )}
+      {props.aiFindings && (
+        <AiFindingsOverlay
+          marks={props.aiFindings.marks}
+          visible={props.aiFindings.visible}
+          showDismissed={props.aiFindings.showDismissed}
+          elementRef={elementRef}
+          getViewport={getViewport}
+          onInspect={props.aiFindings.onInspect}
+          onAccept={props.aiFindings.onAccept}
+          onDismiss={props.aiFindings.onDismiss}
+          inspectedId={props.aiFindings.inspectedId}
+        />
       )}
     </div>
   );

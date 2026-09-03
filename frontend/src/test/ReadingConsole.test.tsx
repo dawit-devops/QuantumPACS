@@ -102,6 +102,34 @@ function setRte(placeholder: string, value: string) {
   fireEvent.input(el);
 }
 
+// A.5 Part A: the AI-draft hook is wired into the console and seeds three
+// unreviewed blocks per exam, which hard-gate signing/submitting. These
+// lifecycle tests resolve them through the AI banner's "Accept all" before
+// engaging the sign/submit flow (the A.5 UX, not a bypass).
+async function resolveAiDraft() {
+  // Click "Accept all" once the banner settles, then wait for it to clear so
+  // the A.5 gate (unreviewedCount === 0) is lifted before the test proceeds —
+  // otherwise the action button would still read as disabled on the next frame.
+  await waitFor(
+    () => {
+      const acceptAll = screen
+        .getAllByRole("button", { name: /accept all/i })
+        .find((b) => (b as HTMLButtonElement).disabled === false);
+      if (!acceptAll) throw new Error("AI draft banner not ready");
+      fireEvent.click(acceptAll);
+    },
+    { timeout: 15000 },
+  );
+  await waitFor(
+    () => {
+      if (screen.queryAllByRole("button", { name: /accept all/i }).length > 0) {
+        throw new Error("AI draft blocks still pending review");
+      }
+    },
+    { timeout: 15000 },
+  );
+}
+
 describe("ReadingConsole", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -232,6 +260,8 @@ describe("ReadingConsole", () => {
 
     setRte("Impression / conclusion (required before signing)…", "Normal.");
 
+    await resolveAiDraft();
+
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -298,6 +328,7 @@ describe("ReadingConsole", () => {
     });
 
     setRte("Impression / conclusion (required before signing)…", "Normal.");
+    await resolveAiDraft();
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -364,6 +395,7 @@ describe("ReadingConsole", () => {
     });
 
     setRte("Impression / conclusion (required before signing)…", "Normal.");
+    await resolveAiDraft();
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -418,6 +450,7 @@ describe("ReadingConsole", () => {
     });
 
     setRte("Impression / conclusion (required before signing)…", "Normal.");
+    await resolveAiDraft();
     const signBtn = screen
       .getAllByRole("button", { name: /sign report/i })
       .find((b) => (b as HTMLButtonElement).disabled === false);
@@ -501,6 +534,8 @@ describe("ReadingConsole", () => {
     });
 
     setRte("Impression / conclusion (required before signing)…", "Normal.");
+
+    await resolveAiDraft();
 
     const submitBtn = screen
       .getAllByRole("button", { name: /submit for review/i })

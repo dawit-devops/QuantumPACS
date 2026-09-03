@@ -31,6 +31,11 @@ export interface ExamImagingState {
   selectStudy: (study: FileStudy) => void;
   selectSeries: (series: FileSeries) => void;
   selectFile: (index: number) => void;
+  /** Set the series AND a file within it atomically. Used by phase-stack
+   *  navigation, where a single stack index across an entire phase must select
+   *  a file in whichever series owns it — no stale-selection window the way
+   *  two sequential setState calls would have. */
+  selectSeriesFile: (series: FileSeries, fileIndexInSeries: number) => void;
 }
 
 /**
@@ -107,6 +112,18 @@ export function useExamImaging(examId: string | undefined): ExamImagingState {
     [selectedSeries],
   );
 
+  // Atomic series+file selection: set both ids in one render batch (React 18
+  // auto-batches) so the derived selectedSeries/selectedFile never desync, and
+  // the phase stack can land on a file in a series other than the active one.
+  const selectSeriesFile = useCallback(
+    (series: FileSeries, fileIndexInSeries: number) => {
+      setSeriesId(series.id);
+      const target = series.files?.[fileIndexInSeries];
+      setFileId(target ? target.id : null);
+    },
+    [],
+  );
+
   return {
     exam,
     report,
@@ -121,5 +138,6 @@ export function useExamImaging(examId: string | undefined): ExamImagingState {
     selectStudy,
     selectSeries,
     selectFile,
+    selectSeriesFile,
   };
 }

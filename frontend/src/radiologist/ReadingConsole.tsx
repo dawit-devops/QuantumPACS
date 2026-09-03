@@ -16,6 +16,8 @@ import {
   Form,
   Select,
   Dropdown,
+  Radio,
+  Checkbox,
   theme as antTheme,
   Tooltip,
 } from "antd";
@@ -34,6 +36,7 @@ import {
   PictureOutlined,
   DashboardOutlined,
   QuestionCircleOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useParams, useNavigate, useLocation } from "react-router";
 import withSidebar from "../common/base";
@@ -41,9 +44,18 @@ import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
 import { API_URL } from "../config";
 import ResizableSplit from "../common/ResizableSplit";
-import SeriesNavigator from "./SeriesNavigator";
 import ReportPanel from "./ReportPanel";
 import { useExamImaging } from "./useExamImaging";
+import ReadingThumbnailStrip from "./ReadingThumbnailStrip";
+import PhaseStackScroll from "./PhaseStackScroll";
+import { groupByPhase } from "./phaseGroups";
+import type { PhaseGroup } from "./phaseGroups";
+import { useAiReportDraft } from "./useAiReportDraft";
+import { AiDraftBanner } from "./AiDraftBlocks";
+import { useAiFindings } from "./useAiFindings";
+import { AI_MARK_LABELS } from "../detail/viewer/aiDetectionTypes";
+import type { AiLinkMode } from "./useAiFindings";
+import type { AiDraftSection } from "./aiDraftTypes";
 import { useReaderShortcuts } from "./useReaderShortcuts";
 import { getWeasisStatus, openInWeasis } from "../api/weasis";
 import { parseAnnotations } from "../detail/MeasurementPanel";
@@ -145,6 +157,7 @@ function ReadingConsole() {
     selectStudy,
     selectSeries,
     selectFile,
+    selectSeriesFile,
   } = useExamImaging(examId);
 
   const [templates, setTemplates] = useState<any[]>([]);
@@ -499,6 +512,14 @@ function ReadingConsole() {
       message?.error?.("Impression is required before signing");
       return;
     }
+    if (aiBlocksPending) {
+      message?.error?.(
+        `${aiDraft.unreviewedCount} AI-drafted block${
+          aiDraft.unreviewedCount === 1 ? "" : "s"
+        } need review before signing (A.5)`,
+      );
+      return;
+    }
     setSigning(true);
     try {
       // Flush any pending edits first, then sign. Abort the sign if the
@@ -562,6 +583,14 @@ function ReadingConsole() {
   const submitReport = async () => {
     if (!impression.trim()) {
       message?.error?.("Impression is required before submitting for review");
+      return;
+    }
+    if (aiBlocksPending) {
+      message?.error?.(
+        `${aiDraft.unreviewedCount} AI-drafted block${
+          aiDraft.unreviewedCount === 1 ? "" : "s"
+        } need review before submitting (A.5)`,
+      );
       return;
     }
     setSubmitting(true);
@@ -672,26 +701,95 @@ function ReadingConsole() {
   }, []);
 
   const imageUrl = selectedFile ? `wadouri:${API_URL}/files/${selectedFile.id}/data` : "";
-  const files = selectedSeries?.files ?? [];
-  const fileIndex = files.findIndex((f) => f.id === selectedFile?.id);
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
 
-  // §5.2 cine loop — advance the active series stack on a timer while
-  // playing. Stops automatically when only one (or zero) frames exist, so
-  // Space on a single static image never appears to do nothing silently.
+  // §4.2 phase rail: the selected study's series are grouped into acquisition
+  // protocol phases (scout, non-contrast, arterial, portal venous, …). Selecting
+  // a phase loads EVERY series of that phase flattened into one stack so the
+  // radiologist scrolls, annotates and captures key images across the whole
+  // phase at once (ReadingThumbnailStrip drives selection; PhaseStackScroll
+  // pages the flattened stack).
+  const phaseGroups = useMemo(
+    () => (selectedStudy?.series?.length ? groupByPhase(selectedStudy.series) : []),
+    [selectedStudy],
+  );
+  const [activePhaseKey, setActivePhaseKey] = useState<string | null>(null);
+  const activePhase = activePhaseKey
+    ? phaseGroups.find((g) => g.key === activePhaseKey) ?? null
+    : null;
 
-  // Any manual navigation (series/study/file) must halt cine first, otherwise
-  // the timer keeps advancing a stack the user is no longer viewing.
-  const handleChangeFileCineGuard = useCallback(
+  // Flattened phase stack (file → owning series) so a single stack index can be
+  // mapped back onto the real selected series + file for every downstream
+  // consumer (reading presets, metadata panel, annotations, key images).
+  const phaseStack = useMemo<{ file: any; series: any }[] | null>(() => {
+    if (!activePhase) return null;
+    const flat: { file: any; series: any }[] = [];
+    for (const s of activePhase.series) {
+      for (const f of s.files ?? []) flat.push({ file: f, series: s });
+    }
+    return flat.length ? flat : null;
+  }, [activePhase]);
+
+  // The active view stack: the whole phase when one is selected, else the
+  // current series' files. `viewFiles` drives CornerstoneElement's slider /
+  // arrow paging and the AI detection generator; the index also feeds the
+  // right-edge PhaseStackScroll.
+  const viewFiles = phaseStack ? phaseStack.map((e) => e.file) : selectedSeries?.files ?? [];
+  const fileIndex = viewFiles.findIndex((f) => f.id === selectedFile?.id);
+
+  // Selecting a phase lands the reader on its first image, atomically (the
+  // owning series + file are set together so there is no stale-selection
+  // window across the whole phase).
+  const selectPhase = useCallback(
+    (group: PhaseGroup) => {
+      setActivePhaseKey(group.key);
+      selectSeriesFile(group.series[0], 0);
+    },
+    [selectSeriesFile],
+  );
+
+  // Leaving the phase rail (choosing a different study) returns to per-series
+  // browsing; clear the active phase so the stack reverts to the new study.
+  const resetPhase = useCallback(() => setActivePhaseKey(null), []);
+  const studyIdRef = useRef(selectedStudy?.id);
+  useEffect(() => {
+    if (studyIdRef.current !== selectedStudy?.id) {
+      studyIdRef.current = selectedStudy?.id;
+      setActivePhaseKey(null);
+    }
+  }, [selectedStudy?.id]);
+
+  // Map a stack index onto the real selected series + file. Phase stacks span
+  // multiple series, so this resolves the owning series for whichever frame the
+  // reader lands on.
+  const changePhaseStackIndex = useCallback(
+    (index: number) => {
+      const entry = phaseStack?.[index];
+      if (!entry) return;
+      const localIdx =
+        entry.series.files?.findIndex((f: any) => f.id === entry.file.id) ?? 0;
+      selectSeriesFile(entry.series, Math.max(0, localIdx));
+    },
+    [phaseStack, selectSeriesFile],
+  );
+
+  // §5.2 cine loop — advance the active view stack on a timer while playing.
+  // Stops automatically when only one (or zero) frames exist, so Space on a
+  // single static image never appears to do nothing silently.
+
+  // Any manual navigation (series/study/file/phase) must halt cine first,
+  // otherwise the timer keeps advancing a stack the user is no longer viewing.
+  const handleViewportChangeFile = useCallback(
     (index: number) => {
       if (cinePlaying) stopCine();
-      selectFile(index);
+      if (phaseStack) changePhaseStackIndex(index);
+      else selectFile(index);
     },
-    [cinePlaying, selectFile, stopCine]
+    [cinePlaying, stopCine, phaseStack, changePhaseStackIndex, selectFile],
   );
 
   useEffect(() => {
-    if (!cinePlaying || files.length <= 1) {
+    if (!cinePlaying || viewFiles.length <= 1) {
       if (cineTimerRef.current) {
         clearInterval(cineTimerRef.current);
         cineTimerRef.current = null;
@@ -699,8 +797,8 @@ function ReadingConsole() {
       return;
     }
     cineTimerRef.current = setInterval(() => {
-      const next = (fileIndex + 1) % files.length;
-      selectFile(next);
+      const next = (fileIndex + 1) % viewFiles.length;
+      handleViewportChangeFile(next);
     }, CINE_FPS_INTERVAL_MS);
     return () => {
       if (cineTimerRef.current) {
@@ -708,7 +806,56 @@ function ReadingConsole() {
         cineTimerRef.current = null;
       }
     };
-  }, [cinePlaying, files.length, fileIndex, selectFile]);
+  }, [cinePlaying, viewFiles.length, fileIndex, handleViewportChangeFile]);
+
+  // ── Part B — AI detection overlays on the image ──────────────────────────
+  // Findings text changes from an accepted mark go straight into the report
+  // editor (and mark it dirty for autosave), exactly like the editor's own
+  // findings handler.
+  const applyAiFindingsText = useCallback((html: string) => {
+    setFindings(html);
+    dirtyRef.current = true;
+    setDirty(true);
+  }, []);
+  const ai = useAiFindings(examId, viewFiles as any[], selectedFile, findings, applyAiFindingsText);
+
+  // ── Part A — AI-drafted report content ───────────────────────────────────
+  // Accepted draft text appends into the matching report section as a new
+  // paragraph. The A.5 hard gate (block signing while unreviewed blocks exist)
+  // is enforced in signReport/submitReport below.
+  const applyAiText = useCallback((section: AiDraftSection, text: string) => {
+    const line = `<p>${text}</p>`;
+    const setter =
+      section === "findings"
+        ? setFindings
+        : section === "impression"
+          ? setImpression
+          : setRecommendations;
+    setter((prev) => sanitizeReportHtml(prev && prev.trim() ? prev + line : line));
+    dirtyRef.current = true;
+    setDirty(true);
+  }, []);
+  const aiDraft = useAiReportDraft(examId, applyAiText);
+  const aiBlocksPending = aiDraft.unreviewedCount > 0;
+
+  // §5.2 / Part B: Shift+A toggles the AI Findings overlay (the status bar
+  // advertises ⇧A). Shares the same focus guard so typing is never hijacked.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.shiftKey && (e.key === "A" || e.key === "a"))) return;
+      const target = e.target as HTMLElement;
+      const isInput =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      const inOverlay = !!document.activeElement?.closest(
+        ".ant-select, .ant-drawer, .ant-collapse, [role='dialog'], [role='menu']"
+      );
+      if (isInput || inOverlay) return;
+      e.preventDefault();
+      ai.toggleAiFindings();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [ai.toggleAiFindings]);
 
   // CornerstoneElement's `file` prop — the tree node enriched with the
   // series modality (reading presets) and patient context (metadata panel).
@@ -725,16 +872,21 @@ function ReadingConsole() {
   const viewportPane = (
     <div className="reading-viewport-pane">
       <div className="reading-viewport-tools">
-        <SeriesNavigator
-          studies={studies}
-          selectedStudy={selectedStudy}
-          selectedSeries={selectedSeries}
-          fileIndex={Math.max(0, fileIndex)}
-          files={files}
-          onStudyChange={selectStudy}
-          onSeriesChange={selectSeries}
-          onFileChange={selectFile}
-        />
+        <Tooltip title="Toggle AI Findings (Shift+A)">
+          <Button
+            size="small"
+            type={ai.visible ? "primary" : "text"}
+            onClick={ai.toggleAiFindings}
+            aria-pressed={ai.visible}
+            aria-label="AI Findings"
+            className="reading-ai-toggle"
+          >
+            <Badge count={ai.count} size="small" offset={[4, -4]}>
+              <ThunderboltOutlined />
+            </Badge>
+            <span className="reading-ai-toggle-label">AI Findings</span>
+          </Button>
+        </Tooltip>
         <Tooltip title="Measurements">
           <Button
             size="small"
@@ -764,7 +916,29 @@ function ReadingConsole() {
           </Button>
         </Tooltip>
       </div>
+      {ai.visible && (
+        <div className="reading-ai-panel" data-testid="reading-ai-panel">
+          <Checkbox
+            checked={ai.showDismissed}
+            onChange={(e) => ai.setShowDismissed(e.target.checked)}
+          >
+            Show dismissed marks
+          </Checkbox>
+          {ai.hiddenCount > 0 && (
+            <Button size="small" type="link" onClick={ai.revealMore}>
+              Show {ai.hiddenCount} more
+            </Button>
+          )}
+        </div>
+      )}
       <div className="reading-viewport-body">
+        <ReadingThumbnailStrip
+          studies={studies}
+          selectedStudy={selectedStudy}
+          selectedSeries={selectedSeries}
+          activePhaseKey={activePhaseKey}
+          onSelectPhase={selectPhase}
+        />
         <div className="reading-viewport-main">
           {selectedFile ? (
             <Suspense
@@ -781,8 +955,8 @@ function ReadingConsole() {
             >
               <CornerstoneElement
                 file={ceFile}
-                files={files}
-                changeFile={handleChangeFileCineGuard}
+                files={viewFiles}
+                changeFile={handleViewportChangeFile}
                 image={imageUrl}
                 progressive={true}
                 visible
@@ -792,12 +966,30 @@ function ReadingConsole() {
                 isMobile={isMobile}
                 enableReadingPresets={hasPermission("REPORT_READ")}
                 compactViewport
+                aiFindings={{
+                  marks: ai.currentFileMarks,
+                  visible: ai.visible,
+                  showDismissed: ai.showDismissed,
+                  onInspect: ai.inspectMark,
+                  onAccept: ai.requestAccept,
+                  onDismiss: ai.dismissMark,
+                  inspectedId: ai.inspectedId,
+                }}
               />
             </Suspense>
           ) : (
             <Alert type="info" showIcon title="No images in this series" style={{ margin: 16 }} />
           )}
         </div>
+        {viewFiles.length > 0 && (
+          <PhaseStackScroll
+            total={viewFiles.length}
+            value={Math.max(0, fileIndex)}
+            label={activePhase ? activePhase.label : String(selectedSeries?.number ?? "")}
+            onChange={handleViewportChangeFile}
+            tickIndices={ai.sliceIndices}
+          />
+        )}
         <MeasurementPanel
           measurements={measurements}
           onFocusAnnotation={handleFocusAnnotation}
@@ -816,10 +1008,12 @@ function ReadingConsole() {
                 selectedSeries.description ? ` · ${selectedSeries.description}` : ""
               }`
             : ""}
-          {files.length > 0 ? ` · ${Math.max(0, fileIndex) + 1}/${files.length}` : ""}
+          {viewFiles.length > 0 ? ` · ${Math.max(0, fileIndex) + 1}/${viewFiles.length}` : ""}
         </span>
         <span className="reading-viewport-hint">
-          drag = active tool · <b>[ ]</b> report · <b>F1</b> help
+          {activePhase
+            ? `phase ${activePhase.label.toLowerCase()} · `
+            : ""}drag = active tool · <b>[ ]</b> report · <b>F1</b> help
         </span>
       </div>
     </div>
@@ -864,6 +1058,14 @@ function ReadingConsole() {
       onRequestSign={() => setSignOpen(true)}
       onReturnClick={() => setReturnOpen(true)}
       autosaveStatus={autosaveStatus}
+      draft={aiDraft}
+      signGateHint={
+        aiBlocksPending
+          ? `${aiDraft.unreviewedCount} AI-drafted block${
+              aiDraft.unreviewedCount === 1 ? "" : "s"
+            } need review before signing`
+          : undefined
+      }
     />
   );
 
@@ -1320,6 +1522,52 @@ function ReadingConsole() {
               findings={findings}
               impression={impression}
               recommendations={recommendations}
+            />
+          )}
+        </Modal>
+
+        {/* B.5 AI linkage — opened by Accept on an AI finding mark. The
+          radiologist chooses whether the finding links to a new report
+          paragraph, merges into an existing paragraph, or stays marker-only. */}
+        <Modal
+          title="Link AI finding"
+          open={ai.linkState.open}
+          onCancel={ai.cancelLink}
+          footer={[
+            <Button key="cancel" onClick={ai.cancelLink}>
+              Cancel
+            </Button>,
+            <Button key="confirm" type="primary" onClick={ai.confirmLink}>
+              Accept
+            </Button>,
+          ]}
+          destroyOnHidden
+        >
+          {ai.linkState.mark && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              title={ai.linkState.mark.label || AI_MARK_LABELS[ai.linkState.mark.kind]}
+              description="Where should this AI finding appear in the report?"
+            />
+          )}
+          <Radio.Group
+            value={ai.linkState.mode}
+            onChange={(e) => ai.setLinkMode(e.target.value as AiLinkMode)}
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            <Radio value="new-line">Add as a new paragraph</Radio>
+            <Radio value="existing-line">Merge into an existing paragraph</Radio>
+            <Radio value="marker-only">Marker only (no report text)</Radio>
+          </Radio.Group>
+          {ai.linkState.mode === "existing-line" && (
+            <Select
+              style={{ width: "100%", marginTop: 16 }}
+              placeholder="Choose the paragraph to merge into"
+              value={ai.linkState.existingIndex}
+              onChange={(v) => ai.setExistingIndex(v as number | null)}
+              options={ai.linkState.sentences.map((s, i) => ({ label: s, value: i }))}
             />
           )}
         </Modal>

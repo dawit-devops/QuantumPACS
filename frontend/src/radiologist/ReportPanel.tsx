@@ -25,6 +25,8 @@ import { request } from "../helpers";
 import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
 import RichTextEditor from "./RichTextEditor";
+import AiDraftBlocks, { AiDraftBanner } from "./AiDraftBlocks";
+import type { AiReportDraftApi } from "./useAiReportDraft";
 
 // §4.4 macro chips — canned sentence fragments that append so common normal
 // findings never have to be typed from scratch. Written as literal insertable
@@ -72,6 +74,12 @@ interface ReportPanelProps {
   distribution?: any[] | null;
   /** §4.4 autosave status string surfaced in the footer. */
   autosaveStatus?: string;
+  /** Part A AI-drafted report blocks (A.5). When present, the panel renders
+   *  the per-section draft rows + banner and hard-gates sign/submit until
+   *  every unreviewed block is resolved. */
+  draft?: AiReportDraftApi;
+  /** Ready-to-sign hint override (A.5) used while unreviewed AI blocks exist. */
+  signGateHint?: string;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
@@ -110,6 +118,8 @@ export default function ReportPanel({
   onRestoreVersion,
   distribution,
   autosaveStatus,
+  draft,
+  signGateHint,
 }: ReportPanelProps) {
   const isFinal = status === "final";
   const isResident = role === "resident";
@@ -241,8 +251,14 @@ export default function ReportPanel({
 
   // Sign-readiness hint: the primary action's disabled state is visible, but
   // the reason is spelled out (docs/viewer spec — unsafe states are blocked
-  // AND explained).
-  const signHint = !impression.trim() ? "Impression required to sign" : "Ready to sign";
+  // AND explained). A.5: while AI-drafted blocks remain unreviewed they gate
+  // signing even when an impression is present.
+  const aiGate = !!draft && draft.unreviewedCount > 0;
+  const signHint = aiGate
+    ? (signGateHint || "AI-drafted blocks need review before signing")
+    : !impression.trim()
+      ? "Impression required to sign"
+      : "Ready to sign";
 
   return (
     <div
@@ -411,6 +427,14 @@ export default function ReportPanel({
           )}
 
           <div className="report-editor-fields">
+            {aiGate && (
+              <AiDraftBanner
+                draft={draft}
+                onAcceptAll={draft.acceptAll}
+                onRejectAll={draft.rejectAll}
+              />
+            )}
+
             <div className="report-field report-field-findings">
               <span className="report-field-label">Findings</span>
               <RichTextEditor
@@ -423,6 +447,7 @@ export default function ReportPanel({
                 section="findings"
                 onSelect={(phrase) => onFindingsChange(appendMacro(findings, phrase))}
               />
+              {draft && <AiDraftBlocks draft={draft} section="findings" />}
             </div>
 
             <div className="report-field report-field-impression">
@@ -438,6 +463,7 @@ export default function ReportPanel({
                 section="impression"
                 onSelect={(phrase) => onImpressionChange(appendMacro(impression, phrase))}
               />
+              {draft && <AiDraftBlocks draft={draft} section="impression" />}
             </div>
 
             <div className="report-field report-field-recommendations">
@@ -448,6 +474,7 @@ export default function ReportPanel({
                 readOnly={!canWrite || submitted}
                 placeholder="Optional recommendations for follow-up…"
               />
+              {draft && <AiDraftBlocks draft={draft} section="recommendations" />}
             </div>
           </div>
 
@@ -468,7 +495,7 @@ export default function ReportPanel({
                 type="primary"
                 icon={<AuditOutlined />}
                 onClick={onSubmitDraft}
-                disabled={!impression.trim()}
+                disabled={!impression.trim() || aiGate}
               >
                 Submit for Review
               </Button>
@@ -490,7 +517,7 @@ export default function ReportPanel({
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 onClick={onRequestSign}
-                disabled={!impression.trim()}
+                disabled={!impression.trim() || aiGate}
               >
                 Sign Report
               </Button>
