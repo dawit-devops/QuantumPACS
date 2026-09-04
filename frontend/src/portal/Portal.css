@@ -36,3 +36,227 @@
   justify-content: center;
   padding: var(--space-12);
 }
+
+/* ── Portal Home Dashboard ──────────────────────────────────────────── */
+
+.portal-home {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.portal-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.portal-home-header h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+}
+
+/* Portal cards — softer, patient-friendly style */
+.portal-card {
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  transition: box-shadow 0.2s;
+  height: 100%;
+}
+
+.portal-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.portal-card .ant-card-head {
+  border-bottom: 1px solid var(--border-color);
+  min-height: 44px;
+}
+
+.portal-card .ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.portal-card .ant-card-body {
+  padding: 16px;
+}
+
+/* Spec §2.12.6 — card header/body utility blocks (for non-antd Card
+   surfaces; antd Card pages inherit the .ant-card-* rules above). */
+.portal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
+.portal-card-body {
+  padding: 16px 20px;
+}
+
+/* Spec §2.12.6 — appointment prep instruction highlight. */
+.portal-appt-prep {
+  background: #fff7e6;
+  border-left: 3px solid #fa8c16;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Card list items (appointments, results) */
+.portal-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.portal-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.portal-card-item:hover {
+  background: var(--bg-sunken, #f5f5f5);
+}
+
+.portal-card-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-card-item-main .ant-typography {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* New results get a subtle pulse (spec §2.12.6) */
+.portal-result-new {
+  border-left: 3px solid #52c41a;
+  animation: portal-pulse 2s ease-in-out 3;
+}
+
+@keyframes portal-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(82, 196, 26, 0.1);
+  }
+}
+
+/* Quick actions */
+.portal-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.portal-quick-actions .ant-btn {
+  text-align: left;
+  justify-content: flex-start;
+  height: 40px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .portal-home {
+    padding: 16px;
+  }
+
+  .portal-home-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Card list item with side actions (PortalHome dashboard) */
+.portal-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.portal-card-item:last-child {
+  border-bottom: none;
+}
+
+.portal-card-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.portal-card-item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.portal-appt-item {
+  align-items: flex-start;
+}
+
+/* Spec §2.12.6 — follow-up status timeline + pills */
+.portal-followup-timeline {
+  padding: 12px 0;
+}
+
+.portal-followup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.portal-followup-status.submitted {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.portal-followup-status.in-progress {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.portal-followup-status.completed {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.portal-followup-status.cancelled {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+/* (report document styles live in common/report.css, imported globally) */

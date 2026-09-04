@@ -11,6 +11,7 @@ import Users from "../users/Users";
 const mockListUsers = vi.hoisted(() => vi.fn());
 const mockAssignRole = vi.hoisted(() => vi.fn());
 const mockDeactivateUser = vi.hoisted(() => vi.fn());
+const mockBatchSetUserStatus = vi.hoisted(() => vi.fn());
 const mockResetPassword = vi.hoisted(() => vi.fn());
 const mockListRoles = vi.hoisted(() => vi.fn());
 
@@ -18,6 +19,7 @@ vi.mock("../api/users", () => ({
   listUsers: mockListUsers,
   assignRole: mockAssignRole,
   deactivateUser: mockDeactivateUser,
+  batchSetUserStatus: mockBatchSetUserStatus,
   resetPassword: mockResetPassword,
 }));
 
@@ -79,10 +81,7 @@ describe("Users", () => {
     localStorage.setItem("username", "user-admin");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "tenant_admin");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["USER_READ", "USER_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["USER_READ", "USER_WRITE"]));
     mockListUsers.mockResolvedValue({
       data: mockUsers,
       total: mockUsers.length,
@@ -93,6 +92,7 @@ describe("Users", () => {
     mockListRoles.mockResolvedValue(mockRoles);
     mockAssignRole.mockResolvedValue(undefined);
     mockDeactivateUser.mockResolvedValue(undefined);
+    mockBatchSetUserStatus.mockResolvedValue({ changed: [], failed: [] });
     mockResetPassword.mockResolvedValue({ password: "newpass" });
   });
 
@@ -165,5 +165,75 @@ describe("Users", () => {
     await user.click(option!);
 
     expect(await screen.findByText(/denied/)).toBeInTheDocument();
+  });
+});
+
+describe("Users bulk status (ADM-02 §2.10)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("username", "user-admin");
+    localStorage.setItem("admin", "false");
+    localStorage.setItem("role", "super_admin");
+    localStorage.setItem("permissions", JSON.stringify(["USER_READ", "USER_WRITE", "USER_DELETE"]));
+    mockListUsers.mockResolvedValue({
+      data: mockUsers,
+      total: mockUsers.length,
+      page: 1,
+      per_page: 20,
+      total_pages: 1,
+    });
+    mockListRoles.mockResolvedValue(mockRoles);
+    mockBatchSetUserStatus.mockResolvedValue({ changed: [2, 3], failed: [] });
+  });
+
+  it("hides row selection without USER_DELETE", async () => {
+    localStorage.setItem("permissions", JSON.stringify(["USER_READ", "USER_WRITE"]));
+    renderWithAuth(<Users />);
+    await screen.findByText("Technologist");
+
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("shows the bulk bar and calls batchSetUserStatus on confirm", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Users />);
+    await screen.findByText("Technologist");
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    // Index 0 is antd's header select-all; rows start at 1. Select users
+    // 1 and 2 (first two data rows).
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+
+    expect(await screen.findByText("2 selected")).toBeInTheDocument();
+
+    // The bulk-bar control is a <button>; the per-row action column renders
+    // plain links with the same label.
+    const bulkDeactivate = screen.getAllByText("Deactivate").find((el) => el.closest("button"));
+    expect(bulkDeactivate).toBeTruthy();
+    await user.click(bulkDeactivate!);
+    await user.click(await screen.findByText("OK"));
+
+    expect(mockBatchSetUserStatus).toHaveBeenCalledWith([1, 2], "deactivated");
+  });
+
+  it("warns with per-id failures and keeps the summary compact", async () => {
+    const user = userEvent.setup();
+    mockBatchSetUserStatus.mockResolvedValue({
+      changed: [2],
+      failed: [{ id: 3, error: "Cannot deactivate the last active admin" }],
+    });
+    renderWithAuth(<Users />);
+    await screen.findByText("Technologist");
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+    const bulkDeactivate = screen.getAllByText("Deactivate").find((el) => el.closest("button"));
+    await user.click(bulkDeactivate!);
+    await user.click(await screen.findByText("OK"));
+
+    expect(await screen.findByText(/1 updated, 1 failed/)).toBeInTheDocument();
   });
 });

@@ -232,12 +232,11 @@ function LoginForm(props: any) {
           </div>
           {shareKeyError && (
             <Alert
-              message="Expired Share Link"
+              title="Expired Share Link"
               description={shareKeyError}
               type="warning"
               showIcon
-              closable
-              onClose={() => setShareKeyError(null)}
+              closable={{ onClose: () => setShareKeyError(null) }}
               style={{ marginBottom: 16, borderRadius: 8 }}
             />
           )}

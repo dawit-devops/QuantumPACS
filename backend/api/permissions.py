@@ -41,6 +41,7 @@ class Permission(str, Enum):
     QA_READ = 'QA_READ'
     QA_WRITE = 'QA_WRITE'
     PROTOCOL_MANAGE = 'PROTOCOL_MANAGE'
+    QA_ANALYTICS_READ = 'QA_ANALYTICS_READ'
     DICOMWEB_READ = 'DICOMWEB_READ'
     DICOMWEB_WRITE = 'DICOMWEB_WRITE'
     ROUTING_READ = 'ROUTING_READ'
@@ -72,6 +73,15 @@ class Permission(str, Enum):
     # R19 Hospital Staff
     PORTAL_READ = 'PORTAL_READ'
     FOLLOW_UP_WRITE = 'FOLLOW_UP_WRITE'
+    # P-05: patient-scoped follow-up writes. Carried by the patient role so
+    # patients can file/cancel their OWN follow-ups without FOLLOW_UP_WRITE
+    # (which would also open scope attachment — R3-01).
+    FOLLOW_UP_SELF = 'FOLLOW_UP_SELF'
+    # S3 (P-04): patient-scoped notification access. The bell endpoints were
+    # gated FILE_READ (a patient role grant? no), so patients could never
+    # read their own notifications. NOTIFICATIONS_SELF covers the
+    # user-scoped self endpoints (list/mark-read/dismiss/unread/prefs).
+    NOTIFICATIONS_SELF = 'NOTIFICATIONS_SELF'
     # R2-03 Cross-tenant clinical reads (teleradiology / telemedicine) —
     # permission gate for user_tenant_grants rows: a grant only takes effect
     # when the user's role also carries this code.
@@ -165,7 +175,7 @@ PERMISSION_GROUPS = {
     'Reports': ['REPORT_READ', 'REPORT_WRITE', 'REPORT_SIGN',
                 'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN'],
     'Peer Review': ['PEER_REVIEW_READ', 'PEER_REVIEW_WRITE'],
-    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE'],
+    'QA': ['QA_READ', 'QA_WRITE', 'PROTOCOL_MANAGE', 'QA_ANALYTICS_READ'],
     'DICOMweb': ['DICOMWEB_READ', 'DICOMWEB_WRITE'],
     'Routing': ['ROUTING_READ', 'ROUTING_WRITE'],
     'Metrics': ['METRICS_READ'],
@@ -214,6 +224,10 @@ MATRIX_A_TECH = {
     'WORKLIST_READ', 'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE',
     'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
     'CHART_READ', 'RESULTS_READ',
+    # R2-14 sweep re-added: the exam console is the technologist's primary
+    # surface — EXAM_READ/EXAM_WRITE belong in the canonical Matrix A row
+    # (previously only in LEGACY_TECHNOLOGIST).
+    'EXAM_READ', 'EXAM_WRITE',
 }
 MATRIX_A_RECEPT = {
     'PATIENT_READ', 'PATIENT_WRITE', 'ORDER_READ', 'SCHEDULE_READ', 'WORKLIST_READ',
@@ -237,11 +251,35 @@ MATRIX_A_BILL = {
 }
 MATRIX_A_PACSADM = {
     'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ',
-    'WORKLIST_READ', 'WORKLIST_WRITE', 'REPORT_READ', 'BILLING_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'BILLING_READ',
     'VIEWER_READ', 'STUDY_READ', 'FILE_READ', 'FILE_WRITE',
     'STUDY_EXPORT', 'STORAGE_ADMIN', 'INTERFACE_MONITOR', 'INTERFACE_ADMIN',
     'AUDIT_READ', 'CHART_READ', 'RESULTS_READ',
-    'USER_READ', 'USER_WRITE', 'CRITICAL_RESULTS_WRITE', 'REPORT_TEMPLATE_ADMIN',
+    'USER_READ', 'USER_WRITE', 'REPORT_TEMPLATE_ADMIN',
+    # pacs_admin walk (Phase 3, R1): the role is the facility PACS operator —
+    # reach the DICOMweb console/STOW/browser, HL7 console, Interface Health,
+    # Replicas and Routing that its STORAGE_ADMIN / INTERFACE_ADMIN grants were
+    # meant to unlock. CRITICAL_RESULTS_WRITE + WORKLIST_WRITE trimmed (R3/R6):
+    # the exam console / MWL are clinical-scoped, hidden for this admin role.
+    'DICOMWEB_READ', 'DICOMWEB_WRITE', 'HL7_READ', 'REPLICA_READ', 'ROUTING_READ',
+    # pacs_admin walk (Phase 5a, F3): the Admin Dashboard is the role's landing
+    # page — METRICS_READ renders its health/KPI/modality panels (tenant_admin
+    # reaches the same via LEGACY_TENANT_ADMIN).
+    'METRICS_READ',
+    # pacs_admin walk (Phase 5a, F2): `_can_assign_role` requires the target
+    # role's grants to be a subset of the caller's. These operational built-in
+    # grants (technologist/receptionist/cashier/care_coordinator/dept_manager)
+    # make R2-16 exercisable — the facility admin can assign operational roles
+    # without holding clinical/EMR write power (radiologist/physician grants,
+    # REPORT_SIGN, CROSS_TENANT_READ etc. remain out of scope). Clinical-scope
+    # exclusion still hides the clinical surfaces for this admin role.
+    'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE',
+    'EXAM_READ', 'EXAM_WRITE',
+    'PATIENT_WRITE', 'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+    'SCHEDULE_WRITE', 'BILLING_WRITE',
+    'NURSING_READ', 'NURSING_WRITE', 'ORDER_WRITE',
+    'CARE_PLAN_WRITE', 'ENCOUNTER_WRITE', 'MED_ORDER_READ', 'PRIOR_AUTH_READ', 'PRIOR_AUTH_WRITE',
+    'ANALYTICS_READ', 'EQUIPMENT_READ',
     # R2-16: facility admins (pacs_admin) manage roles of the clinical/
     # operational built-ins (radiologist, technologist, ...) plus custom roles.
     'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',
@@ -282,6 +320,16 @@ MATRIX_B_COORD = {
     'CHART_READ', 'PATIENT_READ', 'ENCOUNTER_WRITE',
     'MED_ORDER_READ',  # no MED_ORDER_WRITE
     'ORDER_READ', 'ORDER_WRITE', 'RESULTS_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
+    # G2 (approved 2026-08-25): PRIOR_AUTH_WRITE unlocks the P0 prior-auth
+    # management surface (create / submit-for-review / decide / override)
+    # and reminder send+config — previously held by no staff role.
+    'PRIOR_AUTH_WRITE',
+    # G3 (human-approved 2026-08-25, round 5 §2.11): NURSING_READ/WRITE make
+    # the coordinator the holder of the previously dead nursing grants,
+    # formalizing migration 052's nurse→care_coordinator remap. Writes gate
+    # the exam-linked vitals/checklist/consent/notes surfaces; reads also
+    # pass via EXAM_READ on tech/rad matrices, so no other matrix changes.
+    'NURSING_READ', 'NURSING_WRITE',
     'REPORT_READ', 'STUDY_READ', 'VIEWER_READ', 'CARE_PLAN_WRITE',
     # Care-coordinator review (P0-1/P1-1): WORKLIST_READ (read-only) unlocks
     # the Schedule Board's day data (GET /api/worklist) — the SCHEDULE_READ
@@ -304,6 +352,24 @@ MATRIX_B_EMRADM = {
 }
 
 # Matrix C — Platform roles
+# Matrix C — dept_manager (S12-34): read-only operational analytics for a
+# department manager — REPORT_READ is the RIS dashboard KPI gate, BILLING_READ
+# unlocks the unbilled-aging card, ANALYTICS_READ/METRICS_READ surface the
+# analytics workspace, and the clinical reads let the manager open reports
+# referenced from dashboards. No writes, no user/role/tenant administration.
+MATRIX_C_DEPTMGR = {
+    'PATIENT_READ', 'ORDER_READ', 'SCHEDULE_READ', 'PRIOR_AUTH_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'BILLING_READ',
+    'ANALYTICS_READ', 'METRICS_READ', 'CHART_READ', 'RESULTS_READ',
+    'AUDIT_READ',
+    # DM-04: equipment utilization report — dept manager oversees modality
+    # operations and needs equipment visibility (read-only).
+    'EQUIPMENT_READ',
+    # DM-07: staff schedule management — dept manager creates/edits staff
+    # schedules; SCHEDULE_WRITE also enables appointment booking but the
+    # dept manager is a senior role that should have full scheduling authority.
+    'SCHEDULE_WRITE',
+}
 MATRIX_C_TENANT_ADMIN = {
     'TENANT_READ', 'TENANT_ADMIN', 'METERING_READ',
     'USER_READ', 'USER_WRITE', 'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE',
@@ -322,7 +388,8 @@ MATRIX_C_TENANT_ADMIN = {
 }
 MATRIX_C_PATIENT = {
     'PORTAL_READ', 'CHART_READ', 'RESULTS_READ', 'MED_ORDER_READ',
-    'SCHEDULE_READ', 'VIEWER_READ',
+    'SCHEDULE_READ', 'VIEWER_READ', 'FOLLOW_UP_SELF',
+    'NOTIFICATIONS_SELF',
 }
 
 # ---------------------------------------------------------------------------
@@ -362,6 +429,15 @@ PHYSICIAN_PERMISSIONS = sorted(LEGACY_PHYSICIAN | MATRIX_B_PHYS)
 TENANT_ADMIN_PERMISSIONS = sorted(LEGACY_TENANT_ADMIN | MATRIX_C_TENANT_ADMIN)
 CASHIER_PERMISSIONS = sorted(LEGACY_CASHIER | MATRIX_A_BILL)
 
+# D7: ED physicians ack critical results — the grants mirror migration 052's
+# seed snapshot exactly so upgraded DBs and fresh seeds cannot diverge.
+ED_PHYSICIAN_PERMISSIONS = [
+    'PATIENT_READ', 'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ',
+    'WORKLIST_READ', 'REPORT_READ', 'CRITICAL_RESULTS_WRITE', 'VIEWER_READ',
+    'STUDY_READ', 'CHART_READ', 'RESULTS_READ', 'ENCOUNTER_WRITE',
+    'NOTE_SIGN', 'MED_ORDER_READ', 'MED_ORDER_WRITE', 'MAR_READ',
+]
+
 
 # ---------------------------------------------------------------------------
 # Immutability policy for built-in roles (R2-16).
@@ -379,6 +455,9 @@ CASHIER_PERMISSIONS = sorted(LEGACY_CASHIER | MATRIX_A_BILL)
 # ---------------------------------------------------------------------------
 IMMUTABLE_ROLE_SLUGS = frozenset({
     'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+    # D7: the ED-physician ack chain (critical results) must survive any
+    # facility-level role edit — grants stay pinned to the 052 snapshot.
+    'ed_physician',
 })
 PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES = frozenset({'teleradiologist'})
 
@@ -389,6 +468,7 @@ BUILT_IN_ROLES = {
     'radiologist': list(RADIOLOGIST_PERMISSIONS),
     'teleradiologist': list(RADIOLOGIST_PERMISSIONS),  # RAD == TEL (spec §5)
     'physician': list(PHYSICIAN_PERMISSIONS),
+    'ed_physician': sorted(ED_PHYSICIAN_PERMISSIONS),
     'tenant_admin': list(TENANT_ADMIN_PERMISSIONS),
     'cashier': list(CASHIER_PERMISSIONS),
     # ---- Canonical roles (docs/reaserch/RBAC_matrix_spec.md §4/§5) ----
@@ -399,4 +479,7 @@ BUILT_IN_ROLES = {
     'care_coordinator': sorted(MATRIX_B_COORD),
     'emr_admin': sorted(MATRIX_B_EMRADM),
     'patient': sorted(MATRIX_C_PATIENT),
+    # S12-34: department manager — read-only operational analytics (RIS
+    # dashboard KPI gate REPORT_READ, unbilled aging BILLING_READ).
+    'dept_manager': sorted(MATRIX_C_DEPTMGR),
 }

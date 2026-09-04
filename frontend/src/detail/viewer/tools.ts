@@ -10,6 +10,9 @@ import {
   CobbAngleTool,
   ProbeTool,
   CircleROITool,
+  ZoomTool,
+  WindowLevelTool,
+  StackScrollTool,
 } from "@cornerstonejs/tools";
 import { TOOL_GROUP_ID } from "./setup";
 
@@ -39,7 +42,25 @@ export function activateDrag(): void {
   tg.setToolPassive(CobbAngleTool.toolName);
   tg.setToolPassive(ProbeTool.toolName);
   tg.setToolPassive(CircleROITool.toolName);
+  tg.setToolPassive(ZoomTool.toolName);
+  tg.setToolPassive(WindowLevelTool.toolName);
   tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 1 }] });
+}
+
+/** Promotes Window/Level to left-drag (and demotes Pan). (docs/viewer spec — W.) */
+export function activateWl(): void {
+  const tg = getToolGroup();
+  if (!tg) return;
+  tg.setToolPassive(PanTool.toolName);
+  tg.setToolActive(WindowLevelTool.toolName, { bindings: [{ mouseButton: 1 }] });
+}
+
+/** Promotes Zoom to left-drag (and demotes Pan). (docs/viewer spec — Z.) */
+export function activateZoom(): void {
+  const tg = getToolGroup();
+  if (!tg) return;
+  tg.setToolPassive(PanTool.toolName);
+  tg.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: 1 }] });
 }
 
 export function activateLine(): void {

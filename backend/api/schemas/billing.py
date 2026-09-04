@@ -87,3 +87,40 @@ class ReconciliationCloseRequest(BaseModel):
         description="Counted totals per method with keys cash/card/check",
     )
     variance_reason: str = Field('', description="Required when counted totals differ from expected")
+
+
+# ---------------------------------------------------------------------------
+# B-09 Fee Schedule — edit, import, version history
+# ---------------------------------------------------------------------------
+
+class FeeScheduleUpdateRequest(BaseModel):
+    list_price: float | None = Field(None, gt=0, description="New list price")
+    description: str | None = Field(None, max_length=200)
+
+
+class FeeScheduleImportRow(BaseModel):
+    procedure_code: str = Field(..., min_length=1, max_length=40)
+    description: str = Field('', max_length=200)
+    list_price: float = Field(..., ge=0)
+
+
+class FeeScheduleImportRequest(BaseModel):
+    rows: list[FeeScheduleImportRow] = Field(..., min_length=1, max_length=5000)
+
+
+# ---------------------------------------------------------------------------
+# B-08 Payer Contract Rates
+# ---------------------------------------------------------------------------
+
+class CreatePayerContractRequest(BaseModel):
+    payer_id: str = Field(..., min_length=1, max_length=80)
+    payer_name: str = Field('', max_length=200)
+    procedure_code: str = Field(..., min_length=1, max_length=40)
+    contracted_rate: float = Field(..., ge=0)
+    effective_date: str | None = Field(None, description="YYYY-MM-DD")
+
+
+class UpdatePayerContractRequest(BaseModel):
+    contracted_rate: float | None = Field(None, ge=0)
+    effective_date: str | None = Field(None, description="YYYY-MM-DD")
+    active: bool | None = Field(None)

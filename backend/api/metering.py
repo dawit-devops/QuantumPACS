@@ -43,6 +43,8 @@ class MeteringUsageHandler(HTTPEndpoint):
             'api_calls': sum(r['api_calls'] or 0 for r in usage_daily),
             'storage_bytes': (usage_daily[-1]['storage_bytes'] or 0) if usage_daily else 0,
             'active_users': max((r['active_users'] or 0) for r in usage_daily) if usage_daily else 0,
+            'mwl_queries': sum(r.get('mwl_queries') or 0 for r in usage_daily),
+            'notifications': sum(r.get('notifications') or 0 for r in usage_daily),
         }
         return ok({
             'tenant_id': tenant_id,
@@ -60,5 +62,7 @@ class PlatformUsageHandler(HTTPEndpoint):
             'api_calls': sum(t['api_calls'] or 0 for t in tenants),
             'storage_bytes': sum(t['storage_bytes'] or 0 for t in tenants),
             'active_users': sum(t['active_users'] or 0 for t in tenants),
+            'mwl_queries': sum(t.get('mwl_queries') or 0 for t in tenants),
+            'notifications': sum(t.get('notifications') or 0 for t in tenants),
         }
         return ok({'tenants': tenants, 'totals': totals})

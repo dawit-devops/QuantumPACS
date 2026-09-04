@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Card,
   Descriptions,
@@ -11,7 +12,6 @@ import {
   Button,
   Alert,
   Spin,
-  message,
   Tag,
   Space,
 } from "antd";
@@ -36,6 +36,7 @@ const RADIO_STYLE: React.CSSProperties = {
 };
 
 function QAReviewForm() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - QA Review");
   const navigate = useNavigate();
   const { examId } = useParams<{ examId: string }>();
@@ -138,7 +139,7 @@ function QAReviewForm() {
         <Alert
           type="error"
           showIcon
-          message={error || "Exam not found"}
+          title={error || "Exam not found"}
           action={
             <Button onClick={() => navigate("/qa/queue")}>Back to queue</Button>
           }
@@ -211,7 +212,7 @@ function QAReviewForm() {
             <Alert
               type="info"
               showIcon
-              message={`Already reviewed as "${existingScore.pass_fail}" — submitting will update it.`}
+              title={`Already reviewed as "${existingScore.pass_fail}" — submitting will update it.`}
               style={{ marginBottom: 12 }}
             />
           )}
@@ -336,7 +337,7 @@ function QAReviewForm() {
             <Alert
               type="info"
               showIcon
-              message="Read-only: you need QA_WRITE to submit scores."
+              title="Read-only: you need QA_WRITE to submit scores."
             />
           )}
         </Card>

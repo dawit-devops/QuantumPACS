@@ -20,6 +20,7 @@ const mockCreateWorklistEntry = vi.hoisted(() => vi.fn());
 const mockUpdateWorklistEntry = vi.hoisted(() => vi.fn());
 const mockDeleteWorklistEntry = vi.hoisted(() => vi.fn());
 const mockMarkWorklistPerformed = vi.hoisted(() => vi.fn());
+const mockSyncWorklist = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/worklist", () => ({
   listWorklist: mockListWorklist,
@@ -28,6 +29,7 @@ vi.mock("../api/worklist", () => ({
   updateWorklistEntry: mockUpdateWorklistEntry,
   deleteWorklistEntry: mockDeleteWorklistEntry,
   markWorklistPerformed: mockMarkWorklistPerformed,
+  syncWorklist: mockSyncWorklist,
 }));
 
 vi.mock("../helpers", () => ({
@@ -129,6 +131,10 @@ describe("Worklist", () => {
     mockUpdateWorklistEntry.mockResolvedValue(undefined);
     mockDeleteWorklistEntry.mockResolvedValue(undefined);
     mockMarkWorklistPerformed.mockResolvedValue(undefined);
+    // T-05: manual MWL sync returns a clean pass by default.
+    mockSyncWorklist.mockResolvedValue({
+      synced: true, pushed: 2, status: 0, removed: 0, failed: 0,
+    });
     localStorage.setItem("token", "t");
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "true");
@@ -299,5 +305,17 @@ describe("Worklist", () => {
     expect(screen.queryAllByRole("checkbox").length).toBe(0);
     expect(document.querySelectorAll(".mock-popconfirm").length).toBe(0);
     expect(screen.getByText("John Doe")).toBeInTheDocument();
+  });
+
+  it("runs the MWL sync trigger and refreshes the list (T-05)", async () => {
+    renderWithAuth(<Worklist />);
+    await waitForTable();
+
+    fireEvent.click(screen.getByRole("button", { name: /sync mwl/i }));
+    await waitFor(() => {
+      expect(mockSyncWorklist).toHaveBeenCalledTimes(1);
+      // The list refreshes after the sync completes.
+      expect(mockListWorklist.mock.calls.length).toBeGreaterThan(1);
+    });
   });
 });

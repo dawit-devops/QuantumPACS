@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 
 from db.table import Table
 
+# A4 (GAP_AUDIT_TDD_PIPELINE.md): single source for the HIM release gate
+# (R2-05-05, migration 084). Patient-bound surfaces must exclude held
+# reports; staff-facing reads are unaffected. Alias `r` = reports table.
+RELEASE_VISIBLE_SQL = "r.release_status IS DISTINCT FROM 'held'"
+
 
 class Reports(Table):
     name = 'reports'
@@ -24,6 +29,8 @@ class Reports(Table):
             findings TEXT DEFAULT '',
             impression TEXT DEFAULT '',
             recommendations TEXT DEFAULT '',
+            clinical_history TEXT DEFAULT '',
+            technique TEXT DEFAULT '',
             template_name TEXT DEFAULT '',
             created_by TEXT DEFAULT '',
             signed_by TEXT DEFAULT '',
@@ -42,21 +49,43 @@ class Reports(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_reports_status ON reports(status)
         """)
+        await self.exec("""
+        ALTER TABLE reports
+            ADD COLUMN IF NOT EXISTS ris_order_id UUID,
+            ADD COLUMN IF NOT EXISTS template_id UUID,
+            ADD COLUMN IF NOT EXISTS distributed_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS body_part TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS clinical_history TEXT DEFAULT '',
+            ADD COLUMN IF NOT EXISTS technique TEXT DEFAULT ''
+        """)
 
     async def create(self, exam_id, data, created_by):
+        await self.sync_db()
         now = datetime.now(timezone.utc)
+        # V-6: template_id / ris_order_id columns exist (ALTER above) but
+        # were silently dropped by the INSERT — the report then lost its
+        # template and order linkage on the very first save.
         q = self.insert().columns(
             'exam_id', 'status', 'findings', 'impression', 'recommendations',
-            'template_name', 'created_by', 'signed_by', 'created_at', 'updated_at',
+            'clinical_history', 'technique',
+            'template_name', 'template_id', 'ris_order_id', 'created_by',
+            'signed_by', 'is_critical',
+            'created_at', 'updated_at',
         ).insert((
             exam_id,
             data.get('status', 'draft'),
             data.get('findings', ''),
             data.get('impression', ''),
             data.get('recommendations', ''),
+            data.get('clinical_history', ''),
+            data.get('technique', ''),
             data.get('template_name', ''),
+            data.get('template_id'),
+            data.get('ris_order_id'),
             created_by,
             data.get('signed_by', ''),
+            bool(data.get('is_critical', False)),
             now, now,
         )).returning('id')
         row = await self.fetchone(q)
@@ -65,22 +94,26 @@ class Reports(Table):
         return await self.get(row['id'])
 
     async def get(self, report_id):
+        await self.sync_db()
         row = await self.conn.fetchrow(
             "SELECT * FROM reports WHERE id = $1", report_id,
         )
         return dict(row) if row else None
 
     async def get_by_exam(self, exam_id):
+        await self.sync_db()
         row = await self.conn.fetchrow(
             "SELECT * FROM reports WHERE exam_id = $1", exam_id,
         )
         return dict(row) if row else None
 
-    async def update(self, report_id, data):
+    async def update(self, report_id, data, edited_by=''):
         """Update draft fields (findings/impression/status)."""
+        await self.sync_db()
+        previous = await self.get(report_id)
         fields = ['updated_at']
         values = [datetime.now(timezone.utc)]
-        for k in ('status', 'findings', 'impression', 'recommendations', 'template_name'):
+        for k in ('status', 'findings', 'impression', 'recommendations', 'clinical_history', 'technique', 'template_name', 'template_id', 'ris_order_id', 'is_critical'):
             if k in data:
                 fields.append(k)
                 values.append(data[k])
@@ -89,16 +122,49 @@ class Reports(Table):
             f"UPDATE reports SET {set_clause} WHERE id = $1",
             report_id, *values,
         )
-        return await self.get(report_id)
+        updated = await self.get(report_id)
+        if updated:
+            # V-4: only snapshot a version when the content actually
+            # changed — an identical PUT (autosave re-fire, no edit) must
+            # not add a duplicate row to the version history.
+            content_keys = ('findings', 'impression', 'recommendations')
+            changed = any(
+                (updated.get(k) or '') != (previous or {}).get(k, '')
+                for k in content_keys
+            )
+            if changed:
+                try:
+                    from db.ris_report_versions import RisReportVersions
+                    await RisReportVersions(self.conn).add_version(
+                        report_id, updated.get('findings', ''),
+                        updated.get('impression', ''), updated.get('recommendations', ''),
+                        edited_by=edited_by or updated.get('created_by', ''),
+                    )
+                except Exception:
+                    pass
+        return updated
 
     async def sign(self, report_id, signed_by):
         """Transition to final with the signing radiologist recorded."""
+        await self.sync_db()
+        now = datetime.now(timezone.utc)
         await self.conn.execute(
-            "UPDATE reports SET status = 'final', signed_by = $2, signed_at = now(), "
-            "updated_at = now() WHERE id = $1",
-            report_id, signed_by,
+            "UPDATE reports SET status = 'final', signed_by = $2, signed_at = $3, "
+            "distributed_at = $3, updated_at = $3 WHERE id = $1",
+            report_id, signed_by, now,
         )
-        return await self.get(report_id)
+        updated = await self.get(report_id)
+        if updated:
+            try:
+                from db.ris_report_versions import RisReportVersions
+                await RisReportVersions(self.conn).add_version(
+                    report_id, updated.get('findings', ''),
+                    updated.get('impression', ''), updated.get('recommendations', ''),
+                    edited_by=signed_by,
+                )
+            except Exception:
+                pass
+        return updated
 
     async def submit(self, report_id):
         """R13 resident hands a draft to the supervising attending (co-sign).
@@ -131,7 +197,9 @@ class Reports(Table):
 
     async def reading_list(self, status=None, modality=None, search=None,
                             radiologist=None, physician=None,
-                            date_from=None, date_to=None, review=None):
+                            date_from=None, date_to=None, review=None,
+                            unread=None,
+                            page=None, per_page=None):
         """Exams handed off to the reading worklist that lack a final report.
 
         A study is "ready to read" when the technologist completed it (handoff,
@@ -165,6 +233,9 @@ class Reports(Table):
                 idx += 1
         if review:
             where.append("r.status = 'submitted'")
+        if unread:
+            # R-01: never opened for reading — no report row exists yet.
+            where.append('r.id IS NULL')
         if modality:
             where.append(f"e.modality = ${idx}")
             params.append(modality)
@@ -223,7 +294,134 @@ class Reports(Table):
             priority_order.get(r.get('priority') or 'routine', 9),
             r.get('completed_at') or datetime.max.replace(tzinfo=timezone.utc),
         ))
+        # D1: server-side pagination — the tiered ordering is applied over
+        # the full filtered set first, then the page is sliced, so STAT
+        # stays on page 1 and no row is skipped or duplicated across pages.
+        if page is not None and per_page:
+            total = len(items)
+            start = (max(1, page) - 1) * per_page
+            return items[start:start + per_page], total
         return items
+
+    async def list_priors(self, patient_id, modality=None,
+                          exclude_exam_id=None, limit=20):
+        """R-07: the patient's prior preliminary/final reports for quick
+        comparison inside the reading console — newest first, impression
+        excerpt only (full text loads via the normal report endpoint)."""
+        await self.sync_db()
+        where = ["r.status IN ('preliminary', 'final')",
+                 "e.patient_id = $1"]
+        params = [patient_id]
+        idx = 2
+        if modality:
+            where.append(f"e.modality = ${idx}")
+            params.append(modality)
+            idx += 1
+        if exclude_exam_id:
+            where.append(f"e.id::text <> ${idx}")
+            params.append(str(exclude_exam_id))
+            idx += 1
+        rows = await self.conn.fetch(
+            f"""SELECT r.id::text AS report_id,
+                       e.id::text AS exam_id,
+                       e.accession_number, e.modality, e.completed_at,
+                       r.status, r.signed_at,
+                       left(r.impression, 200) AS impression_excerpt,
+                       left(r.recommendations, 200)
+                           AS recommendations_excerpt
+                FROM reports r JOIN exams e ON e.id = r.exam_id
+                WHERE {' AND '.join(where)}
+                ORDER BY e.completed_at DESC NULLS LAST, r.signed_at DESC NULLS LAST
+                LIMIT ${idx}""",
+            *params, limit,
+        )
+        return [dict(r) for r in rows]
+
+    async def reading_stats(self, user_id, days=14):
+        """R-17/RES-04: personal reading statistics for the signed-in
+        radiologist/resident — signed-today count, average turnaround per
+        priority, STAT compliance (signed within 60 min of handoff), a
+        per-day trend over the trailing window, and attending feedback
+        received on their reports."""
+        await self.sync_db()
+        uid = str(user_id)
+        signed_today = await self.conn.fetchval(
+            """SELECT count(*) FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text
+                 AND r.status = 'final'
+                 AND r.signed_at >= date_trunc('day', now())""",
+            uid,
+        )
+        tat_rows = await self.conn.fetch(
+            """SELECT e.priority AS priority,
+                      avg(extract(epoch FROM (r.signed_at - e.completed_at))) AS avg_tat,
+                      count(*) FILTER (WHERE e.priority = 'stat') AS stat_total,
+                      count(*) FILTER (WHERE e.priority = 'stat'
+                         AND r.signed_at - e.completed_at < interval '60 minutes')
+                          AS stat_within_sla
+                FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text AND r.status = 'final'
+                 AND r.signed_at >= now() - ($2 || ' days')::interval
+               GROUP BY e.priority""",
+            uid, str(int(days)),
+        )
+        avg_tat = {r['priority']: float(r['avg_tat'])
+                   if r['avg_tat'] is not None else None for r in tat_rows}
+        stat_total = sum(int(r['stat_total'] or 0) for r in tat_rows)
+        stat_ok = sum(int(r['stat_within_sla'] or 0) for r in tat_rows)
+        compliance = round(100.0 * stat_ok / stat_total, 1) \
+            if stat_total else None
+        trend_rows = await self.conn.fetch(
+            """SELECT date_trunc('day', r.signed_at)::date AS day,
+                      count(*) AS count,
+                      avg(extract(epoch FROM (r.signed_at - e.completed_at)))
+                          AS avg_tat
+               FROM reports r JOIN exams e ON e.id = r.exam_id
+               WHERE r.signed_by::text = $1::text AND r.status = 'final'
+                 AND r.signed_at >= now() - ($2 || ' days')::interval
+               GROUP BY day ORDER BY day""",
+            uid, str(int(days)),
+        )
+        feedback_received = await self.conn.fetchval(
+            """SELECT count(*) FROM reports
+               WHERE created_by::text = $1::text
+                 AND review_feedback <> ''""",
+            uid,
+        )
+        return {
+            'signed_today': int(signed_today or 0),
+            'avg_tat_seconds': {
+                'stat': avg_tat.get('stat'),
+                'urgent': avg_tat.get('urgent'),
+                'routine': avg_tat.get('routine'),
+            },
+            'stat_compliance_pct': compliance,
+            'trend': [
+                {
+                    'date': str(r['day']),
+                    'count': int(r['count']),
+                    'avg_tat_seconds': float(r['avg_tat'])
+                    if r['avg_tat'] is not None else None,
+                }
+                for r in trend_rows
+            ],
+            'feedback_received': int(feedback_received or 0),
+        }
+
+    async def _ensure_release_status(self):
+        await self.conn.execute(
+            "ALTER TABLE reports ADD COLUMN IF NOT EXISTS release_status "
+            "TEXT NOT NULL DEFAULT 'auto'")
+
+    async def set_release_status(self, report_id, status):
+        """R2-05-05: HIM release gate — auto | held | released."""
+        if status not in ('auto', 'held', 'released'):
+            raise ValueError('release_status must be auto/held/released')
+        return await self.conn.fetchrow(
+            "UPDATE reports SET release_status = $2 WHERE id::text = $1 "
+            "RETURNING id::text AS id, release_status",
+            str(report_id), status,
+        )
 
 
 class ReportTemplates(Table):
@@ -272,11 +470,13 @@ class PeerReviews(Table):
             report_id UUID NOT NULL,
             reviewer_id TEXT DEFAULT '',
             status TEXT NOT NULL DEFAULT 'assigned'
-                CHECK (status IN ('assigned', 'in_progress', 'completed')),
+                CHECK (status IN ('assigned', 'in_progress', 'completed', 'rejected')),
             discrepancy_level TEXT DEFAULT ''
                 CHECK (discrepancy_level IN ('', 'none', 'minor', 'major', 'discrepancy')),
             comment TEXT DEFAULT '',
+            declined_reason TEXT DEFAULT '',
             assigned_at TIMESTAMPTZ DEFAULT now(),
+            accepted_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT now()
         )
@@ -286,6 +486,17 @@ class PeerReviews(Table):
         """)
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_peer_reviews_report ON peer_reviews(report_id)
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews ADD COLUMN IF NOT EXISTS declined_reason TEXT DEFAULT ''
+        """)
+        await self.exec("""
+        ALTER TABLE peer_reviews DROP CONSTRAINT IF EXISTS peer_reviews_status_check;
+        ALTER TABLE peer_reviews ADD CONSTRAINT peer_reviews_status_check
+            CHECK (status IN ('assigned', 'in_progress', 'completed', 'rejected'))
         """)
 
     async def create(self, report_id, reviewer_id):
@@ -320,6 +531,22 @@ class PeerReviews(Table):
             "UPDATE peer_reviews SET status = 'in_progress' WHERE id = $1",
             review_id,
         )
+
+    async def accept(self, review_id):
+        await self.conn.execute(
+            "UPDATE peer_reviews SET status = 'in_progress', accepted_at = now() "
+            "WHERE id = $1",
+            review_id,
+        )
+        return await self.get(review_id)
+
+    async def reject(self, review_id, reason):
+        await self.conn.execute(
+            "UPDATE peer_reviews SET status = 'rejected', declined_reason = $2, "
+            "completed_at = now() WHERE id = $1",
+            review_id, reason,
+        )
+        return await self.get(review_id)
 
     async def submit(self, review_id, discrepancy_level, comment):
         await self.conn.execute(

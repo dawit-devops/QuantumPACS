@@ -35,6 +35,14 @@ export interface CreateTenantResponse {
 export interface TenantUsageRow {
   date: string;
   api_calls: number;
+  /** RIS activity that bypasses HTTP metering (S2-02): MWL C-FINDs and
+   * delivered bell notifications. Absent on older backends. */
+  mwl_queries?: number;
+  notifications?: number;
+  /** ADM-14 history series fields from the metering daily rollup — absent
+   * on backends predating tenant_usage_daily. */
+  storage_bytes?: number;
+  active_users?: number;
 }
 
 export interface TenantHealth {
@@ -45,24 +53,22 @@ export interface TenantHealth {
 export const listTenants = (): Promise<Tenant[]> =>
   request<{ data: Tenant[] }>("tenants").then((res) => res.data ?? []);
 
-export const createTenant = (
-  data: Record<string, unknown>,
-): Promise<CreateTenantResponse> =>
+export const createTenant = (data: Record<string, unknown>): Promise<CreateTenantResponse> =>
   request<CreateTenantResponse>("tenants", { data });
 
-export const updateTenant = (
-  id: string,
-  data: Record<string, unknown>,
-): Promise<void> => request(`tenants/${id}`, { method: "PUT", data });
+export const updateTenant = (id: string, data: Record<string, unknown>): Promise<void> =>
+  request(`tenants/${id}`, { method: "PUT", data });
 
 export const deleteTenant = (id: string): Promise<void> =>
   request(`tenants/${id}`, { data: undefined, method: "DELETE" });
 
-// Daily api_calls series for the per-tenant usage panel. The backend may
-// wrap rows in {data: [...]} or return a bare array; normalize to an array.
+// Daily usage series for the per-tenant usage panel (ADM-14). MeteringUsage
+// returns {usage_daily: [...]}; older shapes ({data} / bare array) are kept
+// for compatibility. Normalize to an array.
 export const getTenantUsage = async (id: string): Promise<TenantUsageRow[]> => {
-  const res = (await request(`tenants/${id}/usage`)) as any;
+  const res = await request(`tenants/${id}/usage`);
   if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.usage_daily)) return res.usage_daily;
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res?.usage)) return res.usage;
   return [];
@@ -71,9 +77,7 @@ export const getTenantUsage = async (id: string): Promise<TenantUsageRow[]> => {
 // One-shot health probe for all tenants, keyed by slug (fallback: id).
 // Callers must treat a failure (e.g. 404 before the endpoint exists) as
 // "unknown health" and degrade — never block the tenant list on it.
-export const getTenantHealth = async (): Promise<
-  Record<string, TenantHealth>
-> => {
+export const getTenantHealth = async (): Promise<Record<string, TenantHealth>> => {
   let res: any;
   try {
     res = await request("tenants/health");

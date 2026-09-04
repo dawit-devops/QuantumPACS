@@ -72,11 +72,10 @@ Replacing the `users.admin` boolean:
 | Role | Permissions | Notes |
 |------|-------------|-------|
 | `super_admin` | All resources: all actions | Can manage tenants and all tenant data |
-| `tenant_admin` | All resources within tenant: all actions | Cannot access other tenants or registry |
+| `tenant_admin` | Tenant-scoped operational admin: users/roles/tenants/logs/metrics/interface, no clinical writes, no `SYSTEM_ADMIN`, no `REPORT_WRITE` (Matrix C: `LEGACY_TENANT_ADMIN` + `MATRIX_C_TENANT_ADMIN` in `backend/api/permissions.py`) | Cannot access other tenants or registry, cannot create/annotate reports, cannot delete users
 | `radiologist` | files/patients/studies: read + write; logs: read | Can view, annotate, edit studies |
 | `technologist` | files/patients/studies: read + write | Can upload, cannot delete, cannot manage users |
-| `referring_physician` | files/patients/studies: read | View-only access |
-| `auditor` | logs: read; files: read (metadata only) | Read-only audit trail access |
+| `referring_physician` | patients/studies/viewer: read; files (via viewer grants) | View-only access — no FILE_READ grant, Files page opens via STUDY_READ/VIEWER_READ |
 
 ### Token Changes
 
@@ -104,7 +103,7 @@ Replacing the `users.admin` boolean:
 ### Positive
 
 - **Enterprise SSO** — Hospitals can use existing identity infrastructure; no per-user account management.
-- **Fine-grained access** — Role-permission model supports radiologist, technologist, referring physician, and auditor use cases without over-provisioning.
+- **Fine-grained access** — Role-permission model supports radiologist, technologist, and referring physician use cases without over-provisioning.
 - **Token revocation** — Compromised tokens can be blocked within seconds.
 - **Backward compatibility** — v2 JWT tokens (without `jti`, `role`, `permissions`) are still accepted during transition, treated as `admin` according to the `admin` boolean (which remains in the DB).
 

@@ -30,7 +30,7 @@ from db.replica import Replica
 from db.replica_files import ReplicaFiles
 from db.share_files import SharedFiles
 from db.notifications import Notifications
-from db.tenants import Tenants
+from db.tenants import Tenants, uses_main_database
 from api.ws import broadcast_to_user
 from dcm.file import parse_dcm
 from es import es
@@ -132,6 +132,19 @@ class Upload(HTTPEndpoint):
         file = up.file
 
         header = file.read(256)
+
+        # Real-world DICOM deliveries (CD/DVD, web downloads, modality export
+        # tools) arrive as .zip archives containing many instances. Detect by
+        # the PK\x03\x04 local-file-header magic (more robust than extension —
+        # some archives are named without it) and fan each member through the
+        # same persistence path as a single upload so dedup/quota all apply.
+        if header[:4] == b'PK\x03\x04' or (filename or '').lower().endswith('.zip'):
+            remaining = file.read()
+            content = header + remaining
+            if len(content) > max_bytes:
+                return api_error('FILE_TOO_LARGE', f'File exceeds {max_mb}MB limit', status=413)
+            return await self._process_zip_upload(request, content, max_bytes)
+
         if not header or not _is_dicom(header):
             return api_error('INVALID_FILE', 'Not a valid DICOM file', status=400)
 
@@ -216,6 +229,14 @@ class Upload(HTTPEndpoint):
                     if quota_bytes > 0 and new_total / quota_bytes >= 0.9:
                         await _notify_quota_breach(conn, tenant_slug, quota_bytes, new_total)
 
+                try:
+                    from services.reading_handoff import ensure_reading_exam
+                    await ensure_reading_exam(
+                        conn, ds, tenant_slug=tenant_slug or '', source='upload',
+                    )
+                except Exception:
+                    log.warning('Reading-handoff bridge failed for %s', filename, exc_info=True)
+
                 user_id = request.user.id
                 patient_name = ds.get('patient_name', ds.get('patientname', 'Unknown'))
                 # P1-1: the upload receipt is clinical noise for the platform
@@ -237,6 +258,133 @@ class Upload(HTTPEndpoint):
                     {'type': 'notifications'},
                 )
         return ok({'id': filedata['id'], 'duplicate': False})
+
+    async def _process_zip_upload(self, request, content, max_bytes):
+        """Extract and store every DICOM member of a .zip upload.
+
+        A zip may mix DICOM instances with other content (patient folders,
+        manifests, hidden OS files). Each member is validated by the same
+        DICM magic check and required-tag check as a single upload, then
+        stored individually so one bad member never fails the whole archive.
+        """
+        from zipfile import ZipFile, BadZipFile
+
+        stored = 0
+        duplicates = 0
+        failed = 0
+        skipped = 0
+        errors = []
+
+        tenant_slug = getattr(request.state, 'tenant_slug', None)
+        tenant_info = getattr(request.state, 'tenant', None) or {}
+        quota_bytes = int(tenant_info.get('storage_quota_bytes') or 0)
+        current_used = None
+        if tenant_slug:
+            current_used = await _tenant_storage_used(request, tenant_info)
+
+        async def store_member(member_bytes, member_name):
+            nonlocal stored, duplicates, failed, current_used, skipped
+            if not _is_dicom(member_bytes):
+                skipped += 1
+                return
+            buf = io.BytesIO(member_bytes)
+            try:
+                ds = parse_dcm(buf)
+            except Exception as e:
+                failed += 1
+                errors.append(f'{member_name}: parse error: {e}')
+                return
+            missing = [t for t in _REQUIRED_DICOM_TAGS if not ds.get(t)]
+            if missing:
+                failed += 1
+                errors.append(f'{member_name}: missing tags: {", ".join(missing)}')
+                return
+            hsh = hash_file(buf)
+            new_bytes = len(member_bytes)
+            if tenant_slug and quota_bytes > 0 and current_used is not None:
+                if current_used + new_bytes > quota_bytes:
+                    failed += 1
+                    errors.append(f'{member_name}: tenant quota exceeded')
+                    return
+                current_used += new_bytes
+
+            result = await self._persist_zip_member(
+                buf, ds, member_name, new_bytes, hsh, tenant_slug,
+            )
+            if result == 'stored':
+                stored += 1
+                try:
+                    from services.reading_handoff import ensure_reading_exam
+                    async with get_conn() as conn:
+                        await ensure_reading_exam(
+                            conn, ds, tenant_slug=tenant_slug or '', source='zip',
+                        )
+                except Exception:
+                    log.warning('Reading-handoff bridge failed for %s', member_name, exc_info=True)
+            elif result == 'duplicate':
+                duplicates += 1
+            else:
+                failed += 1
+                errors.append(f'{member_name}: store failed')
+
+        try:
+            with ZipFile(io.BytesIO(content)) as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        skipped += 1
+                        continue
+                    try:
+                        member_bytes = zf.read(member)
+                    except Exception as e:
+                        failed += 1
+                        errors.append(f'{member.filename}: unreadable: {e}')
+                        continue
+                    if len(member_bytes) > max_bytes:
+                        failed += 1
+                        errors.append(f'{member.filename}: exceeds size limit')
+                        continue
+                    await store_member(member_bytes, member.filename)
+        except BadZipFile as e:
+            return api_error('INVALID_ZIP', f'Not a valid zip archive: {e}', status=400)
+
+        return ok({
+            'format': 'zip',
+            'stored': stored,
+            'duplicates': duplicates,
+            'failed': failed,
+            'skipped': skipped,
+            'errors': errors[:20],
+        })
+
+    async def _persist_zip_member(self, buf, ds, member_name, new_bytes, hsh, tenant_slug):
+        """Persist one zip member through the same storage path as a single upload."""
+        async with get_conn() as conn:
+            async with conn.transaction():
+                master = await Replica(conn).master()
+                if not master:
+                    return False
+                existing = await Files(conn).find_by_hash(hsh)
+                if existing:
+                    return 'duplicate'
+                file_data = {
+                    'name': os.path.basename(member_name),
+                    'master': master['id'],
+                    'hash': hsh,
+                }
+                file_data.update(ds)
+                file_data['size'] = new_bytes
+                file_data['tenant'] = tenant_slug or None
+                filedata = await Files(conn).insert_or_select(file_data)
+                buf.seek(0)
+                storage = await Storage.get(master)
+                try:
+                    ret = await storage.copy(buf, filedata)
+                except Exception:
+                    return False
+                await ReplicaFiles(conn).add(master['id'], [{'id': filedata['id'], **ret}])
+                if tenant_slug:
+                    await _persist_storage_used(conn, tenant_slug, new_bytes)
+                return 'stored'
 
 
 def zip_files(files, zipname):
@@ -341,16 +489,62 @@ class FilesHandler(HTTPEndpoint):
         return ok(results)
 
 
-def _outside_effective_tenant(request, user, file_tenant):
+async def _outside_effective_tenant(request, user, file_tenant):
     """True when a file belongs to a tenant outside the request's current
     scope. The middleware has already authorized that scope (JWT claim,
     admin, or an R2-03 cross-tenant grant via X-Tenant-ID) — here we only
     refuse files belonging to a different tenant than the one this request
     is operating in. Files without a tenant stay accessible exactly as
-    before."""
+    before.
+
+    F7 (role-walk technologist): tenants whose data store IS the main
+    database (db/tenants.uses_main_database) share one `files` table, and
+    the seeders stamp rows 'default'. Comparing raw slugs would hide every
+    seeded file from any other shared-DB tenant (list shows it, detail
+    404s it). Such tenants are one visibility domain: slug equality only
+    separates tenants with their own database. Registry rows are read on
+    the main pool (the registry is not tenant data) and memoized on
+    request.state so repeated checks on one request hit the cache."""
+    effective = effective_tenant(request)
     if not file_tenant or user.admin:
         return False
-    return effective_tenant(request) != file_tenant
+    if effective == file_tenant:
+        return False
+    cache = getattr(request.state, '_tenant_info_cache', None)
+    if cache is None:
+        cache = {}
+        try:
+            request.state._tenant_info_cache = cache
+        except AttributeError:
+            pass
+
+    async def _lookup(slug):
+        if slug not in cache:
+            cache[slug] = await _tenant_info_async(slug)
+        return cache[slug]
+
+    effective_info = await _lookup(effective)
+    if effective_info is not None and uses_main_database(effective_info):
+        # The requesting scope runs on the main DB: it shares the table with
+        # every other main-DB tenant, so a differently-stamped main-DB row
+        # is not a foreign-tenant row.
+        file_info = await _lookup(file_tenant)
+        if file_info is None or uses_main_database(file_info):
+            return False
+    return True
+
+
+async def _tenant_info_async(slug):
+    """Registry row for a tenant slug, or None when unknown. Reads the
+    global registry on the main pool (the registry is not tenant data)."""
+    if not slug:
+        return None
+    db = get_database()
+    if not db.pool:
+        return None
+    async with db.pool.acquire() as conn:
+        row = await conn.fetchrow('SELECT * FROM tenants WHERE slug = $1', slug)
+    return dict(row) if row else None
 
 
 async def get_file_by_id(request):
@@ -360,7 +554,7 @@ async def get_file_by_id(request):
         if not file or file['deleted']:
             return None
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             return None
         return file
 
@@ -456,7 +650,7 @@ class ServeFile(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             raise HTTPException(status_code=403)
 
         async with get_conn() as conn:
@@ -492,6 +686,16 @@ class ShareFilesListHandler(HTTPEndpoint):
             return not_found('File not found')
         async with get_conn() as conn:
             rows = await SharedFiles(conn).list_for_file(file_id)
+            # R2-05-08: listing share links is a patient-visible access.
+            try:
+                from db.audit_log import AuditLog
+                await AuditLog(conn).log_event(
+                    'portal.share_accessed', str(getattr(request.user, 'id', '')),
+                    'shared_files', file_id,
+                    details={'count': len(rows)},
+                )
+            except Exception:
+                pass
         now = datetime.now(timezone.utc)
         result = []
         for r in rows:
@@ -514,6 +718,15 @@ class ShareFilesListHandler(HTTPEndpoint):
             return not_found('File not found')
         async with get_conn() as conn:
             await SharedFiles(conn).revoke(share_id, file_id)
+            # R2-05-08: revocation ends patient visibility — audit it.
+            try:
+                from db.audit_log import AuditLog
+                await AuditLog(conn).log_event(
+                    'portal.share_revoked', str(getattr(request.user, 'id', '')),
+                    'shared_files', f'{file_id}:{share_id}',
+                )
+            except Exception:
+                pass
         return ok({'message': 'Share link revoked'})
 
 
@@ -533,7 +746,7 @@ class ServeThumbnail(HTTPEndpoint):
             raise HTTPException(status_code=404)
 
         user = getattr(request, 'user', None)
-        if user and user.is_authenticated and _outside_effective_tenant(request, user, file.get('tenant')):
+        if user and user.is_authenticated and await _outside_effective_tenant(request, user, file.get("tenant")):
             raise HTTPException(status_code=403)
 
         tmp = await storage.fetch(file)

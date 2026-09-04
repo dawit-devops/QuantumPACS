@@ -10,7 +10,12 @@ from api.files import (
     FileChangesHandler, ShareFilesHandler, ShareFilesListHandler, ServeFile, ServeThumbnail
 )
 from api.logs import LogsHandler, LogEventTypesHandler, LogActorsHandler
-from api.notifications import NotificationsHandler, NotificationHandler, NotificationsReadAllHandler, NotificationsUnreadCountHandler, NotificationPreferencesHandler
+from api.notifications import (
+    NotificationsHandler, NotificationHandler, NotificationsReadAllHandler,
+    NotificationsUnreadCountHandler, NotificationPreferencesHandler,
+    CriticalResultsHandler, CriticalResultAckHandler, DeliveryStatusHandler,
+    CriticalRecipientsHandler,
+)
 from api.admin import (
     AdminStatusHandler, AdminMaintenanceHandler, AdminConfigHandler,
     AdminBackupsHandler, AdminBackupHandler, AdminBackupRestoreHandler,
@@ -21,9 +26,16 @@ from api.tenants import TenantsHandler, TenantHandler, TenantStatsHandler
 from api.telemetry import health_endpoint, metrics_endpoint
 from api.users import (
     Login, ChangePassword, RefreshToken, Logout, RevokeToken,
-    UsersHandler, UsersDeactivate, UsersNewPassword, UserRoleUpdate,
+    UsersHandler, UsersDeactivate, UsersBatchStatus, UsersNewPassword, UserRoleUpdate,
 )
-from api.account import ProfileHandler
+from api.nursing import (
+    ConsentHandler,
+    NurseNotesHandler,
+    NursingPrepListHandler,
+    PrepChecklistHandler,
+    VitalsHandler,
+)
+from api.account import PreferencesHandler, ProfileHandler
 from api.api_keys import ApiKeysHandler, ApiKeyHandler
 from api.oauth import (
     oauth_login, oauth_callback, oidc_discovery, oidc_jwks, oauth_token_exchange,
@@ -38,6 +50,9 @@ from api.fhir import (
     FhirPatientRoot, FhirPatientResource,
     FhirImagingStudyRead, FhirImagingStudySearch,
     FhirDocumentReferenceRead, FhirDocumentReferenceSearch,
+    FhirServiceRequestCollection, FhirServiceRequestItem,
+    FhirDiagnosticReportRead, FhirDiagnosticReportSearch,
+    FhirDiagnosticReportCollection, FhirDiagnosticReportItem,
 )
 from api.fhir_admin import (
     FhirAdminConfigHandler,
@@ -48,36 +63,101 @@ from api.fhir_admin import (
 from api.hl7_admin import (
     Hl7MessagesHandler, Hl7MessageHandler,
     Hl7MetricsHandler, Hl7ConfigHandler, Hl7StatusHandler,
+    RisInterfacesHandler, RisInterfaceMessagesHandler,
+    RisInterfaceMetricsHandler, RisInterfaceExceptionsHandler,
+    RisInterfaceExceptionRetryHandler,
 )
 from api.routing import RoutingHandler, RoutingRuleHandler
 from api.hl7 import Hl7Receiver
-from api.worklist import WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler
+from api.mpps_events import MppsEventsHandler
+from api.qa import (
+    ProtocolHandler, ProtocolListHandler, ProtocolDefaultHandler,
+    CorrectiveActionHandler, CorrectiveActionListHandler, EscalationHandler,
+)
+from api.worklist import (
+    WorklistHandler, WorklistEntryHandler, WorklistStationAeHandler,
+    WorklistSyncHandler,
+    TrackingHandler, TrackingKpiHandler, TrackingTimelineHandler,
+    TrackingStatusHandler,
+)
 from api.exams import (
     ExamsHandler, ExamHandler, ExamIdentityHandler, ExamProtocolHandler,
     ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
     ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
     ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
-    ProtocolsHandler,
+    ProtocolsHandler, ProtocolFavoriteHandler,
 )
 from api.reports import (
     ReadingListHandler, ExamReportHandler, ExamReportSignHandler,
     ExamReportSubmitHandler, ExamReportReturnHandler,
-    ExamAssignHandler, ExamImagesHandler,
-    ReportTemplatesHandler, PeerReviewReviewersHandler, PeerReviewsHandler,
+    ExamAssignHandler, ExamImagesHandler, ReportImagesHandler,
+    ReportTemplatesHandler, ReportVersionsHandler, ReportVersionRestoreHandler,
+    PriorReportsHandler, ReadingStatsHandler,
+    TeachingFilesHandler, TeachingFileHandler,
+    PeerReviewReviewersHandler, PeerReviewsHandler,
     PeerReviewHandler, PeerReviewSubmitHandler,
+    PeerReviewAcceptHandler, PeerReviewDeclineHandler,
+    TemplateVersionsHandler, TemplatePublishHandler,
+    TemplateRollbackHandler,
+    ReportReleaseHandler,
 )
 from api.reading_presets import ReadingPresetsHandler, ReadingPresetHandler
 from api.qa import (
     QAQueueHandler, QAReviewHandler, QAProtocolsHandler, QAProtocolHandler,
     QAIncidentsHandler, QAIncidentHandler, QACorrectiveActionsHandler,
     QACorrectiveActionHandler, QADashboardHandler, QAReviewersHandler,
+    QARejectAnalysisHandler, QADoseTrackingHandler, QATechMetricsHandler,
+    QAProtocolComplianceHandler, QATrendsHandler, QAExportHandler,
 )
 from api.billing import (
     BillingPricingHandler, BillingInvoicesHandler, BillingInvoiceHandler,
     BillingPaymentsHandler, BillingReceiptHandler, BillingClaimsHandler,
     BillingClaimHandler, BillingRefundsHandler, BillingRefundHandler,
     BillingQuotesHandler, BillingPaymentPlansHandler, BillingReconciliationHandler,
+    RisCptSuggestionsHandler, RisBillingQueueHandler, RisChargeDropHandler,
+    RisChargeBatchDropHandler, RisClaimBatchResubmitHandler,
+    RisClaimsHandler, RisClaimBatchSubmitHandler,
+    RisPatientResponsibilityHandler, RisRevenueHandler,
+    RisUnbilledHandler, RisClaimSubmitHandler, RisDenialImportHandler,
+    RisDenialQueueHandler, RisClaimResubmitHandler, RisClaimHistoryHandler,
+    RisReconciliationHandler,
+    FeeScheduleHandler, FeeScheduleUpdateHandler, FeeScheduleImportHandler,
+    FeeScheduleHistoryHandler,
+    PayerContractListHandler, PayerContractHandler, PayerContractComparisonHandler,
 )
+from api.ris_dashboard import (
+    RisDashboardKpiHandler, DeptWorkloadHandler, DeptTatDrilldownHandler,
+    DeptEquipmentUtilHandler, DeptStaffScheduleHandler,
+    StaffTimeOffHandler, StaffTimeOffStatusHandler, StaffCoverageGapsHandler,
+)
+from api.prior_auth import (
+    PriorAuthHandler,
+    PriorAuthDecisionHandler,
+    PriorAuthSubmitForReviewHandler,
+    PriorAuthOverrideHandler,
+    PriorAuthExpireHandler,
+)
+from api.reminders import (
+    ReminderSendHandler,
+    ReminderLogHandler,
+    ReminderConfigHandler,
+    ReminderOptOutHandler,
+)
+from api.care_plans import (
+    CarePlanHandler,
+    CarePlanDetailHandler,
+)
+from api.handoff_notes import HandoffNotesHandler, HandoffNoteReadHandler
+from api.referrals import ReferralsHandler, ReferralDetailHandler
+from api.discharge import (
+    DischargeChecklistsHandler, DischargeChecklistDetailHandler,
+)
+from api.bookmarks import (
+    BookmarkCollectionsHandler, StudyBookmarksHandler,
+    StudyBookmarkDeleteHandler,
+)
+from api.encounters import EncounterHandler
+from api.communications import CommunicationHandler
 from api.equipment import (
     EquipmentHandler, EquipmentItemHandler, MaintenanceSchedulesHandler,
     MaintenanceScheduleItemHandler, QCRecordsHandler, DowntimeEventsHandler,
@@ -89,14 +169,32 @@ from api.frontdesk import (
     PatientsSearchHandler, PatientsRegistrationHandler, VisitsHandler,
     VisitHandler, VisitOrdersHandler, AppointmentAvailabilityHandler,
     AppointmentsHandler, AppointmentHandler, ConsentsHandler, InsuranceHandler,
-    WaitingQueueHandler,
+    WaitingQueueHandler, RisPatientsHandler, RisPatientsSearchHandler,
+    RisPatientHandler, RisPatientInsuranceHandler, RisPatientCheckInHandler,
+    RisPatientsMergeHandler, RisPatientsUndoMergeHandler,
+    RisPatientEligibilityHandler,
+)
+from api.checkin import (
+    PortalCheckInConsentHandler, PortalCheckInHandler,
+    PortalCheckInPaymentHandler, PortalCheckInQueueHandler,
 )
 from api.portal import (
     PortalScopeHandler, PortalPatientSearchHandler, PortalPatientHandler,
-    PortalReportHandler, PortalOrdersHandler, PortalFollowUpHandler,
-    PortalFollowUpStatusHandler,
+    PortalReportHandler, PortalOrdersHandler, PortalAppointmentsHandler,
+    PortalConsentHandler, PortalFollowUpHandler, PortalFollowUpStatusHandler,
 )
 from api.orders import OrdersHandler
+from api.ris_orders import (
+    RisOrdersHandler, RisOrderHandler, RisOrderStatusHandler, RisOrderHistoryHandler,
+)
+from api.scheduling import (
+    RisResourcesHandler, RisResourceSchedulesHandler, RisResourceAvailabilityHandler,
+    RisAppointmentsHandler, RisAppointmentRescheduleHandler, RisAppointmentCancelHandler,
+    RisAppointmentCheckInHandler, RisAppointmentNoShowHandler,
+    RisBatchAppointmentsHandler, RisWaitlistHandler, RisWaitlistEntryHandler,
+    RisScheduleTemplatesHandler, RisScheduleTemplateApplyHandler,
+    RisChargebackHandler,
+)
 from api.dashboard_metrics import DashboardMetricsHandler, DashboardHealthHandler
 from api.metering import MeteringUsageHandler, PlatformUsageHandler
 from api.tenant_health import TenantHealthHandler
@@ -144,14 +242,24 @@ _V1_ROUTES = [
     v2(Route('/oauth/token', endpoint=oauth_token_exchange, methods=['POST'])),
     v2(Route('/change_password', endpoint=ChangePassword)),
     v2(Route('/account/profile', endpoint=ProfileHandler)),
+    v2(Route('/account/preferences', endpoint=PreferencesHandler)),
     v2(Route('/users', endpoint=UsersHandler)),
     v2(Route('/users/deactivate', endpoint=UsersDeactivate)),
+    v2(Route('/users/batch-status', endpoint=UsersBatchStatus)),
     v2(Route('/users/new_password', endpoint=UsersNewPassword)),
     v2(Route('/users/role', endpoint=UserRoleUpdate)),
     v2(Route('/patients/search', endpoint=PatientsSearchHandler)),
     v2(Route('/patients', endpoint=PatientsRegistrationHandler, methods=['POST'])),
     v2(Route('/patients/{id}/insurance', endpoint=InsuranceHandler)),
     v2(Route('/patients/{id}', endpoint=PatientHandler)),
+    v2(Route('/ris/patients', endpoint=RisPatientsHandler, methods=['POST'])),
+    v2(Route('/ris/patients/search', endpoint=RisPatientsSearchHandler)),
+    v2(Route('/ris/patients/merge', endpoint=RisPatientsMergeHandler, methods=['POST'])),
+    v2(Route('/ris/patients/undo-merge', endpoint=RisPatientsUndoMergeHandler, methods=['POST'])),
+    v2(Route('/ris/patients/{id}', endpoint=RisPatientHandler)),
+    v2(Route('/ris/patients/{id}/insurance', endpoint=RisPatientInsuranceHandler, methods=['POST'])),
+    v2(Route('/ris/patients/{id}/check-in', endpoint=RisPatientCheckInHandler, methods=['POST'])),
+    v2(Route('/ris/patients/{id}/eligibility', endpoint=RisPatientEligibilityHandler)),
     v2(Route('/files/upload', endpoint=Upload)),
     v2(Route('/files/download_token', endpoint=DownloadToken)),
     v2(Route('/files/download.zip', endpoint=DownloadFiles)),
@@ -175,6 +283,10 @@ _V1_ROUTES = [
     v2(Route('/notifications/preferences', endpoint=NotificationPreferencesHandler)),
     v2(Route('/notifications/unread-count', endpoint=NotificationsUnreadCountHandler)),
     v2(Route('/notifications/read-all', endpoint=NotificationsReadAllHandler)),
+    v2(Route('/notifications/critical', endpoint=CriticalResultsHandler)),
+    v2(Route('/notifications/critical/recipients', endpoint=CriticalRecipientsHandler)),
+    v2(Route('/notifications/critical/{id}/ack', endpoint=CriticalResultAckHandler)),
+    v2(Route('/notifications/delivery-status', endpoint=DeliveryStatusHandler)),
     v2(Route('/notifications/{id}', endpoint=NotificationHandler)),
     v2(Route('/tenants', endpoint=TenantsHandler)),
     v2(Route('/tenants/health', endpoint=TenantHealthHandler)),
@@ -226,9 +338,93 @@ _V1_ROUTES = [
     v2(Route('/hl7/admin/metrics', endpoint=Hl7MetricsHandler)),
     v2(Route('/hl7/admin/config', endpoint=Hl7ConfigHandler)),
     v2(Route('/hl7/admin/status', endpoint=Hl7StatusHandler)),
+    v2(Route('/mpps/events', endpoint=MppsEventsHandler)),
     v2(Route('/worklist/station-aes', endpoint=WorklistStationAeHandler)),
     v2(Route('/worklist', endpoint=WorklistHandler)),
+    v2(Route('/worklist/sync', endpoint=WorklistSyncHandler, methods=['POST'])),
     v2(Route('/worklist/{id}', endpoint=WorklistEntryHandler)),
+    # S6-13..16: Tracking board APIs
+    v2(Route('/ris/tracking', endpoint=TrackingHandler)),
+    v2(Route('/ris/tracking/kpi', endpoint=TrackingKpiHandler)),
+    v2(Route('/ris/tracking/{id}/timeline', endpoint=TrackingTimelineHandler)),
+    v2(Route('/ris/tracking/{id}/status', endpoint=TrackingStatusHandler)),
+    # S11: Billing capture — queue, charge drop, aging, 837/835 stubs.
+    v2(Route('/ris/billing/cpt-suggestions', endpoint=RisCptSuggestionsHandler)),
+    v2(Route('/ris/billing/queue', endpoint=RisBillingQueueHandler)),
+    v2(Route('/ris/billing/charges/{id}/drop', endpoint=RisChargeDropHandler, methods=['POST'])),
+    v2(Route('/ris/billing/charges/batch', endpoint=RisChargeBatchDropHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/batch-resubmit', endpoint=RisClaimBatchResubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/unbilled', endpoint=RisUnbilledHandler)),
+    v2(Route('/ris/billing/claims/{id}/submit', endpoint=RisClaimSubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/batch-submit', endpoint=RisClaimBatchSubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims', endpoint=RisClaimsHandler)),
+    v2(Route('/ris/billing/patients/{id}/responsibility',
+             endpoint=RisPatientResponsibilityHandler)),
+    v2(Route('/ris/billing/revenue', endpoint=RisRevenueHandler)),
+    v2(Route('/ris/billing/denials/{id}/rework', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/reports/{id}/release', endpoint=ReportReleaseHandler, methods=['PATCH'])),
+    v2(Route('/fhir/ServiceRequest/{id}', endpoint=FhirServiceRequestItem)),
+    v2(Route('/fhir/ServiceRequest', endpoint=FhirServiceRequestCollection)),
+    v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportItem)),
+    v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportCollection)),
+    v2(Route('/fhir/DiagnosticReport/{id}', endpoint=FhirDiagnosticReportRead)),
+    v2(Route('/fhir/DiagnosticReport', endpoint=FhirDiagnosticReportSearch)),
+    v2(Route('/ris/report-templates', endpoint=ReportTemplatesHandler)),
+    v2(Route('/ris/report-templates/{id}/versions', endpoint=TemplateVersionsHandler)),
+    v2(Route('/ris/report-templates/{id}/publish', endpoint=TemplatePublishHandler, methods=['POST'])),
+    v2(Route('/ris/report-templates/{id}/rollback', endpoint=TemplateRollbackHandler, methods=['POST'])),
+    v2(Route('/ris/billing/denials', endpoint=RisDenialQueueHandler)),
+    v2(Route('/ris/billing/denials/import', endpoint=RisDenialImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/{id}/resubmit', endpoint=RisClaimResubmitHandler, methods=['POST'])),
+    v2(Route('/ris/billing/claims/{id}/history', endpoint=RisClaimHistoryHandler)),
+    v2(Route('/ris/billing/reconciliation', endpoint=RisReconciliationHandler)),
+    # B-09 Procedure Fee Schedule — list/edit/import/version history.
+    v2(Route('/ris/billing/fee-schedule', endpoint=FeeScheduleHandler)),
+    v2(Route('/ris/billing/fee-schedule/import', endpoint=FeeScheduleImportHandler, methods=['POST'])),
+    v2(Route('/ris/billing/fee-schedule/history/{code}', endpoint=FeeScheduleHistoryHandler)),
+    v2(Route('/ris/billing/fee-schedule/{code}', endpoint=FeeScheduleUpdateHandler, methods=['PUT'])),
+    # B-08 Payer Contract Rates — list/create + compare actual vs contracted.
+    v2(Route('/ris/billing/contracts/comparison', endpoint=PayerContractComparisonHandler)),
+    v2(Route('/ris/billing/contracts/{id}', endpoint=PayerContractHandler)),
+    v2(Route('/ris/billing/contracts', endpoint=PayerContractListHandler)),
+    # S12-34: Manager dashboard — TAT, utilization, unbilled aging, volume.
+    v2(Route('/ris/dashboard/kpi', endpoint=RisDashboardKpiHandler)),
+    # Department Manager analytics (DM-01, DM-02, DM-04, DM-07)
+    v2(Route('/ris/analytics/workload', endpoint=DeptWorkloadHandler)),
+    v2(Route('/ris/analytics/tat-drilldown', endpoint=DeptTatDrilldownHandler)),
+    v2(Route('/ris/analytics/equipment-util', endpoint=DeptEquipmentUtilHandler)),
+    v2(Route('/ris/staff-schedule', endpoint=DeptStaffScheduleHandler)),
+    v2(Route('/ris/staff-time-off', endpoint=StaffTimeOffHandler)),
+    v2(Route('/ris/staff-time-off/coverage-gaps', endpoint=StaffCoverageGapsHandler)),
+    v2(Route('/ris/staff-time-off/{id}/status', endpoint=StaffTimeOffStatusHandler)),
+    # R2-01: Prior authorization — request lifecycle + payer decisions.
+    v2(Route('/ris/scheduling/chargeback', endpoint=RisChargebackHandler)),
+    v2(Route('/ris/prior-auth', endpoint=PriorAuthHandler)),
+    v2(Route('/ris/prior-auth/expire', endpoint=PriorAuthExpireHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth/{id}/decision', endpoint=PriorAuthDecisionHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth/{id}/submit', endpoint=PriorAuthSubmitForReviewHandler, methods=['POST'])),
+    v2(Route('/ris/prior-auth/{id}/override', endpoint=PriorAuthOverrideHandler, methods=['POST'])),
+    # R2-02: Reminders — dispatch, audit log, per-event config (E-RIS2-02).
+    v2(Route('/ris/reminders/send', endpoint=ReminderSendHandler, methods=['POST'])),
+    v2(Route('/ris/reminders/log', endpoint=ReminderLogHandler)),
+    v2(Route('/ris/reminders/config', endpoint=ReminderConfigHandler)),
+    v2(Route('/ris/reminders/optouts', endpoint=ReminderOptOutHandler)),
+    v2(Route('/ris/care-plans', endpoint=CarePlanHandler)),
+    v2(Route('/ris/care-plans/{id}', endpoint=CarePlanDetailHandler)),
+    v2(Route('/ris/handoff-notes', endpoint=HandoffNotesHandler)),
+    v2(Route('/ris/handoff-notes/{id}/read', endpoint=HandoffNoteReadHandler,
+             methods=['PATCH'])),
+    v2(Route('/ris/referrals', endpoint=ReferralsHandler)),
+    v2(Route('/ris/referrals/{id}', endpoint=ReferralDetailHandler, methods=['PATCH'])),
+    v2(Route('/ris/discharge-checklists', endpoint=DischargeChecklistsHandler)),
+    v2(Route('/ris/discharge-checklists/{id}', endpoint=DischargeChecklistDetailHandler,
+             methods=['PATCH'])),
+    v2(Route('/ris/bookmark-collections', endpoint=BookmarkCollectionsHandler)),
+    v2(Route('/ris/bookmarks', endpoint=StudyBookmarksHandler)),
+    v2(Route('/ris/bookmarks/{id}', endpoint=StudyBookmarkDeleteHandler,
+             methods=['DELETE'])),
+    v2(Route('/ris/encounters', endpoint=EncounterHandler)),
+    v2(Route('/ris/communications', endpoint=CommunicationHandler)),
     v2(Route('/exams', endpoint=ExamsHandler)),
     v2(Route('/exams/{id}', endpoint=ExamHandler)),
     v2(Route('/exams/{id}/identity-confirm', endpoint=ExamIdentityHandler)),
@@ -242,18 +438,44 @@ _V1_ROUTES = [
     v2(Route('/exams/{id}/critical-flag', endpoint=ExamCriticalFlagHandler)),
     v2(Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler)),
     v2(Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler)),
+    # §2.11 nursing (N-01..N-04): exam-linked records; reads pass any-of
+    # [NURSING_READ, EXAM_READ], writes NURSING_WRITE. Registered beside the
+    # other /exams/{id} sub-resources — no catch-all shadows these.
+    v2(Route('/exams/{id}/vitals', endpoint=VitalsHandler)),
+    v2(Route('/exams/{id}/pre-procedure-checklist', endpoint=PrepChecklistHandler)),
+    v2(Route('/exams/{id}/consent', endpoint=ConsentHandler)),
+    v2(Route('/exams/{id}/nurse-notes', endpoint=NurseNotesHandler)),
+    v2(Route('/nursing/prep-list', endpoint=NursingPrepListHandler)),
     v2(Route('/protocols', endpoint=ProtocolsHandler)),
+    v2(Route('/protocols/{id}/favorite', endpoint=ProtocolFavoriteHandler,
+             methods=['POST'])),
     v2(Route('/reports/reading-list', endpoint=ReadingListHandler)),
     v2(Route('/reports/reading-list/{exam_id}/assign', endpoint=ExamAssignHandler)),
     v2(Route('/reports/templates', endpoint=ReportTemplatesHandler)),
+    # R-07: priors must register before the /reports/{exam_id} catch-all.
+    v2(Route('/reports/priors', endpoint=PriorReportsHandler)),
+    # R-17/RES-04: same catch-all constraint.
+    v2(Route('/reports/reading-stats', endpoint=ReadingStatsHandler)),
+    # R-11/RES-03: teaching file library.
+    v2(Route('/teaching-files', endpoint=TeachingFilesHandler,
+             methods=['GET', 'POST'])),
+    v2(Route('/teaching-files/{id}', endpoint=TeachingFileHandler)),
+    v2(Route('/reports/{report_id}/versions', endpoint=ReportVersionsHandler)),
+    v2(Route('/reports/{report_id}/versions/{version}/restore',
+             endpoint=ReportVersionRestoreHandler, methods=['POST'])),
     v2(Route('/reports/{exam_id}', endpoint=ExamReportHandler)),
     v2(Route('/reports/{exam_id}/sign', endpoint=ExamReportSignHandler)),
     v2(Route('/reports/{exam_id}/submit', endpoint=ExamReportSubmitHandler)),
     v2(Route('/reports/{exam_id}/return', endpoint=ExamReportReturnHandler)),
     v2(Route('/reports/{exam_id}/images', endpoint=ExamImagesHandler)),
+    v2(Route('/reports/{exam_id}/key-images', endpoint=ReportImagesHandler)),
+    v2(Route('/reports/{exam_id}/key-images/{image_id}', endpoint=ReportImagesHandler,
+             methods=['DELETE'])),
     v2(Route('/peer-reviews/reviewers', endpoint=PeerReviewReviewersHandler)),
     v2(Route('/peer-reviews', endpoint=PeerReviewsHandler)),
     v2(Route('/peer-reviews/{id}', endpoint=PeerReviewHandler)),
+    v2(Route('/peer-reviews/{id}/accept', endpoint=PeerReviewAcceptHandler)),
+    v2(Route('/peer-reviews/{id}/decline', endpoint=PeerReviewDeclineHandler)),
     v2(Route('/peer-reviews/{id}/submit', endpoint=PeerReviewSubmitHandler)),
     v2(Route('/reading-presets', endpoint=ReadingPresetsHandler)),
     v2(Route('/reading-presets/{id}', endpoint=ReadingPresetHandler)),
@@ -268,6 +490,13 @@ _V1_ROUTES = [
     v2(Route('/qa/corrective-actions/{id}/resolve', endpoint=QACorrectiveActionHandler)),
     v2(Route('/qa/dashboard', endpoint=QADashboardHandler)),
     v2(Route('/qa/reviewers', endpoint=QAReviewersHandler)),
+    # QA Analytics endpoints (QA-02 through QA-07)
+    v2(Route('/qa/reject-analysis', endpoint=QARejectAnalysisHandler)),
+    v2(Route('/qa/dose-tracking', endpoint=QADoseTrackingHandler)),
+    v2(Route('/qa/tech-metrics', endpoint=QATechMetricsHandler)),
+    v2(Route('/qa/protocol-compliance', endpoint=QAProtocolComplianceHandler)),
+    v2(Route('/qa/trends', endpoint=QATrendsHandler)),
+    v2(Route('/qa/export', endpoint=QAExportHandler)),
     v2(Route('/routing', endpoint=RoutingHandler)),
     v2(Route('/routing/{id}', endpoint=RoutingRuleHandler)),
     v2(Route('/fhir/admin/config', endpoint=FhirAdminConfigHandler)),
@@ -284,6 +513,32 @@ _V1_ROUTES = [
     # for ORDER_READ holders, joined to the imaging lifecycle.
     v2(Route('/orders', endpoint=OrdersHandler)),
     v2(Route('/visits/{id}/orders', endpoint=VisitOrdersHandler)),
+    # RIS order intake (E-RIS-03): ris_orders schema + lifecycle transitions.
+    v2(Route('/ris/orders', endpoint=RisOrdersHandler)),
+    v2(Route('/ris/orders/{id}', endpoint=RisOrderHandler)),
+    v2(Route('/ris/orders/{id}/status', endpoint=RisOrderStatusHandler)),
+    v2(Route('/ris/orders/{id}/history', endpoint=RisOrderHistoryHandler)),
+    # RIS interface dashboard (E-RIS-02 #4 / S3-15): endpoint list, message
+    # history, metrics, exception queue — reads the engine's ris_* tables.
+    v2(Route('/ris/interfaces', endpoint=RisInterfacesHandler)),
+    v2(Route('/ris/interfaces/exceptions', endpoint=RisInterfaceExceptionsHandler)),
+    v2(Route('/ris/interfaces/exceptions/{id}/retry', endpoint=RisInterfaceExceptionRetryHandler, methods=['POST'])),
+    v2(Route('/ris/interfaces/{id}/messages', endpoint=RisInterfaceMessagesHandler)),
+    v2(Route('/ris/interfaces/{id}/metrics', endpoint=RisInterfaceMetricsHandler)),
+    # RIS scheduling capacity (S4-06/07): resources + weekly availability.
+    v2(Route('/ris/resources', endpoint=RisResourcesHandler)),
+    v2(Route('/ris/resources/{id}/schedules', endpoint=RisResourceSchedulesHandler)),
+    v2(Route('/ris/resources/{id}/availability', endpoint=RisResourceAvailabilityHandler)),
+    v2(Route('/ris/appointments', endpoint=RisAppointmentsHandler)),
+    v2(Route('/ris/appointments/{id}/reschedule', endpoint=RisAppointmentRescheduleHandler)),
+    v2(Route('/ris/appointments/{id}/cancel', endpoint=RisAppointmentCancelHandler)),
+    v2(Route('/ris/appointments/{id}/check-in', endpoint=RisAppointmentCheckInHandler)),
+    v2(Route('/ris/appointments/{id}/no-show', endpoint=RisAppointmentNoShowHandler)),
+    v2(Route('/ris/appointments/batch', endpoint=RisBatchAppointmentsHandler)),
+    v2(Route('/ris/appointments/waitlist', endpoint=RisWaitlistHandler)),
+    v2(Route('/ris/appointments/waitlist/{id}', endpoint=RisWaitlistEntryHandler)),
+    v2(Route('/ris/schedule-templates', endpoint=RisScheduleTemplatesHandler)),
+    v2(Route('/ris/schedule-templates/{id}/apply', endpoint=RisScheduleTemplateApplyHandler)),
     v2(Route('/visits/{id}/consents', endpoint=ConsentsHandler)),
     v2(Route('/visits/{id}/consents/attach', endpoint=ConsentsHandler)),
     v2(Route('/schedule/availability', endpoint=AppointmentAvailabilityHandler)),
@@ -329,7 +584,21 @@ _V1_ROUTES = [
     v2(Route('/portal/patients/{patient_id}', endpoint=PortalPatientHandler)),
     v2(Route('/portal/patients/{patient_id}/reports/{report_id}', endpoint=PortalReportHandler)),
     v2(Route('/portal/patients/{patient_id}/orders', endpoint=PortalOrdersHandler)),
+    v2(Route('/portal/patients/{patient_id}/appointments',
+             endpoint=PortalAppointmentsHandler)),
+    v2(Route('/portal/patients/{patient_id}/consent', endpoint=PortalConsentHandler,
+             methods=['PUT'])),
     v2(Route('/portal/follow-ups', endpoint=PortalFollowUpHandler)),
+    # RIS-REG-04: kiosk self-check-in — public path, HMAC token is the
+    # bearer credential (registered in TokenAuth._PUBLIC_PATHS).
+    v2(Route('/ris/checkin/{token}', endpoint=PortalCheckInHandler,
+             methods=['GET', 'POST'])),
+    v2(Route('/ris/checkin/{token}/consent', endpoint=PortalCheckInConsentHandler,
+             methods=['POST'])),
+    v2(Route('/ris/checkin/{token}/payment', endpoint=PortalCheckInPaymentHandler,
+             methods=['POST'])),
+    v2(Route('/ris/checkin/{token}/queue-position',
+             endpoint=PortalCheckInQueueHandler)),
     v2(Route('/portal/follow-ups/{id}', endpoint=PortalFollowUpStatusHandler, methods=['PUT'])),
     v2(Route('/admin/status', endpoint=AdminStatusHandler)),
     v2(Route('/admin/maintenance', endpoint=AdminMaintenanceHandler, methods=['POST'])),
@@ -337,6 +606,14 @@ _V1_ROUTES = [
     v2(Route('/admin/backups', endpoint=AdminBackupsHandler)),
     v2(Route('/admin/backups/{id}', endpoint=AdminBackupHandler)),
     v2(Route('/admin/backups/{id}/restore', endpoint=AdminBackupRestoreHandler, methods=['POST'])),
+    # QA-09 Protocol Registry
+    v2(Route('/ris/protocols', endpoint=ProtocolListHandler)),
+    v2(Route('/ris/protocols/{id}', endpoint=ProtocolHandler)),
+    v2(Route('/ris/protocols/{id}/default', endpoint=ProtocolDefaultHandler, methods=['POST'])),
+    # QA-11 Corrective Actions
+    v2(Route('/ris/corrective-actions', endpoint=CorrectiveActionListHandler)),
+    v2(Route('/ris/corrective-actions/escalate', endpoint=EscalationHandler, methods=['GET'])),
+    v2(Route('/ris/corrective-actions/{id}', endpoint=CorrectiveActionHandler)),
     v2(Route('/ws_token', endpoint=WSToken)),
     v2(WebSocketRoute('/ws', endpoint=WebsocketHandler)),
 ]

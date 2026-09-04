@@ -1,0 +1,74 @@
+.tracking-stat-row {
+  background-color: #fff2f0 !important;
+}
+
+.tracking-stat-row:hover > td {
+  background-color: #fff2f0 !important;
+}
+
+/* §6 kanban view */
+.tracking-kanban-columns {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.tracking-kanban-column {
+  flex: 1 1 0;
+  min-width: 220px;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.tracking-kanban-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tracking-kanban-count {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.tracking-kanban-list,
+.tracking-kanban-dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 48px;
+}
+
+.tracking-kanban-dropzone[data-over="true"] {
+  outline: 2px dashed var(--color-primary, #0e7490);
+  border-radius: 8px;
+}
+
+.tracking-kanban-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: grab;
+  background: var(--bg-primary, #fff);
+}
+
+.tracking-kanban-card-title {
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.tracking-kanban-card-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}

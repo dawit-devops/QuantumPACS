@@ -1,0 +1,22 @@
+# physician — Gap Analysis (Phase 2)
+Date: 2026-08-28
+Sources: RBAC_matrix_spec.md §5 (Matrix B PHYS), permissions.py (PHYSICIAN_PERMISSIONS), navigator.ts, Sidebar.tsx, index.tsx (route gates)
+Skills invoked: iam-audit (least privilege), hipaa-compliance (PHI access), multi-tenant-saas (tenant scoping)
+
+## Gaps
+
+| # | Surface | Documented (ADR/spec) | Actual (code) | Severity | Evidence (file:line) | Notes |
+|---|---|---|---|---|---|---|
+| G1 | Front Desk section visible to physician | navigator.ts:84-89 NON_ADMIN_WORKSPACES excludes frontdesk/portal for admin-scoped roles; landing for clinical roles filters admin workspaces but NOT frontdesk. Sidebar intent: front-desk is for receptionist staff | Sidebar shows "Today's Schedule" (fd-visits, SCHEDULE_READ) + "Patient Search" (fd-patient-search, PATIENT_READ) for physician. Route /frontdesk/schedule uses ClinicalRoute (excludes only ADMIN_SCOPED_ROLES) + SCHEDULE_READ → physician can open it. The frontdesk section filter only hides NON_ADMIN_WORKSPACES for admin-scoped roles (Sidebar.tsx:926), not clinical-scoped | MEDIUM | Sidebar.tsx:919-926 (section filter), index.tsx:697-702 (/frontdesk/schedule ClinicalRoute SCHEDULE_READ), navigator.ts:84-89 | A physician with SCHEDULE_READ/PATIENT_READ sees and can open front-desk surfaces (today's schedule, patient search). The navigator's landing excludes frontdesk for clinical roles, but the sidebar/route gates don't. Design question: should clinical roles see front-desk nav at all? |
+| G2 | DICOMweb console reachable for physician | navigator.ts:62 comment + Sidebar.tsx:637-639: "Not adminOnly: DICOMWEB_READ is granted to clinical roles (radiologist/teleradiologist/physician via legacy grants) and the console is intentionally reachable for them (user decision 2026-08-27)" | /dicomweb* routes use plain PermissionRoute DICOMWEB_READ (no excludedRoles); physician holds legacy DICOMWEB_READ → can open DICOMweb Server/Store/Browser. Sidebar DICOMweb submenu shows for physician | LOW | Sidebar.tsx:640-667 (dicomweb not adminOnly), index.tsx:807-833 (PermissionRoute DICOMWEB_READ) | Intentional per 2026-08-27 user decision — recorded, not a defect. A clinical physician operating the DICOMweb STOW/browser is unusual but was a deliberate choice. |
+| G3 | No REPORT_WRITE / REPORT_SIGN | Spec Matrix B PHYS row: REPORT_READ/STUDY_READ/VIEWER_READ only (no REPORT_WRITE, no REPORT_SIGN) | Matches code — physician reads reports but cannot write/sign | PASS (no gap) | RBAC_matrix_spec.md Matrix B PHYS row | Physician is a clinical reader + EMR writer; report authoring belongs to radiologist |
+| G4 | EMR write power (ENCOUNTER_WRITE, NOTE_SIGN, MED_ORDER_WRITE, ORDER_WRITE, CARE_PLAN_WRITE) | Spec Matrix B PHYS row grants all of these | Code matches spec exactly | PASS (no gap) | RBAC_matrix_spec.md Matrix B PHYS; permissions.py MATRIX_B_PHYS | Spec-aligned. Physician is the full clinical writer role |
+| G5 | Spec drift: code adds DICOMWEB_READ + FILE_READ beyond spec PHYS | Spec Matrix B PHYS has no DICOMWEB_READ / FILE_READ | Code PHYSICIAN_PERMISSIONS = MATRIX_B_PHYS ∪ LEGACY_PHYSICIAN adds DICOMWEB_READ + FILE_READ | LOW | permissions.py:409-411 (LEGACY_PHYSICIAN = {FILE_READ, DICOMWEB_READ}) | FILE_READ is deliberate (Files page + R13 comment claims every viewer role holds it). DICOMWEB_READ is the intentional legacy reach. Spec could note both; low priority |
+| G6 | Prior Auth + Reminders reachable (PRIOR_AUTH_READ) | Spec Matrix B PHYS: PRIOR_AUTH_READ YES | Code matches; /prior-auth and /reminders gate on PRIOR_AUTH_READ | PASS (no gap) | RBAC_matrix_spec.md Matrix B PHYS | Spec-aligned |
+| G7 | No critical results WRITE | Spec PHYS: CRITICAL_RESULTS_WRITE not granted (radiologist/technologist/ED only) | physician holds REPORT_READ only for critical results → can VIEW /critical but not flag | PASS (no gap) | RBAC_matrix_spec.md | Matches spec |
+
+## Summary of decision candidates (Phase 3)
+1. **G1 (MEDIUM)** — Front Desk leak: decide whether clinical roles (physician) should see/open front-desk surfaces. Options: (a) exclude CLINICAL_SCOPED_ROLES from frontdesk section + routes (add excludedRoles), (b) keep (front-desk schedule is read-only and may be legitimately useful to physicians), (c) refine sidebar only.
+2. **G2 (LOW)** — DICOMweb reachability: already a recorded user decision (2026-08-27). Keep, no action.
+3. **G5 (LOW)** — Spec drift note: optionally update spec to reflect FILE_READ + DICOMWEB_READ legacy additions on PHYS.
+4. **G3/G4/G6/G7** — no gaps (spec-aligned).

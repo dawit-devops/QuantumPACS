@@ -24,6 +24,13 @@ class Patient(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_patients_tenant ON patients(tenant_id);
         """)
+        # S8 (P-01): portal contact fields (mirrors migration 089).
+        await self.exec(
+            "ALTER TABLE patients ADD COLUMN IF NOT EXISTS phone TEXT"
+        )
+        await self.exec(
+            "ALTER TABLE patients ADD COLUMN IF NOT EXISTS email TEXT"
+        )
 
     async def insert_or_select(self, data):
         q = self.insert().columns(
@@ -38,6 +45,11 @@ class Patient(Table):
 
         patient_id = await self.fetchval(q)
         return {'id': patient_id}
+
+    async def get_by_mrn(self, mrn: str):
+        """Lightweight lookup by MRN (patient_id) for scheduling engine."""
+        q = self.select('*').where(self.table.patient_id == mrn)
+        return await self.fetchone(q)
 
     async def get_extra(self, patient_id):
         q = self.select('*').where(self.table.id == patient_id)

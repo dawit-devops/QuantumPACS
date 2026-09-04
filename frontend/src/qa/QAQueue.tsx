@@ -218,7 +218,7 @@ function QAQueue() {
         <Alert
           type="error"
           showIcon
-          message={error}
+          title={error}
           style={{ margin: "8px 0" }}
         />
       )}

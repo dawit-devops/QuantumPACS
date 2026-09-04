@@ -603,7 +603,7 @@ function Files() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Search is unavailable"
+          title="Search is unavailable"
           description="The search service is down — archived files are not listed right now. Uploads still work."
         />
       )}

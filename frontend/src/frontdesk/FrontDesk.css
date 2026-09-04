@@ -167,6 +167,77 @@
   text-align: right;
 }
 
+/* ── Wait-time badge (FD-05): green <15m, amber 15-30m, red >30m ── */
+
+.fd-wait-green,
+.fd-wait-amber,
+.fd-wait-red,
+.fd-wait-none {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 44px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+
+.fd-wait-green {
+  color: #16a34a;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.fd-wait-amber {
+  color: #b45309;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
+.fd-wait-red {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.fd-wait-none {
+  color: var(--text-muted);
+  background: var(--bg-muted);
+}
+
+/* ── Today's Schedule (FD-06) ────────────────────────────────────────── */
+
+.fd-schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fd-schedule-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.fd-schedule-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: var(--font-size-body);
+}
+
+.fd-schedule-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fd-schedule-table tr:hover {
+  background: var(--bg-hover);
+}
+
+
 .fd-privacy-note {
   display: flex;
   align-items: center;
@@ -227,4 +298,57 @@
   margin-bottom: var(--space-3);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+}
+
+/* ── Patient Quick Search (FD-07) ────────────────────────────────────── */
+
+.fd-global-search {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.18));
+}
+
+.fd-search-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fd-search-recents {
+  margin-bottom: 12px;
+}
+
+.fd-search-recents-label {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.fd-search-recents-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fd-patient-result:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Landing quick actions (FD landing) ──────────────────────────────── */
+
+.fd-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.fd-quick-action {
+  min-width: 150px;
 }

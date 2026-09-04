@@ -84,9 +84,21 @@ class TestMatrixA:
         # R2-16: facility admins (pacs_admin) get role management over the
         # clinical/operational built-ins and custom roles.
         assert {'ROLE_READ', 'ROLE_WRITE', 'ROLE_DELETE'} <= perms('pacs_admin')
-        # ...but stay ops-only: no report signing, no clinical writes.
+        # pacs_admin walk F2: `_can_assign_role` needs the target's grants to
+        # be a subset of the caller's, so the operational built-ins it assigns
+        # (receptionist → PATIENT_WRITE, cashier → BILLING_WRITE, technologist →
+        # EXAM_WRITE, ...) force those grants onto pacs_admin. Clinical-scope
+        # exclusion still hides the clinical surfaces for this admin role.
+        assert {'PATIENT_WRITE', 'BILLING_WRITE', 'EXAM_READ', 'EXAM_WRITE',
+                'REGISTRATION_READ', 'REGISTRATION_WRITE', 'QUEUE_READ',
+                'SCHEDULE_WRITE', 'NURSING_READ', 'NURSING_WRITE',
+                'ORDER_WRITE', 'WORKLIST_WRITE', 'CRITICAL_RESULTS_WRITE'} <= perms('pacs_admin')
+        # ...but never signs reports, and cannot assign clinical readers/EMR
+        # writers (their grants are not a subset of pacs_admin's).
         assert 'REPORT_SIGN' not in perms('pacs_admin')
-        assert 'PATIENT_WRITE' not in perms('pacs_admin')
+        assert 'REPORT_WRITE' not in perms('pacs_admin')
+        assert not ({'CROSS_TENANT_READ', 'MED_ORDER_WRITE', 'NOTE_SIGN',
+                     'MAR_READ', 'RESULTS_RELEASE', 'SYSTEM_ADMIN'} & perms('pacs_admin'))
 
     def test_tenant_admin_reaches_interface_surfaces(self):
         """P1-2 (tenant_admin review C2): the facility operator must actually
@@ -244,7 +256,8 @@ class TestMatrixC:
     def test_patient_portal_grants(self):
         patient = perms('patient')
         assert {'PORTAL_READ', 'CHART_READ', 'RESULTS_READ',
-                'MED_ORDER_READ', 'SCHEDULE_READ', 'VIEWER_READ'} == patient
+                'MED_ORDER_READ', 'SCHEDULE_READ', 'VIEWER_READ',
+                'FOLLOW_UP_SELF', 'NOTIFICATIONS_SELF'} == patient
 
 
 class TestDeadPermissions:
@@ -260,7 +273,9 @@ class TestDeadPermissions:
     # Codes whose only built-in holders were removed by the R2-16 trim.
     CUSTOM_COMPOSABLE_ONLY = {
         'RESULTS_RELEASE', 'MED_VERIFY', 'HIM_WRITE', 'MPI_ADMIN',
-        'PRIOR_AUTH_WRITE', 'ADMIN', 'LAB_SPECIMEN_WRITE', 'CODING_WRITE',
+        # PRIOR_AUTH_WRITE removed by G2 (2026-08-25): care_coordinator now
+        # holds it, so it is no longer custom-composable-only.
+        'ADMIN', 'LAB_SPECIMEN_WRITE', 'CODING_WRITE',
         'MAR_WRITE', 'PATIENT_MERGE',
     }
 
@@ -285,8 +300,11 @@ class TestRoleImmutabilityPolicy:
 
     def test_immutable_roles_exist_in_catalog(self):
         assert IMMUTABLE_ROLE_SLUGS <= set(BUILT_IN_ROLES)
+        # D7: ed_physician joins the anchors — the critical-results ack
+        # chain must survive facility-level role edits.
         assert IMMUTABLE_ROLE_SLUGS == {
             'super_admin', 'tenant_admin', 'pacs_admin', 'emr_admin', 'patient',
+            'ed_physician',
         }
 
     def test_platform_admin_only_roles_exist_in_catalog(self):
@@ -294,12 +312,13 @@ class TestRoleImmutabilityPolicy:
         assert PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES <= set(BUILT_IN_ROLES)
         assert not (PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES & IMMUTABLE_ROLE_SLUGS)
 
-    def test_exactly_eight_built_ins_are_facility_editable(self):
+    def test_exactly_nine_built_ins_are_facility_editable(self):
         editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
             PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
         assert editable == {
             'radiologist', 'physician', 'referring_physician', 'resident',
             'care_coordinator', 'technologist', 'receptionist', 'cashier',
+            'dept_manager',
         }
 
     def test_immutable_anchors_are_in_place(self):
@@ -350,3 +369,41 @@ class TestPermissionKeys:
         }
         invalid = sorted(label_keys - set(PERMISSION_KEYS))
         assert invalid == []
+
+
+class TestEdPhysicianRuntimeRole:
+    """D7 (GAP_AUDIT_TDD_PIPELINE.md): migration 052 seeds ed_physician and
+    critical-results recipients default to that role (migration 072), but
+    the runtime catalog never carried it — it could not be assigned via the
+    roles UI. It must exist at runtime with the exact seeded grants, pinned
+    as an immutable anchor so facility edits can never break the
+    critical-results acknowledgment chain."""
+
+    SNAPSHOT = ['PATIENT_READ', 'ORDER_READ', 'ORDER_WRITE', 'SCHEDULE_READ',
+                'WORKLIST_READ', 'REPORT_READ', 'CRITICAL_RESULTS_WRITE',
+                'VIEWER_READ', 'STUDY_READ', 'CHART_READ', 'RESULTS_READ',
+                'ENCOUNTER_WRITE', 'NOTE_SIGN', 'MED_ORDER_READ',
+                'MED_ORDER_WRITE', 'MAR_READ']
+
+    def test_ed_physician_in_runtime_catalog(self):
+        assert 'ed_physician' in BUILT_IN_ROLES
+
+    def test_grants_match_migration_052_snapshot(self):
+        assert sorted(BUILT_IN_ROLES['ed_physician']) == sorted(self.SNAPSHOT)
+
+    def test_holds_the_critical_ack_chain_codes(self):
+        grants = set(BUILT_IN_ROLES['ed_physician'])
+        assert {'CRITICAL_RESULTS_WRITE', 'REPORT_READ',
+                'WORKLIST_READ'} <= grants
+
+    def test_is_an_immutable_anchor(self):
+        assert 'ed_physician' in IMMUTABLE_ROLE_SLUGS
+
+    def test_facility_editable_set_stays_exactly_nine(self):
+        editable = set(BUILT_IN_ROLES) - IMMUTABLE_ROLE_SLUGS - \
+            PLATFORM_ADMIN_ONLY_MODIFIABLE_ROLES
+        assert editable == {
+            'radiologist', 'physician', 'referring_physician', 'resident',
+            'care_coordinator', 'technologist', 'receptionist', 'cashier',
+            'dept_manager',
+        }

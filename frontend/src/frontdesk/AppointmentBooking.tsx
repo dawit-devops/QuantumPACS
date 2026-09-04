@@ -19,9 +19,9 @@ import {
   type AvailabilitySlot,
   type FrontDeskPatient,
 } from "../api/frontdesk";
+import { toErrorMessage } from "../common/errors";
+import { MODALITIES } from "../common/modalities";
 import "./FrontDesk.css";
-
-const MODALITIES = ["CT", "MR", "PET", "DX", "US", "MG", "FL", "XA", "NM"];
 
 interface AppointmentBookingProps {
   open: boolean;
@@ -77,7 +77,7 @@ function AppointmentBooking({
     try {
       setPatientResults(await searchPatients(term));
     } catch (e: any) {
-      message.error(e.message || "Patient search failed");
+      message.error(toErrorMessage(e) || "Patient search failed");
     } finally {
       setPatientSearching(false);
     }
@@ -100,13 +100,19 @@ function AppointmentBooking({
       })
       .catch((e: any) => {
         setLoading(false);
-        setError(e.message || "Failed to load availability");
+        setError(toErrorMessage(e) || "Failed to load availability");
       });
   }, []);
 
   useEffect(() => {
     if (open) {
       setConflict(null);
+      // S13: Reset patient-pick state on reopen — without this, reopening
+      // after a completed booking still shows the previous patient selected,
+      // letting the scheduler accidentally confirm for the wrong patient.
+      setPickedPatient(null);
+      setPatientQuery("");
+      setPatientResults([]);
       fetchAvailability(modality, date);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,13 +141,13 @@ function AppointmentBooking({
     } catch (e: any) {
       if (e.code === "SLOT_CONFLICT" || e.status === 409) {
         setConflict(
-          e.message || "Slot was just taken — availability refreshed",
+          toErrorMessage(e) || "Slot was just taken — availability refreshed",
         );
         // The slot may have filled under us: reload availability so the grid
         // reflects the conflict (US-R08-04 conflict path).
         fetchAvailability(modality, date);
       } else {
-        message.error(e.message || "Booking failed");
+        message.error(toErrorMessage(e) || "Booking failed");
       }
     } finally {
       setSubmitting(false);
@@ -230,8 +236,7 @@ function AppointmentBooking({
           value={modality}
           onChange={setModality}
           style={{ width: 120 }}
-          aria-label="Modality"
-          options={MODALITIES.map((m) => ({ value: m, label: m }))}
+          aria-label="Modality"              options={MODALITIES.filter((m) => m !== "MRI").map((m) => ({ value: m, label: m }))}
         />
         <DatePicker
           value={date}
@@ -247,7 +252,7 @@ function AppointmentBooking({
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message={conflict}
+          title={conflict}
         />
       )}
       {error && (
@@ -255,7 +260,7 @@ function AppointmentBooking({
           type="error"
           showIcon
           style={{ marginBottom: 12 }}
-          message={error}
+          title={error}
         />
       )}
 
@@ -267,7 +272,7 @@ function AppointmentBooking({
         <Alert
           type="info"
           showIcon
-          message="No availability returned for this modality/date."
+          title="No availability returned for this modality/date."
         />
       ) : (
         <div

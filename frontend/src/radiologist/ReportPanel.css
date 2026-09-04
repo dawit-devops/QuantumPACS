@@ -1,8 +1,274 @@
+/* ─────────────────────────────────────────────────────────────
+   Reading Console dark-scoped token overrides.
+   The console forces dark chrome in both app themes (see
+   ReadingConsole.css). Custom CSS here (labels, editor, etc.)
+   references semantic tokens (--text-primary, --bg-surface, etc.)
+   that resolve to LIGHT fallbacks unless redefined in this scope.
+   ───────────────────────────────────────────────────────────── */
 .report-panel {
+  --text-primary: #e6e9ee;
+  --text-secondary: #8992a3;
+  --text-tertiary: #565d6b;
+  --bg-surface: #171b21;
+  --bg-elevated: #1d222a;
+  --bg-hover: rgba(76, 195, 201, 0.08);
+  --bg-active: rgba(76, 195, 201, 0.12);
+  --border-color: #262b34;
+  --border-color-strong: #2c8489;
+  --accent: #4cc3c9;
+  --color-success: #6bbf8a;
+  --warning: #dba75a;
+  --ok: #6bbf8a;
+
   padding: 16px 20px 24px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+/* Single-page ergonomic editor: fills the pane height so viewer + report
+   editor share one viewport with no page scroll. One condensed header row +
+   the three flex-filling fields + one action footer. */
+.report-panel-editor {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 8px;
+  overflow: hidden;
+  gap: 6px;
+}
+
+.report-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  /* §4.4: the typed report reads like a page — cap line width at 680px and
+     center it so long findings don't stretch edge-to-edge on wide panes. */
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.report-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 28px;
+}
+
+.report-editor-toolbar .ant-select {
+  margin-left: auto;
+}
+
+.report-editor-toolbar .report-steps {
+  margin: 0;
+}
+
+/* Compact lifecycle indicator for the single-page editor — the full antd
+   Steps wrap to ~3 lines inside the narrow report pane; a row of dots +
+   the current label takes one line instead. */
+.report-editor-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #8992a3);
+  white-space: nowrap;
+}
+
+.report-editor-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-color, #262b34);
+  flex: 0 0 auto;
+}
+
+.report-editor-status-dot.done {
+  background: var(--accent, #4cc3c9);
+}
+
+.report-editor-status-dot.current {
+  background: var(--accent, #4cc3c9);
+  box-shadow: 0 0 0 3px rgba(76, 195, 201, 0.14);
+}
+
+.report-editor-status-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-primary, #e6e9ee);
+}
+
+.report-editor-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-secondary, #8992a3);
+}
+
+.report-editor-patient {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-editor-fields {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+}
+
+.report-field {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 2px;
+}
+
+.report-field-clinical-history,
+.report-field-technique {
+  flex: 0 0 auto;
+  max-height: 90px;
+}
+
+.report-field-clinical-history .rte-wrapper,
+.report-field-technique .rte-wrapper {
+  flex: 1;
+}
+
+.report-field-findings {
+  flex: 8;
+}
+
+.report-field-impression {
+  flex: 4;
+}
+
+.report-field-recommendations {
+  flex: 2;
+}
+
+/* Focused field expands to give the active editor more room while the
+   sibling fields compress — a smooth transition avoids jarring jumps. */
+.report-field {
+  transition: flex 0.18s ease;
+}
+
+.report-field-findings.report-field-focused {
+  flex: 14;
+}
+
+.report-field-impression.report-field-focused {
+  flex: 7;
+}
+
+.report-field-recommendations.report-field-focused {
+  flex: 3;
+}
+
+/* Side-by-side layout: editor column (flex) + AI sidebar (fixed width). */
+.report-field-columns {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.report-field-editor-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 2px;
+}
+
+/* AI suggestions live in a fixed-width side rail beside the editor rather
+   than stacked underneath, so they never squeeze the typing area. */
+.report-field-with-ai .ai-draft-rows {
+  flex: 0 0 220px;
+  width: 220px;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* On narrow panes, fall back to stacked (AI under editor). */
+@media (max-width: 460px) {
+  .report-field-columns {
+    flex-direction: column;
+  }
+
+  .report-field-with-ai .ai-draft-rows {
+    flex: 0 0 auto;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+}
+
+.report-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #8992a3);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* §4.4 small mono index number preceding each numbered section label. */
+.report-field-index {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent, #4cc2ff);
+  min-width: 15px;
+  text-align: right;
+}
+
+.report-field .report-textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+.report-actions {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+/* Sign-readiness: the hint states the fact, color states the verdict. */
+.report-sign-hint {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.report-sign-hint[data-state="warn"] {
+  color: var(--warning, #dba75a);
+}
+
+.report-sign-hint[data-state="ok"] {
+  color: var(--color-success, #6bbf8a);
+}
+
+.report-footer-spacer {
+  flex: 1;
 }
 
 .report-steps {
@@ -10,13 +276,133 @@
 }
 
 .report-template-hint {
-  color: var(--text-secondary, #8c8c8c);
+  color: var(--text-secondary, #8992a3);
   font-size: 13px;
 }
 
-.report-actions {
-  margin-top: 16px;
+/* §4.4 macro chips — small pill buttons beneath Findings/Impression that
+   append a canned phrase. Literal sentence fragments (not command names). */
+.report-macro-chips {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  flex: 0 0 auto;
+}
+
+.report-macro-chip {
+  appearance: none;
+  border: 1px solid var(--rc-border, #2a3140);
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: #b3bcc9;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.report-macro-chip:hover {
+  color: var(--accent, #4cc2ff);
+  border-color: var(--accent, #4cc2ff);
+  background: rgba(76, 194, 255, 0.06);
+}
+
+.report-macro-chip:focus-visible {
+  outline: 2px solid var(--accent, #4cc2ff);
+  outline-offset: 1px;
+}
+
+/* §4.4 autosave status string in the footer. */
+.report-autosave-status {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--ok, #6bbf8a);
+  white-space: nowrap;
+}
+
+/* §4.4 dictation row in the report header: mic pill + "typing works too"
+   hint. The .live row turns red/pulsing while transcription is active so a
+   dictating operator can see the state without looking at the button. */
+.report-dictation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--rc-border, #2a3140);
+  border-radius: 999px;
+  background: rgba(17, 19, 24, 0.5);
+}
+.report-dictation.live {
+  border-color: #e5484d;
+  background: rgba(229, 72, 77, 0.12);
+  animation: report-dictation-pulse 1.2s ease-in-out infinite;
+}
+@keyframes report-dictation-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(229, 72, 77, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.35);
+  }
+}
+
+.report-mic {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--rc-border, #2a3140);
+  background: transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: var(--text-secondary, #8992a3);
+  cursor: pointer;
+}
+.report-mic:hover {
+  color: var(--accent, #4cc2ff);
+  border-color: var(--accent, #4cc2ff);
+}
+.report-mic.rec {
+  color: #fff;
+  background: #e5484d;
+  border-color: #e5484d;
+}
+.report-mic.rec .report-mic-text {
+  font-weight: 600;
+}
+.report-mic-rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  animation: report-mic-blink 0.9s steps(2, end) infinite;
+}
+@keyframes report-mic-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
+.report-dictation-hint {
+  font-size: 10.5px;
+  color: var(--text-secondary, #8992a3);
+}
+.report-dictation-error {
+  font-size: 10.5px;
+  color: #e5484d;
+  font-style: italic;
 }

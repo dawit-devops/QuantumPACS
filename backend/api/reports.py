@@ -9,20 +9,27 @@ from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, validation_error, forbidden
+from api.response import (
+    ok, created, not_found, validation_error, forbidden, api_error,
+)
 from api.validate import parse_body
 from api.schemas.reports import (
     SaveReportRequest, SignReportRequest, ReturnReportRequest,
     AssignRadiologistRequest, CreatePeerReviewRequest, SubmitPeerReviewRequest,
+    DeclinePeerReviewRequest, TeachingFileRequest, ReportImageRequest,
 )
 from db.audit_log import AuditLog
-from db.conn import get_conn
+from db.conn import get_conn, get_tenant_slug
 from db.exams import Exams
+from db.teaching_files import TeachingFiles
 from db.patient import Patient
 from db.reports import Reports, ReportTemplates, PeerReviews
-from api.notify import notify_role, notify_user
-from log import request_id_var
+from api.notify import notify_patient_scoped, notify_role, notify_user
+from log import request_id_var, get_logger
 from api.tenant_middleware import effective_tenant
+from services.results_distribution.service import ResultsDistributionEngine
+
+log = get_logger(__name__)
 
 DEFAULT_REPORT_TEMPLATES = [
     {
@@ -133,12 +140,33 @@ class ReadingListHandler(HTTPEndpoint):
         review = request.query_params.get('review')
         if review in ('0', 'false', ''):
             review = None
+        # R-01: unread toggle — never-opened exams only.
+        unread = request.query_params.get('unread')
+        if unread in ('0', 'false', ''):
+            unread = None
+        # D1: server-side pagination (page/per_page). Absent params mean
+        # "unpaged" — never coerce them to an implicit page of 1×1.
+        try:
+            page = max(1, int(request.query_params.get('page')))
+        except (TypeError, ValueError):
+            page = None
+        try:
+            per_page = min(200, max(1, int(
+                request.query_params.get('per_page'))))
+        except (TypeError, ValueError):
+            per_page = None
         async with get_conn() as conn:
-            items = await Reports(conn).reading_list(
+            result = await Reports(conn).reading_list(
                 status=status, modality=modality, search=search,
                 radiologist=radiologist, physician=physician,
                 date_from=date_from, date_to=date_to, review=review,
+                unread=unread,
+                page=page, per_page=per_page,
             )
+            if isinstance(result, tuple):
+                items, total = result
+            else:  # legacy unpaged callers
+                items, total = result, len(result)
             # R13 resident home: "Claimed today" counts drafts the resident
             # started today (claim = first draft autosave, created_by=user).
             # Only computed for the requester's own queue so other consumers
@@ -154,6 +182,10 @@ class ReadingListHandler(HTTPEndpoint):
             # claimed_today is resident-home-only (R13); other consumers of
             # the reading list (worklist page) keep the payload shape.
             payload = {'data': items}
+            if isinstance(result, tuple):
+                payload['total'] = total
+                payload['page'] = page or 1
+                payload['per_page'] = per_page
             if is_me:
                 payload['claimed_today'] = claimed_today
         return ok(payload)
@@ -179,6 +211,22 @@ class ExamAssignHandler(HTTPEndpoint):
                 return validation_error(
                     'Only completed exams on the reading worklist can be assigned',
                 )
+            # S-7: the target must exist and hold a reading role —
+            # assignment is a claim on the reading worklist, so an arbitrary
+            # user id must not be accepted (it would vanish from every
+            # radiologist's queue and orphan the exam). RES-02: residents
+            # read from the same queue under supervision, so their slug is
+            # accepted too.
+            target = await conn.fetchrow(
+                "SELECT u.id, r.slug FROM users u "
+                "JOIN roles r ON r.id = u.role_id "
+                "WHERE u.id = $1",
+                radiologist_id,
+            )
+            if not target or target['slug'] not in ('radiologist', 'resident'):
+                return validation_error(
+                    'Assigned user must be a radiologist or resident',
+                )
             updated = await Exams(conn).assign_radiologist(exam_id, radiologist_id)
             await AuditLog(conn).log_event(
                 event_type='exam.radiologist_assigned',
@@ -193,6 +241,39 @@ class ExamAssignHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({'data': updated})
+
+
+async def _notify_referring_on_sign(conn, exam):
+    """R2-05-04: tell the referring provider their result is ready.
+
+    Resolves the ordering physician from the RIS order by accession and
+    only notifies when that field maps to a real user account — free-text
+    external names cannot be fanned out safely. Best-effort: callers wrap
+    this so a lookup failure never blocks sign-off.
+    """
+    accession = exam.get('accession_number') or ''
+    if not accession:
+        return
+    order = await conn.fetchrow(
+        'SELECT referring_physician FROM ris_orders'
+        ' WHERE accession_number = $1 LIMIT 1',
+        str(accession),
+    )
+    if not order or not order.get('referring_physician'):
+        return
+    user = await conn.fetchrow(
+        'SELECT id FROM users WHERE username = $1',
+        str(order['referring_physician']),
+    )
+    if not user:
+        return
+    await notify_user(
+        conn, str(user['id']), 'report.ready',
+        'Result available',
+        f"Report for {exam.get('patient_name') or accession} is signed"
+        ' and available.',
+        f"/reading/{exam.get('id', '')}",
+    )
 
 
 async def _with_person_names(conn, report):
@@ -241,6 +322,20 @@ class ExamReportHandler(HTTPEndpoint):
                 return not_found('Exam not found')
             report = await Reports(conn).get_by_exam(exam_id)
             report = await _with_person_names(conn, dict(report) if report else None)
+            # HIPAA §164.312(b): audit PHI reads — who opened which report.
+            await AuditLog(conn).log_event(
+                event_type='report.opened',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=str((report or {}).get('id') or ''),
+                details={
+                    'exam_id': exam_id,
+                    'status': (report or {}).get('status'),
+                    'accession_number': exam.get('accession_number'),
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         return ok({'data': {'exam': exam, 'report': report}})
 
     @requires_permission(Permission.REPORT_WRITE)
@@ -252,17 +347,22 @@ class ExamReportHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             existing = await Reports(conn).get_by_exam(exam_id)
-            if existing and existing.get('status') == 'submitted':
-                # R13 supervision lock: a submitted report is in the
-                # attending's hands — the resident must get it returned
-                # (POST /reports/{id}/return) before editing again.
+            if existing and existing.get('status') in ('submitted', 'final'):
+                # R13 supervision lock + CR-4: a submitted report is in the
+                # attending's hands and a signed (final) report is locked.
+                # Neither may be edited through the save endpoint — the
+                # former must be returned first, the latter can only change
+                # via return-for-revision.
                 return validation_error(
-                    'Report is submitted for attending review — it must be '
-                    'returned before it can be edited',
+                    'Report is submitted or signed — it is locked and cannot '
+                    'be edited. A submitted report must be returned for '
+                    'revision first; a signed final report requires an '
+                    'amendment flow.',
                 )
             if existing:
                 report = await Reports(conn).update(
                     existing['id'], body.model_dump(),
+                    edited_by=str(request.user.id),
                 )
             else:
                 report = await Reports(conn).create(
@@ -306,6 +406,23 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'Impression is required before the report can be signed',
                 )
             report = await Reports(conn).sign(report['id'], str(request.user.id))
+            # S12-33: TAT metric — from exam completion to sign, labelled by
+            # exam priority so the manager dashboard distinguishes STAT from
+            # routine turnarounds. A missing completed_at falls back to the
+            # report's creation time; must never block or fail the sign.
+            try:
+                from datetime import datetime, timezone
+                from api import telemetry
+                signed_at = datetime.now(timezone.utc)
+                start_marker = exam.get('completed_at') or report.get('created_at')
+                if start_marker:
+                    tat = (signed_at - start_marker).total_seconds()
+                    priority = exam.get('priority') or 'routine'
+                    telemetry.ris_report_tat_seconds.labels(
+                        priority=priority).observe(max(tat, 0))
+            except Exception:
+                log.warning('report TAT metric failed for %s', report['id'],
+                            exc_info=True)
             await AuditLog(conn).log_event(
                 event_type='report.signed',
                 actor_id=request.user.id,
@@ -318,6 +435,41 @@ class ExamReportSignHandler(HTTPEndpoint):
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
+            # S8-13/CR-8: ORU^R01 distribution — real engine wired in (module import
+            # above keeps it patchable in tests). Runs after the conn block so
+            # a transmission failure never rolls back the signed report; the
+            # engine records its own SENT/FAILED row and the retry manager
+            # handles backoff.
+            try:
+                await ResultsDistributionEngine().distribute_report(report['id'])
+            except Exception:
+                log.warning(
+                    'ORU^R01 distribution failed for report %s (will retry)',
+                    report['id'], exc_info=True,
+                )
+            # S11-03: Real auto charge drop — CPT/ICD-10 suggested from the
+            # procedure description + clinical indication (replaces the S8-14
+            # stub). A transmission/DB failure must never block the signed
+            # report, so the charge drop is best-effort like distribution.
+            try:
+                from db.ris_charges import drop_charge
+                await drop_charge(
+                    conn,
+                    report_id=report['id'],
+                    exam_id=exam_id,
+                    accession_number=exam.get('accession_number', ''),
+                    patient_id=exam.get('patient_id', ''),
+                    patient_name=exam.get('patient_name', ''),
+                    procedure_desc=exam.get('requested_procedure_desc', ''),
+                    indication=report.get('clinical_indication', '') or '',
+                    radiologist_id=str(request.user.id),
+                    tenant_id=effective_tenant(request),
+                )
+            except Exception:
+                log.warning(
+                    'charge drop failed for report %s (billing queue will not show it)',
+                    report['id'], exc_info=True,
+                )
             # Notify QA that a report is final and ready for any scheduled
             # peer review (R05 consumes signed reports for quality sampling).
             await notify_role(
@@ -327,6 +479,12 @@ class ExamReportSignHandler(HTTPEndpoint):
                 f'report signed by radiologist.',
                 f'/reading/{exam_id}',
             )
+            # R2-05-04: result-available ping to the referring provider.
+            try:
+                await _notify_referring_on_sign(conn, exam)
+            except Exception:
+                log.warning('referring-provider notify failed for %s',
+                            exam_id, exc_info=True)
             # R13 co-sign: when an attending signs a resident's submitted
             # draft, tell the resident author their report was co-signed.
             if report.get('created_by') and \
@@ -337,6 +495,21 @@ class ExamReportSignHandler(HTTPEndpoint):
                     'Your draft was co-signed as FINAL by the attending.',
                     f'/reading/{exam_id}',
                 )
+            # S3 (P-04): notify portal-scoped users (including the patient
+            # role) that a signed report is available.
+            patient_id = exam.get('patient_id')
+            if patient_id:
+                try:
+                    await notify_patient_scoped(
+                        conn, patient_id, 'portal.report_available',
+                        'New imaging report available',
+                        f'{exam.get("accession_number") or exam_id} — '
+                        f'{exam.get("requested_procedure_desc", "")} report ready',
+                        f'/portal/results/{report.get("id") or exam_id}',
+                    )
+                except Exception:
+                    log.warning('portal.report_available notify failed for %s',
+                                exam_id, exc_info=True)
             report = await _with_person_names(conn, report)
         return ok({'data': report})
 
@@ -516,9 +689,145 @@ class ExamImagesHandler(HTTPEndpoint):
             if not exam:
                 return not_found('Exam not found')
             patient = await _exam_imaging(conn, exam)
+            # HIPAA §164.312(b): audit imaging reads (DICOM tree resolution).
+            await AuditLog(conn).log_event(
+                event_type='report.images_opened',
+                actor_id=request.user.id,
+                resource_type='exam',
+                resource_id=exam_id,
+                details={
+                    'accession_number': exam.get('accession_number'),
+                    'imaging': patient is not None,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         if patient is None:
             return ok({'data': {'imaging': False}})
         return ok({'data': {'imaging': True, 'patient': patient}})
+
+
+class ReportImagesHandler(HTTPEndpoint):
+    """Representative key images attached to a reading-list exam's report.
+
+    The radiologist captures 2-3 images from the live viewer and they land
+    here (image_data is a data: URL / base64 PNG produced client-side). They
+    render inside the final report document, so reads and writes share the
+    report's PHI scope — REPORT_READ lists, REPORT_WRITE mutates (same split
+    the report body uses).
+    """
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        exam_id = request.path_params['exam_id']
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            rows = []
+            if report:
+                rows = await conn.fetch(
+                    """SELECT id, image_data, caption, position, created_at
+                       FROM report_images
+                       WHERE report_id = $1
+                       ORDER BY position, id""",
+                    report['id'],
+                )
+        return ok({'data': [
+            {
+                'id': r['id'],
+                'dataUrl': r['image_data'],
+                'caption': r['caption'],
+                'position': r['position'],
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
+            }
+            for r in rows
+        ]})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        exam_id = request.path_params['exam_id']
+        body = await parse_body(ReportImageRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return not_found('No report exists for this exam yet')
+            if report.get('status') in ('submitted', 'final'):
+                return validation_error(
+                    'Report is submitted or signed — key images are locked '
+                    'with the report.',
+                )
+            count = await conn.fetchval(
+                'SELECT count(*) FROM report_images WHERE report_id = $1',
+                report['id'],
+            )
+            if count >= 3:
+                return validation_error(
+                    'A report supports up to 3 representative images',
+                )
+            image_id = await conn.fetchval(
+                """INSERT INTO report_images
+                       (report_id, image_data, caption, position, created_by)
+                   VALUES ($1, $2, $3, $4, $5)
+                   RETURNING id""",
+                report['id'], body.image_data, body.caption or '',
+                body.position if body.position is not None else int(count),
+                str(request.user.id),
+            )
+            await AuditLog(conn).log_event(
+                event_type='report.image_added',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'accession_number': exam.get('accession_number'),
+                    'image_id': image_id,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return created({'data': {'id': image_id}})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def delete(self, request):
+        exam_id = request.path_params['exam_id']
+        image_id = request.path_params.get('image_id')
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            report = await Reports(conn).get_by_exam(exam_id)
+            if not report:
+                return not_found('No report exists for this exam yet')
+            if report.get('status') in ('submitted', 'final'):
+                return validation_error(
+                    'Report is submitted or signed — key images are locked '
+                    'with the report.',
+                )
+            deleted = await conn.execute(
+                'DELETE FROM report_images WHERE id = $1 AND report_id = $2',
+                image_id, report['id'],
+            )
+            if deleted == 'DELETE 0':
+                return not_found('Key image not found')
+            await AuditLog(conn).log_event(
+                event_type='report.image_removed',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=report['id'],
+                details={
+                    'exam_id': exam_id,
+                    'image_id': image_id,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': {'deleted': True}})
 
 
 class ReportTemplatesHandler(HTTPEndpoint):
@@ -529,8 +838,209 @@ class ReportTemplatesHandler(HTTPEndpoint):
         modality = request.query_params.get('modality')
         async with get_conn() as conn:
             await _seed_report_templates(conn)
-            templates = await ReportTemplates(conn).list_by_modality(modality)
+            from db.ris_templates import RisReportTemplates
+            # H9: list_templates reads ris_report_templates, which is never
+            # seeded by migrations — seed it here (idempotent) or a fresh
+            # database serves an empty template library while the legacy
+            # report_templates table fills up unused.
+            await RisReportTemplates(conn).seed_defaults()
+            templates = await RisReportTemplates(conn).list_templates(modality)
         return ok({'data': templates})
+
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
+    async def post(self, request):
+        data = await request.json()
+        if not data.get('name') or not data.get('modality'):
+            return validation_error('name and modality are required')
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            tpl = await RisReportTemplates(conn).create_template(data)
+        return created({'data': tpl})
+
+
+class TeachingFilesHandler(HTTPEndpoint):
+    """R-11/RES-03: teaching file library — GET browse (REPORT_READ),
+    POST submit a case from the reading console (REPORT_WRITE)."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            files = await TeachingFiles(conn).list_files(
+                modality=request.query_params.get('modality'),
+                body_part=request.query_params.get('body_part'),
+                diagnosis=request.query_params.get('diagnosis'),
+                difficulty=request.query_params.get('difficulty'),
+            )
+        return ok({'data': files})
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        body = await parse_body(TeachingFileRequest, request)
+        async with get_conn() as conn:
+            exam = await Exams(conn).get(body.exam_id)
+            if not exam:
+                return not_found('Exam not found')
+            tf = await TeachingFiles(conn).create({
+                'exam_id': body.exam_id,
+                'title': body.title,
+                'diagnosis': body.diagnosis,
+                'body_part': body.body_part or exam.get('body_part') or '',
+                'difficulty': body.difficulty,
+                'teaching_points': body.teaching_points,
+                'differential_diagnosis': body.differential_diagnosis,
+                'annotations': body.annotations,
+                'findings_text': body.findings_text,
+                'submitted_by': str(request.user.id),
+                'tenant_id': get_tenant_slug() or 'default',
+            })
+            await AuditLog(conn).log_event(
+                event_type='teaching.submitted',
+                actor_id=request.user.id,
+                resource_type='teaching_file',
+                resource_id=str(tf.get('id')),
+                details={'exam_id': body.exam_id, 'title': body.title},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return created({'data': tf})
+
+
+class TeachingFileHandler(HTTPEndpoint):
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        tf_id = request.path_params['id']
+        async with get_conn() as conn:
+            tf = await TeachingFiles(conn).get(tf_id)
+        if not tf:
+            return not_found('Teaching file not found')
+        return ok({'data': tf})
+
+
+class ReadingStatsHandler(HTTPEndpoint):
+    """R-17/RES-04: personal reading statistics for the signed-in
+    radiologist/resident — GET /reports/reading-stats."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        try:
+            days = int(request.query_params.get('days', 14))
+        except (TypeError, ValueError):
+            days = 14
+        days = max(1, min(days, 90))
+        async with get_conn() as conn:
+            stats = await Reports(conn).reading_stats(
+                user_id=str(request.user.id), days=days)
+        return ok({'data': stats})
+
+
+class PriorReportsHandler(HTTPEndpoint):
+    """R-07: prior report quick-view — GET /reports/priors.
+
+    Lists the patient's earlier preliminary/final reports (same modality by
+    default) so the radiologist can compare without leaving the console.
+    Registered before the /reports/{exam_id} catch-all."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        patient_id = request.query_params.get('patient_id')
+        if not patient_id:
+            return validation_error('patient_id is required')
+        modality = request.query_params.get('modality')
+        exclude_exam_id = request.query_params.get('exclude_exam_id')
+        async with get_conn() as conn:
+            priors = await Reports(conn).list_priors(
+                patient_id=patient_id, modality=modality,
+                exclude_exam_id=exclude_exam_id,
+            )
+            # HIPAA §164.312(b): audit prior-report PHI reads.
+            await AuditLog(conn).log_event(
+                event_type='report.priors_opened',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient_id,
+                details={'modality': modality, 'count': len(priors or [])},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': priors})
+
+
+class ReportVersionRestoreHandler(HTTPEndpoint):
+    """R-06: restore a prior report version.
+
+    POST /reports/{report_id}/versions/{version}/restore — copies the
+    snapshot's findings/impression/recommendations back onto the report via
+    Reports.update, which appends a NEW version (history stays append-only).
+    Locked reports (submitted/final) cannot be restored."""
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def post(self, request):
+        from db.ris_report_versions import RisReportVersions
+        report_id = request.path_params['report_id']
+        try:
+            version = int(request.path_params['version'])
+        except ValueError:
+            return validation_error('version must be an integer')
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, status FROM reports WHERE id::text = $1",
+                str(report_id),
+            )
+            if not row:
+                return not_found('Report not found')
+            if row['status'] in ('submitted', 'final'):
+                return api_error(
+                    'LOCKED',
+                    'Submitted or signed reports cannot be restored',
+                    status=409,
+                )
+            snap = await RisReportVersions(conn).get_version(
+                str(report_id), version)
+            if not snap:
+                return not_found(f'Version {version} not found')
+            updated = await Reports(conn).update(
+                str(report_id),
+                {
+                    'findings': snap.get('findings') or '',
+                    'impression': snap.get('impression') or '',
+                    'recommendations': snap.get('recommendations') or '',
+                },
+                edited_by=str(request.user.id),
+            )
+            await AuditLog(conn).log_event(
+                event_type='report.version_restored',
+                actor_id=request.user.id,
+                resource_type='report',
+                resource_id=str(report_id),
+                details={'version': version},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': updated})
+
+
+class ReportVersionsHandler(HTTPEndpoint):
+    """S8-08 Report version history & diffs."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        report_id = request.path_params['report_id']
+        v1 = request.query_params.get('v1')
+        v2 = request.query_params.get('v2')
+        async with get_conn() as conn:
+            from db.ris_report_versions import RisReportVersions
+            rv = RisReportVersions(conn)
+            if v1 and v2:
+                # B-7: int() on garbage query params raised ValueError -> 500;
+                # a bad version number is a client error, not a crash.
+                try:
+                    v1n, v2n = int(v1), int(v2)
+                except ValueError:
+                    return validation_error('v1 and v2 must be integers')
+                diff = await rv.get_version_diff(report_id, v1n, v2n)
+                return ok({'data': diff})
+            versions = await rv.get_history(report_id)
+        return ok({'data': versions})
 
 
 class PeerReviewReviewersHandler(HTTPEndpoint):
@@ -630,6 +1140,16 @@ class PeerReviewHandler(HTTPEndpoint):
             if not (is_reviewer or is_author or request.user.admin):
                 return forbidden('Only the assigned reviewer can open this review')
             exam = await Exams(conn).get(report['exam_id']) if report else None
+            # HIPAA §164.312(b): audit peer-review PHI open.
+            await AuditLog(conn).log_event(
+                event_type='peer_review.opened',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={'report_id': review.get('report_id')},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
         return ok({
             'data': {
                 **review,
@@ -681,3 +1201,151 @@ class PeerReviewSubmitHandler(HTTPEndpoint):
                     f'/reading/{exam["id"] if exam else ""}',
                 )
         return ok({'data': review})
+
+
+class PeerReviewAcceptHandler(HTTPEndpoint):
+    """Explicitly accept a peer-review assignment (assigned -> in_progress)."""
+
+    @requires_permission(Permission.PEER_REVIEW_WRITE)
+    async def post(self, request):
+        review_id = request.path_params['id']
+        async with get_conn() as conn:
+            review = await PeerReviews(conn).get(review_id)
+            if not review:
+                return not_found('Peer review not found')
+            if review['reviewer_id'] and review['reviewer_id'] != str(request.user.id):
+                return forbidden('Only the assigned reviewer can accept this review')
+            if review['status'] != 'assigned':
+                return validation_error(
+                    f'Only assigned reviews can be accepted (current: {review["status"]})',
+                )
+            review = await PeerReviews(conn).accept(review_id)
+            await AuditLog(conn).log_event(
+                event_type='peer_review.accepted',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={'report_id': review['report_id']},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': review})
+
+
+class PeerReviewDeclineHandler(HTTPEndpoint):
+    """Decline a peer-review assignment (assigned -> rejected with reason)."""
+
+    @requires_permission(Permission.PEER_REVIEW_WRITE)
+    async def post(self, request):
+        review_id = request.path_params['id']
+        body = await parse_body(DeclinePeerReviewRequest, request)
+        async with get_conn() as conn:
+            review = await PeerReviews(conn).get(review_id)
+            if not review:
+                return not_found('Peer review not found')
+            if review['reviewer_id'] and review['reviewer_id'] != str(request.user.id):
+                return forbidden('Only the assigned reviewer can decline this review')
+            if review['status'] != 'assigned':
+                return validation_error(
+                    f'Only assigned reviews can be declined (current: {review["status"]})',
+                )
+            review = await PeerReviews(conn).reject(review_id, body.reason)
+            await AuditLog(conn).log_event(
+                event_type='peer_review.declined',
+                actor_id=request.user.id,
+                resource_type='peer_review',
+                resource_id=review_id,
+                details={
+                    'report_id': review['report_id'],
+                    'reason': body.reason,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': review})
+
+
+class TemplateVersionsHandler(HTTPEndpoint):
+    """R2-02-07: GET /ris/report-templates/{id}/versions — history."""
+
+    @requires_permission(Permission.REPORT_READ)
+    async def get(self, request):
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            rows = await RisReportTemplates(conn).list_versions(
+                template_id, tenant)
+        return ok({'data': [dict(r) for r in rows]})
+
+
+class TemplatePublishHandler(HTTPEndpoint):
+    """R2-02-09: POST .../publish — snapshot + activate a new version."""
+
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import PublishTemplateRequest
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        body = await parse_body(PublishTemplateRequest, request)
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            row = await RisReportTemplates(conn).publish_version(
+                template_id,
+                findings=body.findings,
+                impression=body.impression,
+                published_by=str(getattr(request.user, 'id', '')),
+                tenant_id=tenant,
+            )
+        return ok({'data': dict(row)})
+
+
+class TemplateRollbackHandler(HTTPEndpoint):
+    """R2-02-09: POST .../rollback — one-click re-activation."""
+
+    @requires_permission(Permission.REPORT_TEMPLATE_ADMIN)
+    async def post(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import RollbackTemplateRequest
+        from db.conn import get_tenant_slug
+        template_id = request.path_params['id']
+        body = await parse_body(RollbackTemplateRequest, request)
+        tenant = get_tenant_slug() or 'default'
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            row = await RisReportTemplates(conn).rollback_to_version(
+                template_id, body.version, tenant_id=tenant)
+        if not row:
+            return not_found('Version not found')
+        return ok({'data': dict(row)})
+
+
+class ReportReleaseHandler(HTTPEndpoint):
+    """R2-05-05: PATCH /reports/{id}/release — HIM hold/release gate.
+
+    held reports are excluded from patient-bound FHIR bundles; releasing
+    clears the hold. Every transition is audited.
+    """
+
+    @requires_permission(Permission.REPORT_WRITE)
+    async def patch(self, request):
+        from api.validate import parse_body
+        from api.schemas.reports import ReleaseActionRequest
+        body = await parse_body(ReleaseActionRequest, request)
+        new_status = {'hold': 'held', 'release': 'released',
+                      'auto': 'auto'}[body.action]
+        async with get_conn() as conn:
+            row = await Reports(conn).set_release_status(
+                request.path_params['id'], new_status)
+            if not row:
+                return not_found('Report not found')
+            await AuditLog(conn).log_event(
+                event_type=f'report.{"held" if new_status == "held" else "released"}',
+                actor_id=str(getattr(request.user, 'id', '')),
+                resource_type='reports',
+                resource_id=request.path_params['id'],
+            )
+        return ok({'data': dict(row)})

@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
+  App,
   Layout,
   Card,
   Descriptions,
@@ -11,6 +12,13 @@ import {
   Badge,
   Empty,
   Spin,
+  Tabs,
+  Timeline,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Select,
 } from "antd";
 import {
   FolderOutlined,
@@ -20,42 +28,50 @@ import {
   CalendarOutlined,
   UserOutlined,
   MedicineBoxOutlined,
+  PhoneOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import withSidebar from "../common/base";
 import { getPatient, type PatientSummary } from "../api/patient";
 import { PageState } from "../common/PageState";
+import { REPORT_STATUS_COLORS, REPORT_STATUS_LABEL } from "../common/statusColors";
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate, useParams } from "react-router";
+import { request } from "../helpers";
+import {
+  listEncounters,
+  createEncounter,
+  type Encounter,
+} from "../api/encounters";
 
 const { Text, Title } = Typography;
 const Content = Layout.Content;
 
 // Care-coordinator review (P2-1): report status labels + colors mirror the
 // reading worklist conventions.
-const REPORT_STATUS_COLORS: Record<string, string> = {
-  draft: "gold",
-  preliminary: "purple",
-  submitted: "cyan",
-  final: "green",
-};
-
-const REPORT_STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  preliminary: "Preliminary",
-  submitted: "In review",
-  final: "Final",
-};
 
 function Patient(props: any) {
   useDocumentTitle("QuantumPACS - Patient");
 
   const { hasPermission } = useAuth();
+  const { message } = App.useApp();
   const canReadReports = hasPermission("REPORT_READ");
+  const canWriteEncounters = hasPermission("ENCOUNTER_WRITE");
 
   const [data, setData] = useState<PatientSummary>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+
+  // CC-09/CC-10: chart tabs — prior-report summaries and the patient's
+  // RIS orders, composed from existing endpoints (no new aggregate).
+  const [priors, setPriors] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  // CS6/CC-03: encounter timeline + quick-log modal.
+  const [encounters, setEncounters] = useState<Encounter[]>([]);
+  const [encOpen, setEncOpen] = useState(false);
+  const [encForm] = Form.useForm();
 
   const navigate = useNavigate();
   const { id: patientId } = useParams();
@@ -80,6 +96,52 @@ function Patient(props: any) {
   useEffect(() => {
     if (patientId) fetchPatient();
   }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    const q = new URLSearchParams({
+      patient_id: String(patientId),
+      exclude_exam_id: "",
+    });
+    request(`reports/priors?${q.toString()}`)
+      .then((res: any) => setPriors(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
+    // Orders tab uses the RIS order list's patient filter.
+    request("ris/orders", { query: { patient: String(patientId) } })
+      .then((res: any) =>
+        setOrders(Array.isArray(res?.data) ? res.data : res?.data?.data || []),
+      )
+      .catch(() => {});
+    // CS6: encounter timeline for the chart tab.
+    listEncounters({ patient_id: String(patientId) })
+      .then((res) => setEncounters(res.data || []))
+      .catch(() => {});
+  }, [patientId]);
+
+  const fetchEncounters = useCallback(() => {
+    if (!patientId) return;
+    listEncounters({ patient_id: String(patientId) })
+      .then((res) => setEncounters(res.data || []))
+      .catch(() => {});
+  }, [patientId]);
+
+  const handleLogEncounter = async (values: any) => {
+    try {
+      await createEncounter({
+        patient_id: String(patientId),
+        encounter_type: values.encounter_type,
+        summary: values.summary,
+        linked_order_id: values.linked_order_id || "",
+        linked_report_id: "",
+      });
+      message.success("Encounter logged");
+      setEncOpen(false);
+      encForm.resetFields();
+      fetchEncounters();
+    } catch (e: any) {
+      message.error(e.message || "Save failed");
+    }
+  };
 
   const stats = useMemo(() => {
     const studies = data.studies || [];
@@ -249,94 +311,349 @@ function Patient(props: any) {
           </Card>
 
           {canReadReports && (
+            <Tabs
+              defaultActiveKey="reports"
+              items={[
+                {
+                  key: "reports",
+                  label: "Reports",
+                  children: (
+                    <>
+                      {/* CC-10: signed-report summaries (impression +
+                          recommendations excerpts) with click-through to the
+                          reading console for the full report. */}
+                      <Card
+                        title={
+                          <span>
+                            <FileDoneOutlined style={{ marginRight: 8 }} />
+                            Report Summaries
+                          </span>
+                        }
+                        style={{ marginBottom: 16 }}
+                      >
+                        {priors.length === 0 ? (
+                          <Empty description="No prior reports yet" />
+                        ) : (
+                          priors.map((p: any) => (
+                            <Card
+                              key={p.report_id}
+                              type="inner"
+                              size="small"
+                              title={`${p.accession_number || p.exam_id} · ${p.modality || ""}`}
+                              extra={
+                                <a
+                                  href={`/reading/${p.exam_id}`}
+                                  aria-label={`Open report ${p.accession_number || p.exam_id}`}
+                                >
+                                  Open full report
+                                </a>
+                              }
+                              style={{ marginBottom: 8 }}
+                            >
+                              <p style={{ margin: "4px 0", fontSize: 13 }}>
+                                <strong>Impression:</strong>{" "}
+                                {p.impression_excerpt || "—"}
+                              </p>
+                              <p style={{ margin: "4px 0", fontSize: 13 }}>
+                                <strong>Recommendations:</strong>{" "}
+                                {p.recommendations_excerpt || "—"}
+                              </p>
+                            </Card>
+                          ))
+                        )}
+                      </Card>
+
+                      <Card
+                        title={
+                          <span>
+                            <FileDoneOutlined style={{ marginRight: 8 }} />
+                            Reports & Results
+                          </span>
+                        }
+                        style={{ marginBottom: 16 }}
+                      >
+                        {(data.reports || []).length === 0 ? (
+                          <Empty description="No reports yet" />
+                        ) : (
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr>
+                                {["Status", "Procedure", "Accession", "Date"].map((h) => (
+                                  <th
+                                    key={h}
+                                    style={{
+                                      textAlign: "left",
+                                      fontSize: 12,
+                                      color: "var(--color-secondary)",
+                                      padding: "6px 8px",
+                                    }}
+                                  >
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(data.reports as any[]).map((r: any) => (
+                                <tr
+                                  key={r.id}
+                                  style={{
+                                    borderTop: "1px solid var(--color-slate-200)",
+                                  }}
+                                >
+                                  <td style={{ padding: "6px 8px" }}>
+                                    <Tag
+                                      color={REPORT_STATUS_COLORS[r.status] ?? "default"}
+                                    >
+                                      {REPORT_STATUS_LABEL[r.status] ?? r.status}
+                                    </Tag>
+                                  </td>
+                                  <td style={{ padding: "6px 8px", fontSize: 13 }}>
+                                    {r.procedure_desc || r.modality || "—"}
+                                  </td>
+                                  <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                                    {r.accession_number || "—"}
+                                  </td>
+                                  <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                                    {r.signed_at || r.created_at
+                                      ? new Date(
+                                          r.signed_at || r.created_at,
+                                        ).toLocaleDateString()
+                                      : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </Card>
+                    </>
+                  ),
+                },
+                {
+                  key: "orders",
+                  label: "Orders",
+                  children: (
+                    <Card
+                      title={
+                        <span>
+                          <CalendarOutlined style={{ marginRight: 8 }} />
+                          Orders
+                        </span>
+                      }
+                    >
+                      {orders.length === 0 ? (
+                        <Empty description="No RIS orders for this patient" />
+                      ) : (
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr>
+                              {["Accession", "Status", "Priority", "Referring"].map(
+                                (h) => (
+                                  <th
+                                    key={h}
+                                    style={{
+                                      textAlign: "left",
+                                      fontSize: 12,
+                                      color: "var(--color-secondary)",
+                                      padding: "6px 8px",
+                                    }}
+                                  >
+                                    {h}
+                                  </th>
+                                ),
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orders.map((o: any) => (
+                              <tr
+                                key={o.id}
+                                style={{
+                                  borderTop: "1px solid var(--color-slate-200)",
+                                }}
+                              >
+                                <td style={{ padding: "6px 8px", fontSize: 13 }}>
+                                  {o.accession_number || "—"}
+                                </td>
+                                <td style={{ padding: "6px 8px" }}>
+                                  <Tag>{o.status || "—"}</Tag>
+                                </td>
+                                <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                                  {o.priority || "—"}
+                                </td>
+                                <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                                  {o.referring_md || o.referring_physician || "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </Card>
+                  ),
+                },
+                {
+                  key: "encounters",
+                  label: "Encounters",
+                  children: (
+                    <Card
+                      title={
+                        <span>
+                          <PhoneOutlined style={{ marginRight: 8 }} />
+                          Encounters
+                        </span>
+                      }
+                      extra={
+                        canWriteEncounters && (
+                          <Space>
+                            {/* CC-04 quick-log: jump to the comms log
+                                prefilled with this patient. */}
+                            <Button
+                              size="small"
+                              icon={<PhoneOutlined />}
+                              onClick={() =>
+                                navigate(
+                                  `/communications?patient=${patientId}`,
+                                )
+                              }
+                            >
+                              Log Communication
+                            </Button>
+                            <Button
+                              size="small"
+                              icon={<PlusOutlined />}
+                              onClick={() => setEncOpen(true)}
+                            >
+                              Log Encounter
+                            </Button>
+                          </Space>
+                        )
+                      }
+                    >
+                      {encounters.length === 0 ? (
+                        <Empty description="No encounters recorded" />
+                      ) : (
+                        <Timeline
+                          items={encounters.map((e) => ({
+                            color:
+                              e.encounter_type === "visit"
+                                ? "blue"
+                                : e.encounter_type === "call"
+                                  ? "green"
+                                  : "gray",
+                            children: (
+                              <div>
+                                <Space size={8} wrap>
+                                  <Tag>{e.encounter_type.toUpperCase()}</Tag>
+                                  <Typography.Text type="secondary">
+                                    {dayjs(e.occurred_at).format(
+                                      "YYYY-MM-DD HH:mm",
+                                    )}
+                                  </Typography.Text>
+                                </Space>
+                                <div>{e.summary}</div>
+                              </div>
+                            ),
+                          }))}
+                        />
+                      )}
+                    </Card>
+                  ),
+                },
+                {
+                  key: "studies",
+                  label: "Studies",
+                  children: (
+                    <Card
+                      title={
+                        <span>
+                          <FolderOutlined style={{ marginRight: 8 }} />
+                          Studies
+                        </span>
+                      }
+                    >
+                      {treeData.length === 0 ? (
+                        <Empty description="No studies found for this patient" />
+                      ) : (
+                        <Tree
+                          showIcon
+                          defaultExpandAll
+                          treeData={treeData}
+                          expandedKeys={expandedKeys}
+                          onExpand={setExpandedKeys}
+                        />
+                      )}
+                    </Card>
+                  ),
+                },
+              ]}
+            />
+          )}
+
+          {!canReadReports && (
             <Card
               title={
                 <span>
-                  <FileDoneOutlined style={{ marginRight: 8 }} />
-                  Reports & Results
+                  <FolderOutlined style={{ marginRight: 8 }} />
+                  Studies
                 </span>
               }
-              style={{ marginBottom: 16 }}
             >
-              {(data.reports || []).length === 0 ? (
-                <Empty description="No reports yet" />
+              {treeData.length === 0 ? (
+                <Empty description="No studies found for this patient" />
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      {["Status", "Procedure", "Accession", "Date"].map((h) => (
-                        <th
-                          key={h}
-                          style={{
-                            textAlign: "left",
-                            fontSize: 12,
-                            color: "var(--color-secondary)",
-                            padding: "6px 8px",
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.reports as any[]).map((r: any) => (
-                      <tr
-                        key={r.id}
-                        style={{
-                          borderTop: "1px solid var(--color-slate-200)",
-                        }}
-                      >
-                        <td style={{ padding: "6px 8px" }}>
-                          <Tag
-                            color={REPORT_STATUS_COLORS[r.status] ?? "default"}
-                          >
-                            {REPORT_STATUS_LABEL[r.status] ?? r.status}
-                          </Tag>
-                        </td>
-                        <td style={{ padding: "6px 8px", fontSize: 13 }}>
-                          {r.procedure_desc || r.modality || "—"}
-                        </td>
-                        <td style={{ padding: "6px 8px", fontSize: 12 }}>
-                          {r.accession_number || "—"}
-                        </td>
-                        <td style={{ padding: "6px 8px", fontSize: 12 }}>
-                          {r.signed_at || r.created_at
-                            ? new Date(
-                                r.signed_at || r.created_at,
-                              ).toLocaleDateString()
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <Tree
+                  showIcon
+                  defaultExpandAll
+                  treeData={treeData}
+                  expandedKeys={expandedKeys}
+                  onExpand={setExpandedKeys}
+                />
               )}
             </Card>
           )}
-
-          <Card
-            title={
-              <span>
-                <FolderOutlined style={{ marginRight: 8 }} />
-                Studies
-              </span>
-            }
-          >
-            {treeData.length === 0 ? (
-              <Empty description="No studies found for this patient" />
-            ) : (
-              <Tree
-                showIcon
-                defaultExpandAll
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                onExpand={setExpandedKeys}
-              />
-            )}
-          </Card>
         </Spin>
       </PageState>
+
+      <Modal
+        title="Log Encounter"
+        open={encOpen}
+        onCancel={() => setEncOpen(false)}
+        footer={null}
+      >
+        <Form
+          form={encForm}
+          layout="vertical"
+          onFinish={handleLogEncounter}
+          initialValues={{ encounter_type: "call" }}
+        >
+          <Form.Item
+            name="encounter_type"
+            label="Type"
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: "visit", label: "Visit" },
+                { value: "call", label: "Call" },
+                { value: "message", label: "Message" },
+                { value: "fax", label: "Fax" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="summary"
+            label="Summary"
+            rules={[{ required: true, message: "Summary is required" }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block>
+            Log Encounter
+          </Button>
+        </Form>
+      </Modal>
     </Content>
   );
 }

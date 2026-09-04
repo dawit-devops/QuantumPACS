@@ -5,6 +5,7 @@ registry CRUD (FR-R05-03), corrective-action inbox (FR-R05-05), incident
 logging + resolution (FR-R05-06), and a personal compliance dashboard feed.
 Reads are gated on QA_READ; mutations on QA_WRITE / PROTOCOL_MANAGE.
 """
+from datetime import date, datetime
 from starlette.endpoints import HTTPEndpoint
 
 from api.rbac import requires_permission
@@ -16,10 +17,18 @@ from api.schemas.qa import (
     LogQAIncidentRequest, CreateCorrectiveActionRequest,
     ResolveCorrectiveActionRequest, ResolveIncidentRequest,
 )
+from api.schemas.ris_qa import (
+    CreateProtocolRequest as RisCreateProtocolRequest,
+    UpdateProtocolRequest as RisUpdateProtocolRequest,
+    CreateCorrectiveActionRequest as RisCreateCorrectiveActionRequest,
+    UpdateCorrectiveActionRequest as RisUpdateCorrectiveActionRequest,
+)
 from db.audit_log import AuditLog
 from db.conn import get_conn
 from db.exams import Exams
 from db.qa import QaScores, CorrectiveActions, IncidentsQA, ProtocolsQA
+from db.ris_protocols import RisProtocols
+from db.ris_corrective_actions import RisCorrectiveActions
 from log import request_id_var
 from api.tenant_middleware import effective_tenant
 
@@ -464,3 +473,510 @@ class QAReviewersHandler(HTTPEndpoint):
         return ok({'data': [
             {'id': str(r['id']), 'username': r['username']} for r in rows
         ]})
+
+
+# ---------------------------------------------------------------------------
+# QA Analytics endpoints (QA-02 through QA-07)
+# Gated on QA_ANALYTICS_READ — read-only aggregations of existing QA data.
+# ---------------------------------------------------------------------------
+
+
+class QARejectAnalysisHandler(HTTPEndpoint):
+    """QA-02: Reject analysis — fail rate by modality, tech, protocol, reason."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        modality = request.query_params.get('modality')
+        async with get_conn() as conn:
+            # Reject rate by modality
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   GROUP BY e.modality
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by technologist
+            by_tech = await conn.fetch(
+                """SELECT e.assigned_technologist AS tech,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   WHERE e.assigned_technologist != ''
+                   GROUP BY e.assigned_technologist
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by protocol
+            by_protocol = await conn.fetch(
+                """SELECT p.name AS protocol_name, p.modality,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate
+                   FROM qa_scores q
+                   JOIN protocols p ON p.id = q.protocol_id
+                   GROUP BY p.name, p.modality
+                   ORDER BY reject_rate DESC""",
+            )
+            # Reject rate by discrepancy level
+            by_discrepancy = await conn.fetch(
+                """SELECT discrepancy_level, COUNT(*) AS n
+                   FROM qa_scores
+                   WHERE pass_fail = 'fail'
+                   GROUP BY discrepancy_level
+                   ORDER BY n DESC""",
+            )
+        return ok({
+            'data': {
+                'by_modality': [dict(r) for r in by_modality],
+                'by_technologist': [dict(r) for r in by_tech],
+                'by_protocol': [dict(r) for r in by_protocol],
+                'by_discrepancy': [dict(r) for r in by_discrepancy],
+            },
+        })
+
+
+class QADoseTrackingHandler(HTTPEndpoint):
+    """QA-03: Dose tracking — metrics by modality/protocol vs ACR benchmarks."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            # Dose metrics by modality with ACR benchmarks
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COUNT(*) AS n,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(MAX(q.dose_dlp), 1) AS max_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol,
+                          ROUND(MAX(q.dose_ctdivol), 1) AS max_ctdivol,
+                          p.acr_benchmark_dlp,
+                          p.acr_benchmark_ctdivol,
+                          COUNT(*) FILTER (
+                            WHERE q.dose_dlp > 0 AND p.acr_benchmark_dlp IS NOT NULL
+                            AND q.dose_dlp > p.acr_benchmark_dlp
+                          ) AS dlp_exceedances
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   LEFT JOIN protocols p ON p.id = q.protocol_id
+                   WHERE q.dose_dlp > 0 OR q.dose_ctdivol > 0
+                   GROUP BY e.modality, p.acr_benchmark_dlp, p.acr_benchmark_ctdivol
+                   ORDER BY e.modality""",
+            )
+            # Dose exceedances by protocol
+            exceedances = await conn.fetch(
+                """SELECT p.name AS protocol_name, p.modality,
+                          p.acr_benchmark_dlp,
+                          q.dose_dlp,
+                          q.dose_ctdivol,
+                          e.accession_number,
+                          q.reviewed_at
+                   FROM qa_scores q
+                   JOIN exams e ON e.id = q.exam_id
+                   JOIN protocols p ON p.id = q.protocol_id
+                   WHERE q.dose_dlp > 0
+                     AND p.acr_benchmark_dlp IS NOT NULL
+                     AND q.dose_dlp > p.acr_benchmark_dlp
+                   ORDER BY q.dose_dlp DESC
+                   LIMIT 50""",
+            )
+        return ok({
+            'data': {
+                'by_modality': [dict(r) for r in by_modality],
+                'exceedances': [dict(r) for r in exceedances],
+            },
+        })
+
+
+class QATechMetricsHandler(HTTPEndpoint):
+    """QA-05: Technologist performance metrics -- reject rate, dose, protocol adherence."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            # protocol_adherence_pct: share of reviews where sequence_compliance
+            # has at least one entry (non-empty JSONB = protocol was evaluated).
+            # We avoid the literal '{}' pattern in triple-quoted strings due to
+            # Python 3.14 parsing strictness; use jsonb_typeof instead.
+            sql = (
+                'SELECT e.assigned_technologist AS tech, '
+                'COUNT(*) AS total_reviewed, '
+                'COUNT(*) FILTER (WHERE q.pass_fail = $1) AS passed, '
+                'COUNT(*) FILTER (WHERE q.pass_fail = $2) AS failed, '
+                'ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = $2) '
+                '/ NULLIF(COUNT(*), 0), 1) AS reject_rate, '
+                'ROUND(AVG(q.dose_dlp), 1) AS avg_dlp, '
+                'ROUND(100.0 * COUNT(*) FILTER (WHERE jsonb_array_length(q.sequence_compliance) > 0) '
+                '/ NULLIF(COUNT(*), 0), 1) AS protocol_adherence_pct '
+                'FROM qa_scores q '
+                'JOIN exams e ON e.id = q.exam_id '
+                'WHERE e.assigned_technologist != $3 '
+                'GROUP BY e.assigned_technologist '
+                'ORDER BY reject_rate DESC'
+            )
+            metrics = await conn.fetch(sql, 'pass', 'fail', '')
+        return ok({'data': [dict(r) for r in metrics]})
+
+
+class QAProtocolComplianceHandler(HTTPEndpoint):
+    """QA-06: Protocol compliance rate — adherence % by protocol."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        async with get_conn() as conn:
+            compliance = await conn.fetch(
+                """SELECT p.id AS protocol_id, p.name AS protocol_name,
+                          p.modality, p.body_part,
+                          p.acr_benchmark_dlp, p.acr_benchmark_ctdivol,
+                          COUNT(q.id) AS total_reviews,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'pass')
+                                / NULLIF(COUNT(q.id), 0), 1) AS compliance_pct,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+                   FROM protocols p
+                   LEFT JOIN qa_scores q ON q.protocol_id = p.id
+                   GROUP BY p.id, p.name, p.modality, p.body_part,
+                            p.acr_benchmark_dlp, p.acr_benchmark_ctdivol
+                   HAVING COUNT(q.id) > 0
+                   ORDER BY compliance_pct ASC""",
+            )
+        return ok({'data': [dict(r) for r in compliance]})
+
+
+class QATrendsHandler(HTTPEndpoint):
+    """QA-07: Trending — daily reject rate and dose trends."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        granularity = request.query_params.get('granularity', 'daily')
+        if granularity not in ('daily', 'weekly', 'monthly'):
+            granularity = 'daily'
+        date_trunc = {'daily': 'day', 'weekly': 'week', 'monthly': 'month'}[granularity]
+        async with get_conn() as conn:
+            trends = await conn.fetch(
+                f"""SELECT date_trunc('{date_trunc}', q.reviewed_at) AS period,
+                          COUNT(*) AS total,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                          COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                          ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                                / NULLIF(COUNT(*), 0), 1) AS reject_rate,
+                          ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                          ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+                   FROM qa_scores q
+                   WHERE q.reviewed_at IS NOT NULL
+                   GROUP BY period
+                   ORDER BY period DESC
+                   LIMIT 90""",
+            )
+        return ok({'data': [dict(r) for r in trends], 'granularity': granularity})
+
+
+# ---------------------------------------------------------------------------
+# QA Export endpoint (QA-08)
+# CSV export for any QA analytics report type.
+# ---------------------------------------------------------------------------
+
+import csv as _csv
+import io
+from starlette.responses import Response
+
+# Map of report type -> (SQL query builder, column names)
+# Each builder receives a connection and returns rows.
+EXPORT_REPORTS = {
+    'reject-analysis': {
+        'filename': 'qa-reject-analysis',
+        'columns': ['modality', 'total', 'fails', 'reject_rate'],
+    },
+    'dose-tracking': {
+        'filename': 'qa-dose-tracking',
+        'columns': ['modality', 'n', 'avg_dlp', 'max_dlp', 'avg_ctdivol',
+                     'max_ctdivol', 'dlp_exceedances'],
+    },
+    'tech-metrics': {
+        'filename': 'qa-tech-metrics',
+        'columns': ['tech', 'total_reviewed', 'passed', 'failed',
+                     'reject_rate', 'avg_dlp', 'protocol_adherence_pct'],
+    },
+    'protocol-compliance': {
+        'filename': 'qa-protocol-compliance',
+        'columns': ['protocol_name', 'modality', 'body_part', 'total_reviews',
+                     'passed', 'failed', 'compliance_pct', 'avg_dlp',
+                     'avg_ctdivol'],
+    },
+    'trends': {
+        'filename': 'qa-trends',
+        'columns': ['period', 'total', 'passed', 'failed', 'reject_rate',
+                     'avg_dlp', 'avg_ctdivol'],
+    },
+}
+
+# Reuse the exact SQL from the analytics handlers so export data matches the
+# dashboard view 1:1.
+_EXPORT_SQL = {
+    'reject-analysis': (
+        """SELECT e.modality, COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS fails,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                        / NULLIF(COUNT(*), 0), 1) AS reject_rate
+           FROM qa_scores q JOIN exams e ON e.id = q.exam_id
+           GROUP BY e.modality ORDER BY reject_rate DESC"""
+    ),
+    'dose-tracking': (
+        """SELECT e.modality, COUNT(*) AS n,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(MAX(q.dose_dlp), 1) AS max_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol,
+                  ROUND(MAX(q.dose_ctdivol), 1) AS max_ctdivol,
+                  COUNT(*) FILTER (
+                    WHERE q.dose_dlp > 0 AND p.acr_benchmark_dlp IS NOT NULL
+                    AND q.dose_dlp > p.acr_benchmark_dlp
+                  ) AS dlp_exceedances
+           FROM qa_scores q
+           JOIN exams e ON e.id = q.exam_id
+           LEFT JOIN protocols p ON p.id = q.protocol_id
+           WHERE q.dose_dlp > 0 OR q.dose_ctdivol > 0
+           GROUP BY e.modality ORDER BY e.modality"""
+    ),
+    'tech-metrics': (
+        'SELECT e.assigned_technologist AS tech,'
+        ' COUNT(*) AS total_reviewed,'
+        ' COUNT(*) FILTER (WHERE q.pass_fail = $1) AS passed,'
+        ' COUNT(*) FILTER (WHERE q.pass_fail = $2) AS failed,'
+        ' ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = $2)'
+        ' / NULLIF(COUNT(*), 0), 1) AS reject_rate,'
+        ' ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,'
+        ' ROUND(100.0 * COUNT(*) FILTER ('
+        "  WHERE jsonb_array_length(q.sequence_compliance) > 0)"
+        ' / NULLIF(COUNT(*), 0), 1) AS protocol_adherence_pct'
+        ' FROM qa_scores q JOIN exams e ON e.id = q.exam_id'
+        ' WHERE e.assigned_technologist != $3'
+        ' GROUP BY e.assigned_technologist ORDER BY reject_rate DESC'
+    ),
+    'protocol-compliance': (
+        """SELECT p.name AS protocol_name, p.modality, p.body_part,
+                  COUNT(q.id) AS total_reviews,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'pass')
+                        / NULLIF(COUNT(q.id), 0), 1) AS compliance_pct,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+           FROM protocols p LEFT JOIN qa_scores q ON q.protocol_id = p.id
+           GROUP BY p.id, p.name, p.modality, p.body_part
+           HAVING COUNT(q.id) > 0 ORDER BY compliance_pct ASC"""
+    ),
+    'trends': (
+        """SELECT date_trunc('day', q.reviewed_at) AS period,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'pass') AS passed,
+                  COUNT(*) FILTER (WHERE q.pass_fail = 'fail') AS failed,
+                  ROUND(100.0 * COUNT(*) FILTER (WHERE q.pass_fail = 'fail')
+                        / NULLIF(COUNT(*), 0), 1) AS reject_rate,
+                  ROUND(AVG(q.dose_dlp), 1) AS avg_dlp,
+                  ROUND(AVG(q.dose_ctdivol), 1) AS avg_ctdivol
+           FROM qa_scores q WHERE q.reviewed_at IS NOT NULL
+           GROUP BY period ORDER BY period DESC LIMIT 90"""
+    ),
+}
+
+
+class QAExportHandler(HTTPEndpoint):
+    """QA-08: Export QA analytics report as CSV."""
+
+    @requires_permission(Permission.QA_ANALYTICS_READ)
+    async def get(self, request):
+        report = request.query_params.get('report', '')
+        if report not in EXPORT_REPORTS:
+            return validation_error(
+                f'Invalid report type. Choose from: {sorted(EXPORT_REPORTS.keys())}'
+            )
+        meta = EXPORT_REPORTS[report]
+        sql = _EXPORT_SQL[report]
+        async with get_conn() as conn:
+            if report == 'tech-metrics':
+                rows = await conn.fetch(sql, 'pass', 'fail', '')
+            else:
+                rows = await conn.fetch(sql)
+        # Build CSV
+        buf = io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(meta['columns'])
+        for row in rows:
+            writer.writerow([row.get(col, '') for col in meta['columns']])
+        today = date.today().isoformat()
+        filename = f"{meta['filename']}-{today}.csv"
+        return Response(
+            content='\ufeff'.encode('utf-8') + buf.getvalue().encode('utf-8'),
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# QA-09 Protocol Registry and QA-11 Corrective Actions
+# ---------------------------------------------------------------------------
+# These classes extend the QA program (QA-01..QA-08 above) with the protocol
+# registry and corrective-action lifecycle added in the RIS integration round.
+# The prior rewrite of this module dropped the QA-01..QA-08 handlers; this
+# merge restores both sets so the /qa/* and /ris/* surfaces coexist.
+
+def _row_dict(row):
+    return dict(row) if row else None
+
+
+class ProtocolHandler(HTTPEndpoint):
+    @requires_permission(Permission.QA_READ)
+    async def get(self, request):
+        pid = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            row = await repo.get(pid)
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def put(self, request):
+        pid = request.path_params['id']
+        body = await parse_body(RisUpdateProtocolRequest, request)
+        data = body.model_dump(exclude_unset=True)
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            row = await repo.update(pid, data)
+        if not row:
+            return not_found('Protocol not found')
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def delete(self, request):
+        pid = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            await repo.delete(pid)
+        return ok({'data': None})
+
+
+class ProtocolListHandler(HTTPEndpoint):
+    @requires_permission(Permission.QA_READ)
+    async def get(self, request):
+        modality = request.query_params.get('modality')
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            if modality:
+                rows = await repo.list_by_modality(modality)
+            else:
+                rows = await repo.list_all()
+        return ok({'data': [dict(r) for r in rows]})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def post(self, request):
+        body = await parse_body(RisCreateProtocolRequest, request)
+        data = body.model_dump()
+        data['created_by'] = request.user.id
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            row = await repo.create(data)
+        return created({'data': dict(row)})
+
+
+class ProtocolDefaultHandler(HTTPEndpoint):
+    @requires_permission(Permission.QA_WRITE)
+    async def post(self, request):
+        pid = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisProtocols(conn)
+            row = await repo.get(pid)
+            if not row:
+                return not_found('Protocol not found')
+            row = await repo.set_default(pid, row['modality'])
+        return ok({'data': _row_dict(row)})
+
+
+class CorrectiveActionHandler(HTTPEndpoint):
+    @requires_permission(Permission.QA_READ)
+    async def get(self, request):
+        aid = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            row = await repo.get(aid)
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def put(self, request):
+        aid = request.path_params['id']
+        body = await parse_body(RisUpdateCorrectiveActionRequest, request)
+        data = body.model_dump(exclude_unset=True)
+        if 'due_date' in data and data['due_date']:
+            data['due_date'] = datetime.fromisoformat(data['due_date'])
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            row = await repo.update(aid, data)
+        if not row:
+            return not_found('Corrective action not found')
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def delete(self, request):
+        aid = request.path_params['id']
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            await repo.delete(aid)
+        return ok({'data': None})
+
+
+class CorrectiveActionListHandler(HTTPEndpoint):
+    @requires_permission(Permission.QA_READ)
+    async def get(self, request):
+        status = request.query_params.get('status')
+        view = request.query_params.get('view')
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            if view == 'overdue':
+                rows = await repo.list_overdue()
+            else:
+                rows = await repo.list_all(status=status)
+        return ok({'data': [dict(r) for r in rows]})
+
+    @requires_permission(Permission.QA_WRITE)
+    async def post(self, request):
+        body = await parse_body(RisCreateCorrectiveActionRequest, request)
+        data = body.model_dump()
+        data['created_by'] = request.user.id
+        if data.get('due_date'):
+            data['due_date'] = datetime.fromisoformat(data['due_date'])
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            row = await repo.create(data)
+        return created({'data': dict(row)})
+
+
+class EscalationHandler(HTTPEndpoint):
+    """QA-11: Scan for overdue actions and emit notifications."""
+    @requires_permission(Permission.QA_READ)
+    async def get(self, request):
+        from api.notify import notify_role
+        async with get_conn() as conn:
+            repo = RisCorrectiveActions(conn)
+            overdue = await repo.list_overdue()
+            escalated = []
+            for action in overdue:
+                await notify_role(
+                    conn, 'qa',
+                    'corrective_action.overdue',
+                    'Overdue Corrective Action',
+                    f'Action "{action["title"]}" is overdue '
+                    f'(due: {action["due_date"]})',
+                    f'/qa/corrective-actions/{action["id"]}',
+                )
+                escalated.append(str(action['id']))
+        return ok({'data': {'escalated_count': len(escalated),
+                            'escalated_ids': escalated}})

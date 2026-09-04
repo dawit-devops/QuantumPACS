@@ -12,21 +12,42 @@ from datetime import datetime, timezone
 
 from starlette.endpoints import HTTPEndpoint
 
+from api.validate import parse_body
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found, validation_error
-from api.validate import parse_body
+from api.response import (
+    ok, created, not_found, validation_error, api_error,
+)
 from api.schemas.billing import (
     PricingItemRequest, CreateInvoiceRequest, PaymentRequest,
     CreateClaimRequest, UpdateClaimRequest, CreateRefundRequest,
     RefundActionRequest, CreateQuoteRequest, CreatePaymentPlanRequest,
     ReconciliationCloseRequest,
+    FeeScheduleUpdateRequest, FeeScheduleImportRequest,
+    CreatePayerContractRequest, UpdatePayerContractRequest,
 )
 from db.audit_log import AuditLog
 from db.billing import money
 from db.conn import get_conn
 from log import request_id_var
 from api.tenant_middleware import effective_tenant
+from asyncpg.exceptions import DataError
+
+from api.telemetry import (
+    ris_unbilled_over_5d, ris_unbilled_over_10d,
+)
+
+
+def _json_row(row):
+    """asyncpg Row -> JSON-safe dict (UUID/datetime -> str)."""
+    from datetime import date, datetime, time
+    from uuid import UUID
+    d = dict(row)
+    for k, v in d.items():
+        if isinstance(v, (date, datetime, time, UUID)):
+            d[k] = str(v)
+    return d
+
 
 # Refunds above this amount require BILLING_ADMIN approval (FR-R09-05).
 REFUND_THRESHOLD = 500.00
@@ -765,3 +786,871 @@ async def _expected_totals(conn, shift_date, cashier_id=None):
         if row['method'] in expected:
             expected[row['method']] = money(row['total'])
     return expected
+
+
+# =========================================================================
+# RIS Billing Capture (Sprint S11 — E-RIS-11)
+# Handlers: CPT suggestions, billing queue, charge drop, unbilled aging,
+# 837 export stub (claim submit), 835 import stub (denial rework).
+# =========================================================================
+
+class RisCptSuggestionsHandler(HTTPEndpoint):
+    """S11-06: GET /ris/billing/cpt-suggestions?procedure=CT CHEST
+
+    B-12: returns a ranked candidate list (best-first) with confidence so
+    the coding banner can show how much to trust each default."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        procedure = request.query_params.get('procedure', '').strip()
+        if not procedure:
+            return validation_error('procedure parameter is required')
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_coding import CodingService
+            await CodingService(conn).seed_defaults(tenant)
+            ranked = await CodingService(conn).rank_suggestions(procedure, tenant)
+        return ok({'data': ranked})
+
+
+class RisBillingQueueHandler(HTTPEndpoint):
+    """S11-04: GET /ris/billing/queue — signed-but-unbilled charges."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        try:
+            page = max(1, int(request.query_params.get('page', '1')))
+            per_page = min(200, max(1, int(request.query_params.get('per_page', '20'))))
+        except (TypeError, ValueError):
+            return validation_error('Invalid pagination parameters')
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            charges = await RisCharges(conn).list_pending(tenant, per_page, (page - 1) * per_page)
+            total = await RisCharges(conn).count_pending(tenant)
+        return ok({'data': charges, 'total': total or 0, 'page': page, 'per_page': per_page})
+
+
+class RisChargeDropHandler(HTTPEndpoint):
+    """S11-05: POST /ris/billing/charges/{id}/drop -> BILLED + audit."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        charge_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            charge = await RisCharges(conn).get(charge_id, tenant)
+            if not charge:
+                return not_found('Charge not found')
+            if charge['status'] != 'PENDING':
+                return validation_error('Charge is not PENDING')
+            # R2-06-02: an edited code is an explicit override of the
+            # suggestion — persist it and mark the outcome for the pilot.
+            override = {}
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            for field in ('cpt_code', 'icd10_code'):
+                new_val = (body.get(field) or '').strip()
+                if new_val and new_val != (charge.get(field) or ''):
+                    override[field] = new_val
+            if override:
+                await RisCharges(conn).apply_override(charge_id, override,
+                                                      tenant)
+            row = await RisCharges(conn).mark_billed(charge_id, tenant)
+            from services.coding_telemetry import record_outcome
+            await record_outcome('overridden' if override else 'accepted')
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.charge_dropped',
+                resource_id=charge_id,
+                resource_type='ris_charges',
+                actor_id=request.user.id,
+                tenant=tenant,
+            )
+            if override:
+                await AuditLog(conn).log_event(
+                    event_type='billing.cpt_overridden',
+                    resource_id=charge_id,
+                    resource_type='ris_charges',
+                    actor_id=request.user.id,
+                    details=override,
+                    tenant=tenant,
+                )
+        # S11-14: capture-rate instrumentation — time from sign (created_at)
+        # to confirm, plus the unbilled count after this drop.
+        from datetime import datetime, timezone
+        from api import telemetry
+        created = charge.get('created_at')
+        if created:
+            age = (datetime.now(timezone.utc) - created).total_seconds()
+            telemetry.ris_charge_drop_latency_seconds.observe(max(age, 0))
+        telemetry.ris_unbilled_count.set(float(await _unbilled_count(tenant)))
+        return ok({'id': charge_id, 'status': row['status'] if row else 'BILLED'})
+
+
+async def _unbilled_count(tenant):
+    """Current PENDING charge count for the tenant (feeds ris_unbilled_count)."""
+    async with get_conn() as conn:
+        from db.ris_charges import RisCharges
+        return await RisCharges(conn).count_pending(tenant)
+
+
+class RisChargeBatchDropHandler(HTTPEndpoint):
+    """B-05: batch confirm-and-drop — POST /ris/billing/charges/batch.
+
+    {charge_ids: [...], overrides?: {<charge_id>: {cpt_code, icd10_code}}}
+    Replays the audited single-drop path per charge (override persistence,
+    telemetry, billing.charge_dropped audit); best-effort — unknown ids are
+    reported in `missing`, not fatal. Capped at 100 ids per call."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('charge_ids') or [])][:100]
+        if not ids:
+            return validation_error('charge_ids is required')
+        overrides = body.get('overrides') or {}
+        tenant = effective_tenant(request) or 'default'
+        from datetime import datetime, timezone
+        dropped, missing, skipped = [], [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            rc = RisCharges(conn)
+            from db.audit_log import AuditLog
+            from services.coding_telemetry import record_outcome
+            for charge_id in ids:
+                charge = await rc.get(charge_id, tenant)
+                if not charge:
+                    missing.append(charge_id)
+                    continue
+                if charge.get('status') != 'PENDING':
+                    skipped.append(charge_id)
+                    continue
+                ovr_src = overrides.get(charge_id) or {}
+                override = {
+                    f: str(ovr_src[f]).strip()
+                    for f in ('cpt_code', 'icd10_code')
+                    if (ovr_src.get(f) or '').strip()
+                    and str(ovr_src[f]).strip() != (charge.get(f) or '')
+                }
+                if override:
+                    await rc.apply_override(charge_id, override, tenant)
+                await rc.mark_billed(charge_id, tenant)
+                await record_outcome('overridden' if override else 'accepted')
+                await AuditLog(conn).log_event(
+                    event_type='billing.charge_dropped',
+                    resource_id=charge_id,
+                    resource_type='ris_charges',
+                    actor_id=request.user.id,
+                    tenant=tenant,
+                )
+                created = charge.get('created_at')
+                if created:
+                    from api import telemetry
+                    age = (datetime.now(timezone.utc) - created).total_seconds()
+                    telemetry.ris_charge_drop_latency_seconds.observe(max(age, 0))
+                dropped.append(charge_id)
+        from api import telemetry
+        telemetry.ris_unbilled_count.set(float(await _unbilled_count(tenant)))
+        return ok({'data': {'dropped': dropped, 'missing': missing,
+                            'skipped': skipped}})
+
+
+class RisClaimBatchResubmitHandler(HTTPEndpoint):
+    """B-10: batch denial rework by reason code — POST
+    /ris/billing/claims/batch-resubmit {claim_ids[], note}."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('claim_ids') or [])][:100]
+        note = (body.get('note') or '').strip()
+        if not ids:
+            return validation_error('claim_ids is required')
+        if not note:
+            return validation_error('a correction note is required')
+        tenant = effective_tenant(request) or 'default'
+        resubmitted, missing = [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rc = RisClaims(conn)
+            for claim_id in ids:
+                row = await rc.correct_and_resubmit(
+                    claim_id, note=note,
+                    actor=str(request.user.id), tenant_id=tenant,
+                )
+                if row:
+                    resubmitted.append(claim_id)
+                else:
+                    missing.append(claim_id)
+        return ok({'data': {'resubmitted': resubmitted, 'missing': missing}})
+
+
+class RisUnbilledHandler(HTTPEndpoint):
+    """S11-07: GET /ris/billing/unbilled — aging report.
+
+    R2-02-14: every read also publishes the SLA gauges (5-day / 10-day
+    buckets) so Prometheus sees the backlog even without a scraper inside
+    the billing flow. R2-02-06: a >10-day backlog fires a throttled
+    biller/manager alert — best-effort, never fails the query.
+    """
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        # D2: dimension switch — date (default), site or payer.
+        group_by = request.query_params.get('group_by', 'date')
+        if group_by not in ('date', 'site', 'payer'):
+            return api_error('VALIDATION',
+                             'group_by must be date, site or payer',
+                             status=422)
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            groups, total = await RisCharges(conn).aging_groups(
+                tenant, group_by=group_by)
+            buckets = await RisCharges(conn).aging_buckets(tenant)
+        # D2: the gauges read exact backlog counts (the previous mapping
+        # keyed off 'age_bucket'/'n' fields that never existed, pinning
+        # both gauges at zero).
+        over5 = buckets.get('over5', 0)
+        over10 = buckets.get('over10', 0)
+        try:
+            ris_unbilled_over_5d.set(over5)
+            ris_unbilled_over_10d.set(over10)
+        except Exception:
+            pass
+        if over10:
+            try:
+                from services.billing_alerts import escalate_aging
+                await escalate_aging(None, tenant, over10=over10)
+            except Exception:
+                pass
+        return ok({
+            'groups': [dict(r) for r in groups],
+            'total_unbilled': total,
+            'group_by': group_by,
+            'buckets': buckets,
+        })
+
+
+class RisClaimSubmitHandler(HTTPEndpoint):
+    """S11-09: POST /ris/billing/claims/{id}/submit — 837 export stub."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        charge_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges, RisClaims
+            charge = await RisCharges(conn).get(charge_id, tenant)
+            if not charge:
+                return not_found('Charge not found')
+            import random
+            claim_number = f'CLM-{random.randint(100000, 999999)}'
+            result = await RisClaims(conn).submit(
+                charge_id, claim_number, tenant_id=tenant,
+                # D3: the charge carries the approved authorization resolved
+                # at drop time — the claim line must ride that auth number.
+                prior_auth_id=charge.get('prior_auth_id') or None,
+            )
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.claim_submitted',
+                resource_id=charge_id,
+                resource_type='ris_claims',
+                actor_id=request.user.id,
+                tenant=tenant,
+            )
+        return ok({'id': result['id'], 'claim_number': claim_number, 'status': result['status']})
+
+
+class RisPatientResponsibilityHandler(HTTPEndpoint):
+    """B-03: GET /ris/billing/patients/{id}/responsibility — one call that
+    composes the patient's financial picture: insurance coverage (copay /
+    deductible from the latest policy), open RIS charge total, and the
+    outstanding v2 invoice balance. Coinsurance stays a named null until a
+    payer adapter supplies it."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        from db.ris_charges import RisCharges
+        from db.frontdesk import FrontDesk
+        patient_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            records = await fd.list_insurance(patient_id)
+            record = records[0] if records else None
+            charges = await RisCharges(conn).patient_charges_summary(
+                patient_id, tenant)
+            inv = await conn.fetchrow(
+                """SELECT COALESCE(SUM(balance), 0) AS bal, count(*) AS n
+                   FROM invoice
+                   WHERE patient_id = $1
+                     AND status IN ('open', 'partially_paid')""",
+                str(patient_id),
+            )
+        rec = record or {}
+        return ok({'data': {
+            'patient_id': str(patient_id),
+            'coverage_status': 'active' if record else 'none',
+            'provider': rec.get('provider') or '',
+            'member_id': rec.get('member_id') or '',
+            'copay_amount': rec.get('copay_amount'),
+            'deductible_total': rec.get('deductible_total'),
+            'deductible_remaining': rec.get('deductible_remaining'),
+            'coinsurance_pct': None,
+            'open_charges_count': int((charges or {}).get('open_count') or 0),
+            'open_charges_total': float((charges or {}).get('open_total') or 0),
+            'open_invoices': int((inv or {}).get('n') or 0),
+            'invoice_balance': float((inv or {}).get('bal') or 0),
+        }})
+
+
+class RisClaimsHandler(HTTPEndpoint):
+    """B-06: GET /ris/billing/claims — full claim lifecycle list with
+    payer/status/date filters for the tracking dashboard."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        from db.ris_charges import RisClaims
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await RisClaims(conn).list_claims(
+                tenant,
+                status=request.query_params.get('status'),
+                payer=request.query_params.get('payer'),
+                date_from=request.query_params.get('date_from'),
+                date_to=request.query_params.get('date_to'),
+            )
+        return ok({'data': [dict(r) for r in rows]})
+
+
+class RisClaimBatchSubmitHandler(HTTPEndpoint):
+    """B-02: batch 837 submission — POST /ris/billing/claims/batch-submit.
+
+    {charge_ids: [...]} creates one claim per charge via the same stub path
+    as the single submit (837 serialization remains integration-dependent).
+    Best-effort: unknown charges land in `missing`."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        ids = [str(c) for c in (body.get('charge_ids') or [])][:100]
+        if not ids:
+            return validation_error('charge_ids is required')
+        tenant = effective_tenant(request) or 'default'
+        submitted, missing = [], []
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges, RisClaims
+            from db.audit_log import AuditLog
+            import random
+            rc = RisCharges(conn)
+            claims = RisClaims(conn)
+            for charge_id in ids:
+                charge = await rc.get(charge_id, tenant)
+                if not charge:
+                    missing.append(charge_id)
+                    continue
+                claim_number = f'CLM-{random.randint(100000, 999999)}'
+                result = await claims.submit(
+                    charge_id, claim_number, tenant_id=tenant,
+                    prior_auth_id=charge.get('prior_auth_id') or None,
+                )
+                await AuditLog(conn).log_event(
+                    event_type='billing.claim_submitted',
+                    resource_id=charge_id,
+                    resource_type='ris_claims',
+                    actor_id=request.user.id,
+                    tenant=tenant,
+                )
+                submitted.append({
+                    'charge_id': charge_id,
+                    'claim_number': claim_number,
+                    'status': result['status'],
+                })
+        return ok({'data': {'submitted': submitted, 'missing': missing}})
+
+
+class RisRevenueHandler(HTTPEndpoint):
+    """B-07: GET /ris/billing/revenue?days=30 — collections trend from the
+    payment ledger, paid-claims by payer, billed charges by modality, and
+    unbilled AR aging in dollars. Days clamped to 90 like reading-stats."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        try:
+            days = int(request.query_params.get('days', 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(1, min(days, 90))
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            daily = await conn.fetch(
+                """SELECT date_trunc('day', created_at)::date AS day,
+                          COALESCE(SUM(amount), 0) AS collected
+                   FROM payment
+                   WHERE created_at >= now() - ($1 || ' days')::interval
+                   GROUP BY day ORDER BY day""",
+                str(days),
+            )
+            by_payer = await conn.fetch(
+                """SELECT payer_name,
+                          COALESCE(SUM(paid_amount), 0) AS paid
+                   FROM ris_claims
+                   WHERE tenant_id = $1 AND status = 'PAID'
+                   GROUP BY payer_name ORDER BY paid DESC""",
+                tenant,
+            )
+            by_modality = await conn.fetch(
+                """SELECT e.modality,
+                          COALESCE(SUM(ch.charge_amount), 0) AS billed
+                   FROM ris_charges ch
+                   JOIN exams e ON e.id = ch.exam_id
+                   WHERE ch.tenant_id = $1
+                     AND ch.status IN ('BILLED', 'PAID')
+                   GROUP BY e.modality ORDER BY billed DESC""",
+                tenant,
+            )
+            aging = await conn.fetchrow(
+                """SELECT
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at > now() - interval '5 days'), 0)
+                       AS current,
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at <= now() - interval '5 days'
+                           AND created_at > now() - interval '10 days'), 0)
+                       AS over5,
+                     COALESCE(SUM(charge_amount) FILTER (
+                         WHERE created_at <= now() - interval '10 days'), 0)
+                       AS over10
+                   FROM ris_charges
+                   WHERE tenant_id = $1 AND status = 'PENDING'""",
+                tenant,
+            )
+        return ok({'data': {
+            'days': days,
+            'daily': [dict(r) for r in daily],
+            'by_payer': [dict(r) for r in by_payer],
+            'by_modality': [dict(r) for r in by_modality],
+            'ar_aging': dict(aging) if aging else {
+                'current': 0, 'over5': 0, 'over10': 0},
+        }})
+
+
+class RisDenialQueueHandler(HTTPEndpoint):
+    """R2-02-01: GET /ris/billing/denials — the coder's rework queue."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rows = await RisClaims(conn).list_rework(tenant)
+        return ok({'data': [_json_row(r) for r in rows]})
+
+
+class RisDenialImportHandler(HTTPEndpoint):
+    """R2-02-01: POST /ris/billing/denials/import — 835-style intake.
+
+    Parses the payer's reason code instead of stamping a fixed DEN-001,
+    and appends a history event so the rework trail starts at intake.
+    The legacy /denials/{id}/rework route delegates here.
+    """
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        tenant = effective_tenant(request) or 'default'
+        claim_id = str(payload.get('claim_id')
+                       or request.path_params.get('id') or '')
+        if not claim_id:
+            return api_error('VALIDATION', 'claim_id required', status=422)
+        from db.ris_charges import parse_denial
+        parsed = parse_denial(payload)
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            try:
+                claim = await RisClaims(conn).get(claim_id, tenant)
+            except DataError:
+                # Malformed claim ids against a UUID column raise asyncpg
+                # DataError (500); treat them as not-found for a clean 404.
+                claim = None
+            if not claim:
+                return not_found('Claim not found')
+            result = await RisClaims(conn).record_denial_with_event(
+                claim_id, parsed['code'], parsed['reason'], tenant_id=tenant)
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.denial_recorded',
+                resource_id=claim_id,
+                resource_type='ris_claims',
+                actor_id=getattr(request.user, 'id', ''),
+                details={'code': parsed['code']},
+                tenant=tenant,
+            )
+        return ok({'id': claim_id,
+                   'status': result['status'] if result else 'DENIED',
+                   'code': parsed['code']})
+
+
+class RisClaimResubmitHandler(HTTPEndpoint):
+    """R2-02-03: POST /ris/billing/claims/{id}/resubmit — correction +
+    resubmission with an attributable history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        claim_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        note = str(body.get('note') or '')
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            result = await RisClaims(conn).correct_and_resubmit(
+                claim_id, note=note,
+                actor=str(getattr(request.user, 'id', '')),
+                tenant_id=tenant)
+            if not result:
+                return not_found('Claim not found')
+            from db.audit_log import AuditLog
+            await AuditLog(conn).log_event(
+                event_type='billing.claim_resubmitted',
+                resource_id=claim_id,
+                resource_type='ris_claims',
+                actor_id=getattr(request.user, 'id', ''),
+                details={'note': note[:200]},
+                tenant=tenant,
+            )
+        return ok({'id': claim_id, 'status': result['status']})
+
+
+class RisClaimHistoryHandler(HTTPEndpoint):
+    """R2-02-03: GET /ris/billing/claims/{id}/history — full rework trail."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        claim_id = request.path_params['id']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisClaims
+            rows = await RisClaims(conn).get_history(claim_id, tenant)
+        return ok({'data': [_json_row(r) for r in rows]})
+
+
+class RisReconciliationHandler(HTTPEndpoint):
+    """S11-13: GET /ris/billing/reconciliation — signed vs charged."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            from db.ris_charges import RisCharges
+            stats = await RisCharges(conn).reconciliation(tenant)
+        signed = stats.get('signed') or 0
+        charged = stats.get('charged') or 0
+        rate = round(charged / signed * 100, 1) if signed else 100.0
+        return ok({
+            'signed_reports': signed,
+            'charged_reports': charged,
+            'capture_rate_pct': rate,
+        })
+
+
+# ---------------------------------------------------------------------------
+# B-09 Procedure Fee Schedule — editable catalog, bulk import, version history
+# ---------------------------------------------------------------------------
+
+class FeeScheduleHandler(HTTPEndpoint):
+    """B-09: GET /ris/billing/fee-schedule — list catalog (optional code filter)."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        code = request.query_params.get('code')
+        async with get_conn() as conn:
+            if code:
+                rows = await conn.fetch(
+                    """SELECT * FROM procedure_pricing_catalog
+                       WHERE procedure_code ILIKE $1
+                       ORDER BY procedure_code""",
+                    f'%{code}%',
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT * FROM procedure_pricing_catalog
+                       ORDER BY procedure_code""",
+                )
+        items = [dict(r) | {'list_price': money(r['list_price'])} for r in rows]
+        return ok({'data': items})
+
+
+class FeeScheduleUpdateHandler(HTTPEndpoint):
+    """B-09: PUT /ris/billing/fee-schedule/{code} — edit list price/description
+    and record a version-history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def put(self, request):
+        code = request.path_params['code']
+        body = await parse_body(FeeScheduleUpdateRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            existing = await conn.fetchrow(
+                "SELECT * FROM procedure_pricing_catalog WHERE procedure_code = $1",
+                code,
+            )
+            if not existing:
+                return not_found(f'Procedure {code} not found')
+
+            new_price = money(body.list_price) if body.list_price is not None else money(existing['list_price'])
+            new_desc = body.description if body.description is not None else existing['description']
+            row = await conn.fetchrow(
+                """UPDATE procedure_pricing_catalog
+                   SET list_price = $2, description = $3, active = TRUE
+                   WHERE procedure_code = $1
+                   RETURNING *""",
+                code, new_price, new_desc,
+            )
+            await conn.execute(
+                """INSERT INTO ris_fee_schedule_history
+                       (tenant_id, procedure_code, description, list_price, changed_by)
+                   VALUES ($1, $2, $3, $4, $5)""",
+                tenant, code, new_desc, new_price, str(request.user.id),
+            )
+        return ok({'data': dict(row) | {'list_price': money(row['list_price'])}})
+
+
+class FeeScheduleImportHandler(HTTPEndpoint):
+    """B-09: POST /ris/billing/fee-schedule/import — bulk upsert from CMS-style
+    rows; every upsert writes a version-history row."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        body = await parse_body(FeeScheduleImportRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        imported = 0
+        async with get_conn() as conn:
+            for item in body.rows:
+                await conn.execute(
+                    """INSERT INTO procedure_pricing_catalog
+                           (procedure_code, description, list_price, active)
+                       VALUES ($1, $2, $3, TRUE)
+                       ON CONFLICT (procedure_code) DO UPDATE
+                           SET description = EXCLUDED.description,
+                               list_price = EXCLUDED.list_price,
+                               active = TRUE""",
+                    item.procedure_code, item.description, money(item.list_price),
+                )
+                await conn.execute(
+                    """INSERT INTO ris_fee_schedule_history
+                           (tenant_id, procedure_code, description, list_price, changed_by)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    tenant, item.procedure_code, item.description,
+                    money(item.list_price), str(request.user.id),
+                )
+                imported += 1
+        return created({'data': {'imported': imported}})
+
+
+class FeeScheduleHistoryHandler(HTTPEndpoint):
+    """B-09: GET /ris/billing/fee-schedule/history/{code} — version history."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        code = request.path_params['code']
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                """SELECT procedure_code, description, list_price, changed_by, changed_at
+                   FROM ris_fee_schedule_history
+                   WHERE tenant_id = $1 AND procedure_code = $2
+                   ORDER BY changed_at DESC""",
+                tenant, code,
+            )
+        items = [dict(r) | {'list_price': money(r['list_price'])} for r in rows]
+        return ok({'data': items})
+
+
+# ---------------------------------------------------------------------------
+# B-08 Payer Contract Rates
+# ---------------------------------------------------------------------------
+
+class PayerContractListHandler(HTTPEndpoint):
+    """B-08: GET /ris/billing/contracts — contracted rates by payer/procedure."""
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        payer = request.query_params.get('payer_id')
+        procedure = request.query_params.get('procedure_code')
+        async with get_conn() as conn:
+            if payer:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1 AND payer_id = $2
+                       ORDER BY procedure_code""",
+                    tenant, payer,
+                )
+            elif procedure:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1 AND procedure_code = $2
+                       ORDER BY payer_name""",
+                    tenant, procedure,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT * FROM ris_payer_contracts
+                       WHERE tenant_id = $1
+                       ORDER BY payer_name, procedure_code""",
+                    tenant,
+                )
+        items = [dict(r) | {'contracted_rate': money(r['contracted_rate'])} for r in rows]
+        return ok({'data': items})
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def post(self, request):
+        body = await parse_body(CreatePayerContractRequest, request)
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                """INSERT INTO ris_payer_contracts
+                       (tenant_id, payer_id, payer_name, procedure_code,
+                        contracted_rate, effective_date, created_by)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)
+                   RETURNING *""",
+                tenant, body.payer_id, body.payer_name, body.procedure_code,
+                money(body.contracted_rate), body.effective_date, str(request.user.id),
+            )
+        return created({'data': dict(row) | {'contracted_rate': money(row['contracted_rate'])}})
+
+
+class PayerContractHandler(HTTPEndpoint):
+    """B-08: PUT/DELETE /ris/billing/contracts/{id}."""
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def put(self, request):
+        contract_id = request.path_params['id']
+        body = await parse_body(UpdatePayerContractRequest, request)
+        updates = body.model_dump(exclude_unset=True)
+        async with get_conn() as conn:
+            existing = await conn.fetchval(
+                "SELECT id FROM ris_payer_contracts WHERE id = $1", contract_id,
+            )
+            if not existing:
+                return not_found('Contract not found')
+            sets = []
+            params = []
+            idx = 1
+            if 'contracted_rate' in updates:
+                sets.append(f'contracted_rate = ${idx}')
+                params.append(money(updates['contracted_rate']))
+                idx += 1
+            if 'effective_date' in updates:
+                sets.append(f'effective_date = ${idx}')
+                params.append(updates['effective_date'])
+                idx += 1
+            if 'active' in updates:
+                sets.append(f'active = ${idx}')
+                params.append(updates['active'])
+                idx += 1
+            sets.append('updated_at = now()')
+            params.append(contract_id)
+            row = await conn.fetchrow(
+                f"UPDATE ris_payer_contracts SET {', '.join(sets)} "
+                f"WHERE id = ${idx} RETURNING *",
+                *params,
+            )
+        return ok({'data': dict(row) | {'contracted_rate': money(row['contracted_rate'])}})
+
+    @requires_permission(Permission.BILLING_WRITE)
+    async def delete(self, request):
+        contract_id = request.path_params['id']
+        async with get_conn() as conn:
+            existing = await conn.fetchval(
+                "SELECT id FROM ris_payer_contracts WHERE id = $1", contract_id,
+            )
+            if not existing:
+                return not_found('Contract not found')
+            await conn.execute(
+                "UPDATE ris_payer_contracts SET active = FALSE, updated_at = now() "
+                "WHERE id = $1",
+                contract_id,
+            )
+        return ok({'data': {'id': contract_id, 'active': False}})
+
+
+class PayerContractComparisonHandler(HTTPEndpoint):
+    """B-08: GET /ris/billing/contracts/comparison — join actual charges against
+    contracted rates and flag under/over-charges.
+
+    Charges come from ris_charges (the RIS billing ledger), matched to a payer
+    via the claim's payer_name/payer_id where available; each charge with a
+    matching contract rate is flagged under_charge / over_charge when the
+    charged amount deviates from the contracted rate.
+    """
+
+    @requires_permission(Permission.BILLING_READ)
+    async def get(self, request):
+        tenant = effective_tenant(request) or 'default'
+        async with get_conn() as conn:
+            rows = await conn.fetch(
+                """SELECT DISTINCT ON (c.id)
+                          c.id AS charge_id,
+                          c.cpt_code AS procedure_code,
+                          COALESCE(cl.payer_name, pc.payer_name, '') AS payer_name,
+                          c.charge_amount AS charged_amount,
+                          pc.contracted_rate,
+                          c.created_at
+                     FROM ris_charges c
+                     LEFT JOIN ris_claims cl ON cl.charge_id = c.id
+                     JOIN ris_payer_contracts pc
+                       ON pc.tenant_id = $1
+                      AND pc.procedure_code = c.cpt_code
+                      AND pc.active = TRUE
+                      AND (cl.payer_id IS NULL OR cl.payer_id = ''
+                           OR pc.payer_id = cl.payer_id
+                           OR cl.payer_name ILIKE '%' || pc.payer_name || '%')
+                    WHERE c.tenant_id = $1
+                    ORDER BY c.id,
+                             CASE WHEN pc.payer_id = cl.payer_id THEN 0
+                                  WHEN pc.payer_name = '' THEN 1
+                                  ELSE 2 END,
+                             pc.contracted_rate ASC
+                    LIMIT 200""",
+                tenant,
+            )
+        items = []
+        for r in rows:
+            charged = money(r['charged_amount'])
+            contracted = money(r['contracted_rate'])
+            items.append({
+                'charge_id': str(r['charge_id']),
+                'procedure_code': r['procedure_code'],
+                'payer_name': r['payer_name'] or '',
+                'charged_amount': charged,
+                'contracted_rate': contracted,
+                'variance': round(charged - contracted, 2),
+                'flag': 'under_charge' if charged < contracted else
+                        ('over_charge' if charged > contracted else 'at_rate'),
+            })
+        return ok({'data': items, 'count': len(items)})

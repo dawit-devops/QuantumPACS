@@ -1,26 +1,28 @@
-import React, { Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router";
 import { App as AntdApp, ConfigProvider, Spin } from "antd";
+import React, { Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router";
+
 import "./common/tokens.css";
+import "./common/report.css";
 import "./index.css";
-import { init } from "./ws";
-import { setNavigator } from "./navigator";
-import { ThemeProvider, useTheme } from "./common/ThemeProvider";
-import { lightTheme, darkTheme } from "./common/theme";
+
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import { ErrorBoundary } from "./common/ErrorBoundary";
-import { renderEmpty } from "./common/EmptyState";
-import { OnboardingTour } from "./common/OnboardingTour";
-import { HelpButton } from "./common/HelpButton";
-import ProtectedRoute from "./auth/ProtectedRoute";
 import PermissionRoute, {
   VIEWER_ROUTE_PERMISSIONS,
   PATIENT_ROUTE_PERMISSIONS,
   METRICS_ROUTE_PERMISSIONS,
   ADMIN_DASHBOARD_PERMISSIONS,
 } from "./auth/PermissionRoute";
-import { ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import { renderEmpty } from "./common/EmptyState";
+import { ErrorBoundary } from "./common/ErrorBoundary";
+import { HelpButton } from "./common/HelpButton";
+import { OnboardingTour } from "./common/OnboardingTour";
+import { lightTheme, darkTheme } from "./common/theme";
+import { ThemeProvider, useTheme } from "./common/ThemeProvider";
+import { setNavigator, ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "./navigator";
+import { init } from "./ws";
 
 // (L8) Stable no-op: a fresh arrow per render would hand OnboardingTour a new
 // onComplete reference each time ThemedApp re-renders, defeating memoization.
@@ -39,10 +41,7 @@ function ClinicalRoute({
   children: React.ReactNode;
 }) {
   return (
-    <PermissionRoute
-      permission={permission}
-      excludedRoles={[...ADMIN_SCOPED_ROLES]}
-    >
+    <PermissionRoute permission={permission} excludedRoles={[...ADMIN_SCOPED_ROLES]}>
       {children}
     </PermissionRoute>
   );
@@ -61,10 +60,7 @@ function AdminConsoleRoute({
   children: React.ReactNode;
 }) {
   return (
-    <PermissionRoute
-      permission={permission}
-      excludedRoles={[...CLINICAL_SCOPED_ROLES]}
-    >
+    <PermissionRoute permission={permission} excludedRoles={[...CLINICAL_SCOPED_ROLES]}>
       {children}
     </PermissionRoute>
   );
@@ -83,31 +79,52 @@ const ShareView = React.lazy(() => import("./detail/ShareView"));
 const Files = React.lazy(() => import("./files/Files"));
 const Detail = React.lazy(() => import("./detail/Detail"));
 const Worklist = React.lazy(() => import("./worklist/Worklist"));
+const TrackingBoard = React.lazy(() => import("./worklist/TrackingBoard"));
 const ScheduleBoard = React.lazy(() => import("./schedule/ScheduleBoard"));
+const ResourceManager = React.lazy(() => import("./schedule/ResourceManager"));
+const CalendarView = React.lazy(() => import("./schedule/CalendarView"));
 const Orders = React.lazy(() => import("./coordinator/Orders"));
-const FrontDeskRegistration = React.lazy(
-  () => import("./frontdesk/Registration"),
-);
-const FrontDeskVisits = React.lazy(() => import("./frontdesk/Visits"));
+const PriorAuthPanel = React.lazy(() => import("./coordinator/PriorAuthPanel"));
+const Reminders = React.lazy(() => import("./coordinator/Reminders"));
+const CarePlans = React.lazy(() => import("./coordinator/CarePlans"));
+const HandoffNotes = React.lazy(() => import("./coordinator/HandoffNotes"));
+const StudyBookmarks = React.lazy(() => import("./radiologist/StudyBookmarks"));
+const ReferralTracking = React.lazy(() => import("./coordinator/ReferralTracking"));
+const DischargeChecklists = React.lazy(() => import("./coordinator/DischargeChecklists"));
+const NursingPrepList = React.lazy(() => import("./nursing/NursingPrepList"));
+const Communications = React.lazy(() => import("./coordinator/Communications"));
+const FrontDeskRegistration = React.lazy(() => import("./frontdesk/Registration"));
 const FrontDeskQueue = React.lazy(() => import("./frontdesk/WaitingQueue"));
-const PatientPortal = React.lazy(() => import("./portal/Portal"));
-const TechnologistWorklist = React.lazy(
-  () => import("./technologist/TechnologistWorklist"),
-);
+const FrontDeskSchedule = React.lazy(() => import("./frontdesk/ScheduleToday"));
+const PatientPortal = React.lazy(() => import("./portal/PortalHome"));
+const PatientProfile = React.lazy(() => import("./portal/PatientProfile"));
+const AppointmentList = React.lazy(() => import("./portal/AppointmentList"));
+const ReportList = React.lazy(() => import("./portal/ReportList"));
+const ReportDetail = React.lazy(() => import("./portal/ReportDetail"));
+const FollowUpHub = React.lazy(() => import("./portal/FollowUpHub"));
+const TechnologistWorklist = React.lazy(() => import("./technologist/TechnologistWorklist"));
 const ExamConsole = React.lazy(() => import("./technologist/ExamConsole"));
-const ReadingWorklist = React.lazy(
-  () => import("./radiologist/ReadingWorklist"),
-);
+const ReadingWorklist = React.lazy(() => import("./radiologist/ReadingWorklist"));
 const ResidentHome = React.lazy(() => import("./radiologist/ResidentHome"));
+const ResidentProgress = React.lazy(() => import("./radiologist/ResidentProgress"));
+const TeachingLibrary = React.lazy(() => import("./radiologist/TeachingLibrary"));
 const ReadingConsole = React.lazy(() => import("./radiologist/ReadingConsole"));
-const PeerReviewInbox = React.lazy(
-  () => import("./radiologist/PeerReviewInbox"),
-);
+const PeerReviewInbox = React.lazy(() => import("./radiologist/PeerReviewInbox"));
+const CriticalResultsList = React.lazy(() => import("./radiologist/CriticalResults"));
 const QAQueue = React.lazy(() => import("./qa/QAQueue"));
 const QAReviewForm = React.lazy(() => import("./qa/QAReviewForm"));
 const ProtocolRegistry = React.lazy(() => import("./qa/ProtocolRegistry"));
 const Incidents = React.lazy(() => import("./qa/Incidents"));
 const CorrectiveActions = React.lazy(() => import("./qa/CorrectiveActions"));
+const QAAnalyticsDashboard = React.lazy(() => import("./qa/QAAnalyticsDashboard"));
+const BillingQueue = React.lazy(() => import("./billing/BillingQueue"));
+const ClaimsStatus = React.lazy(() => import("./billing/ClaimsStatus"));
+const RevenueDashboard = React.lazy(() => import("./billing/RevenueDashboard"));
+const DenialRework = React.lazy(() => import("./billing/DenialRework"));
+const TemplateManager = React.lazy(() => import("./admin/TemplateManager"));
+const UnbilledAging = React.lazy(() => import("./billing/UnbilledAging"));
+const FeeSchedule = React.lazy(() => import("./billing/FeeSchedule"));
+const Reconciliation = React.lazy(() => import("./billing/Reconciliation"));
 const ServiceKeys = React.lazy(() => import("./servicekeys/ServiceKeys"));
 const RoutingRules = React.lazy(() => import("./routing/RoutingRules"));
 const FhirConfig = React.lazy(() => import("./fhir/FhirConfig"));
@@ -119,13 +136,16 @@ const StowUpload = React.lazy(() => import("./dicomweb/StowUpload"));
 const StudyBrowser = React.lazy(() => import("./dicomweb/StudyBrowser"));
 const Integrations = React.lazy(() => import("./integrations/Integrations"));
 const AdminDashboard = React.lazy(() => import("./dashboard/AdminDashboard"));
-const NotificationPreferences = React.lazy(
-  () => import("./notifications/NotificationPreferences"),
-);
+const NotificationPreferences = React.lazy(() => import("./notifications/NotificationPreferences"));
+const UserDashboard = React.lazy(() => import("./dashboard/UserDashboard"));
 const Maintenance = React.lazy(() => import("./maintenance/Maintenance"));
 const Backups = React.lazy(() => import("./admin/Backups"));
 const Settings = React.lazy(() => import("./admin/Settings"));
+const InterfaceDashboard = React.lazy(() => import("./admin/InterfaceDashboard"));
+const RisDashboard = React.lazy(() => import("./admin/RISDashboard"));
+const StaffSchedule = React.lazy(() => import("./admin/StaffSchedule"));
 const NotFound = React.lazy(() => import("./notfound/NotFound"));
+const CheckIn = React.lazy(() => import("./kiosk/CheckIn"));
 
 function NavigatorSetter() {
   const navigate = useNavigate();
@@ -159,10 +179,7 @@ function ThemedApp() {
   }, [tempKey]);
 
   return (
-    <ConfigProvider
-      theme={isDark ? darkTheme : lightTheme}
-      renderEmpty={renderEmpty}
-    >
+    <ConfigProvider theme={isDark ? darkTheme : lightTheme} renderEmpty={renderEmpty}>
       <AntdApp>
         <BrowserRouter>
           <AuthProvider>
@@ -185,13 +202,15 @@ function ThemedApp() {
               >
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  {/* RIS-REG-04: kiosk check-in is a public surface. */}
+                  <Route path="/checkin" element={<CheckIn />} />
                   <Route element={<ProtectedRoute />}>
                     <Route path="/account" element={<Account />} />
                     {/* Per-user notification subscriptions (P1-1). */}
-                    <Route
-                      path="/account/notifications"
-                      element={<NotificationPreferences />}
-                    />
+                    <Route path="/account/notifications" element={<NotificationPreferences />} />
+                    {/* §3 configurable widget dashboard — widgets self-filter
+                        by permission; the page is plain authenticated. */}
+                    <Route path="/dashboard" element={<UserDashboard />} />
                     {/* Platform-ops surfaces (super_admin review) — only the
                         platform admin holds SYSTEM_ADMIN. */}
                     <Route
@@ -219,12 +238,33 @@ function ThemedApp() {
                       }
                     />
                     <Route
+                      path="/admin/interfaces"
+                      element={
+                        <PermissionRoute permission="HL7_READ">
+                          <InterfaceDashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/ris-dashboard"
+                      element={
+                        <AdminConsoleRoute permission="REPORT_READ">
+                          <RisDashboard />
+                        </AdminConsoleRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/staff-schedule"
+                      element={
+                        <AdminConsoleRoute permission="SCHEDULE_READ">
+                          <StaffSchedule />
+                        </AdminConsoleRoute>
+                      }
+                    />
+                    <Route
                       path="/admin"
                       element={
-                        <PermissionRoute
-                          permission={ADMIN_DASHBOARD_PERMISSIONS}
-                          adminOnly
-                        >
+                        <PermissionRoute permission={ADMIN_DASHBOARD_PERMISSIONS} adminOnly>
                           <AdminDashboard />
                         </PermissionRoute>
                       }
@@ -276,9 +316,7 @@ function ThemedApp() {
                         // Matrix A admin roles carry only AUDIT_READ; the nav
                         // gate already accepts both and the backend resolves
                         // the alias symmetrically (rbac.py).
-                        <PermissionRoute
-                          permission={["LOG_READ", "AUDIT_READ"]}
-                        >
+                        <PermissionRoute permission={["LOG_READ", "AUDIT_READ"]}>
                           <Logs />
                         </PermissionRoute>
                       }
@@ -292,23 +330,50 @@ function ThemedApp() {
                       }
                     />
                     <Route
+                      path="/tracking"
+                      element={
+                        <ClinicalRoute permission="WORKLIST_READ">
+                          <TrackingBoard />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
                       path="/schedule-board"
                       element={
-                        // The board is a schedule surface (view + capacity
-                        // booking + cancel), so it gates on SCHEDULE_READ
-                        // rather than the worklist permission: front-office
-                        // roles holding SCHEDULE_READ reach it, and the
-                        // SCHEDULE_WRITE grant (scheduler; receptionist via
-                        // R08) unlocks the write actions inside.
-                        <ClinicalRoute permission="SCHEDULE_READ">
+                        // The board loads day data from GET /api/worklist
+                        // (WORKLIST_READ) and supports capacity booking
+                        // (SCHEDULE_READ/WRITE). Accept either permission
+                        // so both physician/resident (WORKLIST_READ) and
+                        // scheduler/receptionist (SCHEDULE_READ) reach the
+                        // page without a dead-end redirect.
+                        <ClinicalRoute permission={["WORKLIST_READ", "SCHEDULE_READ"]}>
                           <ScheduleBoard />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule"
+                      element={
+                        // S4-16 day view: the RIS-native schedule surface.
+                        // Gated on SCHEDULE_READ like the board; SCHEDULE_WRITE
+                        // unlocks book/reschedule/cancel inside.
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <CalendarView />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/schedule/resources"
+                      element={
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <ResourceManager />
                         </ClinicalRoute>
                       }
                     />
                     <Route
                       path="/exams"
                       element={
-                        <ClinicalRoute permission="EXAM_READ">
+                        <ClinicalRoute permission={["EXAM_READ", "NURSING_READ"]}>
                           <TechnologistWorklist />
                         </ClinicalRoute>
                       }
@@ -316,8 +381,18 @@ function ThemedApp() {
                     <Route
                       path="/exams/:id"
                       element={
-                        <ClinicalRoute permission="EXAM_READ">
+                        <ClinicalRoute permission={["EXAM_READ", "NURSING_READ"]}>
                           <ExamConsole />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* §2.11 nursing prep queue: the coordinator/nurse entry
+                        surface that deep-links into exam consoles. */}
+                    <Route
+                      path="/nursing"
+                      element={
+                        <ClinicalRoute permission="NURSING_READ">
+                          <NursingPrepList />
                         </ClinicalRoute>
                       }
                     />
@@ -329,6 +404,79 @@ function ThemedApp() {
                         // (status updates) will require ORDER_WRITE when shipped.
                         <ClinicalRoute permission="ORDER_READ">
                           <Orders />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/prior-auth"
+                      element={
+                        // R2-01: prior authorization management. PRIOR_AUTH_READ
+                        // gates the list; submit/decide are PRIOR_AUTH_WRITE
+                        // actions surfaced inline (the API enforces them).
+                        <ClinicalRoute permission="PRIOR_AUTH_READ">
+                          <PriorAuthPanel />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/reminders"
+                      element={
+                        // R2-02: reminders — config, delivery log, manual send.
+                        <ClinicalRoute permission="PRIOR_AUTH_READ">
+                          <Reminders />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/care-plans"
+                      element={
+                        // CC-02: care-plan board. Browse is PATIENT_READ so
+                        // coordinator (and any chart-reader) can see plans;
+                        // create/edit gates on CARE_PLAN_WRITE in the UI.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <CarePlans />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/handoff-notes"
+                      element={
+                        // CC-08: coordinator handoff notes. Browse is
+                        // PATIENT_READ; creating/marking-read gates on
+                        // PATIENT_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <HandoffNotes />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/referrals"
+                      element={
+                        // CC-05: referral tracking. Browse is PATIENT_READ;
+                        // create/update gates on PATIENT_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <ReferralTracking />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/discharge-checklists"
+                      element={
+                        // CC-06: discharge planning checklists. Browse is
+                        // PATIENT_READ; create/update gates on PATIENT_WRITE
+                        // server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <DischargeChecklists />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/communications"
+                      element={
+                        // CC-04: communication log — patient-scoped search;
+                        // logging gates on ENCOUNTER_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <Communications />
                         </ClinicalRoute>
                       }
                     />
@@ -348,6 +496,24 @@ function ThemedApp() {
                         </ClinicalRoute>
                       }
                     />
+                    {/* RES-04: must register before /reading/:examId. */}
+                    <Route
+                      path="/reading/progress"
+                      element={
+                        <ClinicalRoute permission="REPORT_READ">
+                          <ResidentProgress />
+                        </ClinicalRoute>
+                      }
+                    />
+                    {/* R-11/RES-03: teaching file library. */}
+                    <Route
+                      path="/teaching"
+                      element={
+                        <ClinicalRoute permission="REPORT_READ">
+                          <TeachingLibrary />
+                        </ClinicalRoute>
+                      }
+                    />
                     <Route
                       path="/reading/:examId"
                       element={
@@ -362,6 +528,95 @@ function ThemedApp() {
                         <ClinicalRoute permission="PEER_REVIEW_READ">
                           <PeerReviewInbox />
                         </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/study-bookmarks"
+                      element={
+                        // R-08: study bookmarks / case collections. Browse
+                        // is PATIENT_READ; create/delete gates on
+                        // PATIENT_WRITE server-side.
+                        <ClinicalRoute permission="PATIENT_READ">
+                          <StudyBookmarks />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/critical"
+                      element={
+                        // CR-6: dedicated critical-results surface. GET
+                        // /api/notifications/critical is REPORT_READ-gated
+                        // (notifications.py), so the route gate matches.
+                        <ClinicalRoute permission="REPORT_READ">
+                          <CriticalResultsList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/queue"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <BillingQueue />
+                        </PermissionRoute>
+                      }
+                    />
+                    {/* B-06: claim lifecycle tracking. */}
+                    <Route
+                      path="/billing/claims"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <ClaimsStatus />
+                        </PermissionRoute>
+                      }
+                    />
+                    {/* B-07: revenue trends + AR aging. */}
+                    <Route
+                      path="/billing/revenue"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <RevenueDashboard />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/report-templates"
+                      element={
+                        <PermissionRoute permission={["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"]}>
+                          <TemplateManager />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/denials"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <DenialRework />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/unbilled"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <UnbilledAging />
+                        </PermissionRoute>
+                      }
+                    />
+                    <Route
+                      path="/billing/fee-schedule"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <FeeSchedule />
+                        </PermissionRoute>
+                      }
+                    />
+                    {/* S11-13: signed-vs-charged reconciliation snapshot */}
+                    <Route
+                      path="/billing/reconciliation"
+                      element={
+                        <PermissionRoute permission="BILLING_READ">
+                          <Reconciliation />
+                        </PermissionRoute>
                       }
                     />
                     <Route
@@ -405,6 +660,14 @@ function ThemedApp() {
                       }
                     />
                     <Route
+                      path="/qa/analytics"
+                      element={
+                        <ClinicalRoute permission="QA_READ">
+                          <QAAnalyticsDashboard />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
                       path="/frontdesk/registration"
                       element={
                         <ClinicalRoute permission="REGISTRATION_READ">
@@ -416,7 +679,9 @@ function ThemedApp() {
                       path="/frontdesk/visits"
                       element={
                         <ClinicalRoute permission="REGISTRATION_READ">
-                          <FrontDeskVisits />
+                          {/* S4-rename: Visits surface became Today's
+                              Schedule; preserve old URL as a redirect. */}
+                          <Navigate to="/frontdesk/schedule" replace />
                         </ClinicalRoute>
                       }
                     />
@@ -425,6 +690,14 @@ function ThemedApp() {
                       element={
                         <ClinicalRoute permission="QUEUE_READ">
                           <FrontDeskQueue />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/frontdesk/schedule"
+                      element={
+                        <ClinicalRoute permission="SCHEDULE_READ">
+                          <FrontDeskSchedule />
                         </ClinicalRoute>
                       }
                     />
@@ -439,6 +712,46 @@ function ThemedApp() {
                         // surface.
                         <ClinicalRoute permission="PORTAL_READ">
                           <PatientPortal />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/profile"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <PatientProfile />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/appointments"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <AppointmentList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/results"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <ReportList />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/results/:reportId"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <ReportDetail />
+                        </ClinicalRoute>
+                      }
+                    />
+                    <Route
+                      path="/portal/follow-ups"
+                      element={
+                        <ClinicalRoute permission="PORTAL_READ">
+                          <FollowUpHub />
                         </ClinicalRoute>
                       }
                     />
@@ -493,31 +806,31 @@ function ThemedApp() {
                     <Route
                       path="/dicomweb"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <DicomWebAdmin />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/store"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <StowUpload />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/dicomweb/browser"
                       element={
-                        <AdminConsoleRoute permission="DICOMWEB_READ">
+                        <PermissionRoute permission="DICOMWEB_READ">
                           <StudyBrowser />
-                        </AdminConsoleRoute>
+                        </PermissionRoute>
                       }
                     />
                     <Route
                       path="/integrations"
                       element={
-                        <PermissionRoute permission="SYSTEM_ADMIN">
+                        <PermissionRoute permission={["SYSTEM_ADMIN", "TENANT_ADMIN"]}>
                           <Integrations />
                         </PermissionRoute>
                       }

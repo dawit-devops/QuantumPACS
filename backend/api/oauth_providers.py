@@ -1,8 +1,10 @@
 from starlette.endpoints import HTTPEndpoint
 
+import httpx
+
 from api.rbac import requires_permission
 from api.permissions import Permission
-from api.response import ok, created, not_found
+from api.response import ok, created, not_found, api_error
 from api.validate import parse_body
 from api.schemas.oauth_providers import CreateOAuthProviderRequest, UpdateOAuthProviderRequest
 from db.conn import get_conn
@@ -71,6 +73,46 @@ class OAuthProviderHandler(HTTPEndpoint):
                 return not_found('OAuth provider not found')
             await OAuthProviders(conn).delete(provider_id)
         return ok({})
+
+    @requires_permission(Permission.TENANT_ADMIN)
+    async def post(self, request):
+        """ADM-16: Test OIDC connection — hit discovery + JWKS endpoints."""
+        provider_id = request.path_params['id']
+        async with get_conn() as conn:
+            provider = await OAuthProviders(conn).get(provider_id)
+        if not provider:
+            return not_found('OAuth provider not found')
+        issuer = provider.get('issuer', '')
+        discovery_url = f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+        jwks_uri = provider.get('jwks_uri') or ''
+        results: dict = {}
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Discovery
+            try:
+                resp = await client.get(discovery_url)
+                results['discovery'] = {
+                    'status': resp.status_code,
+                    'ok': resp.status_code == 200,
+                }
+                if resp.status_code == 200:
+                    doc = resp.json()
+                    if not jwks_uri:
+                        jwks_uri = doc.get('jwks_uri', '')
+                        results['discovery']['jwks_uri'] = jwks_uri
+            except Exception as e:
+                results['discovery'] = {'ok': False, 'error': str(e)}
+            # JWKS
+            if jwks_uri:
+                try:
+                    resp = await client.get(jwks_uri)
+                    results['jwks'] = {
+                        'status': resp.status_code,
+                        'ok': resp.status_code == 200,
+                    }
+                except Exception as e:
+                    results['jwks'] = {'ok': False, 'error': str(e)}
+        all_ok = all(r.get('ok') for r in results.values())
+        return ok({'results': results, 'ok': all_ok})
 
 
 class PublicOAuthProvidersHandler(HTTPEndpoint):

@@ -10,7 +10,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from api.auth import User
-from api.users import UsersHandler, UsersDeactivate, Login
+from api.users import UsersBatchStatus, UsersHandler, UsersDeactivate, Login
 from api.validate import validation_exception_handler, _ValidationException
 
 
@@ -200,6 +200,128 @@ class TestUsersDeactivate:
             resp = client.post('/users/deactivate', json={'id': 999})
         assert resp.status_code == 403
         assert resp.json()['error']['message'] == 'User not found'
+
+
+class TestUsersBatchStatus:
+    """ADM-02 bulk activate/deactivate (§2.10): one USER_DELETE-gated call
+    drives many users through the SAME deactivate()/activate() primitives,
+    so the last-active-admin lockout applies per id and failures are
+    reported per id without aborting the batch."""
+
+    def _make_app(self, user=None):
+        return _make_app([Route('/users/batch-status', endpoint=UsersBatchStatus)], user)
+
+    def _patch_deps(self, mock_conn, deactivate_side_effect=None):
+        mock_users = MagicMock()
+        mock_users.deactivate = AsyncMock(side_effect=deactivate_side_effect)
+        mock_users.activate = AsyncMock()
+        mock_audit = MagicMock()
+        mock_audit.log_event = AsyncMock()
+        return (
+            patch('api.users.get_conn', return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=None),
+            )),
+            patch('api.users.Users', return_value=mock_users),
+            patch('api.users.AuditLog', return_value=mock_audit),
+            mock_users,
+            mock_audit,
+        )
+
+    def test_batch_deactivate_reports_changed_ids(self):
+        mock_conn = _mock_conn()
+        p1, p2, p3, users, audit = self._patch_deps(mock_conn)
+        with p1, p2, p3:
+            client = TestClient(self._make_app())
+            resp = client.post(
+                '/users/batch-status',
+                json={'user_ids': [2, 3, 4], 'target_status': 'deactivated'},
+            )
+        assert resp.status_code == 200
+        assert resp.json()['changed'] == [2, 3, 4]
+        assert resp.json()['failed'] == []
+        # The batch must reuse deactivate() (lockout guard + token bump),
+        # not invent a second status-write path.
+        assert users.deactivate.await_count == 3
+        event = audit.log_event.await_args.kwargs['event_type']
+        assert event == 'user.batch_status_changed'
+
+    def test_batch_activate_uses_activate_primitive(self):
+        mock_conn = _mock_conn()
+        p1, p2, p3, users, _ = self._patch_deps(mock_conn)
+        with p1, p2, p3:
+            client = TestClient(self._make_app())
+            resp = client.post(
+                '/users/batch-status',
+                json={'user_ids': [7, 8], 'target_status': 'active'},
+            )
+        assert resp.status_code == 200
+        assert resp.json()['changed'] == [7, 8]
+        users.activate.assert_any_await(7)
+        users.activate.assert_any_await(8)
+        users.deactivate.assert_not_awaited()
+
+    def test_batch_partial_failure_continues_and_reports(self):
+        from exceptions import ApiException
+        mock_conn = _mock_conn()
+        p1, p2, p3, users, _ = self._patch_deps(mock_conn)
+        # Second id hits the last-active-admin lockout; the rest proceed.
+        users.deactivate = AsyncMock(
+            side_effect=[None, ApiException('Cannot deactivate the last active admin'), None],
+        )
+        with p1, p2, p3:
+            client = TestClient(self._make_app())
+            resp = client.post(
+                '/users/batch-status',
+                json={'user_ids': [2, 3, 4], 'target_status': 'deactivated'},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['changed'] == [2, 4]
+        assert data['failed'] == [
+            {'id': 3, 'error': 'Cannot deactivate the last active admin'},
+        ]
+
+    def test_batch_cannot_deactivate_own_account(self):
+        mock_conn = _mock_conn()
+        p1, p2, p3, users, _ = self._patch_deps(mock_conn)
+        # _FakeAuth default user id is 1; requesting it for deactivation
+        # would lock the operator out mid-session.
+        with p1, p2, p3:
+            client = TestClient(self._make_app())
+            resp = client.post(
+                '/users/batch-status',
+                json={'user_ids': [1, 2], 'target_status': 'deactivated'},
+            )
+        assert resp.status_code == 403
+        users.deactivate.assert_not_awaited()
+
+    def test_batch_requires_user_delete_permission(self):
+        mock_conn = _mock_conn()
+        viewer = User({'id': 9, 'permissions': ['USER_READ', 'USER_WRITE']})
+        p1, p2, p3, users, _ = self._patch_deps(mock_conn)
+        with p1, p2, p3:
+            client = TestClient(self._make_app(user=viewer))
+            resp = client.post(
+                '/users/batch-status',
+                json={'user_ids': [2], 'target_status': 'deactivated'},
+            )
+        assert resp.status_code == 403
+        users.deactivate.assert_not_awaited()
+
+    def test_batch_rejects_empty_and_invalid_status(self):
+        mock_conn = _mock_conn()
+        p1, p2, p3, _, _ = self._patch_deps(mock_conn)
+        with p1, p2, p3:
+            client = TestClient(self._make_app())
+            empty = client.post(
+                '/users/batch-status', json={'user_ids': [], 'target_status': 'active'},
+            )
+            bad = client.post(
+                '/users/batch-status', json={'user_ids': [2], 'target_status': 'paused'},
+            )
+        assert empty.status_code == 422
+        assert bad.status_code == 422
 
 
 class TestLoginResponse:

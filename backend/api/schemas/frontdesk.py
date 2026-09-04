@@ -9,6 +9,17 @@ class CreatePatientRequest(BaseModel):
     name: str = Field(..., description="Patient full name")
     birth_date: str = Field('', description="Patient date of birth (YYYY-MM-DD)")
     sex: str = Field('', description="Patient sex (M/F/O)")
+    phone: str | None = Field(None, max_length=50,
+                               description="Patient phone number")
+    email: str | None = Field(None, max_length=200,
+                               description="Patient email address")
+    meta: dict | None = Field(None, description="Free-form registration metadata")
+
+
+class UpdatePatientRequest(BaseModel):
+    name: str | None = Field(None, description="Patient full name")
+    birth_date: str | None = Field(None, description="Patient date of birth (YYYY-MM-DD)")
+    sex: str | None = Field(None, description="Patient sex (M/F/O)")
     meta: dict | None = Field(None, description="Free-form registration metadata")
 
 
@@ -76,6 +87,24 @@ class CreateInsuranceRequest(BaseModel):
     )
     authorization_number: str = Field('', description="Pre-authorization number")
     notes: str = Field('', description="Free-form notes")
+    # FD-02: coverage fields persisted so eligibility returns real data.
+    provider: str = Field('', description="Payer/provider name")
+    member_id: str = Field('', description="Payer member ID")
+    copay_amount: float | None = Field(None, description="Per-visit copay")
+    deductible_total: float | None = Field(None, description="Annual deductible total")
+    deductible_remaining: float | None = Field(
+        None, description="Annual deductible remaining",)
+
+
+class MergePatientsRequest(BaseModel):
+    surviving_patient_id: str = Field(..., description="Patient ID that will survive the merge")
+    merged_patient_id: str = Field(..., description="Patient ID that will be merged into the survivor")
+    reason: str = Field('', description="Reason for the merge (audit trail)")
+
+
+class UndoMergeRequest(BaseModel):
+    patient_id: str = Field(..., description="Patient ID to reactivate (undo merge)")
+    reason: str = Field('', description="Reason for undo (audit trail)")
 
 
 class UpdateInsuranceRequest(BaseModel):

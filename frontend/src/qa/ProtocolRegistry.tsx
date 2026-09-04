@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Table,
   Button,
@@ -10,7 +11,6 @@ import {
   Select,
   Tag,
   InputNumber,
-  message,
   Popconfirm,
   Alert,
   Space,
@@ -18,15 +18,20 @@ import {
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import withSidebar from "../common/base";
 import { useAuth } from "../auth/AuthContext";
+import { MODALITIES } from "../common/modalities";
 import { request } from "../helpers";
 import "./ProtocolRegistry.css";
 
 const Content = Layout.Content;
 const { TextArea } = Input;
 
-const MODALITIES = ["CT", "MR", "US", "DX", "MG", "FL", "PET"];
+// Protocol registry modalities — subset of the canonical list.
+const PROTOCOL_MODALITIES = MODALITIES.filter((m) =>
+  ["CT", "MR", "US", "DX", "MG", "FL", "PET"].includes(m)
+);
 
 function ProtocolRegistry() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Protocol Registry");
   const { hasPermission } = useAuth();
   const canManage = hasPermission("PROTOCOL_MANAGE");
@@ -192,7 +197,7 @@ function ProtocolRegistry() {
             style={{ width: 120 }}
             value={modality}
             onChange={setModality}
-            options={MODALITIES.map((m) => ({ value: m, label: m }))}
+            options={PROTOCOL_MODALITIES.map((m) => ({ value: m, label: m }))}
           />
           <Input
             allowClear
@@ -217,7 +222,7 @@ function ProtocolRegistry() {
         <Alert
           type="error"
           showIcon
-          message={error}
+          title={error}
           style={{ margin: "8px 0" }}
         />
       )}
@@ -267,7 +272,7 @@ function ProtocolRegistry() {
               rules={[{ required: true }]}
             >
               <Select
-                options={MODALITIES.map((m) => ({ value: m, label: m }))}
+                options={PROTOCOL_MODALITIES.map((m) => ({ value: m, label: m }))}
               />
             </Form.Item>
             <Form.Item name="body_part" label="Body Part">

@@ -110,6 +110,56 @@ dicomweb_requests_total = Counter(
     'dicomweb_requests_total', 'Total DICOMweb requests',
     ['method', 'resource'],
 )
+# RIS interface engine (S3-04, spec §10.4): the failure-rate SLO alert
+# divides rate{status="FAILED"} by the RECEIVED total, so the engine
+# counts RECEIVED once per message and PROCESSED/FAILED as terminal
+# states (retries re-increment their terminal state).
+ris_hl7_messages_total = Counter(
+    'ris_hl7_messages_total', 'HL7 messages processed',
+    ['type', 'trigger', 'status'],
+)
+ris_hl7_message_latency_seconds = Histogram(
+    'ris_hl7_message_latency_seconds', 'HL7 message processing latency',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
+# S6-11 / RIS-SL-22: MPPS → tracking latency (< 5s p95). Per-message
+# processing time in the MPPS consumer, labelled by event type so the
+# N-CREATE and N-SET paths are distinguishable.
+ris_mpps_latency_seconds = Histogram(
+    'ris_mpps_latency_seconds', 'MPPS message processing latency',
+    ['event_type', 'facility'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
+# S11-14 / spec §10.4: charge-capture rate. The latency histogram drives the
+# sign-to-charge drop SLO; the gauge feeds the RISUnbilledAging alert
+# (unbilled count > 0 for 5d).
+ris_charge_drop_latency_seconds = Histogram(
+    'ris_charge_drop_latency_seconds', 'Time from sign to charge drop',
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+)
+ris_unbilled_count = Gauge(
+    'ris_unbilled_count', 'Number of unbilled (PENDING) charges',
+)
+ris_unbilled_over_5d = Gauge(
+    'ris_unbilled_over_5d',
+    'Unbilled (PENDING) charges older than the 5-day SLA',
+)
+ris_unbilled_over_10d = Gauge(
+    'ris_unbilled_over_10d',
+    'Unbilled (PENDING) charges older than 10 days (escalation threshold)',
+)
+# S12-33 / RIS-SL-30/31/32: report turnaround time (exam completed -> signed),
+# labelled by priority so the manager dashboard can show STAT vs routine TAT.
+ris_report_tat_seconds = Histogram(
+    'ris_report_tat_seconds', 'Report turnaround time from exam completion to sign',
+    ['priority'],
+    buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 180.0, 600.0, 1800.0, 3600.0, 10800.0),
+)
+# R2-01-15: prior-auth instrumentation — expiring-soon requests and the
+# approval count feed the manager dashboard / alerting.
+ris_prior_auth_expiring = Gauge(
+    'ris_prior_auth_expiring', 'Number of prior auths expiring within the alert window',
+)
 
 
 def record_request(method, path, status_code, elapsed):
@@ -353,3 +403,14 @@ async def health_endpoint(request):
         'uptime_seconds': uptime,
         'components': components,
     }, status_code=http_status)
+
+# R2-06-03: AI-coding pilot instrumentation — acceptance vs override of
+# suggested codes feeds the >= 90% acceptance gate.
+coding_suggestions_accepted_total = Counter(
+    'coding_suggestions_accepted_total',
+    'Charge drops where the coder confirmed the suggested codes',
+)
+coding_suggestions_overridden_total = Counter(
+    'coding_suggestions_overridden_total',
+    'Charge drops where the coder changed a suggested code',
+)

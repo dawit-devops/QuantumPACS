@@ -36,6 +36,7 @@ const GROUPS: { key: string; title: string; hint: string; events: string[] }[] =
         "storage.quota_breach",
         "quota.warning",
         "system.alert",
+        "interface.failure",
         "exam.assigned",
       ],
     },
@@ -54,12 +55,23 @@ const GROUPS: { key: string; title: string; hint: string; events: string[] }[] =
         "report.signed",
       ],
     },
+    {
+      key: "portal",
+      title: "Patient portal",
+      hint: "Patient-facing notifications for portal users.",
+      events: [
+        "portal.report_available",
+        "portal.appointment_reminder",
+        "portal.follow_up_response",
+      ],
+    },
   ];
 
 const EVENT_LABELS: Record<string, string> = {
   "storage.quota_breach": "Storage quota breach",
   "quota.warning": "Quota approaching limit",
   "system.alert": "System alert",
+  "interface.failure": "Interface failure",
   "exam.assigned": "Exam assigned",
   "study.arrived": "Study arrived (upload receipt)",
   "study.verified": "Study verified",
@@ -69,6 +81,9 @@ const EVENT_LABELS: Record<string, string> = {
   "report.ready": "Report ready",
   "report.returned": "Report returned for revision",
   "report.signed": "Report signed",
+  "portal.report_available": "New imaging report available",
+  "portal.appointment_reminder": "Appointment reminder",
+  "portal.follow_up_response": "Follow-up response",
 };
 
 function NotificationPreferences() {
@@ -156,12 +171,12 @@ function NotificationPreferences() {
         emptyMessage="No preferences available"
       >
         {prefs && (
-          <Space direction="vertical" style={{ width: "100%" }} size={16}>
+          <Space vertical style={{ width: "100%" }} size={16}>
             {mutedCount > 0 && (
               <Alert
                 type="info"
                 showIcon
-                message={`${mutedCount} event type(s) muted for your account`}
+                title={`${mutedCount} event type(s) muted for your account`}
               />
             )}
             {GROUPS.map((group) => (
@@ -172,7 +187,7 @@ function NotificationPreferences() {
                 >
                   {group.hint}
                 </Text>
-                <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                <Space vertical style={{ width: "100%" }} size={8}>
                   {group.events.map((ev) => (
                     <div
                       key={ev}

@@ -20,6 +20,7 @@ from api.schemas.exams import (
     CreateExamRequest, IdentityConfirmRequest, StartProtocolRequest,
     CreateAcquisitionRequest, AcquisitionDecisionRequest, SafetyCheckRequest,
     CompleteExamRequest, IncidentRequest, OverrideRequest, CriticalFlagRequest,
+    ClaimExamRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -38,6 +39,7 @@ from api.tenant_middleware import effective_tenant
 DEFAULT_PROTOCOLS = [
     {
         'name': 'CT Head (Routine)', 'modality': 'CT', 'body_part': 'Head',
+        'clinical_indication': 'Head trauma, stroke, severe headache',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial Non-Contrast', 'required': True},
@@ -48,6 +50,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'CT Chest (Routine)', 'modality': 'CT', 'body_part': 'Chest',
+        'clinical_indication': 'Cough, dyspnoea, abnormal chest X-ray',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial Diagnostic', 'required': True},
@@ -57,6 +60,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'MRI Brain (Routine)', 'modality': 'MR', 'body_part': 'Brain',
+        'clinical_indication': 'Headache, seizure, focal deficit',
         'sequences': [
             {'name': 'Localizer', 'required': True},
             {'name': 'Axial T1', 'required': True},
@@ -69,6 +73,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'PET Whole Body', 'modality': 'PET', 'body_part': 'Whole Body',
+        'clinical_indication': 'Oncology staging / restaging',
         'sequences': [
             {'name': 'Dose Calibration', 'required': True},
             {'name': 'Uptake Period', 'required': True},
@@ -79,6 +84,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'DX Chest PA/LAT', 'modality': 'DX', 'body_part': 'Chest',
+        'clinical_indication': 'Cough, dyspnoea, pre-op clearance',
         'sequences': [
             {'name': 'PA', 'required': True},
             {'name': 'Lateral', 'required': True},
@@ -88,6 +94,7 @@ DEFAULT_PROTOCOLS = [
     },
     {
         'name': 'US Abdomen Complete', 'modality': 'US', 'body_part': 'Abdomen',
+        'clinical_indication': 'Abdominal pain, abnormal LFTs',
         'sequences': [
             {'name': 'Real-time Capture', 'required': True},
         ],
@@ -106,10 +113,12 @@ async def _seed_protocols(conn):
     for p in DEFAULT_PROTOCOLS:
         # asyncpg requires JSON strings for jsonb parameters.
         await conn.execute(
-            """INSERT INTO protocols (name, modality, body_part, sequences,
-               parameters, acr_benchmark_dlp, is_default, tenant_id)
-               VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8) """,
+            """INSERT INTO protocols (name, modality, body_part,
+               clinical_indication, sequences, parameters, acr_benchmark_dlp,
+               is_default, tenant_id)
+               VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9) """,
             p['name'], p['modality'], p['body_part'],
+            p.get('clinical_indication', ''),
             _json.dumps(p['sequences']), _json.dumps(p['parameters']),
             p['acr_benchmark_dlp'],
             p['is_default'],
@@ -188,7 +197,10 @@ class ExamsHandler(HTTPEndpoint):
             return 'urgent'
         return 'routine'
 
-    @requires_permission(Permission.EXAM_READ)
+    # §2.11 (G3): NURSING_READ holders reach the exam list — the prep queue
+    # deep-links into exam consoles, so the read gate mirrors the any-of
+    # record-read contract. Writes stay EXAM_WRITE.
+    @requires_permission([Permission.EXAM_READ, Permission.NURSING_READ])
     async def get(self, request):
         status = request.query_params.get('status')
         modality = request.query_params.get('modality')
@@ -272,7 +284,9 @@ class ExamsHandler(HTTPEndpoint):
 
 
 class ExamHandler(HTTPEndpoint):
-    @requires_permission(Permission.EXAM_READ)
+    # §2.11 (G3): same any-of read gate as the list — the NursingPanel and
+    # the prep queue both open individual exams. Writes stay EXAM_WRITE.
+    @requires_permission([Permission.EXAM_READ, Permission.NURSING_READ])
     async def get(self, request):
         exam_id = request.path_params['id']
         async with get_conn() as conn:
@@ -335,6 +349,7 @@ class ExamHandler(HTTPEndpoint):
             # (excluding this exam) so the tech sees documented reactions
             # before scanning. Rows carry checked item, answer, who, when.
             prior_safety_checks = []
+            prior_contrast_reactions = []
             if mrn:
                 prior_safety_checks = await conn.fetch(
                     """SELECT sc.check_item, sc.answer, sc.checked_by, sc.checked_at,
@@ -343,6 +358,19 @@ class ExamHandler(HTTPEndpoint):
                        JOIN exams e ON e.id = sc.exam_id
                        WHERE e.patient_id = $1 AND e.id != $2
                        ORDER BY sc.checked_at DESC""",
+                    mrn, exam_id,
+                )
+                # T-04: documented contrast reactions from this patient's
+                # other exams — the red-badge signal before contrast
+                # administration (only contrast_reaction incidents count).
+                prior_contrast_reactions = await conn.fetch(
+                    """SELECT i.incident_type, i.severity, i.description, i.created_at,
+                              e.accession_number
+                         FROM incidents i
+                         JOIN exams e ON e.id = i.exam_id
+                        WHERE e.patient_id = $1 AND e.id != $2
+                          AND i.incident_type = 'contrast_reaction'
+                        ORDER BY i.created_at DESC""",
                     mrn, exam_id,
                 )
         return ok({
@@ -361,6 +389,9 @@ class ExamHandler(HTTPEndpoint):
                 'report_status': report_status,
                 'qa_flags': qa_flags,
                 'prior_safety_checks': [dict(r) for r in prior_safety_checks],
+                'prior_contrast_reactions': [
+                    dict(r) for r in prior_contrast_reactions
+                ],
             },
         })
 
@@ -377,11 +408,33 @@ class ExamClaimHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_WRITE)
     async def post(self, request):
         exam_id = request.path_params['id']
+        body = await parse_body(ClaimExamRequest, request)
         async with get_conn() as conn:
             exam = await Exams(conn).get(exam_id)
             if not exam:
                 return not_found('Exam not found')
             current = exam.get('assigned_technologist') or ''
+            if body.release:
+                # T-02: release back to the pool — only the current owner may.
+                if not current or current != str(request.user.id):
+                    return validation_error(
+                        'Only the assigned technologist can release this exam',
+                    )
+                await conn.execute(
+                    "UPDATE exams SET assigned_technologist = '', "
+                    "updated_at = now() WHERE id = $1",
+                    exam_id,
+                )
+                await AuditLog(conn).log_event(
+                    event_type='exam.unclaimed',
+                    actor_id=request.user.id,
+                    resource_type='exam',
+                    resource_id=exam_id,
+                    details={'accession_number': exam.get('accession_number') or ''},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
+                return ok({'data': {'claimed': False}})
             if current and current != str(request.user.id):
                 return validation_error(
                     'Exam already claimed by another technologist',
@@ -456,6 +509,35 @@ class ExamProtocolHandler(HTTPEndpoint):
         return ok({'data': {'protocol_name': name}})
 
 
+# T-14: modalities exposing the patient to ionizing radiation. Acquiring on
+# these requires a recorded pregnancy / radiation-risk acknowledgment so the
+# safety checklist cannot be bypassed client-side.
+_IONIZING_MODALITIES = {'CT', 'CR', 'DX', 'XR', 'MG', 'NM', 'PT', 'PET', 'XA', 'RF'}
+
+
+async def _require_pregnancy_ack(conn, exam):
+    """Return an error message when acquisition may not proceed, else None.
+
+    The acknowledgment is any recorded safety_checks row whose item mentions
+    pregnancy — the console only posts items the technologist explicitly
+    confirmed, so the row's existence IS the acknowledgment."""
+    modality = (exam.get('modality') or '').upper()
+    if modality not in _IONIZING_MODALITIES:
+        return None
+    acked = await conn.fetchval(
+        "SELECT 1 FROM safety_checks WHERE exam_id = $1 "
+        "AND position('pregnan' in lower(check_item)) > 0 LIMIT 1",
+        exam.get('id'),
+    )
+    if acked:
+        return None
+    return (
+        'Pregnancy/radiation-risk acknowledgment must be recorded before '
+        f'acquisition for {modality} exams — record the pregnancy safety '
+        'check first'
+    )
+
+
 class ExamAcquisitionsHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_WRITE)
     async def post(self, request):
@@ -465,6 +547,9 @@ class ExamAcquisitionsHandler(HTTPEndpoint):
             exam = await Exams(conn).get(exam_id)
             if not exam:
                 return not_found('Exam not found')
+            ack_error = await _require_pregnancy_ack(conn, exam)
+            if ack_error:
+                return validation_error(ack_error)
             instance_uid = body.instance_uid or f'1.2.826.0.1.3680043.9.{uuid.uuid4().int}'
             acquisition = await Acquisitions(conn).create({
                 'exam_id': exam_id,
@@ -732,7 +817,45 @@ class ProtocolsHandler(HTTPEndpoint):
     @requires_permission(Permission.EXAM_READ)
     async def get(self, request):
         modality = request.query_params.get('modality')
+        # T-06: body-part / free-text narrowing + per-user favorite flag.
+        body_part = request.query_params.get('body_part')
+        q = request.query_params.get('q')
         async with get_conn() as conn:
             await _seed_protocols(conn)
-            protocols = await Protocols(conn).list_by_modality(modality)
+            protocols = await Protocols(conn).list_by_modality(
+                modality, body_part=body_part, q=q,
+                user_id=str(request.user.id),
+            )
         return ok({'data': protocols})
+
+
+class ProtocolFavoriteHandler(HTTPEndpoint):
+    """T-06: toggle the calling user's favorite flag on a protocol.
+
+    POST /protocols/{id}/favorite — idempotent flip; the response carries
+    the resulting state so the console star can render without a refetch."""
+
+    @requires_permission(Permission.EXAM_WRITE)
+    async def post(self, request):
+        protocol_id = request.path_params['id']
+        async with get_conn() as conn:
+            row = await conn.fetchrow(
+                "SELECT id FROM protocols WHERE id = $1", str(protocol_id),
+            )
+            if not row:
+                return not_found('Protocol not found')
+            is_favorite = await Protocols(conn).toggle_favorite(
+                request.user.id, protocol_id,
+                tenant=get_tenant_slug() or 'default',
+            )
+            await AuditLog(conn).log_event(
+                event_type='exam.protocol_favorite',
+                actor_id=request.user.id,
+                resource_type='protocol',
+                resource_id=str(protocol_id),
+                details={'is_favorite': is_favorite},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': {'protocol_id': str(protocol_id),
+                            'is_favorite': is_favorite}})

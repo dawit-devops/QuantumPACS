@@ -5,6 +5,7 @@ import {
 } from "../hooks";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
+  App,
   Layout,
   Table,
   Tag,
@@ -14,25 +15,24 @@ import {
   Alert,
   Spin,
   Space,
-  message,
 } from "antd";
 import { ThunderboltOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router";
 import withSidebar from "../common/base";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
+import {
+  EXAM_STATUS_COLORS,
+  EXAM_PRIORITY_COLORS,
+  PRIORITY_LABEL,
+} from "../common/statusColors";
 import "./TechnologistWorklist.css";
 // Status chips reuse the shared Front Desk chip styles (fd-chips/fd-chip).
 import "../frontdesk/FrontDesk.css";
 
 const Content = Layout.Content;
 
-const STATUS_COLORS: Record<string, string> = {
-  ready: "blue",
-  in_progress: "gold",
-  completed: "green",
-  cancelled: "red",
-};
+const STATUS_COLORS = EXAM_STATUS_COLORS;
 
 // technologist review P1-3: the read state of an exam the tech completed
 // (reports.status machine: draft -> preliminary -> submitted -> final).
@@ -43,17 +43,7 @@ const READ_STATE: Record<string, { label: string; color: string }> = {
   draft: { label: "In draft", color: "default" },
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  stat: "STAT",
-  urgent: "Urgent",
-  routine: "Routine",
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  stat: "red",
-  urgent: "orange",
-  routine: "default",
-};
+const PRIORITY_COLORS = EXAM_PRIORITY_COLORS;
 
 // Auto-refresh cadence per NFR-R06-06 (≤30s staleness). The exam list refetches
 // on this interval so new R04 assignments appear without a manual reload.
@@ -68,6 +58,7 @@ const STATUS_TABS = [
 ];
 
 function TechnologistWorklist() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Technologist Worklist");
 
   const navigate = useNavigate();
@@ -86,6 +77,12 @@ function TechnologistWorklist() {
   );
   const [search, setSearch] = useState(
     () => sessionStorage.getItem("tech-wl-search") || "",
+  );
+  // T-01: "My Exams" default — only exams assigned to the current user.
+  // Toggle to 'pool' reveals the unassigned pool. Persisted across the
+  // worklist → console → back loop like the other filters.
+  const [assigned, setAssigned] = useState<string | undefined>(
+    () => sessionStorage.getItem("tech-wl-assigned") || "mine",
   );
 
   // C7 (NFR-R06-06): the 30s poll can bring new assignments in silently, so
@@ -109,14 +106,14 @@ function TechnologistWorklist() {
   const { user } = useAuth();
   const myId = user?.id != null ? String(user.id) : "";
 
-  const claimExam = async (examId: string, accession: string) => {
+  const claimExam = async (examId: string, accession: string, release = false) => {
     setClaimingId(examId);
     try {
-      await request(`exams/${examId}/claim`, { data: {} });
-      message.success("Exam claimed");
+      await request(`exams/${examId}/claim`, { data: { release } });
+      message.success(release ? "Exam released to pool" : "Exam claimed");
       fetchExams();
     } catch (e: any) {
-      message.error(e.message || "Claim failed");
+      message.error(e.message || (release ? "Release failed" : "Claim failed"));
     } finally {
       setClaimingId(null);
     }
@@ -144,6 +141,11 @@ function TechnologistWorklist() {
     if (search) sessionStorage.setItem("tech-wl-search", search);
     else sessionStorage.removeItem("tech-wl-search");
   }, [search]);
+  useEffect(() => {
+    if (assigned && assigned !== "mine")
+      sessionStorage.setItem("tech-wl-assigned", assigned);
+    else sessionStorage.removeItem("tech-wl-assigned");
+  }, [assigned]);
 
   const fetchExams = useCallback(() => {
     setError(null);
@@ -151,6 +153,8 @@ function TechnologistWorklist() {
     if (statusFilter) query.status = statusFilter;
     if (modalityFilter) query.modality = modalityFilter;
     if (search) query.search = search;
+    // T-01: default to my assignments; the pool is opt-in via the toggle.
+    query.assigned = assigned === "pool" ? "pool" : "mine";
     request("exams", { query })
       .then((res: any) => {
         const rows = Array.isArray(res.data) ? res.data : [];
@@ -162,6 +166,7 @@ function TechnologistWorklist() {
           statusFilter,
           modalityFilter,
           search,
+          assigned,
         ]);
         const filterChanged = filterKey !== prevFilterKey.current;
         if (filterChanged) {
@@ -183,7 +188,7 @@ function TechnologistWorklist() {
         setError(e.message);
       })
       .finally(() => setLoading(false));
-  }, [statusFilter, modalityFilter, search]);
+  }, [statusFilter, modalityFilter, search, assigned]);
 
   useEffect(() => {
     fetchExams();
@@ -346,6 +351,16 @@ function TechnologistWorklist() {
               Claim
             </Button>
           )}
+          {r.assigned_technologist === myId && (
+            <Button
+              size="small"
+              loading={claimingId === r.id}
+              onClick={() => claimExam(r.id, r.accession_number, true)}
+              aria-label={`Release exam ${r.accession_number || r.id}`}
+            >
+              Release
+            </Button>
+          )}
           <Button
             size="small"
             type="primary"
@@ -367,12 +382,35 @@ function TechnologistWorklist() {
             <ThunderboltOutlined /> Technologist Worklist
           </h2>
           <span className="tech-wl-subtitle">
-            Your assigned exams — auto-refreshes every 30s
+            {assigned === "pool"
+              ? "Unassigned pool — claim exams to take ownership"
+              : "Your assigned exams — auto-refreshes every 30s"}
           </span>
         </div>
         <Button icon={<ReloadOutlined />} onClick={fetchExams}>
           Refresh
         </Button>
+      </div>
+
+      {/* T-01: "My Exams" / Unassigned Pool — default to my assignments,
+          toggle to work the shared pool. */}
+      <div className="fd-chips" style={{ marginBottom: 12 }}>
+        <button
+          type="button"
+          className={`fd-chip ${assigned === "mine" ? "is-active" : ""}`}
+          aria-pressed={assigned === "mine"}
+          onClick={() => setAssigned("mine")}
+        >
+          My Exams
+        </button>
+        <button
+          type="button"
+          className={`fd-chip ${assigned === "pool" ? "is-active" : ""}`}
+          aria-pressed={assigned === "pool"}
+          onClick={() => setAssigned("pool")}
+        >
+          Unassigned Pool
+        </button>
       </div>
 
       {/* P2-4: a headline instead of a row-count — the tech knows at a
@@ -442,14 +480,14 @@ function TechnologistWorklist() {
           type="success"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
+          title={`${data.length} completed exam(s) — handed off to the radiologist worklist.`}
         />
       )}
 
       {error && (
         <Alert
           type="error"
-          message="Failed to load worklist"
+          title="Failed to load worklist"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}

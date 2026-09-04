@@ -520,11 +520,7 @@ class TestHl7PatientHandler:
 
     @pytest.mark.asyncio
     async def test_adt_a06_merge_patients(self):
-        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
-        mock_conn.fetchval = AsyncMock(return_value=42)
-        mock_conn.fetch = AsyncMock(return_value=[
-            {'id': 10, 'patient_id': 'PID002', 'study_instance_uid': '1.2.3'},
-        ])
+        mock_conn = self._merge_mock_conn()
 
         with patch('services.ingestion.hl7_server.get_conn') as mock_get:
             mock_get.return_value.__aenter__.return_value = mock_conn
@@ -563,11 +559,31 @@ class TestHl7PatientHandler:
 
         assert result is True
 
-    @pytest.mark.asyncio
-    async def test_adt_a40_merge_patient_list(self):
-        mock_conn = MagicMock(); mock_conn.execute = AsyncMock()
+    @staticmethod
+    def _merge_mock_conn():
+        """Merge contract (B3): transaction() is an async context manager
+        and the propagation-count probe uses fetchrow()."""
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=42)
         mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value={
+            'orders': 0, 'appointments': 0, 'worklist': 0,
+        })
+
+        class _Tx:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, *exc):
+                return False
+
+        mock_conn.transaction = lambda: _Tx()
+        return mock_conn
+
+    @pytest.mark.asyncio
+    async def test_adt_a40_merge_patient_list(self):
+        mock_conn = self._merge_mock_conn()
 
         with patch('services.ingestion.hl7_server.get_conn') as mock_get:
             mock_get.return_value.__aenter__.return_value = mock_conn
@@ -823,8 +839,13 @@ class TestHl7HttpEndpoint:
                 # Isolate from any whitelist in config.local.yaml: the
                 # success path assumes no IP restriction is configured.
                 with patch('api.hl7.config', {}):
-                    client = TestClient(self._make_app())
-                    resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
+                    # S3-01b: api/hl7.py delegates to the interface engine,
+                    # which has its own get_conn import — patch it too.
+                    with patch('services.hl7_engine.service.get_conn') as mock_engine_get:
+                        mock_engine_get.return_value.__aenter__.return_value = mock_conn
+                        mock_engine_get.return_value.__aexit__ = AsyncMock(return_value=None)
+                        client = TestClient(self._make_app())
+                        resp = client.post('/api/hl7', content=SAMPLE_ADT_A01)
 
         assert resp.status_code == 200
         assert resp.text == 'ACK'

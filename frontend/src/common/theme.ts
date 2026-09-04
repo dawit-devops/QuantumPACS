@@ -1,5 +1,6 @@
-import type { ThemeConfig } from "antd";
 import { theme as antTheme } from "antd";
+
+import type { ThemeConfig } from "antd";
 
 export const BRAND = {
   // R1-11: cyan-700 (#0e7490) — cyan-600 (#0891b2) fails AA (3.68:1) for

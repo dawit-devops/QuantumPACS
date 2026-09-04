@@ -139,7 +139,7 @@ async def _get_blocklist_redis():
     return _blocklist_redis
 
 
-def create_token(user, expire=None, role=None, permissions=None, token_version=None):
+def create_token(user, expire=None, role=None, permissions=None, token_version=None, smart_scopes=None):
     now = datetime.now(timezone.utc)
     payload = {
         'jti': str(uuid4()),
@@ -150,10 +150,17 @@ def create_token(user, expire=None, role=None, permissions=None, token_version=N
         'id': user['id'],
         'admin': user['admin'],
     }
+    if user.get('username'):
+        payload['username'] = user['username']
     if role is not None:
         payload['role'] = role
     if permissions is not None:
         payload['permissions'] = permissions
+    # E2: SMART-on-FHIR scopes ride as a flat claim (e.g.
+    # ['patient/Patient.read', 'patient/ServiceRequest.read']). Absent =
+    # legacy role-gated tokens that keep working unchanged.
+    if smart_scopes:
+        payload['smart_scopes'] = smart_scopes
     if user.get('tenant'):
         payload['tenant'] = user['tenant']
     if token_version is not None:

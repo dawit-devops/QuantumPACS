@@ -1,14 +1,16 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
   Card,
   Descriptions,
   Tag,
-  Input,
   Select,
   Button,
   Steps,
   Alert,
   Divider,
+  Space,
+  Spin,
+  Drawer,
 } from "antd";
 import {
   EditOutlined,
@@ -16,8 +18,34 @@ import {
   CheckCircleOutlined,
   SaveOutlined,
   RollbackOutlined,
+  HistoryOutlined,
+  EyeOutlined,
+  AudioOutlined,
 } from "@ant-design/icons";
+import { request } from "../helpers";
+import ReportDocument from "../common/ReportDocument";
 import "./ReportPanel.css";
+import RichTextEditor from "./RichTextEditor";
+import AiDraftBlocks, { AiDraftBanner } from "./AiDraftBlocks";
+import type { AiReportDraftApi } from "./useAiReportDraft";
+
+// §4.4 macro chips — canned sentence fragments that append so common normal
+// findings never have to be typed from scratch. Written as literal insertable
+// phrases (not abstract command names) per §6, exactly as they land in the
+// report field.
+const FINDINGS_MACROS = [
+  "Normal lungs",
+  "No acute findings",
+  "No consolidation, effusion, or pneumothorax",
+  "Cardiomediastinal silhouette is normal",
+  "No fracture or lytic lesion",
+];
+const IMPRESSION_MACROS = [
+  "Normal study. No acute findings.",
+  "No acute cardiopulmonary abnormality.",
+  "Stable appearance. No interval change.",
+  "Correlate clinically.",
+];
 
 interface ReportPanelProps {
   exam: any;
@@ -29,18 +57,38 @@ interface ReportPanelProps {
   findings: string;
   impression: string;
   recommendations: string;
+  /** §4.4 Clinical History + Technique sections (numbered, editable). */
+  clinicalHistory?: string;
+  technique?: string;
   templates: any[];
+  templateName?: string;
   dirty: boolean;
   reviewFeedback?: string;
   onFindingsChange: (v: string) => void;
   onImpressionChange: (v: string) => void;
   onRecommendationsChange: (v: string) => void;
+  onClinicalHistoryChange?: (v: string) => void;
+  onTechniqueChange?: (v: string) => void;
   onApplyTemplate: (name: string) => void;
   onSaveDraft: () => void;
+  onPreview: () => void;
   onMarkPreliminary: () => void;
   onSubmitDraft: () => void;
   onRequestSign: () => void;
   onReturnClick: () => void;
+  onRestoreVersion?: (version: number) => void;
+  distribution?: any[] | null;
+  /** §4.4 autosave status string surfaced in the footer. */
+  autosaveStatus?: string;
+  /** Part A AI-drafted report blocks (A.5). When present, the panel renders
+   *  the per-section draft rows + banner and hard-gates sign/submit until
+   *  every unreviewed block is resolved. */
+  draft?: AiReportDraftApi;
+  /** C.3: count of unresolved AI *finding marks* (neither accepted nor
+   *  dismissed) that equally gate sign/submit alongside draft text. */
+  aiUnresolvedMarks?: number;
+  /** Ready-to-sign hint override (A.5) used while unreviewed AI blocks exist. */
+  signGateHint?: string;
 }
 
 // Report content extracted from the old ReportEditor route shell — the
@@ -62,18 +110,30 @@ export default function ReportPanel({
   findings,
   impression,
   recommendations,
+  clinicalHistory = "",
+  technique = "",
   templates,
+  templateName,
   dirty,
   reviewFeedback,
   onFindingsChange,
   onImpressionChange,
   onRecommendationsChange,
+  onClinicalHistoryChange,
+  onTechniqueChange,
   onApplyTemplate,
   onSaveDraft,
+  onPreview,
   onMarkPreliminary,
   onSubmitDraft,
   onRequestSign,
   onReturnClick,
+  onRestoreVersion,
+  distribution,
+  autosaveStatus,
+  draft,
+  aiUnresolvedMarks,
+  signGateHint,
 }: ReportPanelProps) {
   const isFinal = status === "final";
   const isResident = role === "resident";
@@ -91,207 +151,689 @@ export default function ReportPanel({
         { title: "Preliminary", icon: <AuditOutlined /> },
         { title: "Final", icon: <CheckCircleOutlined /> },
       ];
-  const step = isFinal
-    ? 2
-    : submitted
-      ? 1
-      : isResident
-        ? 0
-        : status === "preliminary"
-          ? 1
-          : 0;
+  const step = isFinal ? 2 : submitted ? 1 : isResident ? 0 : status === "preliminary" ? 1 : 0;
+
+  // R-06: version history + pairwise diff, restored via the console (the
+  // console owns report state; restoring reloads it there).
+  const [showVersions, setShowVersions] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [diffV1, setDiffV1] = useState<number | undefined>();
+  const [diffV2, setDiffV2] = useState<number | undefined>();
+  const [diff, setDiff] = useState<any>(null);
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
+
+  // §4.4 dictation: the report header carries a mic toggle. Speech recognition
+  // routes into whichever section currently holds focus ("typing also works" —
+  // the hint shown next to the toggle). State is local to this panel.
+  const [dictating, setDictating] = useState(false);
+  const [dictationLive, setDictationLive] = useState(false);
+  const [dictationError, setDictationError] = useState<string | null>(null);
+  const [focusedField, setFocusedField] = useState<
+    "findings" | "impression" | "recommendations" | null
+  >(null);
+
+  const loadVersions = useCallback(() => {
+    if (!report?.id) return;
+    setVersionsLoading(true);
+    request(`reports/${report.id}/versions`)
+      .then((res: any) => {
+        setVersions(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => setVersions([]))
+      .finally(() => setVersionsLoading(false));
+  }, [report?.id]);
+
+  const toggleVersions = useCallback(() => {
+    const next = !showVersions;
+    setShowVersions(next);
+    if (next) loadVersions();
+  }, [showVersions, loadVersions]);
+
+  const compareVersions = useCallback(async () => {
+    if (!report?.id || !diffV1 || !diffV2) return;
+    setVersionsLoading(true);
+    try {
+      const res = await request(`reports/${report.id}/versions?v1=${diffV1}&v2=${diffV2}`);
+      setDiff(res?.data ?? null);
+    } catch {
+      setDiff(null);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [report?.id, diffV1, diffV2]);
+
+  const restore = useCallback(
+    (version: number) => {
+      setRestoringVersion(version);
+      Promise.resolve(onRestoreVersion?.(version)).finally(() => setRestoringVersion(null));
+    },
+    [onRestoreVersion]
+  );
+
+  // R-07: prior reports quick-view — the patient's earlier reports for the
+  // same modality, compared without leaving the console.
+  const [showPriors, setShowPriors] = useState(false);
+  const [priorsLoading, setPriorsLoading] = useState(false);
+  const [priors, setPriors] = useState<any[]>([]);
+  const [priorDetail, setPriorDetail] = useState<any | null>(null);
+
+  const togglePriors = useCallback(() => {
+    const next = !showPriors;
+    setShowPriors(next);
+    if (next && exam?.patient_id) {
+      setPriorsLoading(true);
+      const q = new URLSearchParams({
+        patient_id: String(exam.patient_id),
+        modality: String(exam.modality || ""),
+        exclude_exam_id: String(exam.id || ""),
+      });
+      request(`reports/priors?${q.toString()}`)
+        .then((res: any) => setPriors(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setPriors([]))
+        .finally(() => setPriorsLoading(false));
+    }
+  }, [showPriors, exam?.patient_id, exam?.modality, exam?.id]);
+
+  const openPrior = useCallback((examId: string) => {
+    setPriorDetail({ loading: true });
+    request(`reports/${examId}`)
+      .then((res: any) => setPriorDetail(res?.data?.report ?? {}))
+      .catch(() => setPriorDetail({}));
+  }, []);
+
+  // Single-page ergonomic editor: the editable state fills the pane height
+  // (flex column) so viewer + report editor share one viewport with no page
+  // scroll — the textareas flex-fill the remaining space after the compact
+  // header rows, and each field scrolls internally instead.
+  const editable = canWrite && !submitted && !isFinal;
+
+  // Condensed header: the console topbar owns patient identity, so this row
+  // carries only lifecycle state + the two record tools as icon buttons.
+  const versionPriorButtons = report?.id ? (
+    <Space size={2}>
+      <Button
+        size="small"
+        type="text"
+        icon={<HistoryOutlined />}
+        onClick={toggleVersions}
+        aria-expanded={showVersions}
+        aria-label="Version history"
+      />
+      {exam?.patient_id && (
+        <Button
+          size="small"
+          type="text"
+          icon={<AuditOutlined />}
+          onClick={togglePriors}
+          aria-expanded={showPriors}
+          aria-label="Prior reports"
+        />
+      )}
+    </Space>
+  ) : null;
+
+  // Sign-readiness hint: the primary action's disabled state is visible, but
+  // the reason is spelled out (docs/viewer spec — unsafe states are blocked
+  // AND explained). A.5: while AI-drafted blocks remain unreviewed they gate
+  // signing even when an impression is present.
+  const aiGate = !!draft && (draft.unreviewedCount > 0 || (aiUnresolvedMarks ?? 0) > 0);
+  const signHint = aiGate
+    ? signGateHint || "AI-drafted blocks need review before signing"
+    : !impression.trim()
+      ? "Impression required to sign"
+      : "Ready to sign";
+
+  // §4.4 dictation toggle. We render the affordance always; the live state is
+  // only reached when the host browser actually exposes a speech recognizer
+  // and grants mic access. Otherwise the toggle reports an honest "not
+  // available" reason instead of pretending to transcribe — the header also
+  // reminds the operator that keyboard input works everywhere.
+  const recognizer = () =>
+    typeof window !== "undefined"
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
+  const startDictation = () => {
+    const rec = recognizer();
+    if (!rec) {
+      setDictating(true);
+      setDictationLive(false);
+      setDictationError(
+        "Dictation needs a speech backend your browser exposes. Type directly into any field instead."
+      );
+      return;
+    }
+    try {
+      // Created as a local const so TS keeps its non-null type through
+      // .start() — the declarative constructor throws on a dead recognizer.
+      const session = new rec({
+        continuous: true,
+        interimResults: true,
+        onerror: (_e: any) => {
+          setDictationLive(false);
+          setDictationError("Mic not available — check browser microphone permission.");
+        },
+        onresult: (r: any) => {
+          if (!r.isFinal) return;
+          const transcript = r.section?.text ?? "";
+          if (!transcript.trim()) return;
+          const field = focusedField ?? "findings";
+          if (field === "impression") onImpressionChange(impression + " " + transcript);
+          else if (field === "recommendations")
+            onRecommendationsChange(recommendations + " " + transcript);
+          else onFindingsChange(findings + " " + transcript);
+        },
+      });
+      session.start();
+      setDictating(true);
+      setDictationLive(true);
+      setDictationError(null);
+    } catch {
+      setDictating(true);
+      setDictationLive(false);
+      setDictationError(
+        "Could not start the speech recognizer — type directly into any field instead."
+      );
+    }
+  };
+  const stopDictation = () => {
+    setDictating(false);
+    setDictationLive(false);
+    setDictationError(null);
+  };
 
   return (
-    <div className="report-panel" role="complementary" aria-label="Report">
-      <Steps
-        size="small"
-        current={step}
-        className="report-steps"
-        items={steps}
-      />
+    <div
+      className={`report-panel${editable ? " report-panel-editor" : ""}`}
+      role="complementary"
+      aria-label="Report"
+    >
+      {!editable && <Steps size="small" current={step} className="report-steps" items={steps} />}
 
-      <Divider />
-
-      <Card title="Patient & Exam" size="small">
-        <Descriptions size="small" column={3} bordered>
-          <Descriptions.Item label="Patient Name">
-            {exam.patient_name || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Patient ID">
-            {exam.patient_id || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="DOB">
-            {exam.patient_birth_date || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Sex">
-            {exam.patient_sex || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Accession">
-            {exam.accession_number || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Completed">
-            {exam.completed_at
-              ? new Date(exam.completed_at).toLocaleString()
-              : "—"}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
-
-      {isFinal && (
-        <Alert
-          type="success"
-          showIcon
-          style={{ marginTop: 16 }}
-          message="This report is FINAL."
-          description={`Signed by ${
-            report?.signed_by_name || report?.signed_by || "radiologist"
-          } · ${
-            report?.signed_at ? new Date(report.signed_at).toLocaleString() : ""
-          }`}
-        />
-      )}
-
-      {submitted && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginTop: 16 }}
-          message={
-            isResident
-              ? "Submitted for attending review"
-              : "Awaiting attending review"
-          }
-          description={
-            isResident
-              ? "Your draft is with the supervising attending — it is locked until they co-sign it FINAL or return it for revision."
-              : "This report was submitted for your review. Co-sign it to finalize, or return it to the resident for revision."
-          }
-        />
-      )}
-
-      {!submitted && !isFinal && reviewFeedback && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginTop: 16 }}
-          message="Attending returned this report"
-          description={reviewFeedback}
-        />
-      )}
-
-      {!isFinal && !submitted && !canWrite && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginTop: 16 }}
-          message="Read-only report"
-          description="You have view access to this report. Editing requires the REPORT_WRITE permission — only the assigned radiologist can draft or sign."
-        />
-      )}
-
-      {!isFinal && (
-        <>
-          {canWrite && !submitted && (
-            <Card
-              title="Report Template"
-              size="small"
-              style={{ marginTop: 16 }}
-              extra={
-                <Select
-                  placeholder="Apply a template"
-                  style={{ width: 260 }}
-                  onChange={onApplyTemplate}
-                  options={templates.map((t) => ({
-                    value: t.name,
-                    label: t.name,
-                  }))}
-                  showSearch
-                  optionFilterProp="label"
+      {editable ? (
+        <div className="report-editor">
+          {/* One condensed header row: lifecycle dots + label, template
+              select, and the version/priors tools as icon buttons. */}
+          <div className="report-editor-toolbar">
+            <span className="report-editor-status" title={steps[step]?.title}>
+              {steps.map((s, i) => (
+                <span
+                  key={s.title}
+                  className={`report-editor-status-dot${i === step ? " current" : i < step ? " done" : ""}`}
+                  aria-hidden="true"
                 />
-              }
+              ))}
+              <span className="report-editor-status-label">{steps[step]?.title}</span>
+            </span>
+            <Select
+              placeholder="Apply a template"
+              style={{ width: 200, flexShrink: 0 }}
+              value={templateName || undefined}
+              onChange={onApplyTemplate}
+              options={templates.map((t) => ({
+                value: t.name,
+                label: t.name,
+              }))}
+              showSearch={{ optionFilterProp: "label" }}
+            />
+            {versionPriorButtons}
+          </div>
+
+          {/* §4.4 dictation: a mic pill in the header. The live state makes the
+              whole row go red/pulsing so a dictating operator can see at a glance.
+              The always-on hint normalizes keyboard input beside the mic. */}
+          <div className={`report-dictation${dictationLive ? " live" : ""}`}>
+            <button
+              type="button"
+              className={`report-mic${dictationLive ? " rec" : ""}`}
+              aria-pressed={dictating}
+              aria-label={dictating ? "Stop dictation" : "Start dictation"}
+              onClick={dictating ? stopDictation : startDictation}
             >
-              <span className="report-template-hint">
-                Templates seed the findings and impression sections — always
-                review and tailor the text before signing.
+              <AudioOutlined />
+              <span className="report-mic-text">
+                {dictationLive ? "Listening…" : dictating ? "Dictation unavailable" : "Dictate"}
               </span>
+              {dictationLive && <span className="report-mic-rec-dot" aria-hidden="true" />}
+            </button>
+            <span className="report-dictation-hint">
+              …or type directly into any field — the report is editable by hand.
+            </span>
+            {dictationError && (
+              <span className="report-dictation-error" role="alert">
+                {dictationError}
+              </span>
+            )}
+          </div>
+
+          {!submitted && !isFinal && reviewFeedback && (
+            <Alert
+              type="warning"
+              showIcon
+              title="Attending returned this report"
+              description={reviewFeedback}
+            />
+          )}
+          {showPriors && (
+            <Card title="Prior Reports" size="small" style={{ marginTop: 8 }}>
+              <Spin spinning={priorsLoading}>
+                {priors.length === 0 && !priorsLoading && (
+                  <span className="report-template-hint">
+                    No prior reports for this patient / modality.
+                  </span>
+                )}
+                {priors.map((p: any) => (
+                  <div
+                    key={p.report_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 0",
+                    }}
+                  >
+                    <Tag>{p.status}</Tag>
+                    <strong>{p.accession_number || p.exam_id}</strong>
+                    <span style={{ flex: 1, fontSize: 12 }}>
+                      {p.impression_excerpt || "(no impression)"}
+                    </span>
+                    <Button
+                      size="small"
+                      aria-label={`Open prior ${p.accession_number || p.exam_id}`}
+                      onClick={() => openPrior(p.exam_id)}
+                    >
+                      Open
+                    </Button>
+                  </div>
+                ))}
+              </Spin>
             </Card>
           )}
 
-          <Card title="Findings" size="small" style={{ marginTop: 16 }}>
-            <Input.TextArea
-              rows={8}
-              value={findings}
-              onChange={(e) => onFindingsChange(e.target.value)}
-              readOnly={!canWrite || submitted}
-              placeholder="Structured findings — per template or free text…"
-            />
-          </Card>
-
-          <Card title="Impression" size="small" style={{ marginTop: 16 }}>
-            <Input.TextArea
-              rows={4}
-              value={impression}
-              onChange={(e) => onImpressionChange(e.target.value)}
-              readOnly={!canWrite || submitted}
-              placeholder="Impression / conclusion (required before signing)…"
-              status={!impression.trim() ? "warning" : ""}
-            />
-          </Card>
-
-          <Card title="Recommendations" size="small" style={{ marginTop: 16 }}>
-            <Input.TextArea
-              rows={2}
-              value={recommendations}
-              onChange={(e) => onRecommendationsChange(e.target.value)}
-              readOnly={!canWrite || submitted}
-              placeholder="Optional recommendations for follow-up…"
-            />
-          </Card>
-
-          {canWrite && !submitted && (
-            <div className="report-actions">
-              <Button
-                icon={<SaveOutlined />}
-                onClick={onSaveDraft}
-                disabled={!dirty}
-              >
-                Save Draft
-              </Button>
-              {!isResident && (
-                <Button onClick={onMarkPreliminary} disabled={isFinal}>
-                  Mark Preliminary
-                </Button>
-              )}
-              {isResident && (
-                <Button
-                  type="primary"
-                  icon={<AuditOutlined />}
-                  onClick={onSubmitDraft}
-                  disabled={!impression.trim()}
-                >
-                  Submit for Review
-                </Button>
-              )}
-              {canSign && !isResident && (
-                <Button
-                  type="primary"
-                  icon={<CheckCircleOutlined />}
-                  onClick={onRequestSign}
-                  disabled={!impression.trim()}
-                >
-                  Sign Report
-                </Button>
-              )}
-            </div>
+          {showVersions && (
+            <Card title="Versions" size="small" style={{ marginTop: 8 }}>
+              <Spin spinning={versionsLoading}>
+                <Space size="small" wrap style={{ marginBottom: 8 }}>
+                  <Select
+                    placeholder="From v"
+                    style={{ width: 90 }}
+                    value={diffV1}
+                    onChange={setDiffV1}
+                    options={versions.map((v: any) => ({
+                      value: v.version_number,
+                      label: `v${v.version_number}`,
+                    }))}
+                  />
+                  <Select
+                    placeholder="To v"
+                    style={{ width: 90 }}
+                    value={diffV2}
+                    onChange={setDiffV2}
+                    options={versions.map((v: any) => ({
+                      value: v.version_number,
+                      label: `v${v.version_number}`,
+                    }))}
+                  />
+                  <Button onClick={compareVersions} disabled={!diffV1 || !diffV2}>
+                    Compare
+                  </Button>
+                </Space>
+                {diff && (
+                  <div className="report-version-diff">
+                    <Tag color={diff.findings_changed ? "orange" : "default"}>
+                      findings {diff.findings_changed ? "changed" : "same"}
+                    </Tag>
+                    <Tag color={diff.impression_changed ? "orange" : "default"}>
+                      impression {diff.impression_changed ? "changed" : "same"}
+                    </Tag>
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+                      {`— v${diff.v1?.version_number} —\n${
+                        diff.v1?.impression || diff.v1?.findings || "(empty)"
+                      }\n\n+ v${diff.v2?.version_number} +\n${
+                        diff.v2?.impression || diff.v2?.findings || "(empty)"
+                      }`}
+                    </pre>
+                  </div>
+                )}
+                <div>
+                  {versions.length === 0 && !versionsLoading && (
+                    <span className="report-template-hint">
+                      No saved versions yet — every content change is snapshotted automatically.
+                    </span>
+                  )}
+                  {versions.map((v: any) => (
+                    <div
+                      key={v.version_number}
+                      className="report-version-row"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "4px 0",
+                      }}
+                    >
+                      <strong>v{v.version_number}</strong>
+                      <span style={{ flex: 1, fontSize: 12 }}>
+                        {(v.edited_by || "—") + " · "}
+                        {v.created_at ? new Date(v.created_at).toLocaleString() : ""}
+                      </span>
+                      {canWrite && !submitted && !isFinal && onRestoreVersion && (
+                        <Button
+                          size="small"
+                          icon={<RollbackOutlined />}
+                          loading={restoringVersion === v.version_number}
+                          aria-label={`Restore version ${v.version_number}`}
+                          onClick={() => restore(v.version_number)}
+                        >
+                          Restore
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Spin>
+            </Card>
           )}
 
-          {submitted && canSign && (
-            <div className="report-actions">
+          <div className="report-editor-fields">
+            {aiGate && (
+              <AiDraftBanner
+                draft={draft}
+                onAcceptAll={draft.acceptAll}
+                onRejectAll={draft.rejectAll}
+              />
+            )}
+
+            {/* §4.4 numbered sections — Clinical History (1), Technique (2),
+                Findings (3), Impression (4). Recommendations stays optional. */}
+            <div className="report-field report-field-clinical-history">
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  1
+                </span>
+                Clinical History
+              </span>
+              <RichTextEditor
+                value={clinicalHistory ?? ""}
+                onChange={(v) => onClinicalHistoryChange?.(v)}
+                readOnly={!canWrite || submitted}
+                placeholder="Indication / relevant history…"
+              />
+            </div>
+
+            <div className="report-field report-field-technique">
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  2
+                </span>
+                Technique
+              </span>
+              <RichTextEditor
+                value={technique ?? ""}
+                onChange={(v) => onTechniqueChange?.(v)}
+                readOnly={!canWrite || submitted}
+                placeholder="Acquisition / sequence technique…"
+              />
+            </div>
+
+            <div
+              className={`report-field report-field-findings report-field-with-ai${focusedField === "findings" ? " report-field-focused" : ""}`}
+            >
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  3
+                </span>
+                Findings
+              </span>
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={findings}
+                    onChange={onFindingsChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Structured findings — per template or free text…"
+                    onFocusChange={(f) => setFocusedField(f ? "findings" : null)}
+                  />
+                  <MacroChips
+                    section="findings"
+                    onSelect={(phrase) => onFindingsChange(appendMacro(findings, phrase))}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="findings" />}
+              </div>
+            </div>
+
+            <div
+              className={`report-field report-field-impression report-field-with-ai${focusedField === "impression" ? " report-field-focused" : ""}`}
+            >
+              <span className="report-field-label">
+                <span className="report-field-index" aria-hidden="true">
+                  4
+                </span>
+                Impression
+              </span>
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={impression}
+                    onChange={onImpressionChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Impression / conclusion (required before signing)…"
+                    status={!impression.trim() ? "warning" : ""}
+                    onFocusChange={(f) => setFocusedField(f ? "impression" : null)}
+                  />
+                  <MacroChips
+                    section="impression"
+                    onSelect={(phrase) => onImpressionChange(appendMacro(impression, phrase))}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="impression" />}
+              </div>
+            </div>
+
+            <div
+              className={`report-field report-field-recommendations report-field-with-ai${focusedField === "recommendations" ? " report-field-focused" : ""}`}
+            >
+              <span className="report-field-label">Recommendations</span>
+              <div className="report-field-columns">
+                <div className="report-field-editor-col">
+                  <RichTextEditor
+                    value={recommendations}
+                    onChange={onRecommendationsChange}
+                    readOnly={!canWrite || submitted}
+                    placeholder="Optional recommendations for follow-up…"
+                    onFocusChange={(f) => setFocusedField(f ? "recommendations" : null)}
+                  />
+                </div>
+                {draft && <AiDraftBlocks draft={draft} section="recommendations" />}
+              </div>
+            </div>
+          </div>
+
+          <div className="report-actions">
+            <Button icon={<SaveOutlined />} onClick={onSaveDraft} disabled={!dirty}>
+              Save Draft
+            </Button>
+            <Button icon={<EyeOutlined />} onClick={onPreview}>
+              Preview
+            </Button>
+            {!isResident && (
+              <Button onClick={onMarkPreliminary} disabled={isFinal}>
+                Mark Preliminary
+              </Button>
+            )}
+            {isResident && (
+              <Button
+                type="primary"
+                icon={<AuditOutlined />}
+                onClick={onSubmitDraft}
+                disabled={!impression.trim() || aiGate}
+              >
+                Submit for Review
+              </Button>
+            )}
+            {autosaveStatus && (
+              <span className="report-autosave-status" role="status">
+                {autosaveStatus}
+              </span>
+            )}
+            <span
+              className="report-sign-hint"
+              data-state={signHint === "Ready to sign" ? "ok" : "warn"}
+            >
+              {signHint}
+            </span>
+            <span className="report-footer-spacer" />
+            {canSign && !isResident && (
               <Button
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 onClick={onRequestSign}
+                disabled={!impression.trim() || aiGate}
               >
+                Sign Report
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {versionPriorButtons}
+
+          {!isFinal && !submitted && canWrite && (
+            <Card title="Patient & Exam" size="small">
+              <Descriptions size="small" column={3} bordered>
+                <Descriptions.Item label="Patient Name">
+                  {exam.patient_name || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Patient ID">{exam.patient_id || "—"}</Descriptions.Item>
+                <Descriptions.Item label="DOB">{exam.patient_birth_date || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Sex">{exam.patient_sex || "—"}</Descriptions.Item>
+                <Descriptions.Item label="Accession">
+                  {exam.accession_number || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Completed">
+                  {exam.completed_at ? new Date(exam.completed_at).toLocaleString() : "—"}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
+
+          {isFinal && (
+            <Alert
+              type="success"
+              showIcon
+              style={{ marginTop: 16 }}
+              title="This report is FINAL."
+              description={`Signed by ${
+                report?.signed_by_name || report?.signed_by || "radiologist"
+              } · ${report?.signed_at ? new Date(report.signed_at).toLocaleString() : ""}`}
+            />
+          )}
+
+          {/* R-16: distribution confirmation — per-recipient ORU receipts. */}
+          {isFinal && distribution && (
+            <Card title="Distribution" size="small" style={{ marginTop: 12 }}>
+              {distribution.length === 0 ? (
+                <span className="report-template-hint">
+                  No distribution records yet — the results engine delivers the signed report to the
+                  ordering physician.
+                </span>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 6, fontSize: 13 }}>
+                    Report distributed to {distribution.length} recipient
+                    {distribution.length === 1 ? "" : "s"}:
+                  </div>
+                  {distribution.map((d: any) => (
+                    <div
+                      key={d.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "2px 0",
+                      }}
+                    >
+                      <Tag color={d.status === "SENT" ? "green" : "red"}>{d.status}</Tag>
+                      <span style={{ fontSize: 12 }}>
+                        {d.accession_number || d.report_id}
+                        {d.delivered_at
+                          ? ` · delivered ${new Date(d.delivered_at).toLocaleTimeString()}`
+                          : ` · ${d.attempts ?? 1} attempt(s) — retry pending`}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </Card>
+          )}
+
+          {submitted && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 16 }}
+              title={isResident ? "Submitted for attending review" : "Awaiting attending review"}
+              description={
+                isResident
+                  ? "Your draft is with the supervising attending — it is locked until they co-sign it FINAL or return it for revision."
+                  : "This report was submitted for your review. Co-sign it to finalize, or return it to the resident for revision."
+              }
+            />
+          )}
+
+          {!submitted && !isFinal && reviewFeedback && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginTop: 16 }}
+              title="Attending returned this report"
+              description={reviewFeedback}
+            />
+          )}
+
+          {!isFinal && !submitted && !canWrite && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 16 }}
+              title="Read-only report"
+              description="You have view access to this report. Editing requires the REPORT_WRITE permission — only the assigned radiologist can draft or sign."
+            />
+          )}
+
+          {/* Branded report document — read-only, submitted, or final surfaces
+          use the design-system REPORT-TEMPLATE.html layout. */}
+          {isFinal || submitted || !canWrite ? (
+            <div style={{ marginTop: 16 }}>
+              <ReportDocument
+                meta={{
+                  patient_name: exam.patient_name,
+                  patient_id: exam.patient_id,
+                  patient_birth_date: exam.patient_birth_date,
+                  patient_sex: exam.patient_sex,
+                  accession_number: exam.accession_number,
+                  modality: exam.modality,
+                  requested_procedure_desc: exam.requested_procedure_desc,
+                  referring_physician: exam.referring_physician,
+                  priority: exam.priority,
+                  protocol_name: exam.protocol_name,
+                }}
+                findings={findings}
+                impression={impression}
+                recommendations={recommendations}
+                clinicalHistory={clinicalHistory}
+                technique={technique}
+                signedBy={report?.signed_by_name || report?.signed_by || undefined}
+                signedAt={report?.signed_at}
+              />
+            </div>
+          ) : null}
+
+          {submitted && canSign && (
+            <div className="report-actions">
+              <Button type="primary" icon={<CheckCircleOutlined />} onClick={onRequestSign}>
                 Approve & Co-sign
               </Button>
               <Button icon={<RollbackOutlined />} onClick={onReturnClick}>
@@ -301,6 +843,69 @@ export default function ReportPanel({
           )}
         </>
       )}
+
+      {/* R-07: read-only preview of a prior report, in-console. */}
+      <Drawer
+        title={priorDetail ? `Prior report — ${exam?.accession_number || ""} comparison` : null}
+        width={520}
+        open={!!priorDetail}
+        onClose={() => setPriorDetail(null)}
+      >
+        {priorDetail?.loading ? (
+          <Spin />
+        ) : (
+          <div>
+            <p>
+              <strong>Impression:</strong>
+            </p>
+            <p style={{ whiteSpace: "pre-wrap" }}>
+              {priorDetail?.impression || "(no impression recorded)"}
+            </p>
+            <p>
+              <strong>Findings:</strong>
+            </p>
+            <p style={{ whiteSpace: "pre-wrap" }}>
+              {priorDetail?.findings || "(no findings recorded)"}
+            </p>
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+// §4.4 / §6: append a macro phrase as a new paragraph to a rich-text report
+// field. Phrase fragments are literal insertable sentences; they land as a
+// new <p> so they never collide with existing text or markup.
+function appendMacro(current: string, phrase: string): string {
+  const paragraph = `<p>${phrase}</p>`;
+  return current && current.trim() ? `${current}${paragraph}` : paragraph;
+}
+
+// §4.4 macro chips — small pill buttons below Findings/Impression that append
+// a canned phrase on click, so common normal findings never have to be typed
+// from scratch. Kept literal (insertable sentences), not abstract commands.
+function MacroChips({
+  section,
+  onSelect,
+}: {
+  section: "findings" | "impression";
+  onSelect: (phrase: string) => void;
+}) {
+  const phrases = section === "findings" ? FINDINGS_MACROS : IMPRESSION_MACROS;
+  return (
+    <div className="report-macro-chips" data-testid={`macro-chips-${section}`}>
+      {phrases.map((phrase) => (
+        <button
+          type="button"
+          key={phrase}
+          className="report-macro-chip"
+          onClick={() => onSelect(phrase)}
+          aria-label={`Add macro: ${phrase}`}
+        >
+          + {phrase}
+        </button>
+      ))}
     </div>
   );
 }

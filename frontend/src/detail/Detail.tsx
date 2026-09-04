@@ -1,16 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router";
-import {
-  App,
-  Layout,
-  Menu,
-  Breadcrumb,
-  Grid,
-  Spin,
-  Badge,
-  Tooltip,
-} from "antd";
+import { App, Layout, Menu, Breadcrumb, Grid, Spin, Badge, Tooltip, Radio } from "antd";
 import {
   EyeOutlined,
   TableOutlined,
@@ -19,6 +10,7 @@ import {
   LockOutlined,
   DashboardOutlined,
   DesktopOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import { useTheme } from "../common/ThemeProvider";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
@@ -41,7 +33,9 @@ import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
 import { isAdminScopedRole } from "../navigator";
 import { API_URL } from "../config";
 import { getWeasisStatus, openInWeasis } from "../api/weasis";
+import { prepareWadoRsImage, wadorsRenderEnabled } from "./wadors";
 const CornerstoneElement = React.lazy(() => import("./CornerstoneElement"));
+const StudyCompare = React.lazy(() => import("./viewer/StudyCompare"));
 import KeyValueTable from "./KeyValueTable";
 import Changes from "./Changes";
 import Share from "./Share";
@@ -84,10 +78,16 @@ function Detail() {
 
   const [rawAnnotations, setRawAnnotations] = useState<any[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(
-    null,
-  );
+  const [focusAnnotationUID, setFocusAnnotationUID] = useState<string | null>(null);
   const [weasisEnabled, setWeasisEnabled] = useState(false);
+
+  // R-12: Multi-study comparison mode.
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareLayout, setCompareLayout] = useState<"2x1" | "2x2">("2x1");
+  const [priorStudyUid, setPriorStudyUid] = useState<string | null>(null);
+  const [priorStudies, setPriorStudies] = useState<
+    Array<{ uid: string; description: string; date: string }>
+  >([]);
 
   // ADR-028: show the Weasis launch action only when the connector
   // integration is enabled; a failed probe hides the button.
@@ -97,17 +97,19 @@ function Detail() {
       .catch(() => setWeasisEnabled(false));
   }, []);
 
-  // Pixels always come from the self-contained wadouri loader
-  // (`wadouri:/files/{id}/data`): the v5 dicom-image-loader naturalized path
-  // parses the served file and registers every metadata module (IMAGE_PIXEL
-  // included) itself, so no separate metadata fetch is needed. The DICOMweb
-  // `wadors:` route is NOT used for rendering — it requires the app to
-  // pre-register instance metadata (addDicomWebInstance) and the backend
-  // WADO-RS response to carry a transfer-syntax Content-Type parameter;
-  // without either, wadors imageIds crash in getImageFrame with "Cannot read
-  // properties of undefined (reading 'samplesPerPixel')". Study-level
-  // DICOMweb queries (searchStudies / StudyBrowser) are unaffected — only
-  // pixel retrieval is switched.
+  // Pixels come from the self-contained wadouri loader (`wadouri:/files/{id}/data`)
+  // by default: the v5 dicom-image-loader naturalized path parses the served
+  // file and registers every metadata module (IMAGE_PIXEL included) itself, so
+  // no separate metadata fetch is needed.
+  //
+  // F6.6a adds an opt-in WADO-RS path (localStorage `qpx.viewer.wadors=1`):
+  // the instance's /metadata dicom+json document is registered into the
+  // loader's metaDataManager and the wadors: imageId is rendered instead.
+  // The backend WADO-RS multipart response now carries a transfer-syntax
+  // Content-Type parameter per PS3.18 §11.4.1 (required for the loader to
+  // pick the stored Explicit VR LE decoding path). Any failure — missing
+  // UIDs, metadata fetch error, permission gap — falls back to wadouri, so
+  // the option can never brick the viewer.
   const imageUrl = image;
 
   const measurements = parseAnnotations(rawAnnotations, imageUrl);
@@ -121,6 +123,40 @@ function Detail() {
     setTimeout(() => setFocusAnnotationUID(null), 100);
   }, []);
 
+  // Resolve the pixel source for the currently open file. Default: wadouri.
+  // F6.6a: when enabled, try WADO-RS (metadata registration + wadors imageId)
+  // and degrade to wadouri on any failure.
+  const resolvePixelSource = useCallback(
+    async (
+      file: FileRecord,
+      curStudy: FileStudy | null,
+      curSeries: FileSeries | null,
+    ): Promise<string> => {
+      const wadouri = `wadouri:${API_URL}/files/${file.id}/data`;
+      if (
+        !wadorsRenderEnabled() ||
+        !curStudy?.study_instance_uid ||
+        !curSeries?.series_instance_uid
+      ) {
+        return wadouri;
+      }
+      const node = (curSeries.files ?? []).find((f) => f.id === file.id);
+      if (!node?.sop_instance_uid) {
+        return wadouri;
+      }
+      try {
+        return await prepareWadoRsImage(
+          curStudy.study_instance_uid,
+          curSeries.series_instance_uid,
+          node.sop_instance_uid,
+        );
+      } catch {
+        return wadouri;
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     // Do not fetch the study without viewer perms: the DICOM payload itself
     // is the protected resource, so mounting the viewer must not pull it.
@@ -129,25 +165,31 @@ function Detail() {
     setError(null);
     const { id } = params;
 
-    setImage(`wadouri:${API_URL}/files/${id}/data`);
-
     getFile(id as string)
       .then((data: FileRecord) => {
         // Mount the viewer only once all metadata is in place: the remount
         // hack below used to force a second mount because the viewer could
         // initialize with empty props. CornerstoneElement now mounts
         // after-metadata and its checkReady loop covers engine readiness.
+        let curStudy: FileStudy | null = null;
+        let curSeries: FileSeries | null = null;
         for (const s of data.patient?.studies ?? []) {
           if (s.id === data.study_db_id) {
-            setStudy(s);
+            curStudy = s;
             for (const sr of s.series ?? []) {
               if (sr.id === data.series_db_id) {
-                setSeries(sr);
+                curSeries = sr;
               }
             }
           }
         }
+        setStudy(curStudy);
+        setSeries(curSeries);
         setData(data);
+        return resolvePixelSource(data, curStudy, curSeries);
+      })
+      .then((img: string) => {
+        setImage(img);
         setLoading(false);
       })
       .catch((e: Error) => {
@@ -290,6 +332,17 @@ function Detail() {
                   },
                 ]
               : []),
+            // R-12: Multi-study compare toggle (visible when a study is loaded).
+            ...(!tempKey && study?.study_instance_uid
+              ? [
+                  {
+                    key: "compare",
+                    icon: <SwapOutlined />,
+                    label: compareMode ? "Exit Compare" : "Compare",
+                    onClick: () => setCompareMode(!compareMode),
+                  },
+                ]
+              : []),
             ...(!tempKey && !isAdminScoped
               ? [
                   {
@@ -302,11 +355,7 @@ function Detail() {
                     label: (
                       <>
                         <Tooltip title="Toggle measurements panel">
-                          <Badge
-                            count={measurements.length}
-                            size="small"
-                            offset={[2, -4]}
-                          >
+                          <Badge count={measurements.length} size="small" offset={[2, -4]}>
                             <DashboardOutlined />
                           </Badge>
                         </Tooltip>
@@ -318,6 +367,27 @@ function Detail() {
               : []),
           ]}
         />
+        {/* R-12: Compare mode controls — layout toggle + prior study picker. */}
+        {compareMode && study?.study_instance_uid && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              padding: "4px 16px",
+              background: "var(--viewer-bg)",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
+            <Radio.Group
+              size="small"
+              value={compareLayout}
+              onChange={(e) => setCompareLayout(e.target.value)}
+            >
+              <Radio.Button value="2x1">2×1</Radio.Button>
+              <Radio.Button value="2x2">2×2</Radio.Button>
+            </Radio.Group>
+          </div>
+        )}
         {data && data.patient && ["image"].includes(tab) && (
           <Breadcrumb
             style={{
@@ -374,24 +444,33 @@ function Detail() {
                 />
               }
             >
-              <CornerstoneElement
-                file={data}
-                files={series?.files || null}
-                changeFile={(v: number) => {
-                  const target = series?.files?.[v];
-                  if (target) navigate(`/files/${target.id}`);
-                }}
-                image={image}
-                progressive={true}
-                visible={tab === "image"}
-                onRequestHelp={() => setShowShortcuts(true)}
-                onAnnotationsChange={handleAnnotationsChange}
-                focusAnnotationUID={focusAnnotationUID}
-                isMobile={isMobile}
-                enableReadingPresets={
-                  !isAdminScoped && hasPermission("REPORT_READ")
-                }
-              />
+              {compareMode ? (
+                <StudyCompare
+                  images={[
+                    { label: "Current", imageUrl: image },
+                    ...(priorStudyUid ? [{ label: "Prior", imageUrl: priorStudyUid }] : []),
+                  ]}
+                  layout={compareLayout}
+                  onClose={() => setCompareMode(false)}
+                />
+              ) : (
+                <CornerstoneElement
+                  file={data}
+                  files={series?.files || null}
+                  changeFile={(v: number) => {
+                    const target = series?.files?.[v];
+                    if (target) navigate(`/files/${target.id}`);
+                  }}
+                  image={image}
+                  progressive={true}
+                  visible={tab === "image"}
+                  onRequestHelp={() => setShowShortcuts(true)}
+                  onAnnotationsChange={handleAnnotationsChange}
+                  focusAnnotationUID={focusAnnotationUID}
+                  isMobile={isMobile}
+                  enableReadingPresets={!isAdminScoped && hasPermission("REPORT_READ")}
+                />
+              )}
             </Suspense>
           </div>
           {!isAdminScoped && (
@@ -413,13 +492,8 @@ function Detail() {
         />
         {tab === "changes" && <Changes file={data}></Changes>}
         {tab === "share" && <Share file={data}></Share>}
-        {tab === "admin" && hasPermission("USER_ADMIN") && (
-          <Management file={data}></Management>
-        )}
-        <KeyboardShortcuts
-          open={showShortcuts}
-          onClose={() => setShowShortcuts(false)}
-        />
+        {tab === "admin" && hasPermission("USER_ADMIN") && <Management file={data}></Management>}
+        <KeyboardShortcuts open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       </PageState>
     </Content>
   );

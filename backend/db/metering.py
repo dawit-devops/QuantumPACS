@@ -20,6 +20,23 @@ ON CONFLICT (slug, day) DO UPDATE SET
     api_calls = tenant_usage_daily.api_calls + 1
 """
 
+# S2-02 refined: the two RIS surfaces that bypass TenantMiddleware —
+# DICOM MWL C-FINDs (pynetdicom has no Request object) and notification
+# fan-outs. Same never-raises contract as record_request.
+_UPSERT_MWL_SQL = """
+INSERT INTO tenant_usage_daily (slug, day, mwl_queries)
+VALUES ($1, CURRENT_DATE, 1)
+ON CONFLICT (slug, day) DO UPDATE SET
+    mwl_queries = tenant_usage_daily.mwl_queries + 1
+"""
+
+_UPSERT_NOTIFICATIONS_SQL = """
+INSERT INTO tenant_usage_daily (slug, day, notifications)
+VALUES ($1, CURRENT_DATE, $2)
+ON CONFLICT (slug, day) DO UPDATE SET
+    notifications = tenant_usage_daily.notifications + $2
+"""
+
 _UPSERT_STORAGE_SQL = """
 INSERT INTO tenant_usage_daily (slug, day, api_calls, storage_bytes, active_users)
 VALUES ($1, CURRENT_DATE, 0, $2, 0)
@@ -37,12 +54,39 @@ async def record_request(slug):
         log.exception('metering: failed to record request for tenant %s', slug)
 
 
+async def record_mwl_query(slug):
+    """Increment today's mwl_queries counter (DICOM C-FIND path). Never raises.
+
+    An empty slug means an unmapped AE on the main DB — nothing to attribute,
+    so the call is a no-op rather than a row keyed NULL.
+    """
+    if not slug:
+        return
+    try:
+        async with get_conn() as conn:
+            await conn.execute(_UPSERT_MWL_SQL, slug)
+    except Exception:
+        log.exception('metering: failed to record MWL query for tenant %s', slug)
+
+
+async def record_notifications(slug, count=1):
+    """Add `count` delivered notifications to today's counter. Never raises."""
+    if not slug or not count:
+        return
+    try:
+        async with get_conn() as conn:
+            await conn.execute(_UPSERT_NOTIFICATIONS_SQL, slug, int(count))
+    except Exception:
+        log.exception('metering: failed to record notifications for tenant %s', slug)
+
+
 async def get_usage(slug, days=30):
     """Daily usage rows for the last `days` days (inclusive of today), oldest first."""
     async with get_conn() as conn:
         rows = await conn.fetch(
             """
-            SELECT slug, day, api_calls, storage_bytes, active_users
+            SELECT slug, day, api_calls, storage_bytes, active_users,
+                   mwl_queries, notifications
             FROM tenant_usage_daily
             WHERE slug = $1 AND day >= CURRENT_DATE - $2::int
             ORDER BY day
@@ -67,7 +111,9 @@ async def get_platform_usage(days=30):
                    COALESCE(t.name, u.slug) AS name,
                    COALESCE(SUM(u.api_calls), 0) AS api_calls,
                    COALESCE(t.storage_used_bytes, 0) AS storage_bytes,
-                   COALESCE(SUM(u.active_users), 0) AS active_users
+                   COALESCE(SUM(u.active_users), 0) AS active_users,
+                   COALESCE(SUM(u.mwl_queries), 0) AS mwl_queries,
+                   COALESCE(SUM(u.notifications), 0) AS notifications
             FROM tenant_usage_daily u
             LEFT JOIN tenants t ON t.slug = u.slug
             WHERE u.day >= CURRENT_DATE - $1::int

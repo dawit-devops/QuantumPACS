@@ -119,7 +119,7 @@ function Maintenance() {
       />
 
       <PageState loading={loading} error={error} onRetry={load}>
-        <Space direction="vertical" style={{ width: "100%" }} size={16}>
+        <Space vertical style={{ width: "100%" }} size={16}>
           <Card size="small">
             <Space align="center" size={16} wrap>
               <span
@@ -226,7 +226,7 @@ function Maintenance() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="This blocks all clinical and platform writes until you exit maintenance."
+          title="This blocks all clinical and platform writes until you exit maintenance."
         />
         <Form form={form} layout="vertical">
           <Form.Item

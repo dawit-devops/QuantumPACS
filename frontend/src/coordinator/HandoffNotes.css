@@ -1,0 +1,18 @@
+.handoff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.handoff-subtitle {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}
+
+.handoff-note-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

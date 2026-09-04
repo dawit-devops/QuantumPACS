@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
 import { Empty, Typography } from "antd";
+
+import type { ReactNode } from "react";
 
 const { Paragraph } = Typography;
 

@@ -62,7 +62,7 @@ export function ConfigTab({
               <Alert
                 type="error"
                 showIcon
-                message="Failed to load configuration"
+                title="Failed to load configuration"
                 description={configError}
                 action={
                   <Button size="small" onClick={fetchConfig}>

@@ -284,10 +284,9 @@ function ServiceKeys() {
         <Alert
           type="success"
           showIcon
-          closable
+          closable={{ onClose: () => setRawKey(null) }}
           style={{ marginBottom: 16 }}
-          onClose={() => setRawKey(null)}
-          message={
+          title={
             <span>
               Key generated:{" "}
               <code

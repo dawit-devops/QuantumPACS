@@ -1,10 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router";
-import { Layout, Menu, Grid, Drawer, Button, Space } from "antd";
-import type { MenuProps } from "antd";
 import {
   MenuOutlined,
   FileSearchOutlined,
+  AccountBookOutlined,
   UserOutlined,
   LockOutlined,
   DatabaseOutlined,
@@ -20,6 +17,7 @@ import {
   MoonOutlined,
   MedicineBoxOutlined,
   FundOutlined,
+  ExceptionOutlined,
   BookOutlined,
   MessageOutlined,
   CloudServerOutlined,
@@ -31,28 +29,40 @@ import {
   AuditOutlined,
   HomeOutlined,
   WarningOutlined,
+  AlertOutlined,
   CheckCircleOutlined,
   IdcardOutlined,
   SolutionOutlined,
   SettingOutlined,
   ScheduleOutlined,
+  FileTextOutlined,
+  CarryOutOutlined,
+  PhoneOutlined,
+  HeartOutlined,
 } from "@ant-design/icons";
-import NotificationBell from "../notifications/NotificationBell";
+import { Layout, Menu, Grid, Drawer, Button } from "antd";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router";
 
 const { useBreakpoint } = Grid;
-import { useAuth } from "../auth/AuthContext";
-import { useTheme } from "./ThemeProvider";
+
 import QuantumLogo from "./QuantumLogo";
-import TenantSelector from "../auth/TenantSelector";
+import { useTheme } from "./ThemeProvider";
 import { logout } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
+import TenantSelector from "../auth/TenantSelector";
 import { request } from "../helpers";
 import {
   ADMIN_DASHBOARD_PERMISSIONS,
   workspaceFor,
   isAdminScopedRole,
+  isClinicalScopedRole,
   NON_ADMIN_WORKSPACES,
 } from "../navigator";
-import { VIEWER_ROUTE_PERMISSIONS } from "../auth/PermissionRoute";
+import NotificationBell from "../notifications/NotificationBell";
+
+import type { MenuProps } from "antd";
+
 import "./Sidebar.css";
 
 const { Sider } = Layout;
@@ -69,8 +79,8 @@ function getKey(loc: string) {
     return "dashboard";
   }
   if (parts[0] === "fhir" && parts[1]) return "fhir-" + parts[1];
-  if (parts[0] === "reading")
-    return parts[1] === "home" ? "resident-home" : "reading-worklist";
+  if (parts[0] === "reading") return parts[1] === "home" ? "resident-home" : "reading-worklist";
+  if (parts[0] === "critical") return "critical-results";
   if (parts[0] === "qa") {
     const qaMap: Record<string, string> = {
       "qa-queue": "qa-queue",
@@ -89,6 +99,8 @@ function getKey(loc: string) {
     };
     return fdMap[parts[1]] || "fd-registration";
   }
+  if (parts[0] === "schedule")
+    return parts[1] === "resources" ? "schedule-resources" : "schedule-calendar";
   if (parts[0] === "portal") return "portal-records";
   return parts[0];
 }
@@ -98,6 +110,9 @@ export interface NavItemDef {
   path?: string;
   label: string;
   icon: React.ReactNode;
+  // When present, the item renders as an action button (dispatches onClick)
+  // instead of a route Link — used for surfaces without their own route.
+  onClick?: () => void;
   // Item shows when ANY listed permission passes (or the user is admin via
   // hasPermission). An empty list means the item is never permission-gated —
   // reserved for the always-visible Files/Account entries and for children of
@@ -146,6 +161,23 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         roles: ["resident"],
       },
       {
+        // RES-04: personal progress metrics (resident-only).
+        key: "res-progress",
+        path: "/reading/progress",
+        label: "My Progress",
+        icon: <FileDoneOutlined />,
+        permissions: ["REPORT_READ"],
+        roles: ["resident"],
+      },
+      {
+        // R-11/RES-03: curated teaching cases — both reading personas.
+        key: "teaching-library",
+        path: "/teaching",
+        label: "Teaching Library",
+        icon: <BookOutlined />,
+        permissions: ["REPORT_READ"],
+      },
+      {
         // Distinct from the section key: antd Menu rejects duplicate keys
         // (warns "Duplicated key 'reading' used in Menu by path [reading]"
         // and breaks item selection/open-state tracking).
@@ -161,6 +193,16 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Peer Review",
         icon: <AuditOutlined />,
         permissions: ["PEER_REVIEW_READ"],
+      },
+      {
+        // CR-6: critical-results monitoring surface (S10). GET
+        // /api/notifications/critical is REPORT_READ-gated, matching the
+        // route gate; flagging inside the console needs REPORT_WRITE.
+        key: "critical-results",
+        path: "/critical",
+        label: "Critical Results",
+        icon: <AlertOutlined />,
+        permissions: ["REPORT_READ"],
       },
     ],
   },
@@ -188,16 +230,41 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         permissions: ["WORKLIST_READ"],
       },
       {
+        key: "tracking",
+        path: "/tracking",
+        label: "Tracking Board",
+        icon: <DashboardOutlined />,
+        // S6-13: live tracking board for all exams — uses worklist_entries
+        // + exams tables, gated on WORKLIST_READ like the MWL.
+        permissions: ["WORKLIST_READ"],
+      },
+      {
         key: "schedule-board",
         path: "/schedule-board",
         label: "Schedule",
         icon: <CalendarOutlined />,
-        // Schedule surface: the board loads its day data from GET /api/worklist
-        // (WORKLIST_READ), so showing the item to SCHEDULE_READ-only roles is a
-        // permission dead end (R13 resident review finding P0-1). Gate on the
-        // endpoint the page actually needs; SCHEDULE_READ stays the route gate
-        // and unlocks the write actions (book/cancel) inside.
-        permissions: ["WORKLIST_READ"],
+        // The board loads day data from GET /api/worklist (WORKLIST_READ)
+        // and supports capacity booking (SCHEDULE_READ). Accept either
+        // permission so both physicians (WORKLIST_READ) and schedulers
+        // (SCHEDULE_READ) see the nav item — matches the route gate.
+        permissions: ["WORKLIST_READ", "SCHEDULE_READ"],
+      },
+      {
+        key: "schedule-calendar",
+        path: "/schedule",
+        label: "Calendar",
+        icon: <CalendarOutlined />,
+        // S4-14/16 day view: RIS-native schedule over resources (rooms/
+        // modalities/techs). Loads GET /ris/resources + /ris/appointments,
+        // both SCHEDULE_READ-gated, so the sidebar gate matches the page.
+        permissions: ["SCHEDULE_READ"],
+      },
+      {
+        key: "schedule-resources",
+        path: "/schedule/resources",
+        label: "Resources",
+        icon: <ApartmentOutlined />,
+        permissions: ["SCHEDULE_READ"],
       },
     ],
   },
@@ -234,6 +301,13 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <CheckCircleOutlined />,
         permissions: ["QA_READ"],
       },
+      {
+        key: "qa-analytics",
+        path: "/qa/analytics",
+        label: "QA Analytics",
+        icon: <FundOutlined />,
+        permissions: ["QA_READ"],
+      },
     ],
   },
   {
@@ -252,6 +326,125 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <ScheduleOutlined />,
         permissions: ["ORDER_READ"],
       },
+      {
+        // R2-01: prior-authorization management. PRIOR_AUTH_READ matches the
+        // route gate; payer-team roles and schedulers both carry it.
+        key: "prior-auth",
+        path: "/prior-auth",
+        label: "Prior Auth",
+        icon: <SafetyCertificateOutlined />,
+        permissions: ["PRIOR_AUTH_READ"],
+      },
+      {
+        // R2-02: reminders — config, delivery audit log, manual send.
+        key: "reminders",
+        path: "/reminders",
+        label: "Reminders",
+        icon: <MessageOutlined />,
+        permissions: ["PRIOR_AUTH_READ"],
+      },
+      {
+        // CC-02: care plans — coordinator board of per-patient plans
+        // (title, tasks, status, follow-up). Browse gated on PATIENT_READ.
+        key: "care-plans",
+        path: "/care-plans",
+        label: "Care Plans",
+        icon: <CarryOutOutlined />,
+        permissions: ["PATIENT_READ"],
+      },
+      {
+        // CC-04: communication log — inbound/outbound correspondence trail
+        // per patient (append-only audit surface).
+        key: "communications",
+        path: "/communications",
+        label: "Communications",
+        icon: <PhoneOutlined />,
+        permissions: ["PATIENT_READ"],
+      },
+      {
+        // §2.11 nursing prep queue — the minimal nursing surface the spec
+        // asks for: a queue that deep-links into exam consoles where the
+        // NursingPanel charts vitals/checklist/consent/notes. NURSING_READ
+        // rides on care_coordinator (G3).
+        key: "nursing-prep",
+        path: "/nursing",
+        label: "Nursing Prep",
+        icon: <HeartOutlined />,
+        permissions: ["NURSING_READ"],
+      },
+      {
+        // CC-13: patient quick search — opens the global overlay (same
+        // mount that serves front desk, extended to this workspace).
+        key: "coord-patient-search",
+        label: "Patient Search",
+        icon: <SearchOutlined />,
+        permissions: ["PATIENT_READ"],
+        onClick: () => {
+          window.dispatchEvent(new Event("fd.patient-search.open"));
+        },
+      },
+    ],
+  },
+  {
+    // S11: billing capture — coder confirms CPT suggestions, drops the
+    // charge, and monitors unbilled aging. Both surfaces gate on BILLING_READ.
+    key: "billing",
+    title: "Billing",
+    icon: <AccountBookOutlined />,
+    items: [
+      {
+        key: "billing-queue",
+        path: "/billing/queue",
+        label: "Billing Queue",
+        icon: <AccountBookOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        // B-06: claim lifecycle tracking dashboard.
+        key: "billing-claims",
+        path: "/billing/claims",
+        label: "Claims",
+        icon: <AccountBookOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        // B-07: revenue trends + AR aging.
+        key: "billing-revenue",
+        path: "/billing/revenue",
+        label: "Revenue",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        key: "billing-unbilled",
+        path: "/billing/unbilled",
+        label: "Unbilled Aging",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        key: "billing-denials",
+        path: "/billing/denials",
+        label: "Denial Rework",
+        icon: <ExceptionOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        // B-08/B-09: fee schedule master data + payer contracts (contracts tab).
+        key: "billing-fee-schedule",
+        path: "/billing/fee-schedule",
+        label: "Fee Schedule",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
+      {
+        // S11-13: signed-vs-charged reconciliation snapshot.
+        key: "billing-reconciliation",
+        path: "/billing/reconciliation",
+        label: "Reconciliation",
+        icon: <FundOutlined />,
+        permissions: ["BILLING_READ"],
+      },
     ],
   },
   {
@@ -259,6 +452,16 @@ export const NAV_SECTIONS: NavSectionDef[] = [
     title: "Admin",
     icon: <LockOutlined />,
     items: [
+      {
+        key: "admin-report-templates",
+        path: "/admin/report-templates",
+        label: "Report Templates",
+        icon: <FileTextOutlined />,
+        // The backend gates create/publish/rollback on REPORT_TEMPLATE_ADMIN
+        // (not REPORT_WRITE) — accept either so tenant_admin/pacs_admin (who
+        // hold REPORT_TEMPLATE_ADMIN but not REPORT_WRITE) reach the library.
+        permissions: ["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"],
+      },
       {
         // The dashboard is the landing home of every admin-scoped role; it
         // sits at the top of the Admin section and is role-scoped (adminOnly)
@@ -268,6 +471,29 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Dashboard",
         icon: <DashboardOutlined />,
         permissions: [...ADMIN_DASHBOARD_PERMISSIONS],
+        adminOnly: true,
+      },
+      {
+        // S12-35: department-manager dashboard — TAT, utilization, unbilled
+        // aging, volume. REPORT_READ matches the route gate; adminOnly keeps
+        // the Admin section from leaking to clinical roles (radiologist etc.)
+        // who have REPORT_READ but are not admin-scoped.
+        key: "ris-dashboard",
+        path: "/admin/ris-dashboard",
+        label: "RIS Dashboard",
+        icon: <FundOutlined />,
+        permissions: ["REPORT_READ"],
+        adminOnly: true,
+      },
+      {
+        // DM-07: staff schedule management — view/create shift assignments.
+        // SCHEDULE_READ matches the route gate; adminOnly keeps it in the
+        // Admin section for the department manager role.
+        key: "staff-schedule",
+        path: "/admin/staff-schedule",
+        label: "Staff Schedule",
+        icon: <ScheduleOutlined />,
+        permissions: ["SCHEDULE_READ"],
         adminOnly: true,
       },
       {
@@ -358,7 +584,7 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         path: "/integrations",
         label: "Integrations",
         icon: <ApiOutlined />,
-        permissions: ["SYSTEM_ADMIN"],
+        permissions: ["SYSTEM_ADMIN", "TENANT_ADMIN"],
       },
       {
         key: "hl7",
@@ -366,6 +592,17 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "HL7",
         icon: <MessageOutlined />,
         permissions: ["HL7_READ"],
+      },
+      {
+        // Interface health (RIS-UI-37): the S3-16 dashboard under /admin.
+        // Admin-scoped like dicomweb — clinical roles holding legacy
+        // HL7_READ keep the /hl7 console, the /admin surface is ops-only.
+        key: "interfaces",
+        path: "/admin/interfaces",
+        label: "Interface Health",
+        icon: <ApiOutlined />,
+        permissions: ["HL7_READ"],
+        adminOnly: true,
       },
       {
         // Platform-ops surfaces (super_admin review): only the platform
@@ -397,14 +634,13 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         // INTERFACE_ADMIN were dropped from the gate: tenant_admin and
         // pacs_admin hold them but the route and the
         // /api/dicomweb* backend guards all require DICOMWEB_READ.
-        // adminOnly: the console is admin-scoped; clinical roles (radiologist,
-        // physician) carry legacy DICOMWEB_READ but must not see it — the
-        // same scope the AdminConsoleRoute and navigator.ts apply.
+        // Not adminOnly: DICOMWEB_READ is granted to clinical roles
+        // (radiologist/teleradiologist/physician via legacy grants) and the
+        // console is intentionally reachable for them (user decision 2026-08-27).
         key: "dicomweb",
         label: "DICOMweb",
         icon: <CloudServerOutlined />,
         permissions: ["DICOMWEB_READ"],
-        adminOnly: true,
         children: [
           {
             key: "dicomweb-server",
@@ -445,10 +681,10 @@ export const NAV_SECTIONS: NavSectionDef[] = [
       },
       {
         key: "fd-visits",
-        path: "/frontdesk/visits",
-        label: "Visits & Check-In",
+        path: "/frontdesk/schedule",
+        label: "Today's Schedule",
         icon: <MedicineBoxOutlined />,
-        permissions: ["REGISTRATION_READ"],
+        permissions: ["SCHEDULE_READ"],
       },
       {
         key: "fd-queue",
@@ -456,6 +692,15 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         label: "Waiting Queue",
         icon: <TeamOutlined />,
         permissions: ["QUEUE_READ"],
+      },
+      {
+        key: "fd-patient-search",
+        label: "Patient Search",
+        icon: <SearchOutlined />,
+        permissions: ["PATIENT_READ"],
+        onClick: () => {
+          window.dispatchEvent(new Event("fd.patient-search.open"));
+        },
       },
     ],
   },
@@ -471,6 +716,27 @@ export const NAV_SECTIONS: NavSectionDef[] = [
         icon: <SolutionOutlined />,
         // Own-data patient portal (R19): scope-gated server-side via
         // patient_staff_scope, never a navigation target for non-holders.
+        permissions: ["PORTAL_READ"],
+      },
+      {
+        key: "portal-appointments",
+        path: "/portal/appointments",
+        label: "Appointments",
+        icon: <CalendarOutlined />,
+        permissions: ["PORTAL_READ"],
+      },
+      {
+        key: "portal-results",
+        path: "/portal/results",
+        label: "Results",
+        icon: <FileTextOutlined />,
+        permissions: ["PORTAL_READ"],
+      },
+      {
+        key: "portal-followups",
+        path: "/portal/follow-ups",
+        label: "Follow-ups",
+        icon: <MessageOutlined />,
         permissions: ["PORTAL_READ"],
       },
     ],
@@ -522,9 +788,14 @@ const SECTION_OF_KEY: Record<string, string> = {
   "dicomweb-store": "admin",
   "dicomweb-browser": "admin",
   integrations: "admin",
+  "ris-dashboard": "admin",
+  "staff-schedule": "admin",
   worklist: "acquisition",
+  tracking: "acquisition",
   exams: "acquisition",
   "schedule-board": "acquisition",
+  "schedule-calendar": "acquisition",
+  "schedule-resources": "acquisition",
   "reading-worklist": "reading",
   "resident-home": "reading",
   "peer-review": "reading",
@@ -533,10 +804,16 @@ const SECTION_OF_KEY: Record<string, string> = {
   "qa-protocols": "qa",
   "qa-incidents": "qa",
   "qa-actions": "qa",
+  "qa-analytics": "qa",
   "fd-registration": "frontdesk",
   "fd-visits": "frontdesk",
   "fd-queue": "frontdesk",
+  "fd-patient-search": "frontdesk",
+  "coord-patient-search": "coordination",
   "portal-records": "portal",
+  "portal-appointments": "portal",
+  "portal-results": "portal",
+  "portal-followups": "portal",
   metrics: "analytics",
 };
 
@@ -548,7 +825,7 @@ export function hasItemPermission(
   item: NavItemDef,
   hasPermission: (p: string) => boolean,
   isAdminScoped = false,
-  role?: string,
+  role?: string
 ): boolean {
   if (item.adminOnly && !isAdminScoped) return false;
   if (item.roles && !item.roles.includes(role ?? "")) return false;
@@ -557,14 +834,25 @@ export function hasItemPermission(
 
 function navItemToItem(
   item: NavItemDef,
-  selectedKey: string,
+  selectedKey: string
 ): NonNullable<MenuProps["items"]>[number] {
-  const link = (child: NavItemDef) => (
-    <Link to={child.path!}>
-      {child.icon}
-      <span className="nav-text">{child.label}</span>
-    </Link>
-  );
+  const link = (child: NavItemDef) =>
+    child.onClick ? (
+      <button
+        type="button"
+        className="nav-item-action"
+        onClick={child.onClick}
+        aria-label={child.label}
+      >
+        {child.icon}
+        <span className="nav-text">{child.label}</span>
+      </button>
+    ) : (
+      <Link to={child.path!}>
+        {child.icon}
+        <span className="nav-text">{child.label}</span>
+      </Link>
+    );
   if (item.children) {
     return {
       key: item.key,
@@ -628,23 +916,61 @@ function Sidebar() {
   // sections (Reading / Acquisition / QA) are always hidden for them — even
   // when their grants would pass — mirroring navigator.ts landing rules.
   const isAdminScoped = isAdminScopedRole(user?.role);
+  const isClinicalScoped = isClinicalScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
     items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission, isAdminScoped, user?.role),
+      hasItemPermission(item, hasPermission, isAdminScoped, user?.role)
     ),
   }))
-    .filter(
-      ({ section, items }) => userWorkspace === section.key || items.length > 0,
-    )
-    .filter(
-      ({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key),
-    );
+    .filter(({ section, items }) => userWorkspace === section.key || items.length > 0)
+    // physician walk R1: the front-desk and portal surfaces belong to
+    // non-admin staff / patient roles. Admin-scoped roles never see them
+    // (existing rule, NON_ADMIN_WORKSPACES); clinical-scoped roles (physician
+    // via SCHEDULE_READ / PATIENT_READ) must not see them either — the
+    // underlying grants unlock the routes but the surfaces are not their
+    // workspace. Mirrors navigator.ts, which excludes frontdesk/portal from
+    // clinical landing. The clinical sections (reading/acquisition/qa/
+    // coordination) stay visible for clinical roles.
+    .filter(({ section }) => {
+      // patient walk (sidebar refinement): the patient portal is the only
+      // workspace the patient should navigate. The SCHEDULE_READ grant (needed
+      // for the portal's own appointments) leaks the Acquisition section
+      // (Schedule Board / Calendar / Resources) and the Front Desk Today's
+      // Schedule — both are staff/clinical surfaces, not patient-facing.
+      if (user?.role === "patient" && (section.key === "acquisition" || section.key === "frontdesk")) {
+        return false;
+      }
+      if (section.key === "frontdesk" || section.key === "portal") {
+        return !isAdminScoped && !isClinicalScoped;
+      }
+      if (isAdminScoped && NON_ADMIN_WORKSPACES.has(section.key)) {
+        return false;
+      }
+      // referring_physician walk (sidebar refinement): the Acquisition section
+      // (Modality Worklist / Tracking / Schedule / Calendar / Resources) is
+      // the technologist/scheduler's operational surface. The referring
+      // physician holds WORKLIST_READ/SCHEDULE_READ (they open the reading +
+      // coordination surfaces) but does not operate the acquisition workflow —
+      // hide the section so its nav items don't advertise surfaces outside the
+      // role's clinical referrer workspace.
+      if (user?.role === "referring_physician" && section.key === "acquisition") {
+        return false;
+      }
+      // receptionist walk (sidebar refinement): the Acquisition section is
+      // the technologist/scheduler's operational surface. The receptionist
+      // holds WORKLIST_READ/SCHEDULE_READ (needed for the schedule board)
+      // but does not operate the modality worklist / tracking / scheduling
+      // workflow — hide the section so the front-office sidebar stays clean.
+      if (user?.role === "receptionist" && section.key === "acquisition") {
+        return false;
+      }
+      return true;
+    });
 
   const onCollapse = (collapsed: boolean) => {
     setCollapsed(collapsed);
   };
-
   const handleLogout = async () => {
     try {
       await logout();
@@ -655,9 +981,17 @@ function Sidebar() {
     navigate("/login");
   };
 
+  // FD-07: the sidebar "Patient Search" action opens the global overlay
+  // (mounted in the withSidebar wrapper on front-desk routes) via event.
+  const openPatientSearch = () => {
+    window.dispatchEvent(new Event("fd.patient-search.open"));
+  };
+
   const sidebarContent = (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
+        data-role={user?.role || undefined}
+        className="sidebar-header"
         style={{
           padding: collapsed ? "16px 8px" : "16px 24px",
           display: "flex",
@@ -679,90 +1013,92 @@ function Sidebar() {
         onClick={() => {
           if (isMobile) setDrawerOpen(false);
         }}
-        items={
-          [
-            hasItemPermission(
-              {
+        items={[
+          hasItemPermission(
+            {
+              key: "files",
+              path: "/",
+              label: "Files",
+              icon: <FileSearchOutlined />,
+              // referring_physician walk F2: gate on FILE_READ only, not the
+              // VIEWER_ROUTE_PERMISSIONS any-of. Roles holding only
+              // STUDY_READ/VIEWER_READ (referring_physician, ed_physician) pass
+              // the route gate but get 403 on every /api/files* call (backend
+              // requires FILE_READ) — advertising the page that can't load
+              // data is a dead nav item. The route stays deep-linkable.
+              permissions: ["FILE_READ"],
+            },
+            hasPermission,
+            isAdminScoped
+          )
+            ? {
                 key: "files",
-                path: "/",
-                label: "Files",
-                icon: <FileSearchOutlined />,
-                permissions: [...VIEWER_ROUTE_PERMISSIONS],
-              },
-              hasPermission,
-              isAdminScoped,
-            )
-              ? {
-                  key: "files",
-                  label: (
-                    <Link to="/">
-                      <FileSearchOutlined />
-                      <span className="nav-text">Files</span>
-                    </Link>
-                  ),
-                }
-              : null,
-            {
-              key: "account",
-              label: (
-                <Link to="/account">
-                  <UserOutlined />
-                  <span className="nav-text">Account</span>
-                </Link>
-              ),
-            },
-            ...sections.map(({ section, items }) => ({
-              key: section.key,
-              icon: section.icon,
-              label: section.title,
-              children: items.map((item) => navItemToItem(item, selectedKey)),
-            })),
-            {
-              key: "notifications",
-              // P2-6: the unread badge's text must not join the menu item's
-              // accessible name ("49Notifications"). The count is already
-              // aria-hidden inside NotificationBell; this span (pure text,
-              // never focusable) is hidden so the bell button's own
-              // aria-label "Notifications" is the menuitem's sole name —
-              // wrapping the focusable button in aria-hidden would trip
-              // axe's aria-hidden-focus rule.
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <NotificationBell />
-                  <span className="nav-text" aria-hidden="true">
-                    Notifications
-                  </span>
+                label: (
+                  <Link to="/">
+                    <FileSearchOutlined />
+                    <span className="nav-text">Files</span>
+                  </Link>
+                ),
+              }
+            : null,
+          {
+            key: "account",
+            label: (
+              <Link to="/account">
+                <UserOutlined />
+                <span className="nav-text">Account</span>
+              </Link>
+            ),
+          },
+          ...sections.map(({ section, items }) => ({
+            key: section.key,
+            icon: section.icon,
+            label: section.title,
+            children: items.map((item) => navItemToItem(item, selectedKey)),
+          })),
+          {
+            key: "notifications",
+            // P2-6: the unread badge's text must not join the menu item's
+            // accessible name ("49Notifications"). The count is already
+            // aria-hidden inside NotificationBell; this span (pure text,
+            // never focusable) is hidden so the bell button's own
+            // aria-label "Notifications" is the menuitem's sole name —
+            // wrapping the focusable button in aria-hidden would trip
+            // axe's aria-hidden-focus rule.
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <NotificationBell />
+                <span className="nav-text" aria-hidden="true">
+                  Notifications
                 </span>
-              ),
-              style: {
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                marginTop: 8,
-              },
+              </span>
+            ),
+            style: {
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              marginTop: 8,
             },
-            {
-              key: "theme-toggle",
-              onClick: toggleTheme,
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {isDark ? <SunOutlined /> : <MoonOutlined />}
-                  <span className="nav-text">
-                    {isDark ? "Light Mode" : "Dark Mode"}
-                  </span>
-                </span>
-              ),
-            },
-            {
-              key: "logout",
-              onClick: handleLogout,
-              label: (
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <LogoutOutlined />
-                  <span className="nav-text">Logout</span>
-                </span>
-              ),
-            },
-          ].filter(Boolean) as MenuProps["items"]
-        }
+          },
+          {
+            key: "theme-toggle",
+            onClick: toggleTheme,
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isDark ? <SunOutlined /> : <MoonOutlined />}
+                <span className="nav-text">{isDark ? "Light Mode" : "Dark Mode"}</span>
+              </span>
+            ),
+          },
+          {
+            key: "logout",
+            onClick: handleLogout,
+            label: (
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <LogoutOutlined />
+                <span className="nav-text">Logout</span>
+              </span>
+            ),
+          },
+        ].filter(Boolean)}
       />
     </div>
   );

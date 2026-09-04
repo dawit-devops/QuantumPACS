@@ -156,3 +156,63 @@ class TestWorklistCancel:
         assert "UPDATE" in sql
         assert "cancelled" in sql
         assert "entry-uuid-here" in sql
+
+class TestWorklistDicomMatching:
+    """M-7: MWL matching must follow DICOM PS3.4 C.2.2.2 — attributes
+    match as single values (exact) unless the query carries the '*'/'?'
+    wildcards; literal '%'/'_' must never inject LIKE syntax."""
+
+    @pytest.mark.asyncio
+    async def test_search_patient_id_exact_without_wildcards(self):
+        from db.worklist import Worklist
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        wl = Worklist(conn=conn)
+        await wl.search(patient_id='P001')
+        sql = str(conn.fetch.call_args[0][0])
+        assert 'patient_id' in sql
+        assert '%' not in sql.replace('ILIKE', '')
+
+    @pytest.mark.asyncio
+    async def test_search_patient_id_wildcard_translated(self):
+        from db.worklist import Worklist
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        wl = Worklist(conn=conn)
+        await wl.search(patient_id='P0*1')
+        sql = str(conn.fetch.call_args[0][0])
+        assert "'P0%1'" in sql
+
+    @pytest.mark.asyncio
+    async def test_search_accession_exact_without_wildcards(self):
+        from db.worklist import Worklist
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        wl = Worklist(conn=conn)
+        await wl.search(accession='ACC001')
+        sql = str(conn.fetch.call_args[0][0])
+        assert "'ACC001'" in sql
+        assert '%ACC001%' not in sql
+
+    @pytest.mark.asyncio
+    async def test_search_accession_wildcard_translated(self):
+        from db.worklist import Worklist
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        wl = Worklist(conn=conn)
+        await wl.search(accession='ACC*1')
+        sql = str(conn.fetch.call_args[0][0])
+        assert "'ACC%1'" in sql
+
+    @pytest.mark.asyncio
+    async def test_search_literal_percent_never_injects_like(self):
+        from db.worklist import Worklist
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        wl = Worklist(conn=conn)
+        await wl.search(patient_id='100%')
+        sql = str(conn.fetch.call_args[0][0])
+        assert "100%" not in sql.replace('ILIKE', '')
+        await wl.search(accession='ACC100%')
+        sql2 = str(conn.fetch.call_args[0][0])
+        assert "ACC100%" not in sql2.replace('ILIKE', '')

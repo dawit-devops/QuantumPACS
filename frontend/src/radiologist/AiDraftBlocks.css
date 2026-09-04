@@ -1,0 +1,396 @@
+/* ═══════════════════════════════════════════════════════════
+   AI-drafted report blocks (Part A).
+   A.2 / C.1 tokens: violet (#9b8cf0) = AI-not-verified, across the
+   whole product. The tokens below are the single source of truth for
+   the AI violet so image marks and draft text can never drift apart.
+   Accepted blocks drop the violet styling and become the radiologist's
+   own text (C.2). The same tokens are used by AiFindingsOverlay.css
+   (via var(--ai-*) + localStorage-style fallbacks).
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --ai-mark-stroke: #9b8cf0; /* the AI violet — nothing else may reuse it */
+  --ai-mark-fill: rgba(155, 140, 240, 0.18);
+  --ai-glow: rgba(155, 140, 240, 0.12); /* faint wash behind unreviewed AI */
+  --ai-border: rgba(155, 140, 240, 0.4);
+  --ai-text: #cfc7ff; /* lighter violet for titles over dim chrome */
+}
+
+/* ── Banner (A.4) — shown at the top of the editor while any
+      unreviewed block exists. ── */
+
+.ai-draft-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ai-glow);
+  border: 1px solid var(--ai-border);
+  border-radius: 4px;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.ai-draft-banner-title {
+  font-weight: 600;
+  color: var(--ai-text);
+  white-space: nowrap;
+}
+
+.ai-draft-banner-count {
+  color: #8992a3;
+  margin-right: auto;
+}
+
+/* ── Per-section block list ── */
+
+.ai-draft-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+  flex: 0 0 auto;
+}
+
+/* When rendered in the side-by-side report layout, the AI panel is a fixed
+   side rail: it scrolls independently of the editor instead of sharing its
+   vertical budget. */
+.report-field-columns .ai-draft-rows {
+  overflow-y: auto;
+  align-self: stretch;
+}
+
+/* Collapsed summary bar — compact one-line strip per section */
+.ai-draft-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--ai-border);
+  border-radius: 3px;
+  background: var(--ai-glow);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ai-text);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ai-draft-summary:hover {
+  border-color: var(--ai-mark-stroke);
+  background: rgba(155, 140, 240, 0.18);
+}
+
+.ai-draft-summary.expanded {
+  border-radius: 3px 3px 0 0;
+  border-bottom: none;
+}
+
+.ai-draft-summary-icon {
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+
+.ai-draft-summary-count {
+  flex: 1;
+  text-align: left;
+  font-weight: 500;
+}
+
+.ai-draft-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #e6e9ee;
+  margin-left: auto;
+}
+
+/* Expanded content wrapper — scrollable when blocks overflow */
+.ai-draft-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--ai-border);
+  border-top: none;
+  border-radius: 0 0 3px 3px;
+  padding: 4px;
+}
+
+/* Each draft row: gutter (accept/reject) + body (tag + text) */
+.ai-draft-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--ai-glow);
+  border-left: 3px solid var(--ai-border);
+  border-radius: 3px;
+  align-items: flex-start;
+}
+
+.ai-draft-gutter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 24px;
+  align-items: center;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+
+.ai-draft-row:hover .ai-draft-gutter {
+  opacity: 1;
+}
+
+.ai-draft-gutter .ant-btn {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  font-size: 11px;
+  color: #e6e9ee;
+}
+
+.ai-draft-gutter .ai-draft-accept:hover {
+  color: #6bbf8a;
+  background: rgba(107, 191, 138, 0.12);
+}
+
+.ai-draft-gutter .ai-draft-reject:hover {
+  color: #e2635a;
+  background: rgba(226, 99, 90, 0.12);
+}
+
+.ai-draft-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-draft-tagrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.ai-draft-tag {
+  font-size: 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--ai-mark-stroke);
+  letter-spacing: 0.02em;
+}
+
+.ai-draft-tag .anticon {
+  font-size: 10px;
+}
+
+.ai-draft-quality {
+  font-size: 9px;
+  line-height: 14px;
+  height: 16px;
+  padding: 0 4px;
+  border: none;
+  background: rgba(226, 99, 90, 0.12);
+  color: #e2635a;
+}
+
+.ai-draft-regenerate {
+  margin-left: auto;
+  font-size: 10px;
+  color: #8992a3;
+  height: 20px;
+  line-height: 20px;
+}
+
+.ai-draft-regenerate .anticon {
+  font-size: 10px;
+}
+
+.ai-draft-regenerate:hover {
+  color: var(--ai-text);
+}
+
+/* Clickable text body */
+.ai-draft-text {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  color: #e6e9ee;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 2px;
+  transition: border-color 0.1s;
+}
+
+.ai-draft-text:hover {
+  border-color: var(--ai-border);
+}
+
+/* Editable textarea */
+.ai-draft-edit textarea {
+  width: 100%;
+  resize: vertical;
+  background: #1d222a;
+  border: 1px solid #262b34;
+  border-radius: 3px;
+  color: #e6e9ee;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 4px;
+  font-family: inherit;
+}
+
+.ai-draft-edit-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Confirm modal text */
+.ai-draft-confirm-text {
+  padding: 8px 10px;
+  background: #111318;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #e6e9ee;
+}
+
+.ai-draft-confirm-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #8992a3;
+}
+
+/* ── Changelog modal ── */
+
+.ai-draft-log-toggle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #e6e9ee;
+  padding: 0 4px;
+  height: 20px;
+}
+
+.ai-draft-log-toggle:hover {
+  color: var(--ai-text);
+}
+
+.ai-draft-log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.ai-draft-log li {
+  padding: 6px 0;
+  border-bottom: 1px solid #262b34;
+  font-size: 12px;
+  color: #e6e9ee;
+}
+
+.ai-draft-log-action {
+  font-size: 10px;
+  line-height: 16px;
+  min-width: 60px;
+  text-align: center;
+  background: #262b34;
+  color: #8992a3;
+  border: none;
+}
+
+.ai-draft-log-time {
+  color: #565d6b;
+  margin-left: 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+.ai-draft-log-actor {
+  color: #8992a3;
+  margin-left: 8px;
+  font-size: 10px;
+}
+
+.ai-draft-log-detail {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #8992a3;
+  padding-left: 12px;
+}
+
+.ai-draft-log-empty {
+  color: #565d6b;
+  font-size: 12px;
+  text-align: center;
+  padding: 24px 0;
+}
+/* A.6 provenance — an AI draft may surface a conflicting prior report inline
+   so the radiologist sees the disagreement before trusting the findings. */
+.ai-draft-prior-note {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-left: 3px solid var(--warning, #dba75a);
+  background: rgba(219, 167, 90, 0.08);
+  font-size: 11.5px;
+  color: var(--warning, #dba75a);
+  line-height: 1.4;
+}
+
+/* ── Rejected drafts (C.6: dismissal ≠ deletion) ──
+   Rejected blocks stay muted but visible and recoverable via the
+   "Show rejected" toggle + Reconsider action below. */
+
+.ai-draft-rejected-toggle {
+  font-size: 11px;
+  color: #e6e9ee;
+  padding: 0 4px;
+  height: 20px;
+}
+
+.ai-draft-rejected-toggle:hover {
+  color: var(--ai-text);
+}
+
+.ai-draft-rows-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.ai-draft-row-rejected {
+  background: rgba(86, 93, 107, 0.1);
+  border-left: 3px solid #565d6b;
+  opacity: 0.9;
+}
+
+.ai-draft-rejected-tag {
+  font-size: 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: #8992a3;
+  letter-spacing: 0.02em;
+}
+
+.ai-draft-rejected-tag .anticon {
+  font-size: 10px;
+}
+
+.ai-draft-rejected-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9aa3b0;
+  cursor: default;
+}
+
+.ai-draft-gutter .ai-draft-reconsider:hover {
+  color: var(--ai-text);
+  background: var(--ai-glow);
+}

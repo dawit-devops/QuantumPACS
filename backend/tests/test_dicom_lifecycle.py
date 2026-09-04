@@ -31,7 +31,8 @@ def _close_throwaway_dicom_loop():
 class TestDicomLifecycleFunctions:
     def test_start_dicom_creates_ae_with_correct_title(self):
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -44,7 +45,8 @@ class TestDicomLifecycleFunctions:
 
     def test_start_dicom_uses_configured_port(self):
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -60,7 +62,8 @@ class TestDicomLifecycleFunctions:
 
     def test_start_dicom_registers_cstore_handler(self):
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -74,7 +77,8 @@ class TestDicomLifecycleFunctions:
 
     def test_stop_dicom_shuts_down_scp(self):
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -102,7 +106,8 @@ class TestDicomLifecycleFunctions:
 
     def test_start_dicom_sets_dcm_server_loop(self):
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -124,7 +129,8 @@ class TestDicomLifecycleFunctions:
         from pynetdicom.sop_class import ModalityWorklistInformationFind
 
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()
@@ -154,7 +160,8 @@ class TestDicomLifecycleFunctions:
         )
 
         lifecycle = _setup_lifecycle_state()
-        with patch('pynetdicom.AE') as mock_ae_class:
+        with patch('pynetdicom.AE') as mock_ae_class, \
+             patch('lifecycle._run_dicom_mpps_scp'):
             mock_ae_instance = MagicMock()
             mock_ae_class.return_value = mock_ae_instance
             mock_scp = MagicMock()

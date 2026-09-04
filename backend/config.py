@@ -34,6 +34,10 @@ default_config = {
     'redis_port': '6379',
     'redis_password': '',
     'db_pool_size': '8',
+    'clinic_timezone': 'UTC',
+    # S10-10/B-6: EMR endpoint for ORU^R01 delivery; empty = no endpoint
+    # reachable, so distribution attempts record FAILED honestly.
+    'distribution_endpoint': '',
     'tenant_default_quota_bytes': '0',
     'sentry_dsn': '',
     'sentry_traces_sample_rate': '1.0',
@@ -61,6 +65,15 @@ default_config = {
     # C-STORE port (single SCP). Non-empty + different = a second AE serves
     # Modality Worklist C-FIND on this port (lifecycle._run_dicom).
     'dicom_mwl_port': '',
+    # C3 drift fix: the MPPS AE port previously existed only as an inline
+    # fallback in lifecycle.py — surface it here like its siblings.
+    'dicom_mpps_port': '11114',
+    # C3: forward modality MPPS N-CREATE/N-SET to a remote PACS (S6-09).
+    # Off by default; enabling points exam-status updates at the peer AE.
+    'mpps_forward_enabled': False,
+    'mpps_forward_host': '',
+    'mpps_forward_port': '',
+    'mpps_forward_called_ae': '',
     'dicom_aet_allowed': '',
     'dicom_allowed_ips': '',
     'dicom_require_called_aet': 'false',
@@ -79,6 +92,11 @@ default_config = {
     # deployments must use the container DNS http://dcm4chee-arc:8080/dcm4chee-arc).
     'dcm4chee_url': 'http://localhost:8082/dcm4chee-arc',
     'dcm4chee_ae': 'DCM4CHEE',
+    # C-ECHO SCU target (S6-09): connectivity probe fired after an MPPS
+    # COMPLETED. Empty host = no PACS configured, probe is a silent no-op.
+    'pacs_echo_host': '',
+    'pacs_echo_port': '11112',
+    'pacs_echo_ae': 'DCM4CHEE',
     # When true, the /dicomweb/* surface proxies QIDO-RS/WADO-RS/frames/
     # WADO-URI to dcm4chee (archive owns pixels); when false, QuantumPACS
     # serves its own DICOMweb implementation from the files table.
@@ -109,6 +127,15 @@ default_config = {
     'otel_bsp_max_export_batch_size': '512',
     'prometheus_enabled': 'true',
     'max_upload_size_mb': '500',
+    # When true, studies that land in the store outside the MWL -> handoff
+    # flow (zip uploads, single uploads, C-STORE without a worklist entry)
+    # are auto-bridged into the tenant's radiologist reading worklist
+    # (services/reading_handoff.py). Off leaves uploads invisible to /reading.
+    'auto_reading_handoff': 'true',
+    # Seconds a study must go without a new instance before the auto-handoff
+    # bridge flips its exam ready -> completed (partial multi-instance uploads
+    # are never listed while still arriving).
+    'auto_handoff_settle_seconds': '60',
     'max_stow_size_mb': '2048',
     'b2_cors_origins': 'http://localhost:5173',
     'ingestion_stream': 'events:ingestion',
@@ -123,6 +150,18 @@ default_config = {
     # localhost dev topology keeps working; set true (COOKIE_SECURE=true /
     # config.local.yaml) for any TLS deployment so the HttpOnly auth cookies
     # are never sent over cleartext.
+    # R2-01-07: prior-auth expiry alerts poll interval (seconds).
+    # D4: critical-finding escalation policy — SLA (minutes) and target role.
+    # Lifecycle worker reads these each tick, so operator changes apply
+    # without a restart; invalid/absent values fail safe to the defaults.
+    'critical_escalation_sla_minutes': '15',
+    'critical_escalation_target_role': 'radiologist',
+    # D5: app-level rate limits for the /api/v2/ris/* surface (S1-04).
+    # ris_rate_limit_per_minute governs normal RIS traffic per tenant+IP;
+    # the kiosk self-check-in path keeps its own (tighter) budget so a busy
+    # lobby cannot starve normal clinic traffic and vice-versa.
+    'ris_rate_limit_per_minute': '120',
+    'ris_rate_limit_kiosk_per_minute': '60',
     'cookie_secure': 'false',
 }
 

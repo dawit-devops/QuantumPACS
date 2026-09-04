@@ -1,0 +1,6 @@
+/* S3-16 Interface health dashboard — row hover states for the clickable
+ * interface table and spacing for the metrics cards. The rest uses the
+ * shared admin token system via StatCard/Tag/Table. */
+.qp-interface-row:hover {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}

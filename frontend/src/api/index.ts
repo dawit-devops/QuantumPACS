@@ -23,3 +23,4 @@ export * from "./hl7";
 export * from "./frontdesk";
 export * from "./portal";
 export * from "./weasis";
+export * from "./scheduling";

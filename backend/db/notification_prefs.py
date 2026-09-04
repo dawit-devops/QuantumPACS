@@ -24,6 +24,8 @@ CLINICAL_EVENT_TYPES = frozenset({
     'share.accessed',
     'annotation.shared',
     'report.ready',
+    'critical.flagged',
+    'critical.escalated',
 })
 
 class NotificationPrefs:
@@ -39,9 +41,24 @@ class NotificationPrefs:
         'storage.quota_breach',
         'quota.warning',
         'system.alert',
+        'interface.failure',
         'exam.assigned',
         'report.returned',
         'report.signed',
+        # S10: critical-results lifecycle — the bell must be able to carry
+        # these, and the preference page must be able to toggle them (H11).
+        'critical.flagged',
+        'critical.escalated',
+        # R2-02: patient/operational reminders — outbound SMS/email/phone.
+        # Opt-out is honored per event_type via this same table (R2-01-12).
+        'reminder.appointment',
+        'reminder.prior_auth',
+        'reminder.delivery',
+        # S3 (P-04): patient portal notification types — the patient role
+        # holds NOTIFICATIONS_SELF, enabling the bell for portal users.
+        'portal.report_available',
+        'portal.appointment_reminder',
+        'portal.follow_up_response',
     })
     def __init__(self, conn=None):
         self.conn = conn

@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
+  App,
   Layout,
   Card,
   Descriptions,
@@ -12,14 +13,15 @@ import {
   Select,
   Input,
   Steps,
-  message,
   Alert,
   Spin,
   Table,
   Progress,
   Divider,
   Space,
+  Tooltip,
 } from "antd";
+import { StarFilled, StarOutlined } from "@ant-design/icons";
 import {
   CheckCircleOutlined,
   SafetyCertificateOutlined,
@@ -32,33 +34,23 @@ import {
 } from "@ant-design/icons";
 import { useParams, useNavigate, Link } from "react-router";
 import withSidebar from "../common/base";
+import NursingPanel from "./NursingPanel";
 import { request } from "../helpers";
 import { useAuth } from "../auth/AuthContext";
 import SimulatedPreview from "./SimulatedPreview";
 import ExamViewport from "./ExamViewport";
+import { EXAM_STATUS_COLORS, EXAM_PRIORITY_COLORS } from "../common/statusColors";
 import "./ExamConsole.css";
 
 const Content = Layout.Content;
 
-const PRIORITY_COLORS: Record<string, string> = {
-  stat: "red",
-  urgent: "orange",
-  routine: "default",
-};
+const STATUS_COLORS = EXAM_STATUS_COLORS;
 
-const STATUS_COLORS: Record<string, string> = {
-  ready: "blue",
-  in_progress: "gold",
-  completed: "green",
-  cancelled: "red",
-};
+const PRIORITY_COLORS = EXAM_PRIORITY_COLORS;
 
 // Modality-specific acquisition workflows (FR-R06-10). These drive the
 // sequence list shown in the acquisition panel.
-const MODALITY_WORKFLOWS: Record<
-  string,
-  { name: string; sequences: string[] }
-> = {
+const MODALITY_WORKFLOWS: Record<string, { name: string; sequences: string[] }> = {
   CT: {
     name: "CT workflow",
     sequences: ["Localizer", "Contrast (if ordered)", "Diagnostic series"],
@@ -113,6 +105,12 @@ const SAFETY_CHECK_ITEMS = [
   { check_item: "Creatinine/recent lab values reviewed", key: "renal" },
 ];
 
+// T-14: modalities exposing the patient to ionizing radiation. Must match
+// _IONIZING_MODALITIES in api/exams.py, which refuses acquisitions until a
+// pregnancy/radiation-risk safety check is recorded — the UI mirrors that
+// gate so the technologist sees why Acquire is unavailable.
+const IONIZING_MODALITIES = ["CT", "CR", "DX", "XR", "MG", "NM", "PT", "PET", "XA", "RF"];
+
 // The QA queue merges this session's optimistic previews with the server's
 // pending acquisitions (which survive a reload, FR-R06-04), deduped by id —
 // the same acquisition appears in both until the refetch lands.
@@ -137,7 +135,29 @@ function maxSeriesOf(previews: any[], server: any[]): number {
   return m;
 }
 
+// T-07: simulated image-quality score — the spec keeps this simulated until
+// real IQ metrics exist, but it must be deterministic per series UID so a
+// reload shows the same number the technologist judged the series by.
+function qualityScoreOf(acq: any): number | null {
+  const seed = String(acq?.instance_uid || acq?.id || "");
+  if (!seed) return null;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return 70 + (h % 30); // 70–99 band
+}
+
+function QualityTag({ acq }: { acq: any }) {
+  const q = qualityScoreOf(acq);
+  if (q === null) return null;
+  return (
+    <Tag color={q >= 90 ? "green" : q >= 80 ? "gold" : "red"} style={{ marginLeft: 8 }}>
+      Quality {q}%
+    </Tag>
+  );
+}
+
 function ExamConsole() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Exam Console");
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -155,6 +175,11 @@ function ExamConsole() {
 
   const [protocols, setProtocols] = useState<any[]>([]);
   const [selectedProtocol, setSelectedProtocol] = useState<string>("");
+
+  // T-06: protocol favorites + body-part narrowing on the registry picker.
+  const [favOnly, setFavOnly] = useState(false);
+  const [bodyPartFilter, setBodyPartFilter] = useState<string>("");
+  const [indicationFilter, setIndicationFilter] = useState<string>("");
 
   // Acquisition state.
   const [pendingPreviews, setPendingPreviews] = useState<any[]>([]);
@@ -219,16 +244,19 @@ function ExamConsole() {
       .catch(() => {});
   }, [exam?.id, exam?.modality, exam?.status, exam?.accession_number]);
 
+  // T-03: the ETA is queue-wait — how long the next patient has been ready
+  // on this modality. Oldest-waiting STAT first beats tabbing to the
+  // worklist to figure out sequencing.
+  const nextWaitMin = nextExam?.created_at
+    ? Math.max(0, Math.round((Date.now() - new Date(nextExam.created_at).getTime()) / 60_000))
+    : null;
+
   // C8 (NFR-R06-06): Ctrl+Shift+W jumps back to the worklist from anywhere
   // in the exam console; preventDefault stops the browser from closing the
   // tab (Ctrl+W is the tab-close chord, Ctrl+Shift+W has no default here).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        e.key.toLowerCase() === "w"
-      ) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "w") {
         e.preventDefault();
         navigate("/exams");
       }
@@ -252,9 +280,70 @@ function ExamConsole() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam?.modality]);
 
+  // T-06: flip the favorite flag on one protocol; response carries the new
+  // state so no refetch is needed.
+  const toggleFavorite = useCallback(
+    async (name: string) => {
+      const proto = protocols.find((p: any) => p.name === name);
+      if (!proto?.id) return;
+      try {
+        const res = await request(`protocols/${proto.id}/favorite`, {
+          method: "POST",
+          data: undefined,
+        });
+        const fav = !!res?.data?.is_favorite;
+        setProtocols((prev: any[]) =>
+          prev.map((p: any) => (p.id === proto.id ? { ...p, is_favorite: fav } : p))
+        );
+      } catch {
+        /* favorite toggle is best-effort — keep current state on failure */
+      }
+    },
+    [protocols]
+  );
+
+  // T-06: registry options narrowed by body part / indication / favorites-only.
+  const protocolOptions = useMemo(() => {
+    return protocols
+      .filter((p: any) => (favOnly ? p.is_favorite : true))
+      .filter((p: any) => (bodyPartFilter ? p.body_part === bodyPartFilter : true))
+      .filter((p: any) =>
+        indicationFilter
+          ? String(p.clinical_indication || "")
+              .toLowerCase()
+              .includes(indicationFilter.toLowerCase())
+          : true
+      )
+      .map((p: any) => ({
+        value: p.name,
+        label: p.is_favorite ? `★ ${p.name}` : p.name,
+      }));
+  }, [protocols, favOnly, bodyPartFilter, indicationFilter]);
+
+  const bodyParts = useMemo(
+    () => Array.from(new Set(protocols.map((p: any) => p.body_part).filter(Boolean))).sort(),
+    [protocols]
+  );
+
+  // T-06: individual indication terms — the stored text is a comma list
+  // ("Head trauma, stroke"), so the picker offers one term per entry.
+  const indications = useMemo(() => {
+    return Array.from(
+      new Set(
+        protocols
+          .flatMap((p: any) =>
+            String(p.clinical_indication || "")
+              .split(",")
+              .map((s: string) => s.trim())
+          )
+          .filter(Boolean)
+      )
+    ).sort();
+  }, [protocols]);
+
   const workflow = useMemo(
     () => MODALITY_WORKFLOWS[exam?.modality || ""] || null,
-    [exam?.modality],
+    [exam?.modality]
   );
 
   const doRequest = useCallback(
@@ -269,14 +358,14 @@ function ExamConsole() {
         return false;
       }
     },
-    [fetchExam],
+    [fetchExam]
   );
 
   const confirmIdentity = async () => {
     const ok = await doRequest(
       `exams/${id}/identity-confirm`,
       { confirmed: true },
-      "Patient identity confirmed",
+      "Patient identity confirmed"
     );
     if (ok) message.success("Exam is now in progress");
   };
@@ -285,7 +374,7 @@ function ExamConsole() {
     const ok = await doRequest(
       `exams/${id}/protocol`,
       { protocol_name: selectedProtocol || exam?.protocol_name || "" },
-      "Protocol started",
+      "Protocol started"
     );
     if (ok) message.info("Acquisition ready — acquire images below");
   };
@@ -316,9 +405,8 @@ function ExamConsole() {
       : maxSeries + 1;
     const description = retakeOf
       ? `Retake — ${retakeOf.description || `Series ${retakeOf.series_number}`}`
-      : workflow?.sequences[
-          Math.min(nextSeries - 1, (workflow?.sequences.length || 1) - 1)
-        ] || `Series ${nextSeries}`;
+      : workflow?.sequences[Math.min(nextSeries - 1, (workflow?.sequences.length || 1) - 1)] ||
+        `Series ${nextSeries}`;
     try {
       const res = await request(`exams/${id}/acquisitions`, {
         data: {
@@ -327,9 +415,7 @@ function ExamConsole() {
           ...dose,
         },
       });
-      message.success(
-        retakeOf ? "Retake acquired — pending QA" : "Image acquired",
-      );
+      message.success(retakeOf ? "Retake acquired — pending QA" : "Image acquired");
       setPendingPreviews((p) => [...p, res.data]);
       await fetchExam();
     } catch (e: any) {
@@ -337,15 +423,11 @@ function ExamConsole() {
     }
   };
 
-  const decideAcquisition = async (
-    acqId: string,
-    decision: "accept" | "reject",
-    reason = "",
-  ) => {
+  const decideAcquisition = async (acqId: string, decision: "accept" | "reject", reason = "") => {
     const ok = await doRequest(
       `exams/${id}/acquisitions/${acqId}/${decision}`,
       { reason },
-      decision === "accept" ? "Image accepted" : "Image rejected",
+      decision === "accept" ? "Image accepted" : "Image rejected"
     );
     if (ok) setPendingPreviews((p) => p.filter((a) => a.id !== acqId));
     return ok;
@@ -368,22 +450,18 @@ function ExamConsole() {
   const recordSafetyChecks = async () => {
     // Only the items the technologist individually confirmed are recorded
     // (FR-R06-06); unverified items stay absent rather than "confirmed".
-    const checks = SAFETY_CHECK_ITEMS.filter((item) =>
-      safetyChecked.includes(item.key),
-    ).map((item) => ({
-      check_item: item.check_item,
-      answer: "confirmed",
-      notes: "",
-    }));
+    const checks = SAFETY_CHECK_ITEMS.filter((item) => safetyChecked.includes(item.key)).map(
+      (item) => ({
+        check_item: item.check_item,
+        answer: "confirmed",
+        notes: "",
+      })
+    );
     if (!checks.length) {
       message.warning("Confirm at least one safety check before recording");
       return;
     }
-    const ok = await doRequest(
-      `exams/${id}/safety-checks`,
-      { checks },
-      "Safety checks recorded",
-    );
+    const ok = await doRequest(`exams/${id}/safety-checks`, { checks }, "Safety checks recorded");
     if (ok) message.success("Contrast administration may proceed");
   };
 
@@ -409,11 +487,7 @@ function ExamConsole() {
     } catch {
       return; // validation errors shown inline
     }
-    const ok = await doRequest(
-      `exams/${id}/incidents`,
-      values,
-      "Incident logged",
-    );
+    const ok = await doRequest(`exams/${id}/incidents`, values, "Incident logged");
     if (ok) {
       setIncidentOpen(false);
       incidentForm.resetFields();
@@ -430,7 +504,7 @@ function ExamConsole() {
     const ok = await doRequest(
       `exams/${id}/overrides`,
       { justification: values.justification, overridden_parameters: {} },
-      "Override logged",
+      "Override logged"
     );
     if (ok) {
       setOverrideOpen(false);
@@ -492,12 +566,7 @@ function ExamConsole() {
   if (error && !exam) {
     return (
       <Content style={{ padding: 24 }}>
-        <Alert
-          type="error"
-          message="Failed to load exam"
-          description={error}
-          showIcon
-        />
+        <Alert type="error" title="Failed to load exam" description={error} showIcon />
         <Button style={{ marginTop: 12 }} onClick={() => navigate("/exams")}>
           Back to worklist
         </Button>
@@ -515,30 +584,28 @@ function ExamConsole() {
   // merge of those with this session's optimistic previews.
   const pendingAcqs = mergePending(pendingPreviews, acquisitions);
   const nextSeries = maxSeriesOf(pendingPreviews, acquisitions) + 1;
-  const rejectedCount = acquisitions.filter(
-    (a: any) => a.status === "rejected",
-  ).length;
+  const rejectedCount = acquisitions.filter((a: any) => a.status === "rejected").length;
   // Rejected acquisitions stay visible with Retake / Log Incident actions
   // (FR-R06-04: rejects require re-acquisition). Derived from the server
   // list so rejects survive reloads, matching how rejectedCount is computed.
-  const rejectedAcqs: any[] = acquisitions.filter(
-    (a: any) => a.status === "rejected",
-  );
+  const rejectedAcqs: any[] = acquisitions.filter((a: any) => a.status === "rejected");
   const isComplete = exam.status === "completed";
-  const identityDone =
-    !!exam.identity_confirmed_at || exam.status === "in_progress";
+  const identityDone = !!exam.identity_confirmed_at || exam.status === "in_progress";
   const protocolStarted = !!exam.protocol_name;
+  // T-14: the acknowledgment is any recorded check whose item mentions
+  // pregnancy — the checklist only posts explicitly confirmed items, so the
+  // row's existence IS the acknowledgment (same rule the server applies).
+  const pregnancyAcked = (exam.safety_checks ?? []).some((s: any) =>
+    String(s?.check_item || "")
+      .toLowerCase()
+      .includes("pregnan")
+  );
+  const needsPregnancyAck =
+    IONIZING_MODALITIES.includes((exam.modality || "").toUpperCase()) && !pregnancyAcked;
   // FR-R06-02: prior studies for the comparison link in the identity card.
   const priorStudies = exam.prior_studies || [];
 
-  const stepIndex =
-    exam.status === "completed"
-      ? 4
-      : identityDone
-        ? protocolStarted
-          ? 2
-          : 1
-        : 0;
+  const stepIndex = exam.status === "completed" ? 4 : identityDone ? (protocolStarted ? 2 : 1) : 0;
 
   return (
     <Content style={{ padding: 24 }} role="main">
@@ -564,28 +631,17 @@ function ExamConsole() {
         </div>
         <Space>
           {exam.critical_flag && (
-            <Tag
-              color="red"
-              icon={<AlertOutlined />}
-              data-testid="critical-flag-badge"
-            >
+            <Tag color="red" icon={<AlertOutlined />} data-testid="critical-flag-badge">
               CRITICAL FLAG ({String(exam.critical_flag).toUpperCase()})
             </Tag>
           )}
           {hasPermission("CRITICAL_RESULTS_WRITE") && !isComplete && (
-            <Button
-              icon={<AlertOutlined />}
-              danger
-              onClick={() => setFlagOpen(true)}
-            >
+            <Button icon={<AlertOutlined />} danger onClick={() => setFlagOpen(true)}>
               Flag Critical
             </Button>
           )}
           {canWrite && (
-            <Button
-              icon={<BugOutlined />}
-              onClick={() => setIncidentOpen(true)}
-            >
+            <Button icon={<BugOutlined />} onClick={() => setIncidentOpen(true)}>
               Log Incident
             </Button>
           )}
@@ -606,7 +662,7 @@ function ExamConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Read-only exam console"
+          title="Read-only exam console"
           description="You have view access to this exam. Acquisition actions require the EXAM_WRITE permission."
         />
       )}
@@ -633,24 +689,25 @@ function ExamConsole() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={
+          title={
             <span>
               <b>Next:</b> {nextExam.accession_number || "—"} ·{" "}
-              {nextExam.patient_name || nextExam.patient_id || "—"} ·{" "}
-              {nextExam.modality || ""}{" "}
+              {nextExam.patient_name || nextExam.patient_id || "—"} · {nextExam.modality || ""}{" "}
               {nextExam.priority && nextExam.priority !== "routine" && (
                 <Tag color={PRIORITY_COLORS[nextExam.priority]}>
                   {String(nextExam.priority).toUpperCase()}
                 </Tag>
               )}
+              {/* T-03: queue-wait ETA */}
+              {nextWaitMin !== null && (
+                <span style={{ marginLeft: 8, opacity: 0.85 }}>
+                  waiting {nextWaitMin < 1 ? "<1 min" : `${nextWaitMin} min`}
+                </span>
+              )}
             </span>
           }
           action={
-            <Button
-              size="small"
-              type="link"
-              onClick={() => navigate(`/exams/${nextExam.id}`)}
-            >
+            <Button size="small" type="link" onClick={() => navigate(`/exams/${nextExam.id}`)}>
               Open
             </Button>
           }
@@ -676,24 +733,12 @@ function ExamConsole() {
         }
       >
         <Descriptions size="small" column={3} bordered>
-          <Descriptions.Item label="Patient Name">
-            {exam.patient_name || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Patient ID">
-            {exam.patient_id || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="DOB">
-            {exam.patient_birth_date || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Sex">
-            {exam.patient_sex || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Accession">
-            {exam.accession_number || "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Modality">
-            {exam.modality || "—"}
-          </Descriptions.Item>
+          <Descriptions.Item label="Patient Name">{exam.patient_name || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Patient ID">{exam.patient_id || "—"}</Descriptions.Item>
+          <Descriptions.Item label="DOB">{exam.patient_birth_date || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Sex">{exam.patient_sex || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Accession">{exam.accession_number || "—"}</Descriptions.Item>
+          <Descriptions.Item label="Modality">{exam.modality || "—"}</Descriptions.Item>
           <Descriptions.Item label="Prior Studies" span={3}>
             {priorStudies.length === 0 ? (
               "—"
@@ -706,10 +751,7 @@ function ExamConsole() {
                       {s.modality ? ` · ${s.modality}` : ""}
                     </span>
                     {s.first_file_id ? (
-                      <Link
-                        to={`/files/${s.first_file_id}`}
-                        className="exam-prior-link"
-                      >
+                      <Link to={`/files/${s.first_file_id}`} className="exam-prior-link">
                         Open in viewer
                       </Link>
                     ) : (
@@ -741,29 +783,64 @@ function ExamConsole() {
           >
             {protocolStarted ? (
               <Descriptions size="small" column={1} bordered>
-                <Descriptions.Item label="Protocol">
-                  {exam.protocol_name}
-                </Descriptions.Item>
+                <Descriptions.Item label="Protocol">{exam.protocol_name}</Descriptions.Item>
                 <Descriptions.Item label="Workflow (FR-R06-10)">
-                  {workflow
-                    ? `${workflow.name}: ${workflow.sequences.join(" → ")}`
-                    : "—"}
+                  {workflow ? `${workflow.name}: ${workflow.sequences.join(" → ")}` : "—"}
                 </Descriptions.Item>
               </Descriptions>
             ) : canWrite ? (
               <>
-                <Select
-                  placeholder="Select protocol"
-                  style={{ width: 320 }}
-                  value={selectedProtocol}
-                  onChange={setSelectedProtocol}
-                  options={protocols.map((p) => ({
-                    value: p.name,
-                    label: p.name,
-                  }))}
-                  showSearch
-                  optionFilterProp="label"
-                />
+                <Space size="middle" wrap>
+                  <Select
+                    placeholder="Select protocol"
+                    style={{ width: 320 }}
+                    value={selectedProtocol || undefined}
+                    onChange={setSelectedProtocol}
+                    options={protocolOptions}
+                    showSearch={{ optionFilterProp: "label" }}
+                  />
+                  {/* T-06: favorite star for the highlighted protocol. */}
+                  <Button
+                    aria-label={
+                      protocols.find((p: any) => p.name === selectedProtocol)?.is_favorite
+                        ? "Unfavorite protocol"
+                        : "Favorite protocol"
+                    }
+                    icon={
+                      protocols.find((p: any) => p.name === selectedProtocol)?.is_favorite ? (
+                        <StarFilled />
+                      ) : (
+                        <StarOutlined />
+                      )
+                    }
+                    onClick={() => selectedProtocol && toggleFavorite(selectedProtocol)}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Body part"
+                    style={{ width: 140 }}
+                    value={bodyPartFilter || undefined}
+                    onChange={(v: string) => setBodyPartFilter(v || "")}
+                    options={bodyParts.map((bp: string) => ({
+                      value: bp,
+                      label: bp,
+                    }))}
+                  />
+                  {/* T-06: clinical-indication narrowing — options come from
+                      the comma-split indication text of the loaded protocols. */}
+                  <Select
+                    allowClear
+                    aria-label="Filter by indication"
+                    placeholder="Indication"
+                    style={{ width: 170 }}
+                    value={indicationFilter || undefined}
+                    onChange={(v: string) => setIndicationFilter(v || "")}
+                    options={indications.map((ind: string) => ({ value: ind, label: ind }))}
+                  />
+                  <Checkbox checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)}>
+                    Favorites only
+                  </Checkbox>
+                </Space>
                 <Button
                   type="primary"
                   style={{ marginLeft: 12 }}
@@ -774,11 +851,7 @@ function ExamConsole() {
                 </Button>
               </>
             ) : (
-              <Alert
-                type="info"
-                showIcon
-                message="No protocol started yet — read-only view."
-              />
+              <Alert type="info" showIcon title="No protocol started yet — read-only view." />
             )}
           </Card>
 
@@ -789,9 +862,17 @@ function ExamConsole() {
             style={{ marginTop: 16 }}
             extra={
               canWrite && !isComplete && identityDone && protocolStarted ? (
-                <Button type="primary" onClick={() => acquireImage()}>
-                  Acquire Image
-                </Button>
+                needsPregnancyAck ? (
+                  <Tooltip title="Record the pregnancy/radiation-risk safety check before acquiring">
+                    <Button type="primary" disabled>
+                      Acquire Image
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Button type="primary" onClick={() => acquireImage()}>
+                    Acquire Image
+                  </Button>
+                )
               ) : undefined
             }
           >
@@ -799,122 +880,123 @@ function ExamConsole() {
               <Alert
                 type="info"
                 showIcon
-                message="Confirm the patient and start the protocol before acquiring images."
+                title="Confirm the patient and start the protocol before acquiring images."
               />
             ) : (
-              <div className="exam-acq">
-                <div className="exam-acq-preview">
-                  {/* C11 (Sprint D): mount the real viewer when the exam's study
+              <>
+                {needsPregnancyAck && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    title={`Ionizing radiation exam (${exam.modality}) — record the pregnancy/radiation-risk acknowledgment in Safety Checks below before acquiring.`}
+                  />
+                )}
+                <div className="exam-acq">
+                  <div className="exam-acq-preview">
+                    {/* C11 (Sprint D): mount the real viewer when the exam's study
                   has been stored; SimulatedPreview stays the no-DICOM
                   fallback so the console never shows an empty box. */}
-                  {exam.imaging && exam.imaging_patient ? (
-                    <ExamViewport
-                      patient={exam.imaging_patient}
-                      patientName={exam.patient_name}
-                      patientId={exam.patient_id}
-                      examModality={exam.modality}
-                    />
-                  ) : (
-                    <SimulatedPreview
-                      label={`Series ${Math.max(1, nextSeries)} preview`}
-                    />
-                  )}
-                </div>
-                <div className="exam-acq-queue">
-                  <h4>QA Queue ({pendingAcqs.length} pending)</h4>
-                  {pendingAcqs.length === 0 && (
-                    <span className="exam-acq-empty">
-                      Pending acquisitions will appear here for accept/reject.
-                    </span>
-                  )}
-                  {pendingAcqs.map((acq) => (
-                    <div key={acq.id} className="exam-acq-item">
-                      {/* §3-10: each pending acquisition is represented by a
+                    {exam.imaging && exam.imaging_patient ? (
+                      <ExamViewport
+                        patient={exam.imaging_patient}
+                        patientName={exam.patient_name}
+                        patientId={exam.patient_id}
+                        examModality={exam.modality}
+                      />
+                    ) : (
+                      <SimulatedPreview label={`Series ${Math.max(1, nextSeries)} preview`} />
+                    )}
+                  </div>
+                  <div className="exam-acq-queue">
+                    <h4>QA Queue ({pendingAcqs.length} pending)</h4>
+                    {pendingAcqs.length === 0 && (
+                      <span className="exam-acq-empty">
+                        Pending acquisitions will appear here for accept/reject.
+                      </span>
+                    )}
+                    {pendingAcqs.map((acq) => (
+                      <div key={acq.id} className="exam-acq-item">
+                        {/* §3-10: each pending acquisition is represented by a
                           thumbnail, not text only — the real viewport mounts
                           for exams with DICOM (C11); the simulated mini
                           canvas covers the fallback path. */}
-                      <SimulatedPreview
-                        mini
-                        width={88}
-                        height={88}
-                        label={acq.description || "Series"}
-                      />
-                      <div className="exam-acq-item-info">
-                        <b>{acq.description || "Series"}</b>
-                        <span className="exam-acq-item-meta">
-                          DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp{" "}
-                          {acq.kvp || 0}
-                        </span>
-                      </div>
-                      <Space>
-                        {canWrite && (
-                          <>
-                            <Button
-                              size="small"
-                              type="primary"
-                              onClick={() =>
-                                decideAcquisition(acq.id, "accept")
-                              }
-                            >
-                              Accept
-                            </Button>
-                            <Button
-                              size="small"
-                              danger
-                              onClick={() => setRejectOpen(acq.id)}
-                            >
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                      </Space>
-                    </div>
-                  ))}
-                  {rejectedAcqs.length > 0 && (
-                    <div className="exam-acq-rejected">
-                      <h4>Rejected ({rejectedAcqs.length})</h4>
-                      {rejectedAcqs.map((acq: any) => (
-                        <div
-                          key={acq.id}
-                          className="exam-acq-item exam-acq-item-rejected"
-                        >
-                          <div>
-                            <b>{acq.description || "Series"}</b>
-                            <span className="exam-acq-item-meta">
-                              Series {acq.series_number} · Rejected:{" "}
-                              {acq.reject_reason || "no reason"}
-                            </span>
-                          </div>
-                          <Space>
-                            {canWrite && (
-                              <>
-                                <Button
-                                  size="small"
-                                  type="primary"
-                                  ghost
-                                  onClick={() => acquireImage(acq)}
-                                >
-                                  Retake
-                                </Button>
-                                <Button
-                                  size="small"
-                                  onClick={() => openIncidentForRejected(acq)}
-                                >
-                                  Log Incident
-                                </Button>
-                              </>
-                            )}
-                          </Space>
+                        <SimulatedPreview
+                          mini
+                          width={88}
+                          height={88}
+                          label={acq.description || "Series"}
+                        />
+                        <div className="exam-acq-item-info">
+                          <b>
+                            {acq.description || "Series"}
+                            {/* T-07: simulated quality score */}
+                            <QualityTag acq={acq} />
+                          </b>
+                          <span className="exam-acq-item-meta">
+                            DLP {acq.dlp || 0} · CTDIvol {acq.ctdivol || 0} · kVp {acq.kvp || 0}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <Space>
+                          {canWrite && (
+                            <>
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={() => decideAcquisition(acq.id, "accept")}
+                              >
+                                Accept
+                              </Button>
+                              <Button size="small" danger onClick={() => setRejectOpen(acq.id)}>
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </Space>
+                      </div>
+                    ))}
+                    {rejectedAcqs.length > 0 && (
+                      <div className="exam-acq-rejected">
+                        <h4>Rejected ({rejectedAcqs.length})</h4>
+                        {rejectedAcqs.map((acq: any) => (
+                          <div key={acq.id} className="exam-acq-item exam-acq-item-rejected">
+                            <div>
+                              <b>
+                                {acq.description || "Series"}
+                                <QualityTag acq={acq} />
+                              </b>
+                              <span className="exam-acq-item-meta">
+                                Series {acq.series_number} · Rejected:{" "}
+                                {acq.reject_reason || "no reason"}
+                              </span>
+                            </div>
+                            <Space>
+                              {canWrite && (
+                                <>
+                                  <Button
+                                    size="small"
+                                    type="primary"
+                                    ghost
+                                    disabled={needsPregnancyAck}
+                                    onClick={() => acquireImage(acq)}
+                                  >
+                                    Retake
+                                  </Button>
+                                  <Button size="small" onClick={() => openIncidentForRejected(acq)}>
+                                    Log Incident
+                                  </Button>
+                                </>
+                              )}
+                            </Space>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
-            {isComplete && (
-              <Alert type="success" showIcon message="Acquisition complete." />
-            )}
+            {isComplete && <Alert type="success" showIcon title="Acquisition complete." />}
           </Card>
         </div>
 
@@ -950,33 +1032,27 @@ function ExamConsole() {
                     columns={[
                       {
                         title: "Series",
-                        render: (_: any, a: any) =>
-                          `S${a.series_number} · ${a.description || "—"}`,
+                        render: (_: any, a: any) => `S${a.series_number} · ${a.description || "—"}`,
                       },
                       {
                         title: "DLP (mGy·cm)",
                         align: "right" as const,
-                        render: (_: any, a: any) =>
-                          Number(a.dlp || 0).toFixed(1),
+                        render: (_: any, a: any) => Number(a.dlp || 0).toFixed(1),
                       },
                       {
                         title: "CTDIvol (mGy)",
                         align: "right" as const,
-                        render: (_: any, a: any) =>
-                          Number(a.ctdivol || 0).toFixed(1),
+                        render: (_: any, a: any) => Number(a.ctdivol || 0).toFixed(1),
                       },
                       {
                         title: "kVp",
                         align: "right" as const,
-                        render: (_: any, a: any) =>
-                          Number(a.kvp || 0).toFixed(0),
+                        render: (_: any, a: any) => Number(a.kvp || 0).toFixed(0),
                       },
                       {
                         title: "Status",
                         render: (_: any, a: any) => (
-                          <Tag color={STATUS_COLORS[a.status] || "default"}>
-                            {a.status}
-                          </Tag>
+                          <Tag color={STATUS_COLORS[a.status] || "default"}>{a.status}</Tag>
                         ),
                       },
                     ]}
@@ -988,10 +1064,7 @@ function ExamConsole() {
                   <Progress
                     percent={Math.min(
                       100,
-                      Math.round(
-                        (Number(dose.total_dlp || 0) / exam.benchmark_dlp) *
-                          100,
-                      ),
+                      Math.round((Number(dose.total_dlp || 0) / exam.benchmark_dlp) * 100)
                     )}
                     status={
                       doseLevel === "danger"
@@ -1000,15 +1073,12 @@ function ExamConsole() {
                           ? "active"
                           : "normal"
                     }
-                    format={(p) =>
-                      `${p}% of ACR benchmark (${exam.benchmark_dlp} mGy·cm)`
-                    }
+                    format={(p) => `${p}% of ACR benchmark (${exam.benchmark_dlp} mGy·cm)`}
                   />
                 </div>
               ) : (
                 <span className="exam-dose-note">
-                  ACR benchmark not defined for{" "}
-                  {exam.modality || "this modality"}.
+                  ACR benchmark not defined for {exam.modality || "this modality"}.
                 </span>
               )}
               {/* C6 (FR-R06-05): flag the panel itself when the ACR benchmark is
@@ -1018,7 +1088,7 @@ function ExamConsole() {
                   type="warning"
                   showIcon
                   style={{ marginTop: 12 }}
-                  message="Approaching the ACR benchmark — review remaining exposures."
+                  title="Approaching the ACR benchmark — review remaining exposures."
                 />
               )}
               {doseLevel === "danger" && (
@@ -1026,7 +1096,7 @@ function ExamConsole() {
                   type="error"
                   showIcon
                   style={{ marginTop: 12 }}
-                  message="ACR dose benchmark exceeded — document and notify QA."
+                  title="ACR dose benchmark exceeded — document and notify QA."
                 />
               )}
             </div>
@@ -1048,6 +1118,27 @@ function ExamConsole() {
               ) : undefined
             }
           >
+            {/* T-04: documented contrast reactions from this patient's other
+                exams — red badge on the pre-contrast surface so the tech sees
+                the history before administering. */}
+            {(exam.prior_contrast_reactions || []).length > 0 && (
+              <div className="exam-reaction-history" data-testid="contrast-reaction-badge">
+                <Tag color="red">
+                  Prior contrast reaction{exam.prior_contrast_reactions.length > 1 ? "s" : ""} (
+                  {exam.prior_contrast_reactions.length})
+                </Tag>
+                {exam.prior_contrast_reactions.map((r: any, i: number) => (
+                  <div key={i} className="exam-prior-study">
+                    <span>
+                      {r.created_at ? `${String(r.created_at).slice(0, 10)} · ` : ""}
+                      {r.severity ? `${r.severity} severity · ` : ""}
+                      {r.description}
+                      {r.accession_number ? ` (${r.accession_number})` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {(exam.safety_checks || []).length ? (
               <Table
                 rowKey="id"
@@ -1074,7 +1165,7 @@ function ExamConsole() {
                         setSafetyChecked((prev) =>
                           e.target.checked
                             ? [...prev, item.key]
-                            : prev.filter((k) => k !== item.key),
+                            : prev.filter((k) => k !== item.key)
                         )
                       }
                     >
@@ -1085,7 +1176,7 @@ function ExamConsole() {
                         type="warning"
                         showIcon
                         className="exam-safety-warning"
-                        message="Ionizing radiation risk: confirm pregnancy status before scanning. Flag for review if unknown."
+                        title="Ionizing radiation risk: confirm pregnancy status before scanning. Flag for review if unknown."
                       />
                     )}
                   </div>
@@ -1095,7 +1186,7 @@ function ExamConsole() {
               <Alert
                 type="warning"
                 showIcon
-                message={
+                title={
                   exam.status === "completed"
                     ? "No safety checks recorded for this exam."
                     : "Record safety checks before contrast administration."
@@ -1114,15 +1205,19 @@ function ExamConsole() {
                     <span>
                       {s.check_item} · {s.answer} ·{" "}
                       {s.accession_number ? `Exam ${s.accession_number}` : ""}{" "}
-                      {s.checked_at
-                        ? `· ${String(s.checked_at).slice(0, 10)}`
-                        : ""}
+                      {s.checked_at ? `· ${String(s.checked_at).slice(0, 10)}` : ""}
                     </span>
                   </div>
                 ))}
               </div>
             )}
           </Card>
+
+          {/* §2.11 nursing (N-01..N-04): exam-linked vitals / pre-procedure
+              checklist / contrast consent / nurse notes. Renders only for
+              NURSING_READ holders; EXAM_READ-only viewers (tech, radiologist)
+              see the records read-only per spec N-04 visibility. */}
+          <NursingPanel exam={exam} />
 
           {/* FR-R06-07: Complete + handoff */}
           {!isComplete && canWrite && (
@@ -1144,7 +1239,7 @@ function ExamConsole() {
               <Alert
                 type="info"
                 showIcon
-                message="Completing the exam hands it off to the radiologist worklist and notifies the reading team."
+                title="Completing the exam hands it off to the radiologist worklist and notifies the reading team."
                 description={
                   rejectedCount > 0
                     ? `${rejectedCount} image(s) rejected this exam — consider logging an incident.`
@@ -1158,7 +1253,7 @@ function ExamConsole() {
             <Alert
               type="success"
               showIcon
-              message="Exam completed and handed off to the radiologist worklist."
+              title="Exam completed and handed off to the radiologist worklist."
             />
           )}
         </div>
@@ -1205,10 +1300,7 @@ function ExamConsole() {
             label="Description"
             rules={[{ required: true, message: "Describe the incident" }]}
           >
-            <Input.TextArea
-              rows={3}
-              placeholder="e.g. patient moved during scan"
-            />
+            <Input.TextArea rows={3} placeholder="e.g. patient moved during scan" />
           </Form.Item>
         </Form>
       </Modal>
@@ -1227,7 +1319,7 @@ function ExamConsole() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Overrides are audited and logged. A justification is required."
+          title="Overrides are audited and logged. A justification is required."
         />
         <Form form={overrideForm} layout="vertical">
           <Form.Item
@@ -1241,10 +1333,7 @@ function ExamConsole() {
               { min: 10, message: "Provide at least 10 characters" },
             ]}
           >
-            <Input.TextArea
-              rows={3}
-              placeholder="e.g. Trauma — reducing sequence count"
-            />
+            <Input.TextArea rows={3} placeholder="e.g. Trauma — reducing sequence count" />
           </Form.Item>
         </Form>
       </Modal>
@@ -1265,7 +1354,7 @@ function ExamConsole() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="This flag is visible to the reading team immediately."
+          title="This flag is visible to the reading team immediately."
         />
         <Form form={flagForm} layout="vertical">
           <Form.Item

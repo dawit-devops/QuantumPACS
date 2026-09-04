@@ -37,7 +37,7 @@ def _make_app(user=None):
         ExamAcquisitionsHandler, ExamAcquisitionDecisionHandler, ExamDoseHandler,
         ExamSafetyHandler, ExamCompleteHandler, ExamIncidentsHandler,
         ExamOverridesHandler, ExamCriticalFlagHandler, ExamClaimHandler,
-        ProtocolsHandler,
+        ProtocolsHandler, ProtocolFavoriteHandler,
     )
     return Starlette(
         routes=[
@@ -55,6 +55,7 @@ def _make_app(user=None):
             Route('/exams/{id}/incidents', endpoint=ExamIncidentsHandler),
             Route('/exams/{id}/overrides', endpoint=ExamOverridesHandler),
             Route('/protocols', endpoint=ProtocolsHandler),
+            Route('/protocols/{id}/favorite', endpoint=ProtocolFavoriteHandler, methods=['POST']),
         ],
         middleware=[Middleware(_FakeAuth, user=user)],
         exception_handlers={
@@ -106,6 +107,46 @@ class TestExamPermissions:
         client = TestClient(_make_app(READ_ONLY))
         resp = client.post('/exams', json={'patient_id': 'P001'})
         assert resp.status_code == 403
+
+
+class TestExamListTenantScope:
+    def test_list_scopes_to_effective_tenant(self):
+        # F1: list_for_technologist must filter by the caller's tenant —
+        # shared-DB tenants share one table, so pool isolation alone leaks.
+        from db.conn import set_tenant_slug, reset_tenant_slug
+        captured = {}
+
+        async def fake_list_for_technologist(**kwargs):
+            # repo is called with positional/keyword mix — capture query only
+            return []
+
+        async def fake_fetch(q, *a):
+            captured['q'] = q
+            return []
+
+        async def fake_fetchval(q, *a):
+            return 0
+
+        set_tenant_slug('acme')
+        try:
+            client = TestClient(_make_app(TECH))
+            with _conn(fetch=fake_fetch, fetchval=fake_fetchval):
+                resp = client.get('/exams')
+        finally:
+            reset_tenant_slug()
+        assert resp.status_code == 200
+        assert 'tenant_id' in captured.get('q', ''), (
+            'exam list query must carry a tenant_id filter')
+
+    def test_list_filters_by_status(self):
+        client = TestClient(_make_app(TECH))
+        async def fake_fetch(q, *a):
+            return []
+        async def fake_fetchval(q, *a):
+            return 0
+        with _conn(fetch=fake_fetch, fetchval=fake_fetchval):
+            resp = client.get('/exams?status=ready')
+        assert resp.status_code == 200
 
 
 class TestExamCreate:
@@ -318,6 +359,53 @@ class TestExamIdentity:
         assert resp.json()['data']['confirmed'] is True
 
 
+class TestPriorContrastReactions:
+    """T-04: documented contrast reactions from the patient's other exams
+    ride the exam detail bundle so the console can show a red warning badge
+    before contrast administration."""
+
+    def _detail(self, fetch):
+        client = TestClient(_make_app(TECH))
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM patients' in q:
+                return None  # no patient extra tree needed for these cases
+            return {'id': 'e1', 'patient_id': 'P1', 'accession_number': 'A1'}
+
+        with _conn(fetchrow=fake_fetchrow, fetch=fetch):
+            resp = client.get('/exams/e1')
+        assert resp.status_code == 200
+        return resp.json()['data']
+
+    def test_documented_reaction_is_returned(self):
+        async def fake_fetch(q, *a):
+            if 'contrast_reaction' in q:
+                return [{
+                    'incident_type': 'contrast_reaction',
+                    'severity': 'high',
+                    'description': 'Urticaria after iodinated contrast',
+                    'accession_number': 'ACC-P9',
+                }]
+            return []
+
+        body = self._detail(fake_fetch)
+        assert len(body['prior_contrast_reactions']) == 1
+        row = body['prior_contrast_reactions'][0]
+        assert row['severity'] == 'high'
+        assert row['description'] == 'Urticaria after iodinated contrast'
+
+    def test_clean_history_returns_empty_list(self):
+        async def fake_fetch(q, *a):
+            return []
+
+        body = self._detail(fake_fetch)
+        assert body['prior_contrast_reactions'] == []
+
+    # Note: incident-type filtering happens in SQL
+    # (i.incident_type = 'contrast_reaction'); the fake-conn seam cannot
+    # exercise WHERE clauses, so only the wiring is covered here.
+
+
 class TestExamAcquisitions:
     def test_record_acquisition(self):
         client = TestClient(_make_app(TECH))
@@ -347,6 +435,53 @@ class TestExamAcquisitions:
         data = resp.json()['data']
         assert data['status'] == 'rejected'
         assert data['rejected_count'] == 1
+
+
+class TestPregnancyAckGate:
+    """T-14: on ionizing-radiation modalities the pregnancy / radiation-risk
+    acknowledgment must be recorded before any acquisition is accepted —
+    enforced server-side so skipping the checklist in the UI cannot bypass it."""
+
+    def _post_acquisition(self, exam_row, fetchval=None):
+        client = TestClient(_make_app(TECH))
+
+        async def fake_fetchrow(q, *a):
+            if q.startswith('SELECT * FROM exams'):
+                return exam_row
+            return {'id': 'acq-1', 'exam_id': exam_row['id'], 'dlp': 0.0}
+
+        with _conn(fetchrow=fake_fetchrow, fetchval=fetchval), _audit_ok():
+            resp = client.post(f"/exams/{exam_row['id']}/acquisitions", json={
+                'series_number': 1, 'description': 'Axial Diagnostic',
+            })
+        return resp
+
+    def test_ct_blocked_without_acknowledgment(self):
+        resp = self._post_acquisition({'id': 'e1', 'modality': 'CT'})
+        assert resp.status_code == 400
+        assert 'pregnan' in resp.json()['error']['message'].lower()
+
+    def test_ct_allowed_after_acknowledgment_recorded(self):
+        # The ack query hits safety_checks; 1 = a pregnancy check row exists.
+        resp = self._post_acquisition(
+            {'id': 'e1', 'modality': 'CT'}, fetchval=AsyncMock(return_value=1))
+        assert resp.status_code == 201
+        assert resp.json()['data']['id'] == 'acq-1'
+
+    def test_non_ionizing_modality_exempt(self):
+        # MR involves no ionizing radiation — no pregnancy gate.
+        resp = self._post_acquisition({'id': 'e2', 'modality': 'MR'})
+        assert resp.status_code == 201
+
+    def test_modality_match_is_case_insensitive(self):
+        resp = self._post_acquisition({'id': 'e3', 'modality': 'ct'})
+        assert resp.status_code == 400
+
+    def test_missing_modality_not_blocked(self):
+        # Legacy/adopted rows without a modality stay creatable (the gate
+        # keys on known ionizing modalities, not on absence of data).
+        resp = self._post_acquisition({'id': 'e4'})
+        assert resp.status_code == 201
 
 
 class TestExamDose:
@@ -516,6 +651,41 @@ class TestClaim:
         assert resp.status_code == 200
         assert resp.json()['data']['claimed'] is True
 
+    def test_release_clears_technologist(self):
+        # T-02: releasing an owned exam returns it to the unassigned pool.
+        client = TestClient(_make_app(TECH))
+        executed = []
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'accession_number': 'A1',
+                    'assigned_technologist': '42'}
+        conn = AsyncMock()
+        conn.fetchrow = fake_fetchrow
+        conn.execute = AsyncMock(side_effect=lambda q, *a: executed.append(q))
+        conn.__aenter__ = AsyncMock(return_value=conn)
+        conn.__aexit__ = AsyncMock(return_value=False)
+        with patch('api.exams.get_conn', return_value=conn), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 200
+        assert resp.json()['data']['claimed'] is False
+        assert any("assigned_technologist = ''" in q for q in executed)
+
+    def test_release_by_non_owner_conflicts(self):
+        # T-02: only the current owner may release back to the pool.
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            return {'id': 'e1', 'assigned_technologist': 'OTHER_USER'}
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 400
+
+    def test_release_missing_exam_404(self):
+        client = TestClient(_make_app(TECH))
+        async def fake_fetchrow(q, *a):
+            return None
+        with _conn(fetchrow=fake_fetchrow), _audit_ok():
+            resp = client.post('/exams/e1/claim', json={'release': True})
+        assert resp.status_code == 404
+
 
 class TestProtocols:
     def test_protocols_list(self):
@@ -528,3 +698,70 @@ class TestProtocols:
             resp = client.get('/protocols')
         assert resp.status_code == 200
         assert resp.json()['data'][0]['name'] == 'CT Head (Routine)'
+
+
+class TestProtocolFavorites:
+    """T-06: protocol favorites + body-part/indication filter.
+
+    GET /protocols accepts body_part/q filters and embeds per-user
+    is_favorite; POST /protocols/{id}/favorite toggles the favorite."""
+
+    def _app(self, user):
+        from api.exams import ProtocolsHandler, ProtocolFavoriteHandler
+        return Starlette(
+            routes=[
+                Route('/protocols', endpoint=ProtocolsHandler),
+                Route(
+                    '/protocols/{id}/favorite',
+                    endpoint=ProtocolFavoriteHandler, methods=['POST'],
+                ),
+            ],
+            middleware=[Middleware(_FakeAuth, user=user)],
+            exception_handlers={
+                HTTPException: _http_exception,
+                _ValidationException: validation_exception_handler,
+            },
+        )
+
+    def test_list_embeds_is_favorite(self):
+        async def fake_fetchval(q, *a):
+            return 1  # already seeded
+
+        async def fake_fetch(q, *a):
+            assert 'protocol_favorites' in q  # favorites join present
+            return [{'id': 'p1', 'name': 'CT Head', 'is_favorite': True}]
+
+        with _conn(fetchval=fake_fetchval, fetch=fake_fetch):
+            resp = TestClient(self._app(TECH)).get('/protocols')
+        assert resp.status_code == 200
+        row = resp.json()['data'][0]
+        assert row['is_favorite'] is True
+
+    def test_favorite_requires_exam_write(self):
+        resp = TestClient(self._app(READ_ONLY)).post('/protocols/p1/favorite')
+        assert resp.status_code == 403
+
+    def test_favorite_toggle_roundtrip(self):
+        delete_results = iter([None, 'fav-row-id'])
+
+        async def fake_fetchrow(q, *a):
+            if 'FROM protocols WHERE id' in q:
+                return {'id': 'p1', 'name': 'CT Head'}
+            return None
+
+        async def fake_fetchval(q, *a):
+            if 'DELETE FROM protocol_favorites' in q:
+                return next(delete_results)
+            return 1 if 'count(*)' in q else None
+
+        with patch('api.exams.AuditLog') as audit_cls:
+            audit = AsyncMock()
+            audit.log_event = AsyncMock()
+            audit_cls.return_value = audit
+            with _conn(fetchrow=fake_fetchrow, fetchval=fake_fetchval):
+                on = TestClient(self._app(TECH)).post('/protocols/p1/favorite')
+                assert on.status_code == 200
+                assert on.json()['data']['is_favorite'] is True
+                off = TestClient(self._app(TECH)).post('/protocols/p1/favorite')
+                assert off.json()['data']['is_favorite'] is False
+        assert audit.log_event.await_count == 2

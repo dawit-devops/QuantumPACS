@@ -30,11 +30,7 @@ vi.mock("../api/auth", () => ({
   logout: mockLogout,
 }));
 
-function setSession(opts: {
-  role?: string;
-  admin?: boolean;
-  permissions?: string[];
-}) {
+function setSession(opts: { role?: string; admin?: boolean; permissions?: string[] }) {
   localStorage.setItem("token", "t");
   localStorage.setItem("userId", "u1");
   localStorage.setItem("admin", String(opts.admin ?? false));
@@ -50,7 +46,7 @@ function renderWithRouter(path: string) {
           <MobileNav />
         </MemoryRouter>
       </AuthProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
 }
 
@@ -146,19 +142,16 @@ describe("MobileNav", () => {
     const user = userEvent.setup();
     setSession({
       role: "receptionist",
-      permissions: [
-        "REGISTRATION_READ",
-        "REGISTRATION_WRITE",
-        "QUEUE_READ",
-        "SCHEDULE_READ",
-      ],
+      permissions: ["REGISTRATION_READ", "REGISTRATION_WRITE", "QUEUE_READ", "SCHEDULE_READ"],
     });
     renderWithRouter("/");
     await user.click(screen.getByLabelText("Menu"));
     expect(await screen.findByText("Front Desk")).toBeInTheDocument();
     await user.click(screen.getByText("Front Desk"));
     expect(await screen.findByText("Registration")).toBeInTheDocument();
-    expect(screen.getByText("Visits & Check-In")).toBeInTheDocument();
+    // S4 renamed the visits surface to Today's Schedule (/frontdesk/schedule);
+    // the assertion tracks the shipped label.
+    expect(screen.getByText("Today's Schedule")).toBeInTheDocument();
     expect(screen.getByText("Waiting Queue")).toBeInTheDocument();
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });

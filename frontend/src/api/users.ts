@@ -68,6 +68,21 @@ export const assignRole = (userId: number, roleId: number): Promise<void> =>
 export const deactivateUser = (id: number): Promise<void> =>
   request("users/deactivate", { data: { id } });
 
+// ADM-02 bulk operations (§2.10): one audited call transitions many accounts.
+// Backend reports per-id failures without aborting the batch.
+export interface BatchStatusResult {
+  changed: number[];
+  failed: { id: number; error: string }[];
+}
+
+export const batchSetUserStatus = (
+  userIds: number[],
+  targetStatus: "active" | "deactivated"
+): Promise<BatchStatusResult> =>
+  request<BatchStatusResult>("users/batch-status", {
+    data: { user_ids: userIds, target_status: targetStatus },
+  });
+
 export const resetPassword = (id: number): Promise<{ password: string }> =>
   request<{ password: string }>("users/new_password", { data: { id } });
 
@@ -79,7 +94,7 @@ export interface CreateUserInput {
 }
 
 export const createUser = (
-  input: CreateUserInput,
+  input: CreateUserInput
 ): Promise<{ username: string; password: string }> =>
   request<{ username: string; password: string }>("users", { data: input });
 

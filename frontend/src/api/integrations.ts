@@ -20,44 +20,47 @@ export interface Webhook {
 }
 
 export const listOauthProviders = (): Promise<OauthProvider[]> =>
-  request<{ providers?: OauthProvider[]; data?: OauthProvider[] }>(
-    "oauth/providers",
-  ).then((res) => res?.providers ?? res?.data ?? []);
+  request<{ providers?: OauthProvider[]; data?: OauthProvider[] }>("oauth/providers").then(
+    (res) => res?.providers ?? res?.data ?? []
+  );
 
-export const createOauthProvider = (
-  data: Record<string, unknown>,
-): Promise<void> => request("oauth/providers", { method: "POST", data });
+export const createOauthProvider = (data: Record<string, unknown>): Promise<void> =>
+  request("oauth/providers", { method: "POST", data });
 
-export const updateOauthProvider = (
-  id: string,
-  data: Record<string, unknown>,
-): Promise<void> => request(`oauth/providers/${id}`, { method: "PUT", data });
+export const updateOauthProvider = (id: string, data: Record<string, unknown>): Promise<void> =>
+  request(`oauth/providers/${id}`, { method: "PUT", data });
 
 export const deleteOauthProvider = (id: string): Promise<void> =>
   request(`oauth/providers/${id}`, { method: "DELETE" });
+
+// ADM-16: Test OIDC connection — verifies discovery + JWKS endpoints.
+export interface OidcTestResult {
+  ok: boolean;
+  results: Record<string, { ok: boolean; status?: number; error?: string }>;
+}
+
+export const testOauthProvider = (id: string): Promise<OidcTestResult> =>
+  request<OidcTestResult>(`oauth/providers/${id}`, { method: "POST" });
 
 export interface WebhookList {
   webhooks: Webhook[];
   available_events: string[];
 }
 
-export const listWebhooks = (): Promise<WebhookList> =>
-  request<WebhookList>("webhooks");
+export const listWebhooks = (): Promise<WebhookList> => request<WebhookList>("webhooks");
 
-export const createWebhook = (
-  data: Record<string, unknown>,
-): Promise<Webhook> => request<Webhook>("webhooks", { method: "POST", data });
+export const createWebhook = (data: Record<string, unknown>): Promise<Webhook> =>
+  request<Webhook>("webhooks", { method: "POST", data });
 
 export const updateWebhook = (
   id: number | string,
-  data: Record<string, unknown>,
-): Promise<Webhook> =>
-  request<Webhook>(`webhooks/${id}`, { method: "PUT", data });
+  data: Record<string, unknown>
+): Promise<Webhook> => request<Webhook>(`webhooks/${id}`, { method: "PUT", data });
 
 export const deleteWebhook = (id: number | string): Promise<void> =>
   request(`webhooks/${id}`, { method: "DELETE" });
 
 export const testWebhook = (
-  data: Record<string, unknown>,
+  data: Record<string, unknown>
 ): Promise<{ ok?: boolean; status_code?: number; error?: string }> =>
   request("webhooks/test", { method: "POST", data });

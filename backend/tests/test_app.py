@@ -79,6 +79,8 @@ class TestMiddlewareStack:
             'FhirAuditMiddleware',
             'TrustedHostMiddleware',
             'RequestIDMiddleware',
+            'RisRateLimitMiddleware',
+            'FhirScopeMiddleware',
             'CORSMiddleware',
             'SecurityHeadersMiddleware',
             'CSRFMiddleware',

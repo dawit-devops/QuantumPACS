@@ -1,0 +1,102 @@
+/* Right-hand phase scrollbar for the reading viewport. Reflects the active
+   stack — the whole phase (all its series flattened) or a single series.
+   Gives the radiologist a PACS-style scrubber: up/down buttons, click-jump
+   on the track, drag the thumb, or wheel over the rail. */
+
+.phase-stack-scroll {
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--panel);
+  border-left: 1px solid var(--rc-border);
+  user-select: none;
+}
+
+.phase-stack-scroll-btn {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.phase-stack-scroll-btn:hover:not(:disabled) {
+  background: var(--bg-active);
+  color: var(--accent);
+}
+
+.phase-stack-scroll-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.phase-stack-scroll-track {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  cursor: pointer;
+}
+
+.phase-stack-scroll-thumb {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  border-radius: 3px;
+  background: var(--accent, #0891b2);
+  opacity: 0.75;
+  cursor: grab;
+}
+
+.phase-stack-scroll-thumb:active {
+  cursor: grabbing;
+}
+
+/* Part B: violet tick dots on the rail marking slices that carry AI
+   detections (design spec B.3) — so the radiologist doesn't scroll blindly.
+   Dismissed marks are excluded upstream (recorded decisions). */
+.phase-stack-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.phase-stack-tick {
+  position: absolute;
+  left: 2px;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: var(--ai-mark-stroke, #9b8cf0);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+.phase-stack-scroll-readout {
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding: 3px 2px;
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}

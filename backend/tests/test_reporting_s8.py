@@ -1,0 +1,433 @@
+"""Tests for Sprint S8–S9: Reporting + Sign-Off (Tasks S8-17 .. S8-20).
+
+Covers reading list filtering, template management, report version history,
+draft auto-save, electronic sign-off, ORU distribution stub, charge drop stub,
+and RLS tenant isolation.
+"""
+import pytest
+from starlette.testclient import TestClient
+
+from app import app
+from db.conn import get_conn, database
+from db.reports import Reports
+from db.ris_templates import RisReportTemplates
+from db.ris_report_versions import RisReportVersions
+
+
+@pytest.fixture(autouse=True)
+async def setup_db():
+    await database.setup()
+    yield
+    await database.close()
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+class TestReportTemplates:
+    @pytest.mark.asyncio
+    async def test_seed_and_list_templates(self):
+        async with get_conn() as conn:
+            tpl_db = RisReportTemplates(conn)
+            await tpl_db.seed_defaults()
+            templates = await tpl_db.list_templates()
+            assert len(templates) >= 10
+            ct_templates = await tpl_db.list_templates(modality='CT')
+            assert all(t['modality'].upper() == 'CT' for t in ct_templates)
+
+    @pytest.mark.asyncio
+    async def test_create_custom_template(self):
+        async with get_conn() as conn:
+            tpl_db = RisReportTemplates(conn)
+            new_tpl = await tpl_db.create_template({
+                'name': 'Custom Knee MRI',
+                'modality': 'MR',
+                'body_part': 'Knee',
+                'findings_template': 'Ligaments: Intact.\nMenisci: Normal.',
+                'impression_template': 'Normal knee MRI.',
+                'is_default': False,
+            })
+            assert new_tpl['name'] == 'Custom Knee MRI'
+            assert new_tpl['modality'] == 'MR'
+
+
+class TestReportVersioning:
+    @pytest.mark.asyncio
+    async def test_report_version_history_and_diff(self):
+        async with get_conn() as conn:
+            # Create a mock report row
+            row = await conn.fetchrow(
+                "INSERT INTO reports (exam_id, status, findings, impression) "
+                "VALUES (gen_random_uuid(), 'draft', 'Initial findings', 'Initial impression') "
+                "RETURNING id"
+            )
+            report_id = row['id']
+            rv = RisReportVersions(conn)
+
+            # Version 1 snapshot
+            v1 = await rv.add_version(report_id, 'Initial findings', 'Initial impression', edited_by='rad1')
+            assert v1['version_number'] == 1
+
+            # Update report and version 2 snapshot
+            v2 = await rv.add_version(report_id, 'Updated findings with fracture', 'Acute fracture detected', edited_by='rad1')
+            assert v2['version_number'] == 2
+
+            history = await rv.get_history(report_id)
+            assert len(history) == 2
+
+            diff = await rv.get_version_diff(report_id, 1, 2)
+            assert diff is not None
+            assert diff['findings_changed'] is True
+            assert diff['impression_changed'] is True
+
+
+class TestReportVersionDedup:
+    """V-4: an identical PUT (autosave re-firing, no content change) must
+    not snapshot a duplicate report version."""
+
+    @pytest.mark.asyncio
+    async def test_identical_put_does_not_snapshot_second_version(self):
+        async with get_conn() as conn:
+            from db.reports import Reports
+            row = await conn.fetchrow(
+                "INSERT INTO reports (exam_id, status, findings, impression) "
+                "VALUES (gen_random_uuid(), 'draft', '', '') "
+                "RETURNING id"
+            )
+            report_id = row['id']
+            rpt = Reports(conn)
+            data = {'findings': 'Fracture of distal radius',
+                    'impression': 'Acute fracture'}
+            await rpt.update(report_id, data, edited_by='rad1')
+            await rpt.update(report_id, data, edited_by='rad1')
+
+            from db.ris_report_versions import RisReportVersions
+            history = await RisReportVersions(conn).get_history(report_id)
+            assert len(history) == 1, \
+                'an identical PUT must not add a second version'
+
+
+class TestReportSignOffAndStubs:
+    @pytest.mark.asyncio
+    async def test_sign_report_finalizes_without_creating_charges(self):
+        """A1 (GAP_AUDIT_TDD_PIPELINE.md): Reports.sign() is a pure status
+        transition + version snapshot — the enriched charge drop lives in
+        the API sign handler (single writer)."""
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id, status, modality) "
+                "VALUES ('ACC-S8-TEST', 'PAT-S8-01', 'completed', 'CT') "
+                "RETURNING id"
+            )
+            exam_id = exam_row['id']
+
+            report = await Reports(conn).create(
+                exam_id,
+                {'status': 'draft', 'findings': 'CT Head clear', 'impression': 'No acute stroke'},
+                created_by='rad_user_1',
+            )
+
+            # Sign the report
+            signed = await Reports(conn).sign(report['id'], signed_by='rad_user_1')
+            assert signed['status'] == 'final'
+            assert signed['signed_by'] == 'rad_user_1'
+            assert signed['distributed_at'] is not None
+
+            # Repo-level sign must NOT create any charge row (A1)
+            charge_row = await conn.fetchrow(
+                "SELECT * FROM ris_charges WHERE report_id = $1",
+                str(report['id']),
+            )
+            assert charge_row is None
+
+
+class TestReportVersionDiffBadInput:
+    """B-7: non-numeric v1/v2 must return 400, not a 500 traceback."""
+
+    def test_diff_with_non_numeric_version_returns_400(self):
+        from unittest.mock import patch
+        from starlette.applications import Starlette
+        from starlette.middleware import Middleware
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.routing import Route
+        from api.auth import User
+        from api.reports import ReportVersionsHandler
+
+        class _FakeAuth(BaseHTTPMiddleware):
+            def __init__(self, _app, user=None):
+                super().__init__(_app)
+                self._user = user or User({'id': 1, 'permissions': []})
+
+            async def dispatch(self, request, call_next):
+                request.scope['user'] = self._user
+                request.scope['auth'] = None
+                return await call_next(request)
+
+        user = User({'id': 1, 'permissions': ['REPORT_READ']})
+        test_app = Starlette(
+            routes=[Route('/versions/{report_id}', endpoint=ReportVersionsHandler)],
+            middleware=[Middleware(_FakeAuth, user=user)],
+        )
+        client = TestClient(test_app)
+        with patch('api.reports.get_conn'):
+            resp = client.get('/versions/rep-1?v1=abc&v2=2')
+        assert resp.status_code == 400, \
+            'non-numeric version numbers must be rejected with 400'
+
+
+class TestReportCreateLinkage:
+    """V-6: Reports.create must persist template_id and ris_order_id —
+    the columns exist on the table, the INSERT previously dropped them."""
+
+    @pytest.mark.asyncio
+    async def test_create_keeps_template_and_order_linkage(self):
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id, status, modality) "
+                "VALUES ('ACC-LINK-01', 'PAT-LINK-01', 'completed', 'CT') "
+                "RETURNING id"
+            )
+            exam_id = exam_row['id']
+            order_row = await conn.fetchrow(
+                "INSERT INTO ris_orders (patient_id, accession_number) "
+                "VALUES ('PAT-LINK-01', 'ACC-LINK-01') RETURNING id"
+            )
+            from db.ris_templates import RisReportTemplates
+            tpl = await RisReportTemplates(conn).create_template({
+                'name': 'Link Tpl', 'modality': 'CT',
+            })
+            report = await Reports(conn).create(
+                exam_id,
+                {'status': 'draft', 'findings': 'f', 'impression': 'i',
+                 'template_id': str(tpl['id']),
+                 'ris_order_id': str(order_row['id'])},
+                created_by='rad_user_1',
+            )
+            assert report['template_id'] is not None
+            assert report['ris_order_id'] is not None
+
+
+class TestReportEndpointsRLS:
+    @pytest.mark.asyncio
+    async def test_reading_list_returns_completed_exams(self):
+        async with get_conn() as conn:
+            items = await Reports(conn).reading_list()
+            assert isinstance(items, list)
+
+
+class TestTemplatePublishRollbackRealDb:
+    """A3 (GAP_AUDIT_TDD_PIPELINE.md): publish_version() UPDATEs a
+    tenant_id column that migration 071 never created — on any migrated DB
+    this raises UndefinedColumnError AFTER inserting the version row,
+    leaving version history and activated body out of sync. Migration 087
+    adds ris_report_templates.tenant_id (DEFAULT 'default' backfills the
+    seeded rows); sync_db gains the same column so fresh dev DBs match."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    async def _tpl(self, conn, name='A3 Publish Template'):
+        from db.ris_templates import RisReportTemplates
+        return await RisReportTemplates(conn).create_template({
+            'name': name, 'modality': 'CT',
+            'findings_template': 'body A', 'impression_template': 'imp A',
+        })
+
+    @pytest.mark.asyncio
+    async def test_publish_activates_body_and_rollback_restores(self):
+        import uuid
+        from db.conn import get_conn
+        from db.ris_templates import RisReportTemplates
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            repo = RisReportTemplates(conn)
+            tpl = await self._tpl(conn, f'A3 Rollback {tag}')
+            try:
+                await repo.publish_version(
+                    tpl['id'], findings='body B', impression='imp B',
+                    published_by='rad-1')
+                await repo.publish_version(
+                    tpl['id'], findings='body C', impression='imp C',
+                    published_by='rad-1')
+
+                rolled = await repo.rollback_to_version(tpl['id'], 1)
+                assert rolled is not None
+                assert rolled['version_number'] == 3
+                assert rolled['published_by'] == 'rollback'
+
+                after = await conn.fetchrow(
+                    'SELECT findings_template, impression_template'
+                    ' FROM ris_report_templates WHERE id = $1', tpl['id'])
+                assert after['findings_template'] == 'body B', (
+                    'rollback must re-activate version 1 body')
+                assert after['impression_template'] == 'imp B'
+
+                history = await repo.list_versions(tpl['id'])
+                assert len(history) == 3
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_report_template_versions'
+                    ' WHERE template_id = $1', tpl['id'])
+                await conn.execute(
+                    'DELETE FROM ris_report_templates WHERE id = $1',
+                    tpl['id'])
+
+    @pytest.mark.asyncio
+    async def test_publish_is_tenant_scoped(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            from db.ris_templates import RisReportTemplates
+            repo = RisReportTemplates(conn)
+            tpl = await self._tpl(conn, f'A3 Tenant {tag}')
+            try:
+                # Another tenant publishes against the same template id:
+                # the default-tenant row body must stay untouched.
+                await repo.publish_version(
+                    tpl['id'], findings='acme body',
+                    impression='acme imp', tenant_id=f't-acme-{tag}')
+
+                row = await conn.fetchrow(
+                    'SELECT findings_template FROM ris_report_templates'
+                    ' WHERE id = $1', tpl['id'])
+                assert row['findings_template'] == 'body A'
+
+                assert len(await repo.list_versions(
+                    tpl['id'], tenant_id=f't-acme-{tag}')) == 1
+                assert len(await repo.list_versions(
+                    tpl['id'], tenant_id='default')) == 0
+            finally:
+                await conn.execute(
+                    'DELETE FROM ris_report_template_versions'
+                    ' WHERE template_id = $1', tpl['id'])
+                await conn.execute(
+                    'DELETE FROM ris_report_templates WHERE id = $1',
+                    tpl['id'])
+
+
+class TestReadingListPagination:
+    """D1 (GAP_AUDIT_TDD_PIPELINE.md): the reading list fetched every row
+    with no pagination — S12-05's 1000-entry p95 expectation has no chance.
+    Server-side page/per_page with total, preserving the STAT/critical
+    tier ordering ACROSS pages."""
+
+    @pytest.fixture(autouse=True)
+    async def setup_db(self):
+        from db.conn import database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        yield
+        await database.close()
+
+    @pytest.mark.asyncio
+    async def test_page_slice_with_total_and_stable_order(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_ids = []
+            for i in range(3):
+                exam_row = await conn.fetchrow(
+                    "INSERT INTO exams (accession_number, patient_id,"
+                    " status, modality, priority)"
+                    " VALUES ($1, $2, 'completed', 'CT', $3) RETURNING id",
+                    f'ACC-D1-{tag}-{i}', f'P-D1-{tag}',
+                    'stat' if i == 2 else 'routine',
+                )
+                exam_ids.append(exam_row['id'])
+                await Reports(conn).create(
+                    exam_row['id'],
+                    {'status': 'draft', 'findings': 'f', 'impression': ''},
+                    created_by='rad-1',
+                )
+            try:
+                # search narrows to this test's rows — the dev DB holds
+                # other completed exams from sibling suites.
+                page1, total = await Reports(conn).reading_list(
+                    search=f'D1-{tag}', page=1, per_page=2)
+                page2, total2 = await Reports(conn).reading_list(
+                    search=f'D1-{tag}', page=2, per_page=2)
+                assert total == 3 and total2 == 3
+                assert len(page1) == 2 and len(page2) == 1
+                got_ids = {r['exam_id'] for r in page1} | {
+                    r['exam_id'] for r in page2}
+                assert got_ids == set(exam_ids), (
+                    'pagination must cover every row exactly once')
+                # STAT tier ordering survives pagination: it lands on page 1.
+                assert page1[0]['priority'] == 'stat'
+            finally:
+                await conn.execute(
+                    'DELETE FROM reports WHERE exam_id = ANY($1)', exam_ids)
+                await conn.execute(
+                    'DELETE FROM exams WHERE id = ANY($1)', exam_ids)
+
+    @pytest.mark.asyncio
+    async def test_unpaged_call_returns_full_list(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id,"
+                " status, modality)"
+                " VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+                f'ACC-D1B-{tag}', f'P-D1B-{tag}',
+            )
+            await Reports(conn).create(
+                exam_row['id'],
+                {'status': 'draft', 'findings': '', 'impression': ''},
+                created_by='rad-1',
+            )
+            try:
+                items = await Reports(conn).reading_list()
+                assert isinstance(items, list)
+            finally:
+                await conn.execute('DELETE FROM reports WHERE exam_id = $1',
+                                   exam_row['id'])
+                await conn.execute('DELETE FROM exams WHERE id = $1',
+                                   exam_row['id'])
+
+    @pytest.mark.asyncio
+    async def test_unpaged_repo_call_returns_list_not_tuple(self):
+        import uuid
+        from db.conn import get_conn
+
+        tag = uuid.uuid4().hex[:6]
+        async with get_conn() as conn:
+            exam_row = await conn.fetchrow(
+                "INSERT INTO exams (accession_number, patient_id,"
+                " status, modality)"
+                " VALUES ($1, $2, 'completed', 'CT') RETURNING id",
+                f'ACC-D1C-{tag}', f'P-D1C-{tag}',
+            )
+            await Reports(conn).create(
+                exam_row['id'],
+                {'status': 'draft', 'findings': '', 'impression': ''},
+                created_by='rad-1',
+            )
+            try:
+                items = await Reports(conn).reading_list()
+                assert isinstance(items, list), (
+                    'unpaged repo call must stay a plain list (legacy '
+                    'callers rely on it)')
+            finally:
+                await conn.execute('DELETE FROM reports WHERE exam_id = $1',
+                                   exam_row['id'])
+                await conn.execute('DELETE FROM exams WHERE id = $1',
+                                   exam_row['id'])

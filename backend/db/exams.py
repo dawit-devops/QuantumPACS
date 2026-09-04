@@ -140,17 +140,24 @@ class Exams(Table):
         which every technologist sees so nobody misses a STAT. `assigned`
         narrows that: 'mine' -> only this technologist's rows, 'pool' -> only
         the unassigned ones, so the UI can label ownership honestly.
+
+        F1: the list is row-level tenant-scoped (role-walk technologist).
+        Shared-DB tenants (uses_main_database) share one pool AND one table,
+        so pool-level isolation is not enough — without this filter an acme
+        technologist sees every other tenant's exams.
         """
         from pypika import Query as PypikaQuery
 
+        tenant = get_tenant_slug() or 'default'
         assigned_me = self.table.assigned_technologist == username
         unassigned = self.table.assigned_technologist == ''
+        conditions = [self.table.tenant_id == tenant]
         if assigned == 'mine':
-            conditions = [assigned_me]
+            conditions.append(assigned_me)
         elif assigned == 'pool':
-            conditions = [unassigned]
+            conditions.append(unassigned)
         else:
-            conditions = [assigned_me | unassigned]
+            conditions.append(assigned_me | unassigned)
         if status:
             conditions.append(self.table.status == status)
         if modality:
@@ -470,17 +477,62 @@ class Protocols(Table):
         await self.exec("""
         CREATE INDEX IF NOT EXISTS ix_protocols_tenant ON protocols(tenant_id)
         """)
+        # T-06: clinical indication text + per-user favorites.
+        await self.exec("""
+        ALTER TABLE protocols
+        ADD COLUMN IF NOT EXISTS clinical_indication TEXT NOT NULL DEFAULT ''
+        """)
+        await self.exec("""
+        CREATE TABLE IF NOT EXISTS protocol_favorites (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id TEXT NOT NULL,
+            protocol_id UUID NOT NULL REFERENCES protocols(id) ON DELETE CASCADE,
+            tenant_id TEXT,
+            created_at TIMESTAMPTZ DEFAULT now(),
+            CONSTRAINT uq_protocol_favorites UNIQUE (user_id, protocol_id)
+        )
+        """)
+        await self.exec("""
+        CREATE INDEX IF NOT EXISTS ix_protocol_favorites_user
+        ON protocol_favorites(user_id)
+        """)
 
-    async def list_by_modality(self, modality=None):
+    async def list_by_modality(self, modality=None, body_part=None, q=None,
+                               user_id=None):
+        """List protocols with optional filters and a per-user favorite flag.
+
+        T-06: body_part/q narrow the registry (q matches name, body part or
+        clinical indication); user_id LEFT JOINs protocol_favorites so rows
+        carry `is_favorite` for the console star toggle."""
+        clauses, args = [], []
         if modality:
-            rows = await self.conn.fetch(
-                "SELECT * FROM protocols WHERE modality = $1 ORDER BY name",
-                modality,
+            args.append(modality)
+            clauses.append(f"p.modality = ${len(args)}")
+        if body_part:
+            args.append(body_part)
+            clauses.append(f"p.body_part = ${len(args)}")
+        if q:
+            args.append(f"%{q}%")
+            i = len(args)
+            clauses.append(
+                f"(p.name ILIKE ${i} OR p.body_part ILIKE ${i}"
+                f" OR p.clinical_indication ILIKE ${i})"
             )
-        else:
-            rows = await self.conn.fetch(
-                "SELECT * FROM protocols ORDER BY modality, name",
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ''
+        fav = ''
+        if user_id:
+            args.append(str(user_id))
+            fav = (
+                f"LEFT JOIN protocol_favorites pf"
+                f" ON pf.protocol_id = p.id AND pf.user_id = ${len(args)}"
             )
+        rows = await self.conn.fetch(
+            f"""SELECT p.*, {'pf.id IS NOT NULL AS is_favorite'
+                            if user_id else 'FALSE AS is_favorite'}
+                FROM protocols p {fav} {where}
+                ORDER BY p.modality, p.name""",
+            *args,
+        )
         return [dict(r) for r in rows]
 
     async def get_default_for_modality(self, modality):
@@ -491,3 +543,19 @@ class Protocols(Table):
             modality,
         )
         return dict(row) if row else None
+
+    async def toggle_favorite(self, user_id, protocol_id, tenant=None):
+        """T-06: flip the user's favorite flag; True=now favorite."""
+        deleted = await self.conn.fetchval(
+            """DELETE FROM protocol_favorites
+               WHERE user_id = $1 AND protocol_id = $2 RETURNING id""",
+            str(user_id), str(protocol_id),
+        )
+        if deleted:
+            return False
+        await self.conn.execute(
+            """INSERT INTO protocol_favorites (user_id, protocol_id, tenant_id)
+               VALUES ($1, $2, $3)""",
+            str(user_id), str(protocol_id), tenant,
+        )
+        return True

@@ -23,6 +23,8 @@ from api.routes import routes
 from api.response import server_error, apply_cors_headers, api_error
 from api.tenant_middleware import TenantMiddleware
 from api.fhir_audit_middleware import FhirAuditMiddleware
+from api.ratelimit_middleware import RisRateLimitMiddleware
+from api.fhir_scope_middleware import FhirScopeMiddleware
 from api.telemetry import RequestIDMiddleware, http_requests_in_progress, record_request
 from api.tracing_middleware import TracingMiddleware
 from api.dicomweb_logging import DicomWebLogMiddleware
@@ -145,7 +147,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 or path.startswith('/api/fhir') or path.startswith('/api/v2/fhir')
             )
             if path not in self._PUBLIC_PATHS and not is_machine:
-                if request.headers.get('X-CSRF-Token') != '1':
+                # Double-submit cookie pattern: the client reads the
+                # csrf_token cookie (non-HttpOnly) and echoes it in the
+                # X-CSRF-Token header. The middleware verifies they match.
+                # Fallback to '1' for backwards compat with clients that
+                # haven't updated yet.
+                cookie_token = request.cookies.get('csrf_token', '1')
+                header_token = request.headers.get('X-CSRF-Token', '')
+                if header_token != cookie_token:
                     from api.response import forbidden
                     return forbidden('CSRF token missing or invalid')
         response = await call_next(request)
@@ -251,6 +260,8 @@ app = Starlette(
         Middleware(FhirAuditMiddleware),
         Middleware(TrustedHostMiddleware, allowed_hosts=config.get('allowed_hosts', 'localhost,127.0.0.1').split(',')),
         Middleware(RequestIDMiddleware),
+        Middleware(RisRateLimitMiddleware),
+        Middleware(FhirScopeMiddleware),
         Middleware(CORSMiddleware, allow_origins=config.get('cors_origins', 'http://localhost:5173').split(','), allow_methods=['OPTIONS', 'GET', 'POST', 'PUT', 'DELETE'], allow_headers=['Origin', 'Accept', 'X-Auth-Pacs', 'Content-Type', 'X-Requested-With', 'X-API-Key', 'X-CSRF-Token', 'X-Tenant-ID'], allow_credentials=True),
         Middleware(SecurityHeadersMiddleware),
         Middleware(CSRFMiddleware),

@@ -9,11 +9,7 @@ import PermissionRoute, {
   METRICS_ROUTE_PERMISSIONS,
   ADMIN_DASHBOARD_PERMISSIONS,
 } from "../auth/PermissionRoute";
-import {
-  landingRouteFor,
-  ADMIN_SCOPED_ROLES,
-  CLINICAL_SCOPED_ROLES,
-} from "../navigator";
+import { landingRouteFor, ADMIN_SCOPED_ROLES, CLINICAL_SCOPED_ROLES } from "../navigator";
 
 const { landingRouteForMock } = vi.hoisted(() => ({
   landingRouteForMock: vi.fn(() => "/account"),
@@ -22,8 +18,7 @@ const { landingRouteForMock } = vi.hoisted(() => ({
 // Keep the real role-scope constants (ADMIN_SCOPED_ROLES) but stub the
 // landing resolver, which the tests control to assert redirect targets.
 vi.mock("../navigator", async () => {
-  const actual =
-    await vi.importActual<typeof import("../navigator")>("../navigator");
+  const actual = await vi.importActual<typeof import("../navigator")>("../navigator");
   return {
     ...actual,
     landingRouteFor: landingRouteForMock,
@@ -118,25 +113,30 @@ function WorkspaceRouteTable() {
       <Route
         path="/reading"
         element={
-          <PermissionRoute
-            permission="REPORT_READ"
-            excludedRoles={[...ADMIN_SCOPED_ROLES]}
-          >
+          <PermissionRoute permission="REPORT_READ" excludedRoles={[...ADMIN_SCOPED_ROLES]}>
             <div data-testid="reading-page" />
           </PermissionRoute>
         }
       />
-      {/* Mirrors the AdminConsoleRoute wrapper in src/index.tsx: the DICOMweb
-          console is closed to clinical role slugs even when the legacy
-          DICOMWEB_READ permission passes. */}
+      {/* Mirrors the PermissionRoute wrapper in src/index.tsx: the DICOMweb
+          console is reachable for clinical roles holding legacy DICOMWEB_READ
+          (user decision 2026-08-27 — no longer admin-scoped); the backend
+          re-checks DICOMWEB_WRITE on the STOW endpoint itself. */}
       <Route
         path="/dicomweb"
         element={
-          <PermissionRoute
-            permission="DICOMWEB_READ"
-            excludedRoles={[...CLINICAL_SCOPED_ROLES]}
-          >
+          <PermissionRoute permission="DICOMWEB_READ">
             <div data-testid="dicomweb-page" />
+          </PermissionRoute>
+        }
+      />
+      {/* Mirrors index.tsx: tenant_admin (REPORT_TEMPLATE_ADMIN) and
+          radiologist (REPORT_WRITE) both reach the template library. */}
+      <Route
+        path="/admin/report-templates"
+        element={
+          <PermissionRoute permission={["REPORT_WRITE", "REPORT_TEMPLATE_ADMIN"]}>
+            <div data-testid="template-page" />
           </PermissionRoute>
         }
       />
@@ -150,7 +150,7 @@ function renderAt(path: string) {
       <AuthProvider>
         <WorkspaceRouteTable />
       </AuthProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
 }
 
@@ -161,16 +161,9 @@ describe("PACS workspace route gates", () => {
   });
 
   it("defines the workspace gates with the spec permission keys", () => {
-    expect(VIEWER_ROUTE_PERMISSIONS).toEqual([
-      "FILE_READ",
-      "STUDY_READ",
-      "VIEWER_READ",
-    ]);
+    expect(VIEWER_ROUTE_PERMISSIONS).toEqual(["FILE_READ", "STUDY_READ", "VIEWER_READ"]);
     expect(PATIENT_ROUTE_PERMISSIONS).toEqual(["PATIENT_READ"]);
-    expect(METRICS_ROUTE_PERMISSIONS).toEqual([
-      "METRICS_READ",
-      "ANALYTICS_READ",
-    ]);
+    expect(METRICS_ROUTE_PERMISSIONS).toEqual(["METRICS_READ", "ANALYTICS_READ"]);
     expect(ADMIN_DASHBOARD_PERMISSIONS).toEqual([
       "USER_READ",
       "LOG_READ",
@@ -375,9 +368,10 @@ describe("PACS workspace route gates", () => {
     result.unmount();
   });
 
-  it("closes the DICOMweb console to a clinical role even with DICOMWEB_READ", () => {
-    // Legacy grants give radiologist and physician DICOMWEB_READ, but the
-    // console is admin-scoped: they are bounced to their landing instead.
+  it("lets a clinical role with DICOMWEB_READ open the DICOMweb console", () => {
+    // Legacy grants give radiologist and physician DICOMWEB_READ; the console
+    // is now reachable for them (user decision 2026-08-27 — the sidebar and
+    // route gate use a plain PermissionRoute, no adminOnly/excludedRoles).
     seedUser({
       role: "radiologist",
       admin: false,
@@ -386,8 +380,7 @@ describe("PACS workspace route gates", () => {
     landingRouteForMock.mockImplementation(() => "/account");
 
     const result = renderAt("/dicomweb");
-    expect(screen.getByTestId("account-page")).toBeInTheDocument();
-    expect(screen.queryByTestId("dicomweb-page")).toBeNull();
+    expect(screen.getByTestId("dicomweb-page")).toBeInTheDocument();
     result.unmount();
   });
 
@@ -432,6 +425,57 @@ describe("PACS workspace route gates", () => {
     const result = renderAt("/admin");
     expect(screen.getByTestId("account-page")).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-page")).toBeNull();
+    result.unmount();
+  });
+
+  it("lets a dept_manager open the dashboard with a dashboard permission", () => {
+    // S12-34: dept_manager is admin-scoped (ADMIN_SCOPED_ROLES) with read-only
+    // operational analytics — METRICS_READ satisfies the dashboard gate.
+    seedUser({ role: "dept_manager", admin: false, permissions: ["METRICS_READ"] });
+
+    const result = renderAt("/admin");
+    expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("closes clinical routes to a dept_manager even with the permission", () => {
+    // dept_manager carries REPORT_READ (RIS dashboard gate) but is
+    // admin-scoped — the clinical reading surface must stay closed.
+    seedUser({ role: "dept_manager", admin: false, permissions: ["REPORT_READ"] });
+    landingRouteForMock.mockImplementation(() => "/account");
+
+    const result = renderAt("/reading");
+    expect(screen.getByTestId("account-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("reading-page")).toBeNull();
+    result.unmount();
+  });
+
+  it("lets a tenant_admin open the report template library with REPORT_TEMPLATE_ADMIN", () => {
+    // R3: the backend gates template CRUD on REPORT_TEMPLATE_ADMIN, which the
+    // tenant_admin grant holds without REPORT_WRITE — the frontend gate now
+    // accepts either code (user decision 2026-08-28).
+    seedUser({ role: "tenant_admin", admin: false, permissions: ["REPORT_TEMPLATE_ADMIN"] });
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("template-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("lets a radiologist open the template library with REPORT_WRITE", () => {
+    seedUser({ role: "radiologist", admin: false, permissions: ["REPORT_WRITE"] });
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("template-page")).toBeInTheDocument();
+    result.unmount();
+  });
+
+  it("blocks a user without either template permission from the library", () => {
+    seedUser({ role: "technologist", admin: false, permissions: ["WORKLIST_READ"] });
+    landingRouteForMock.mockImplementation(() => "/account");
+
+    const result = renderAt("/admin/report-templates");
+    expect(screen.getByTestId("account-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("template-page")).toBeNull();
     result.unmount();
   });
 });

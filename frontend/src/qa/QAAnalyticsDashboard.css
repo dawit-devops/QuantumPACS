@@ -1,0 +1,9 @@
+.qa-analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.qa-analytics-header h2 {
+  margin: 0;
+}

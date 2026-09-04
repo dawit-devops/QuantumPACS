@@ -94,7 +94,7 @@ describe("ReadingWorklist", () => {
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith("reports/reading-list", {
-        query: {},
+        query: { page: "1", per_page: "20" },
       });
     });
   });
@@ -168,6 +168,45 @@ describe("ReadingWorklist", () => {
     });
   });
 
+  it("passes the unread toggle through as unread=1 (R-01)", async () => {
+    mockRequest.mockResolvedValue({ data: mockItems });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("JD")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Unread only"));
+
+    await waitFor(() => {
+      const lastCall =
+        mockRequest.mock.calls[mockRequest.mock.calls.length - 1];
+      expect(lastCall[1].query.unread).toBe("1");
+    });
+  });
+
+  it("shows personal reading stats in the header (R-17)", async () => {
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "reports/reading-list") {
+        return Promise.resolve({ data: mockItems });
+      }
+      if (url.startsWith("reports/reading-stats")) {
+        return Promise.resolve({
+          data: {
+            signed_today: 3,
+            avg_tat_seconds: { stat: 1800 },
+            stat_compliance_pct: 87.5,
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderWorklist();
+
+    expect(await screen.findByText(/Signed today.*3/i)).toBeInTheDocument();
+    expect(screen.getByText(/STAT compliance.*87\.5%/i)).toBeInTheDocument();
+  });
+
   it("filters by referring physician", async () => {
     mockRequest.mockResolvedValue({ data: mockItems });
     renderWorklist();
@@ -220,7 +259,7 @@ describe("ReadingWorklist", () => {
     // The refetch fires after the assignment resolves.
     await waitFor(() => {
       expect(mockRequest).toHaveBeenLastCalledWith("reports/reading-list", {
-        query: {},
+        query: { page: "1", per_page: "20" },
       });
     });
   });

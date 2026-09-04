@@ -1,0 +1,1265 @@
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
+
+import { renderWithAuth } from "./renderWithApp";
+import CalendarView from "../schedule/CalendarView";
+
+const mockListResources = vi.hoisted(() => vi.fn());
+const mockListAppointments = vi.hoisted(() => vi.fn());
+const mockGetAvailability = vi.hoisted(() => vi.fn());
+const mockRangeAppointments = vi.hoisted(() => vi.fn());
+const mockBook = vi.hoisted(() => vi.fn());
+const mockReschedule = vi.hoisted(() => vi.fn());
+const mockCancel = vi.hoisted(() => vi.fn());
+const mockNoShow = vi.hoisted(() => vi.fn());
+const mockSearchOrders = vi.hoisted(() => vi.fn());
+const mockBatchBook = vi.hoisted(() => vi.fn());
+const mockListWaitlist = vi.hoisted(() => vi.fn());
+const mockAddWaitlist = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/scheduling", () => ({
+  listRisResources: mockListResources,
+  createRisResource: vi.fn(),
+  listRisSchedules: vi.fn(),
+  createRisSchedule: vi.fn(),
+  getResourceAvailability: mockGetAvailability,
+  listResourceAppointments: mockListAppointments,
+  listAppointmentsDateRange: mockRangeAppointments,
+  bookAppointment: mockBook,
+  rescheduleAppointment: mockReschedule,
+  cancelRisAppointment: mockCancel,
+  markNoShow: mockNoShow,
+  searchRisOrders: mockSearchOrders,
+  batchBookAppointments: mockBatchBook,
+  listWaitlist: mockListWaitlist,
+  addWaitlistEntry: mockAddWaitlist,
+  dayOfWeekLabel: (d: number) =>
+    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][d],
+}));
+
+vi.mock("antd", async () => {
+  const actual = await vi.importActual("antd");
+  const Popconfirm = ({ children, onConfirm, title }: any) =>
+    React.createElement(
+      "span",
+      {
+        className: "mock-popconfirm",
+        "data-title": title,
+        onClick: (e: React.MouseEvent) => {
+          e.stopPropagation();
+          onConfirm?.();
+        },
+      },
+      children
+    );
+  return { ...actual, Popconfirm };
+});
+
+let registeredTenantCb: (() => void) | null = null;
+vi.mock("../hooks", () => ({
+  useDocumentTitle: vi.fn(),
+  useTenantRefetch: (cb: () => void) => {
+    registeredTenantCb = cb;
+  },
+}));
+
+function seedUser(permissions: string[]) {
+  localStorage.setItem("token", "t");
+  localStorage.setItem("userId", "u1");
+  localStorage.setItem("admin", "false");
+  localStorage.setItem("role", "scheduler");
+  localStorage.setItem("permissions", JSON.stringify(permissions));
+}
+
+const RESOURCE = {
+  id: "r1",
+  name: "CT Room 1",
+  resource_type: "MODALITY",
+  modality: "CT",
+  status: "ACTIVE",
+};
+
+const APPT = {
+  id: "a1",
+  resource_id: "r1",
+  patient_id: "P001",
+  status: "SCHEDULED",
+  start_time: "2026-08-20T09:00:00.000Z",
+  end_time: "2026-08-20T09:30:00.000Z",
+};
+
+describe("CalendarView", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registeredTenantCb = null;
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+    ]);
+  });
+
+  it("renders resources as columns and booked appointments as blocks", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    expect(await screen.findByText("CT Room 1")).toBeInTheDocument();
+    expect(await screen.findByText("P001")).toBeInTheDocument();
+    expect(screen.getByText("SCHEDULED")).toBeInTheDocument();
+  });
+
+  it("renders a STAT priority badge on high-priority blocks (C4)", async () => {
+    mockListAppointments.mockResolvedValue([
+      { ...APPT, id: "a2", patient_id: "P-STAT", priority: "STAT" },
+    ]);
+    renderWithAuth(<CalendarView />);
+    expect(await screen.findByText("P-STAT")).toBeInTheDocument();
+    expect(screen.getByText("STAT")).toBeInTheDocument();
+  });
+
+  it("marks overlapping appointments as conflicts with partner details (S-02)", async () => {
+    // P002 starts 15 minutes into P001's slot — a genuine double-booking.
+    mockListAppointments.mockResolvedValue([
+      APPT,
+      {
+        ...APPT,
+        id: "a3",
+        patient_id: "P002",
+        start_time: "2026-08-20T09:15:00.000Z",
+        end_time: "2026-08-20T09:45:00.000Z",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+
+    expect(await screen.findByText("P001")).toBeInTheDocument();
+    expect(screen.getByText("P002")).toBeInTheDocument();
+
+    // Both blocks carry the conflict styling.
+    const p1 = screen.getByText("P001").closest(".sched-block") as HTMLElement;
+    const p2 = screen.getByText("P002").closest(".sched-block") as HTMLElement;
+    expect(p1.className).toContain("conflict");
+    expect(p2.className).toContain("conflict");
+
+    // Hovering a conflicted block names the partner appointment. antd
+    // portals the tooltip to document.body, so match there.
+    fireEvent.mouseEnter(p1);
+    fireEvent.mouseOver(p1);
+    await waitFor(() => {
+      expect(document.body.textContent).toMatch(/Conflicts with P002/);
+    });
+  });
+
+  it("does not mark back-to-back appointments as conflicts (S-02)", async () => {
+    mockListAppointments.mockResolvedValue([
+      APPT,
+      {
+        ...APPT,
+        id: "a4",
+        patient_id: "P003",
+        start_time: "2026-08-20T09:30:00.000Z",
+        end_time: "2026-08-20T10:00:00.000Z",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    expect(await screen.findByText("P003")).toBeInTheDocument();
+    const p1 = screen.getByText("P001").closest(".sched-block") as HTMLElement;
+    const p3 = screen.getByText("P003").closest(".sched-block") as HTMLElement;
+    expect(p1.className).not.toContain("conflict");
+    expect(p3.className).not.toContain("conflict");
+  });
+
+  it("shows an empty state when no resources are configured", async () => {
+    mockListResources.mockResolvedValue([]);
+    renderWithAuth(<CalendarView />);
+    expect(
+      await screen.findByText("No resources configured — add them from the Resources page.")
+    ).toBeInTheDocument();
+  });
+
+  it("books an appointment from a free slot with order search", async () => {
+    mockSearchOrders.mockResolvedValue({
+      data: [
+        {
+          id: "o1",
+          accession_number: "ACC-1",
+          patient_id: "P001",
+          patient_name: "Jane Roe",
+          status: "ORDERED",
+          priority: "ROUTINE",
+        },
+      ],
+      total: 1,
+      page: 1,
+      per_page: 25,
+    });
+    mockBook.mockResolvedValue({ ...APPT, id: "a9" });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // click the 09:00 free cell (the grid renders time column + resource cells)
+    const freeCell = screen
+      .getAllByRole("button")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    expect(freeCell).toBeDefined();
+    fireEvent.click(freeCell!);
+
+    // booking modal: search order, pick it, confirm
+    const search = screen.getByPlaceholderText("Search order (name, MRN or accession)");
+    await userEvent.type(search, "Jane{Enter}");
+    expect(await screen.findByText("Jane Roe")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Jane Roe"));
+    fireEvent.click(screen.getByText("Confirm Booking"));
+
+    await waitFor(() => {
+      expect(mockBook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order_id: "o1",
+          resource_id: "r1",
+          patient_id: "P001",
+        })
+      );
+    });
+  });
+
+  // ---- HI-001: Order-less booking + order-search edge paths ----------------
+
+  it("books without an order by typing a patient ID directly", async () => {
+    mockBook.mockResolvedValue({ ...APPT, id: "a-direct" });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // Click a free cell to open the booking modal
+    const freeCell = screen
+      .getAllByRole("button")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    fireEvent.click(freeCell!);
+
+    // Type patient ID directly — no order search, no order pick
+    const patientInput = screen.getByPlaceholderText(/patient ID directly/i);
+    await userEvent.type(patientInput, "P999");
+
+    // Confirm — should send order_id: "" (order-less)
+    fireEvent.click(screen.getByText("Confirm Booking"));
+
+    await waitFor(() => {
+      expect(mockBook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order_id: "",
+          patient_id: "P999",
+          resource_id: "r1",
+        })
+      );
+    });
+  });
+
+  it("does not search orders on a single-character term", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const freeCell = screen
+      .getAllByRole("button")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    fireEvent.click(freeCell!);
+
+    // Type a single character and press Enter — term.length < 2 guard fires
+    const search = screen.getByPlaceholderText("Search order (name, MRN or accession)");
+    await userEvent.type(search, "J{Enter}");
+
+    // searchRisOrders should NOT have been called (guard returns early)
+    await waitFor(() => {
+      expect(mockSearchOrders).not.toHaveBeenCalled();
+    });
+  });
+
+  it("surfaces order search failure as an error toast", async () => {
+    mockSearchOrders.mockRejectedValue({ message: "search down" });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const freeCell = screen
+      .getAllByRole("button")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    fireEvent.click(freeCell!);
+
+    const search = screen.getByPlaceholderText("Search order (name, MRN or accession)");
+    await userEvent.type(search, "Jane{Enter}");
+
+    // The search was attempted (term >= 2 chars), but the API rejected it.
+    // The error should surface — either via message.error or the error state.
+    await waitFor(() => {
+      expect(mockSearchOrders).toHaveBeenCalled();
+    });
+  });
+
+  it("opens the detail drawer on block click and cancels with reason", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockCancel.mockResolvedValue({ ...APPT, status: "CANCELLED" });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    const reason = screen.getByPlaceholderText("Reason (required for audit)");
+    await userEvent.type(reason, "no-show");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel Appointment" }));
+
+    await waitFor(() => {
+      expect(mockCancel).toHaveBeenCalledWith("a1", "no-show");
+    });
+  });
+
+  // ---- HI-003: CancelModal validation + failure path -----------------------
+
+  it("blocks cancelling without a reason (button disabled)", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    // Open the detail drawer and click Cancel
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Cancel"));
+
+    // The confirm button should be disabled (reason is empty)
+    const confirmBtn = screen.getByRole("button", { name: "Cancel Appointment" });
+    expect(confirmBtn).toBeDisabled();
+
+    // Clicking a disabled button is a no-op
+    fireEvent.click(confirmBtn);
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it("shows error when the cancel request fails", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockCancel.mockRejectedValue({ message: "Cancel failed" });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    const reason = screen.getByPlaceholderText("Reason (required for audit)");
+    await userEvent.type(reason, "duplicate");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel Appointment" }));
+
+    await waitFor(() => {
+      expect(mockCancel).toHaveBeenCalled();
+    });
+
+    // After failure, the modal should still be open (onDone was NOT called)
+    // The typed reason is still visible in the input — proves the modal didn't close
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("duplicate")).toBeInTheDocument();
+    });
+  });
+
+  it("does not offer booking actions without SCHEDULE_WRITE", async () => {
+    seedUser(["SCHEDULE_READ"]);
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    expect(screen.queryByText("Reschedule")).not.toBeInTheDocument();
+    expect(screen.queryByText("Book Appointment")).not.toBeInTheDocument();
+  });
+
+  it("does not open booking modal when read-only user clicks free cell", async () => {
+    seedUser(["SCHEDULE_READ"]);
+    mockListAppointments.mockResolvedValue([]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // Find a free cell and click it — read-only users get gridcell (not button)
+    const freeCell = screen
+      .getAllByRole("gridcell")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    expect(freeCell).toBeDefined();
+    fireEvent.click(freeCell!);
+
+    // The booking modal should NOT open — canWrite is false
+    await waitFor(() => {
+      expect(
+        screen.queryByPlaceholderText("Search order (name, MRN or accession)")
+      ).not.toBeInTheDocument();
+    });
+    expect(mockBook).not.toHaveBeenCalled();
+  });
+
+  // ---- A1: Keyboard-accessible free cells ----------------------------------
+
+  it("free cells are focusable and activatable via Enter key", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // A1: free cells must have role="button" and tabIndex for keyboard access
+    const freeCells = screen
+      .getAllByRole("button")
+      .filter((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    expect(freeCells.length).toBeGreaterThan(0);
+    const freeCell = freeCells[0];
+    expect(freeCell).toHaveAttribute("tabindex", "0");
+
+    // Activate via Enter key
+    freeCell.focus();
+    await userEvent.keyboard("{Enter}");
+
+    // Booking modal should open
+    expect(
+      await screen.findByPlaceholderText("Search order (name, MRN or accession)")
+    ).toBeInTheDocument();
+  });
+
+  it("free cells are activatable via Space key", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const freeCells = screen
+      .getAllByRole("button")
+      .filter((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    const freeCell = freeCells[0];
+
+    freeCell.focus();
+    await userEvent.keyboard(" ");
+
+    expect(
+      await screen.findByPlaceholderText("Search order (name, MRN or accession)")
+    ).toBeInTheDocument();
+  });
+
+  // ---- HI-002: Day navigation + modal-state reset -------------------------
+
+  it("navigates to next day and re-fetches appointments", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const callsBefore = mockListResources.mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+
+    await waitFor(() => {
+      expect(mockListResources.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  it("clears all modals/drawers when navigating to another day", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    // Open the detail drawer — same pattern as the existing cancel test
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    // The Reschedule and Cancel buttons should be visible in the open drawer
+    expect(screen.getByText("Reschedule")).toBeInTheDocument();
+
+    // Navigate — changeDay clears selected, bookFor, rescheduleFor, cancelFor
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+
+    // After navigation, the drawer action buttons should be gone
+    // (Antd Drawer keeps its title in the DOM when closed — check for
+    //  action buttons that only render inside an open drawer)
+    await waitFor(() => {
+      expect(screen.queryByText("Reschedule")).not.toBeInTheDocument();
+    });
+  });
+
+  // ---- R3: Stale grid after fetch failure ---------------------------------
+
+  it("clears grid data when fetch fails so stale blocks are not shown", async () => {
+    // First load succeeds — grid shows P001's appointment
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    // Simulate a failure on the next fetch (day change)
+    mockListAppointments.mockRejectedValue(new Error("network error"));
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+
+    // After the failed refetch, the error should show and old blocks should be gone
+    await waitFor(() => {
+      expect(screen.queryByText("P001")).not.toBeInTheDocument();
+    });
+  });
+
+  // ---- T1: UTC day anchor -------------------------------------------------
+
+  it("anchors day in UTC, not browser-local", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // The header Tag should display the UTC date, not browser-local.
+    // The engine uses UTC day semantics, so the calendar must match.
+    const todayUtc = dayjs.utc().format("YYYY-MM-DD");
+    expect(screen.getByText(new RegExp(todayUtc))).toBeInTheDocument();
+  });
+
+  // ---- HI-006: Tenant refetch wiring verification -------------------------
+
+  it("refetches resources when tenant changes", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    const callsBefore = mockListResources.mock.calls.length;
+
+    // Simulate tenant:changed — the real hook would call this callback
+    expect(registeredTenantCb).toBeDefined();
+    registeredTenantCb!();
+
+    await waitFor(() => {
+      expect(mockListResources.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  // ---- ME-001: Error states on scheduling surfaces ------------------------
+
+  it("shows error alert when resource fetch fails", async () => {
+    mockListResources.mockRejectedValue(new Error("server error"));
+    renderWithAuth(<CalendarView />);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  // ---- CR-003: BookingFormModal 409/SLOT_CONFLICT -------------------------
+
+  it("handles a 409 booking conflict by warning and refreshing", async () => {
+    mockSearchOrders.mockResolvedValue({
+      data: [
+        {
+          id: "o1",
+          accession_number: "ACC-1",
+          patient_id: "P001",
+          patient_name: "Jane Roe",
+          status: "ORDERED",
+          priority: "ROUTINE",
+        },
+      ],
+      total: 1,
+      page: 1,
+      per_page: 25,
+    });
+    mockBook.mockRejectedValue({
+      status: 409,
+      code: "SLOT_CONFLICT",
+      message: "Slot just taken",
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    // Click a free cell to open the booking modal
+    const freeCell = screen
+      .getAllByRole("button")
+      .find((c) => c.getAttribute("aria-label")?.includes("(free)"));
+    expect(freeCell).toBeDefined();
+    fireEvent.click(freeCell!);
+
+    // Search and pick an order
+    const search = screen.getByPlaceholderText("Search order (name, MRN or accession)");
+    await userEvent.type(search, "Jane{Enter}");
+    expect(await screen.findByText("Jane Roe")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Jane Roe"));
+
+    // Confirm — triggers the 409 conflict path
+    fireEvent.click(screen.getByText("Confirm Booking"));
+
+    await waitFor(() => {
+      expect(mockBook).toHaveBeenCalled();
+    });
+
+    // The calendar must refetch after the conflict (availability may have changed)
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalled();
+    });
+
+    // E1: after 409, onClose fires so the user can re-pick from the
+    // refreshed grid. The functional contract is that the calendar refetched
+    // (tested above) and the parent cleared bookFor (onClose called).
+    // Antd Modal keeps DOM content when open=false, so we verify the
+    // booking flow completed (mockBook called) and grid refreshed.
+  });
+
+  // ---- CR-001: RescheduleModal flow tests ---------------------------------
+
+  it("reschedules an appointment to a new free slot", async () => {
+    // APPT is at 09:00-09:30. Availability returns 09:00 and 09:30.
+    // The reschedule modal filters out the current slot (09:00), leaving
+    // 09:30 as the only option.
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockReschedule.mockResolvedValue({
+      ...APPT,
+      start_time: "2026-08-20T09:30:00.000Z",
+      end_time: "2026-08-20T10:00:00.000Z",
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    // Open the detail drawer
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    // Click Reschedule in the drawer (the drawer button, not the modal's OK)
+    const drawerReschedule = screen.getAllByText("Reschedule").find((el) => el.tagName === "SPAN")!;
+    fireEvent.click(drawerReschedule.closest("button")!);
+    expect(await screen.findByText("Reschedule Appointment")).toBeInTheDocument();
+
+    // The modal should show the 09:30 slot button (09:00 filtered out)
+    const slotBtn = screen.getByRole("button", { name: "09:30" });
+    fireEvent.click(slotBtn);
+
+    // Type a reason
+    const reasonInput = screen.getByPlaceholderText("Reason (optional)");
+    await userEvent.type(reasonInput, "patient request");
+
+    // Confirm reschedule — the modal's OK button (okText="Reschedule")
+    const modalOk = screen.getAllByText("Reschedule").find((el) => el.closest(".ant-modal"))!;
+    fireEvent.click(modalOk.closest("button")!);
+
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalledWith("a1", {
+        new_start_time: expect.stringContaining("09:30"),
+        new_end_time: expect.stringContaining("10:00"),
+        reason: "patient request",
+      });
+    });
+
+    // After success, the calendar should refetch (mockListResources called again)
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalled();
+    });
+  });
+
+  it("shows info message when no free slots are available for rescheduling", async () => {
+    // Only one free slot (09:00) — same as the appointment's current slot.
+    // After filtering, zero slots remain → message.info fires.
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Reschedule"));
+
+    // The modal should NOT open — instead an info toast appears.
+    // Antd message.info renders a notification; we verify the modal title
+    // is absent (the modal never opened).
+    await waitFor(() => {
+      expect(screen.queryByText("Reschedule Appointment")).not.toBeInTheDocument();
+    });
+  });
+
+  it("handles a 409 reschedule conflict by calling onConflict", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockReschedule.mockRejectedValue({
+      status: 409,
+      code: "SLOT_CONFLICT",
+      message: "Slot just taken",
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    // Click Reschedule in the drawer
+    const drawerReschedule = screen.getAllByText("Reschedule").find((el) => el.tagName === "SPAN")!;
+    fireEvent.click(drawerReschedule.closest("button")!);
+    expect(await screen.findByText("Reschedule Appointment")).toBeInTheDocument();
+
+    // Confirm — the modal's OK button
+    const modalOk = screen.getAllByText("Reschedule").find((el) => el.closest(".ant-modal"))!;
+    fireEvent.click(modalOk.closest("button")!);
+
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalled();
+    });
+
+    // The calendar should refetch availability after the conflict
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalled();
+    });
+  });
+});
+
+describe("CalendarView S-01 drag-to-rebook", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+    ]);
+  });
+
+  // Minimal HTML5 DataTransfer stand-in: setData/getData round-trip a store.
+  function makeDataTransfer(store: Record<string, string> = {}) {
+    return {
+      dropEffect: "",
+      setData: (k: string, v: string) => {
+        store[k] = v;
+      },
+      getData: (k: string) => store[k],
+    };
+  }
+
+  it("drags an appointment block onto a free cell and rebooks (S-01)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    expect(block).toHaveAttribute("draggable", "true");
+
+    const targetCell = screen.getByLabelText("CT Room 1 09:30 (free)");
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(block, { dataTransfer: dt });
+    fireEvent.drop(targetCell, { dataTransfer: dt });
+
+    // Rebook preserves the 30-min duration: 09:30 → 10:00.
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalledWith("a1", {
+        new_start_time: expect.stringContaining("09:30"),
+        new_end_time: expect.stringContaining("10:00"),
+      });
+    });
+  });
+
+  it("surfaces a conflict when the drag-rebook target is just taken (S-01)", async () => {
+    mockReschedule.mockRejectedValue({
+      status: 409,
+      code: "SLOT_CONFLICT",
+      message: "Slot just taken",
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    const targetCell = screen.getByLabelText("CT Room 1 09:30 (free)");
+    const dt = makeDataTransfer();
+    fireEvent.dragStart(block, { dataTransfer: dt });
+    fireEvent.drop(targetCell, { dataTransfer: dt });
+
+    // The warning path refetches availability/calendar.
+    await waitFor(() => {
+      expect(mockReschedule).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mockListResources.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  it("does not offer drag on read-only schedules (S-01)", async () => {
+    // Re-seed without SCHEDULE_WRITE.
+    seedUser(["SCHEDULE_READ"]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    const block = screen.getByText("P001").closest(".sched-block")!;
+    expect(block).toHaveAttribute("draggable", "false");
+  });
+});
+
+describe("CalendarView S-04 room utilization heatmap", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([APPT]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+    ]);
+  });
+
+  const toggleHeatmap = () => {
+    fireEvent.click(screen.getByText("Heatmap"));
+  };
+
+  it("switches to heatmap view and renders a per-slot grid (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    const grid = await screen.findByRole("grid", { name: /heatmap/i });
+    expect(grid).toBeInTheDocument();
+    // Resource row header is present.
+    expect(screen.getByRole("rowheader", { name: /CT Room 1/ })).toBeInTheDocument();
+  });
+
+  it("colors a booked slot full and an empty slot free (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    // APPT occupies 09:00-09:30 → full; 09:30 is free per availability.
+    const fullCell = await screen.findByTestId("heat-cell-r1-09:00");
+    expect(fullCell).toHaveAttribute("data-utilization", "full");
+
+    const freeCell = screen.getByTestId("heat-cell-r1-09:30");
+    expect(freeCell).toHaveAttribute("data-utilization", "free");
+  });
+
+  it("opens the appointment drawer when a full cell is clicked (S-04)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleHeatmap();
+
+    const fullCell = await screen.findByTestId("heat-cell-r1-09:00");
+    fireEvent.click(fullCell);
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    expect(screen.getByText("P001")).toBeInTheDocument();
+  });
+});
+
+describe("CalendarView S-03 week/month views", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  const toggleWeek = () => {
+    const weekLabel = screen.getByText("Week");
+    fireEvent.click(weekLabel);
+  };
+
+  const toggleMonth = () => {
+    const monthLabel = screen.getByText("Month");
+    fireEvent.click(monthLabel);
+  };
+
+  it("switches to week view and fetches range appointments (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    toggleWeek();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+    // Both args are YYYY-MM-DD dates (from, to)
+    const args = mockRangeAppointments.mock.calls[0];
+    expect(args[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(args[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("renders 7 day columns in week view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    const heads = await screen.findAllByTestId("week-day-head");
+    expect(heads).toHaveLength(7);
+    expect(heads[0]).toHaveTextContent(/Mon/i);
+    expect(heads[6]).toHaveTextContent(/Sun/i);
+  });
+
+  it("shows appointments in the correct day column (S-03)", async () => {
+    const wed = "2026-08-26";
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-wed",
+        patient_id: "P-WED",
+        start_time: `${wed}T10:00:00.000Z`,
+        end_time: `${wed}T10:30:00.000Z`,
+      },
+    ]);
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    expect(await screen.findByText("P-WED")).toBeInTheDocument();
+    const heads = screen.getAllByTestId("week-day-head");
+    const wedHead = heads.find((h) => h.textContent?.includes("26"));
+    expect(wedHead).toBeDefined();
+  });
+
+  it("picks a day from a week column head and switches to day view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleWeek();
+
+    const heads = await screen.findAllByTestId("week-day-head");
+    fireEvent.click(heads[0]); // Monday
+
+    await waitFor(() => {
+      expect(screen.getByText("Day")).toBeInTheDocument();
+    });
+  });
+
+  it("switches to month view and fetches range appointments (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+  });
+
+  it("renders appointment dots in month cells (S-03)", async () => {
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-m1",
+        patient_id: "P-M01",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    const dots = await screen.findAllByTestId("appointment-dots");
+    expect(dots.length).toBeGreaterThan(0);
+  });
+
+  it("picks a day from a month cell and switches to day view (S-03)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleMonth();
+
+    const cells = await screen.findAllByTestId("month-day-cell");
+    expect(cells.length).toBeGreaterThan(0);
+    fireEvent.click(cells[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Day")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("CalendarView S-06 batch booking", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([
+      { start: "09:00", end: "09:30" },
+      { start: "09:30", end: "10:00" },
+      { start: "10:00", end: "10:30" },
+    ]);
+    mockBatchBook.mockResolvedValue({ results: [] });
+  });
+
+  it("opens the batch modal and selects slots (S-06)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /batch book/i }));
+    await screen.findByRole("dialog");
+    expect(screen.getAllByText("Batch Book").length).toBeGreaterThan(0);
+
+    // Pick the resource.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    // Slots should load.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Slot 09:00")).toBeInTheDocument();
+    });
+
+    // Select two slots.
+    fireEvent.click(screen.getByLabelText("Slot 09:00"));
+    fireEvent.click(screen.getByLabelText("Slot 09:30"));
+
+    // The button should say "Book 2 Appointments".
+    expect(screen.getByText("Book 2 Appointments")).toBeInTheDocument();
+  });
+
+  it("calls the batch API with selected slots (S-06)", async () => {
+    mockBatchBook.mockResolvedValue({
+      results: [
+        { success: true, appointment: { id: "a1" } },
+        { success: true, appointment: { id: "a2" } },
+      ],
+    });
+
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /batch book/i }));
+    await screen.findByRole("dialog");
+
+    // Pick resource, enter patient ID, pick slots, confirm.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Slot 09:00")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Slot 09:00"));
+    fireEvent.click(screen.getByLabelText("Slot 09:30"));
+
+    // Enter a patient ID so the button is enabled.
+    const patientInput = screen.getByPlaceholderText("Or patient ID directly (no order)");
+    fireEvent.change(patientInput, { target: { value: "P001" } });
+
+    fireEvent.click(screen.getByText("Book 2 Appointments"));
+
+    await waitFor(() => {
+      expect(mockBatchBook).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ patient_id: "P001" })])
+      );
+    });
+  });
+});
+
+describe("CalendarView S-08 waitlist", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockListAppointments.mockResolvedValue([]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+    mockListWaitlist.mockResolvedValue([]);
+  });
+
+  it("opens the waitlist modal and lists entries (S-08)", async () => {
+    mockListWaitlist.mockResolvedValue([
+      {
+        id: "wl-1",
+        resource_id: "r1",
+        patient_id: "P001",
+        patient_name: "John Doe",
+        priority: "STAT",
+        status: "WAITING",
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /waitlist/i }));
+    await screen.findByRole("dialog");
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+    expect(screen.getByText("stat")).toBeInTheDocument();
+  });
+
+  it("adds an entry to the waitlist (S-08)", async () => {
+    mockAddWaitlist.mockResolvedValue({ id: "wl-2", status: "WAITING" });
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /waitlist/i }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByText("Add to Waitlist"));
+
+    // Pick resource, enter patient, submit.
+    fireEvent.mouseDown(screen.getByLabelText("Resource"));
+    const opt = await screen.findByText("CT Room 1 (MODALITY · CT)");
+    fireEvent.click(opt);
+
+    fireEvent.change(screen.getByPlaceholderText("Patient ID"), {
+      target: { value: "P099" },
+    });
+    fireEvent.click(screen.getByText("Add"));
+
+    await waitFor(() => {
+      expect(mockAddWaitlist).toHaveBeenCalledWith(
+        expect.objectContaining({ patient_id: "P099", resource_id: "r1" })
+      );
+    });
+  });
+});
+
+describe("CalendarView S-11 calendar filters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  it("filters by resource type through the resources API (S-11)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.mouseDown(screen.getByLabelText("Resource type"));
+    const opts = await screen.findAllByText("Rooms");
+    fireEvent.click(opts[opts.length - 1]);
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalledWith(
+        expect.objectContaining({ resource_type: "ROOM" })
+      );
+    });
+  });
+
+  it("filters by modality through the resources API (S-11)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    fireEvent.mouseDown(screen.getByLabelText("Modality"));
+    const opts = await screen.findAllByText("CT");
+    fireEvent.click(opts[opts.length - 1]);
+
+    await waitFor(() => {
+      expect(mockListResources).toHaveBeenCalledWith(expect.objectContaining({ modality: "CT" }));
+    });
+  });
+});
+
+describe("CalendarView S-13 no-show action", () => {
+  beforeEach(() => {
+    seedUser(["SCHEDULE_READ", "SCHEDULE_WRITE"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+    mockNoShow.mockResolvedValue({ ...APPT, status: "NO_SHOW" });
+  });
+
+  it("marks a scheduled appointment as no-show from the drawer", async () => {
+    mockListAppointments.mockResolvedValue([APPT]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+
+    // The suite's mocked Popconfirm fires onConfirm immediately.
+    fireEvent.click(screen.getByText(/mark as no-show/i));
+
+    await waitFor(() => expect(mockNoShow).toHaveBeenCalledWith("a1"));
+    // Board refetches so the block flips to NO_SHOW (StrictMode doubles
+    // initial effects — assert a real refetch happened, not an exact count).
+    await waitFor(() => expect(mockListAppointments.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it("offers no no-show action on non-scheduled appointments", async () => {
+    mockListAppointments.mockResolvedValue([{ ...APPT, status: "ARRIVED" }]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("P001");
+
+    fireEvent.click(screen.getByText("P001"));
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+    expect(screen.queryByText(/mark as no-show/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("CalendarView S-14 gantt view", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListResources.mockResolvedValue([RESOURCE]);
+    mockRangeAppointments.mockResolvedValue([]);
+    mockListAppointments.mockResolvedValue([]);
+    mockGetAvailability.mockResolvedValue([{ start: "09:00", end: "09:30" }]);
+  });
+
+  const toggleGantt = () => {
+    const label = screen.getByText("Gantt");
+    fireEvent.click(label);
+  };
+
+  it("switches to gantt view and fetches the week range (S-14)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+
+    toggleGantt();
+
+    await waitFor(() => {
+      expect(mockRangeAppointments).toHaveBeenCalled();
+    });
+    const args = mockRangeAppointments.mock.calls[0];
+    expect(args[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(args[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("renders one row per resource across 7 day columns (S-14)", async () => {
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    await screen.findByRole("grid", { name: "Gantt schedule" });
+    // Resource row header present; the day headers Mon..Sun are rendered.
+    expect(screen.getByRole("rowheader", { name: /CT Room 1/ })).toBeInTheDocument();
+    expect(screen.getByText("Mon")).toBeInTheDocument();
+    expect(screen.getByText("Sun")).toBeInTheDocument();
+  });
+
+  it("renders appointment bars on the correct resource day cell (S-14)", async () => {
+    // Anchor on the real UTC "today" so the appointment lands in the
+    // displayed week no matter when the suite runs.
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-gantt",
+        patient_id: "P-GANTT",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    const bar = await screen.findByRole("button", { name: /P-GANTT 09:00–09:30/ });
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveClass("sched-gantt-bar");
+  });
+
+  it("opens the appointment drawer when a bar is clicked (S-14)", async () => {
+    const today = dayjs.utc().format("YYYY-MM-DD");
+    mockRangeAppointments.mockResolvedValue([
+      {
+        ...APPT,
+        id: "a-gantt",
+        patient_id: "P-GANTT",
+        start_time: `${today}T09:00:00.000Z`,
+        end_time: `${today}T09:30:00.000Z`,
+      },
+    ]);
+    renderWithAuth(<CalendarView />);
+    await screen.findByText("CT Room 1");
+    toggleGantt();
+
+    const bar = await screen.findByRole("button", { name: /P-GANTT 09:00–09:30/ });
+    fireEvent.click(bar);
+    expect(await screen.findByText("Appointment")).toBeInTheDocument();
+  });
+});

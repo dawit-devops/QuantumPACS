@@ -124,7 +124,17 @@ class TenantsHandler(HTTPEndpoint):
             row = dict(t)
             row.update({k: stats.get(k) for k in (
                 'user_count', 'study_count', 'file_count', 'last_activity',
+                # ADM-17: utilization reaches the card so the 80/90/100
+                # alerts can fire (get_stats already computes both).
+                'storage_used_bytes', 'storage_pct',
             )})
+            # DB connection details are platform-internal — the tenant switcher
+            # only needs slug/name/domain/status. Never leak db_host/db_port/
+            # db_user/db_password (and db_name) to clinical CROSS_TENANT_READ
+            # holders (teleradiologist etc.).
+            if not _is_platform_admin(user):
+                for _k in ('db_name', 'db_host', 'db_port', 'db_user', 'db_password'):
+                    row.pop(_k, None)
             enriched.append(row)
         return ok({'data': enriched})
 
@@ -190,6 +200,21 @@ class TenantHandler(HTTPEndpoint):
             data = body.model_dump(exclude_none=True)
             if not _owns_tenant(request.user, tenant.get('slug')):
                 return _tenant_scoped_403()
+            # ADM-17: the justification is an audit annotation, not a stored
+            # column — pop it before the registry patch.
+            justification = (data.pop('quota_justification', None) or '').strip()
+            quota_changed = (
+                'storage_quota_bytes' in data
+                and data['storage_quota_bytes'] != tenant.get('storage_quota_bytes')
+            )
+            if quota_changed and not justification:
+                # Spec ADM-17: "Quota override with justification" — a quota
+                # change without its reason is rejected outright.
+                return api_error(
+                    'VALIDATION_ERROR',
+                    'A justification is required when changing the storage quota',
+                    status=400,
+                )
             if not _is_platform_admin(request.user) and (
                 set(data) & _ADMIN_ONLY_FIELDS
             ):
@@ -211,6 +236,20 @@ class TenantHandler(HTTPEndpoint):
                     resource_type='tenant',
                     resource_id=tenant_id,
                     details={'from': tenant.get('status'), 'to': status},
+                    tenant=tenant.get('slug'),
+                    request_id=request_id_var.get(),
+                )
+            if quota_changed:
+                await AuditLog(conn).log_event(
+                    event_type='tenant.quota_changed',
+                    actor_id=request.user.id,
+                    resource_type='tenant',
+                    resource_id=tenant_id,
+                    details={
+                        'old_bytes': tenant.get('storage_quota_bytes'),
+                        'new_bytes': data['storage_quota_bytes'],
+                        'justification': justification,
+                    },
                     tenant=tenant.get('slug'),
                     request_id=request_id_var.get(),
                 )

@@ -1,4 +1,5 @@
 import { request } from "./client";
+import type { RisAppointment } from "./scheduling";
 
 // ---------------------------------------------------------------------------
 // R08 Front Desk API client — patient registration, visits + check-in, order
@@ -12,6 +13,12 @@ export interface FrontDeskPatient {
   name: string;
   birth_date?: string;
   sex?: string;
+  phone?: string;
+  email?: string;
+  warning?: {
+    existing_patient_id: string;
+    existing_patient_name: string;
+  };
 }
 
 export interface Visit {
@@ -58,7 +65,23 @@ export interface InsuranceRecord {
   authorization_status?: "none" | "pending" | "approved" | "denied";
   authorization_number?: string;
   notes?: string;
+  provider?: string;
+  member_id?: string;
+  copay_amount?: number | null;
+  deductible_total?: number | null;
+  deductible_remaining?: number | null;
   created_at?: string;
+}
+
+export interface InsuranceEligibility {
+  patient_id: string;
+  status: "active" | "none" | "inactive";
+  provider: string;
+  member_id: string;
+  copay_amount: number | null;
+  deductible_total: number | null;
+  deductible_remaining: number | null;
+  checked_at: string;
 }
 
 export interface Appointment {
@@ -84,11 +107,14 @@ export interface AvailabilitySlot {
 
 export interface QueueEntry {
   visit_id: string;
-  initials: string;
-  last4: string;
+  patient_id: string;
+  patient_name: string;
   status: string;
   destination: string;
+  modality: string;
+  priority: string;
   updated_at: string;
+  wait_minutes: number | null;
 }
 
 export interface VisitPage {
@@ -103,6 +129,23 @@ export interface VisitPage {
 export const searchPatients = (q: string): Promise<FrontDeskPatient[]> =>
   request<{ data: FrontDeskPatient[] }>("patients/search", {
     query: { q },
+  }).then((res) => res.data ?? []);
+
+export interface PatientSearchQuery {
+  q?: string;
+  dob?: string;
+  phone?: string;
+}
+
+export const searchRisPatients = (
+  query: PatientSearchQuery = {},
+): Promise<FrontDeskPatient[]> =>
+  request<{ data: FrontDeskPatient[] }>("ris/patients/search", {
+    query: {
+      q: query.q ?? "",
+      dob: query.dob ?? "",
+      phone: query.phone ?? "",
+    },
   }).then((res) => res.data ?? []);
 
 export const createPatient = (
@@ -180,6 +223,13 @@ export const createInsurance = (
     data,
   }).then((res) => res.data);
 
+export const getInsuranceEligibility = (
+  patientId: string,
+): Promise<InsuranceEligibility | null> =>
+  request<{ data: InsuranceEligibility }>(
+    `ris/patients/${patientId}/eligibility`,
+  ).then((res) => res?.data ?? null);
+
 // ---- Appointments / capacity ---------------------------------------------------
 
 export const getAvailability = (
@@ -203,6 +253,14 @@ export const createAppointment = (
     (res) => res.data,
   );
 
+// ---- RIS appointments (today schedule, FD-06) ---------------------------------
+
+export const listRisAppointments = (
+  query: Record<string, string> = {},
+): Promise<RisAppointment[]> =>
+  request<{ data: RisAppointment[] }>("ris/appointments", { query }).then(
+    (res) => res.data ?? [],
+  );
 export const cancelAppointment = (id: string): Promise<void> =>
   request(`appointments/${id}`, { data: undefined, method: "DELETE" });
 

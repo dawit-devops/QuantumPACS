@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from api.permissions import (
     MATRIX_A_BILL,
     MATRIX_A_RECEPT,
@@ -208,3 +210,185 @@ class TestCrossTenantGrantsMigration:
         content = _migration('049').read_text()
         assert 'DROP TABLE IF EXISTS user_tenant_grants' in content
         assert "permissions - '{CROSS_TENANT_READ}'" in content
+
+
+class TestMppsEventsMigration:
+    """Migration 070: ris_mpps_events table for MPPS audit trail (S6-08)."""
+
+    EXPECTED_COLUMNS = {
+        'id', 'accession_number', 'event_type', 'mpps_status',
+        'study_uid', 'station_ae_title', 'raw_message',
+        'tenant_id', 'created_at',
+    }
+
+    EXPECTED_INDEXES = {
+        'ix_ris_mpps_accession',
+        'ix_ris_mpps_created',
+        'ix_ris_mpps_tenant',
+    }
+
+    def test_migration_070_exists(self):
+        assert _migration('070').name == '070_ris_mpps_events.py'
+
+    def test_migration_070_revises_069(self):
+        module = _import_migration('070')
+        assert module.down_revision == '069'
+
+    def test_migration_070_creates_table(self):
+        content = _migration('070').read_text()
+        assert 'CREATE TABLE IF NOT EXISTS ris_mpps_events' in content
+
+    def test_migration_070_has_all_columns(self):
+        content = _migration('070').read_text()
+        for col in self.EXPECTED_COLUMNS:
+            assert col in content, f'Missing column: {col}'
+
+    def test_migration_070_has_all_indexes(self):
+        content = _migration('070').read_text()
+        for idx in self.EXPECTED_INDEXES:
+            assert f'CREATE INDEX IF NOT EXISTS {idx}' in content, \
+                f'Missing index: {idx}'
+
+    def test_migration_070_has_raw_message_jsonb(self):
+        """raw_message must be JSONB to store serialized DICOM datasets."""
+        content = _migration('070').read_text()
+        assert 'raw_message JSONB' in content
+
+    def test_migration_070_has_tenant_id(self):
+        """tenant_id is required for RLS scoping."""
+        content = _migration('070').read_text()
+        assert 'tenant_id TEXT' in content
+
+    def test_migration_070_downgrade_drops_table(self):
+        content = _migration('070').read_text()
+        assert 'def downgrade()' in content
+        assert 'drop_table' in content
+
+    def test_migration_070_matches_sync_db_schema(self):
+        """The migration DDL and db/ris_mpps.py sync_db() must produce
+        identical table schemas. Drift between the two bootstrapping
+        paths (alembic for containers, sync_db for dev) causes silent
+        column mismatches."""
+        import inspect
+        from db.ris_mpps import RisMppsEvents
+        source = inspect.getsource(RisMppsEvents.sync_db)
+        # sync_db should reference the same table name
+        assert 'ris_mpps_events' in source
+        # Both must define accession_number, event_type, mpps_status columns
+        for col in ('accession_number', 'event_type', 'mpps_status'):
+            assert col in source, f'sync_db missing column: {col}'
+
+    def test_migration_070_indexes_cover_query_patterns(self):
+        """Index set must support the two main query patterns:
+        1. List events by accession (audit trail lookup)
+        2. Query recent events (monitoring/dashboard)
+        3. Tenant-scoped queries (RLS)"""
+        content = _migration('070').read_text()
+        # Accession lookup — audit trail
+        assert 'ix_ris_mpps_accession' in content
+        # Recent events — monitoring
+        assert 'ix_ris_mpps_created' in content
+        # Tenant scope — RLS
+        assert 'ix_ris_mpps_tenant' in content
+
+
+class TestVoidLegacyStubChargesMigration:
+    """Migration 086 / A1b (GAP_AUDIT_TDD_PIPELINE.md): migration 077
+    preserved ~17 coding-less S8-14 stub charges as PENDING rows. With the
+    stub writer removed (A1), those rows are dead weight in the billing
+    queue and poison the unbilled-aging gauges. 086 flips the legacy
+    signature (no CPT, $0, PENDING) to VOID; enriched charges stay."""
+
+    LEGACY_ROW = dict(cpt_code='', charge_amount=0)
+
+    def test_migration_086_exists_and_revises_085(self):
+        module = _import_migration('086')
+        assert module.down_revision == '085'
+
+    def test_migration_086_exposes_sql_constants(self):
+        """VOID/RESTORE SQL live as module constants so tests can exercise
+        the exact statements the migration runs."""
+        module = _import_migration('086')
+        assert 'VOID' in module.VOID_SQL
+        assert 'PENDING' in module.VOID_SQL
+        assert module.RESTORE_SQL.strip().upper().startswith('UPDATE')
+
+    def test_migration_086_predicate_is_conservative(self):
+        """Only the legacy stub signature may flip: no CPT, $0 amount,
+        still PENDING. Anything a coder/biller touched is untouchable."""
+        module = _import_migration('086')
+        sql = module.VOID_SQL.upper()
+        assert 'CPT_CODE' in sql and ("''" in sql or 'IS NULL' in sql)
+        assert 'CHARGE_AMOUNT = 0' in sql.replace('0.00', '0')
+        assert 'STATUS' in sql and "'PENDING'" in sql
+
+    def test_migration_086_downgrade_restores(self):
+        content = _migration('086').read_text()
+        assert 'def downgrade()' in content
+
+    @pytest.mark.asyncio
+    async def test_void_flips_only_legacy_signature_rows(self):
+        import uuid
+        import db.conn as database
+        try:
+            await database.setup()
+        except Exception:
+            pytest.skip('dev database unavailable')
+        module = _import_migration('086')
+        tag = uuid.uuid4().hex[:6]
+        from db.conn import get_conn
+        try:
+            async with get_conn() as conn:
+                ids = []
+                for shape in ('legacy', 'enriched'):
+                    kwargs = (
+                        dict(patient_id=f'P-{tag}', patient_name='Legacy Stub')
+                        if shape == 'legacy' else
+                        dict(patient_id=f'P-{tag}', patient_name='Real Charge',
+                             cpt_code='70450', cpt_description='CT head',
+                             icd10_code='R51', charge_amount=250)
+                    )
+                    row = await conn.fetchrow(
+                        "INSERT INTO ris_charges (tenant_id, accession_number,"
+                        " patient_id, patient_name,"
+                        " cpt_code, cpt_description, icd10_code, charge_amount,"
+                        " status, created_by)"
+                        " VALUES ($1, $2, $3, $4, $5, $6, $7, $8,"
+                        " 'PENDING', 'rad-1')"
+                        " RETURNING id",
+                        f't-{tag}', f'ACC-086-{shape}-{tag}',
+                        kwargs['patient_id'], kwargs['patient_name'],
+                        kwargs.get('cpt_code', ''),
+                        kwargs.get('cpt_description', ''),
+                        kwargs.get('icd10_code', ''),
+                        kwargs.get('charge_amount', 0),
+                    )
+                    ids.append((row['id'], shape))
+
+                await conn.execute(module.VOID_SQL)
+                await conn.execute(module.VOID_SQL)  # idempotent re-run
+
+                statuses = {
+                    shape: await conn.fetchval(
+                        'SELECT status FROM ris_charges WHERE id = $1', cid)
+                    for cid, shape in ids
+                }
+                assert statuses['legacy'] == 'VOID'
+                assert statuses['enriched'] == 'PENDING'
+
+                # Unbilled-aging partial index must no longer see the VOID row
+                pending = await conn.fetch(
+                    "SELECT id FROM ris_charges WHERE tenant_id = $1"
+                    " AND status = 'PENDING'", f't-{tag}')
+                assert [r['id'] for r in pending] == [
+                    cid for cid, shape in ids if shape == 'enriched']
+        finally:
+            try:
+                async with get_conn() as conn:
+                    await conn.execute(
+                        "DELETE FROM ris_charges WHERE tenant_id = $1"
+                        " AND accession_number LIKE 'ACC-086-%'",
+                        f't-{tag}')
+                await database.close()
+            except Exception:
+                pass

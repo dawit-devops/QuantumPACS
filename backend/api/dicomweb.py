@@ -11,6 +11,7 @@ from io import BytesIO
 
 import aiofiles
 from pydicom import dcmread
+from pydicom.filereader import read_file_meta_info
 from starlette.endpoints import HTTPEndpoint
 from starlette.responses import Response, StreamingResponse
 
@@ -596,6 +597,32 @@ def _wants_multipart(accept):
     return 'multipart/related' in accept
 
 
+# Group 0002 (File Meta Information) always sits right after the 132-byte
+# preamble, so a small prefix read is enough to name the stored transfer
+# syntax; parsing the full dataset would cost a full file read per part.
+_WADO_META_PREFIX = 8192
+
+
+async def _read_stored_transfer_syntax(path):
+    """TransferSyntaxUID declared in the file's meta group (as-stored).
+
+    PS3.18 §11.4.1: every multipart part's Content-Type must carry a
+    `transfer-syntax=` parameter naming the enclosed object's syntax; the
+    Cornerstone wadors loader keys its pixel decoder on this parameter and
+    assumes Implicit VR LE when it is absent. Files that fail to parse
+    (truncated preamble, exotic layout) fall back to the stored default.
+    """
+    try:
+        async with aiofiles.open(path, 'rb') as f:
+            prefix = await f.read(_WADO_META_PREFIX)
+        meta = read_file_meta_info(BytesIO(prefix))
+        if meta.TransferSyntaxUID:
+            return str(meta.TransferSyntaxUID)
+    except Exception:
+        pass
+    return _STORED_TRANSFER_SYNTAX
+
+
 def _instance_metadata(file_data):
     """Compact PS3.18 metadata object for a stored instance.
 
@@ -911,11 +938,12 @@ async def _wado_retrieve_instance(conn, master, instance_uid, metadata=False, st
         # same framing as study/series retrieval so clients that always
         # request multipart get a uniform body shape.
         boundary = 'WADO_BOUNDARY'
+        transfer_syntax = await _read_stored_transfer_syntax(path)
 
         async def _iter_single_part():
             yield (
                 f'--{boundary}\r\n'
-                f'Content-Type: application/dicom\r\n\r\n'
+                f'Content-Type: application/dicom; transfer-syntax={transfer_syntax}\r\n\r\n'
             ).encode('latin-1')
             async with aiofiles.open(path, 'rb') as f:
                 while True:
@@ -1026,9 +1054,10 @@ async def _wado_build_multipart(rows, master):
             file_data['meta'] = json.loads(file_data.get('meta') or '{}')
             file_data['replica_meta'] = json.loads(file_data.get('replica_meta') or '{}')
             path = await storage.fetch(file_data)
+            transfer_syntax = await _read_stored_transfer_syntax(path)
             yield (
                 f'--{boundary}\r\n'
-                f'Content-Type: application/dicom\r\n\r\n'
+                f'Content-Type: application/dicom; transfer-syntax={transfer_syntax}\r\n\r\n'
             ).encode('latin-1')
             async with aiofiles.open(path, 'rb') as f:
                 while True:

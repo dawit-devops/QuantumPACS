@@ -1,9 +1,12 @@
-import React from "react";
 import { Layout, Grid } from "antd";
-import Sidebar from "./Sidebar";
-import MobileNav from "./MobileNav";
+import React from "react";
+import { useLocation } from "react-router";
+
 import MaintenanceBanner from "./MaintenanceBanner";
+import MobileNav from "./MobileNav";
+import Sidebar from "./Sidebar";
 import { useTheme } from "./ThemeProvider";
+import PatientSearchOverlay from "../frontdesk/PatientSearchOverlay";
 
 const { useBreakpoint } = Grid;
 
@@ -13,18 +16,35 @@ function withSidebar(Comp: React.ComponentType<any>) {
     const isMobile = !screens.lg;
     const tempKey = sessionStorage.getItem("tempKey");
     const { isDark } = useTheme();
+    const location = useLocation();
+    const onFrontDesk = location.pathname.startsWith("/frontdesk");
+    // CC-13: the patient quick-search overlay serves every staff persona
+    // that works patient-by-patient — coordination (orders, prior auth,
+    // reminders) and billing ride the same global mount as front desk.
+    const onCoordination = [
+      "/orders",
+      "/prior-auth",
+      "/reminders",
+      "/care-plans",
+      "/communications",
+      "/teaching",
+    ].some((p) => location.pathname.startsWith(p));
+    const onBilling = [
+      "/billing/queue",
+      "/billing/claims",
+      "/billing/revenue",
+      "/billing/denials",
+      "/billing/unbilled",
+      "/billing/fee-schedule",
+    ].some((p) => location.pathname.startsWith(p));
     return (
       <Layout
         style={{
           minHeight: "100dvh",
-          paddingBottom:
-            isMobile && !tempKey
-              ? "calc(56px + env(safe-area-inset-bottom, 0px))"
-              : 0,
+          paddingBottom: isMobile && !tempKey ? "calc(56px + env(safe-area-inset-bottom, 0px))" : 0,
           paddingLeft: "env(safe-area-inset-left, 0px)",
           paddingRight: "env(safe-area-inset-right, 0px)",
-          transition:
-            "background-color var(--duration-normal) var(--easing-standard)",
+          transition: "background-color var(--duration-normal) var(--easing-standard)",
         }}
       >
         <MaintenanceBanner />
@@ -73,6 +93,7 @@ function withSidebar(Comp: React.ComponentType<any>) {
           <Comp {...props} />
         </div>
         {isMobile && !tempKey && <MobileNav />}
+        {(onFrontDesk || onCoordination || onBilling) && <PatientSearchOverlay />}
       </Layout>
     );
   }

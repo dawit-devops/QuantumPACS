@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import dayjs from "dayjs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -25,6 +26,7 @@ vi.mock("../helpers", () => ({
 vi.mock("../hooks", () => ({
   useDocumentTitle: vi.fn(),
   useFetch: () => ({ exec: vi.fn() }),
+  useTenantRefetch: () => {},
 }));
 
 vi.mock("../api/frontdesk", () => ({
@@ -35,7 +37,16 @@ vi.mock("../api/frontdesk", () => ({
   searchPatients: vi.fn(),
 }));
 
-function renderBoard() {
+/** Render with seeded user permissions. */
+function renderBoard(perms: string[] = []) {
+  // Seed user into localStorage so AuthProvider picks it up.
+  if (perms.length) {
+    localStorage.setItem("userId", "1");
+    localStorage.setItem("username", "test");
+    localStorage.setItem("permissions", JSON.stringify(perms));
+    localStorage.setItem("tenant_id", "t1");
+    localStorage.setItem("tenant_name", "Test");
+  }
   return render(
     <ThemeProvider>
       <AuthProvider>
@@ -168,8 +179,10 @@ describe("ScheduleBoard", () => {
 
     // Compute expected dates relative to the real "today" (the component defaults
     // `day` to dayjs()) so the test is date-independent.
-    const today = dayjs().format("YYYY-MM-DD");
-    const tomorrow = dayjs().add(1, "day").format("YYYY-MM-DD");
+    // Compute once to avoid a midnight rollover between the two calls.
+    const now = dayjs();
+    const today = now.format("YYYY-MM-DD");
+    const tomorrow = now.add(1, "day").format("YYYY-MM-DD");
     expect(screen.getByText(today)).toBeInTheDocument();
 
     const nextDay = screen.getByRole("button", { name: "Next day" });
@@ -195,5 +208,87 @@ describe("ScheduleBoard", () => {
     // Grid stays visible so coordinators can see the empty time slots.
     expect(screen.getByText("08:00")).toBeInTheDocument();
     expect(screen.getByText("CT")).toBeInTheDocument();
+  });
+
+  // ---- LO-003: 500-exam warning + board cancel --------------------------------
+
+  it("shows 500-exam warning when worklist exceeds limit", async () => {
+    // Create 500 entries to trigger the truncation warning.
+    const entries = Array.from({ length: 500 }, (_, i) => ({
+      id: String(i),
+      patient_id: `P${String(i).padStart(3, "0")}`,
+      patient_name: `Patient ${i}`,
+      accession_number: `ACC-${i}`,
+      modality: "CT",
+      station_ae_title: "CT-1",
+      scheduled_date: "2026-08-03",
+      scheduled_time: "09:00",
+      status: "scheduled",
+    }));
+    mockRequest.mockResolvedValue({ data: entries });
+    renderBoard();
+
+    await waitFor(() => {
+      expect(screen.getByText("Patient 0")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(/Showing the first 500 exams/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows cancel button for scheduled appointments when user has SCHEDULE_WRITE", async () => {
+    mockRequest.mockResolvedValue({ data: mockEntries });
+    mockListAppointments.mockResolvedValue([
+      {
+        id: "appt-1",
+        patient_id: "P001",
+        scheduled_time: "09:00",
+        modality: "CT",
+        status: "scheduled",
+      },
+    ]);
+
+    renderBoard([
+      "SCHEDULE_WRITE",
+      "SCHEDULE_READ",
+      "WORKLIST_READ",
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByText("P001")).toBeInTheDocument();
+    });
+
+    // Cancel button should be visible for scheduled (not cancelled) appointments.
+    const cancelBtn = screen.getByRole("button", {
+      name: /Cancel appointment for P001/,
+    });
+    expect(cancelBtn).toBeInTheDocument();
+  });
+
+  it("hides cancel button when user lacks SCHEDULE_WRITE", async () => {
+    mockRequest.mockResolvedValue({ data: mockEntries });
+    mockListAppointments.mockResolvedValue([
+      {
+        id: "appt-1",
+        patient_id: "P001",
+        scheduled_time: "09:00",
+        modality: "CT",
+        status: "scheduled",
+      },
+    ]);
+
+    renderBoard(["WORKLIST_READ", "SCHEDULE_READ"]);
+
+    await waitFor(() => {
+      expect(screen.getByText("P001")).toBeInTheDocument();
+    });
+
+    // Cancel button should NOT be visible without SCHEDULE_WRITE.
+    expect(
+      screen.queryByRole("button", {
+        name: /Cancel appointment for P001/,
+      }),
+    ).not.toBeInTheDocument();
   });
 });

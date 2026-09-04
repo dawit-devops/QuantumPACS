@@ -1,0 +1,10 @@
+{
+  "frontend/src/**/*.{ts,tsx,css,json,md}": [
+    "prettier --ignore-unknown --write",
+    "ESLINT_USE_FLAT_CONFIG=false eslint --fix --no-error-on-unmatched-pattern"
+  ],
+  "backend/**/*.py": [
+    "cd backend && python -m ruff check --fix --select I",
+    "cd backend && python -m ruff format"
+  ]
+}

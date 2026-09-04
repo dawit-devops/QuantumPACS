@@ -1,4 +1,5 @@
 import binascii
+import json
 import hashlib
 import hmac
 import os
@@ -53,6 +54,43 @@ class Users(Table):
         await self.exec(
             "CREATE INDEX IF NOT EXISTS users_tenant on users(tenant)"
         )
+        # Migration 102: per-user preference documents (dashboard layouts).
+        await self.exec(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences "
+            "JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
+
+    async def get_preferences(self, user_id):
+        """Decoded preference document for a user; {} when unset, None when
+        the user does not exist (callers decide their 404 shape)."""
+        q = self.select('preferences').where(self.table.id == user_id)
+        row = await self.fetchone(q)
+        if not row:
+            return None
+        raw = row.get('preferences')
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return raw or {}
+
+    async def merge_preferences(self, user_id, patch):
+        """Top-level-key upsert: posted sections merge into the stored
+        document without touching sibling keys."""
+        row = await self.fetchrow(
+            """
+            UPDATE users
+            SET preferences = preferences || $2::jsonb,
+                updated = (now() at time zone 'utc')
+            WHERE id = $1
+            RETURNING preferences
+            """,
+            user_id, json.dumps(patch),
+        )
+        if not row:
+            return None
+        raw = row.get('preferences')
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return raw or {}
 
     @staticmethod
     def to_json(data):
@@ -205,6 +243,18 @@ class Users(Table):
         q = self.update().where(self.table.id == user_id).set(self.table.status, 'deactivated')
         await self.exec(q)
         await self.increment_token_version(user_id)
+
+    async def activate(self, user_id):
+        """Reactivate a previously deactivated account. No token bump: the
+        account had no live sessions while deactivated, so there is nothing
+        to invalidate."""
+        exists = await self.fetchval(
+            self.select(self.table.id).where(self.table.id == user_id)
+        )
+        if not exists:
+            raise ApiException('User not found')
+        q = self.update().where(self.table.id == user_id).set(self.table.status, 'active')
+        await self.exec(q)
 
     async def new_pswd(self, user_id):
         exists = await self.fetchval(self.select(self.table.id).where(self.table.id == user_id))

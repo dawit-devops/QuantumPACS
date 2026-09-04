@@ -37,11 +37,7 @@ vi.mock("../helpers", () => ({
   stopRefreshTimer: () => {},
 }));
 
-function setSession(opts: {
-  role?: string;
-  admin?: boolean;
-  permissions?: string[];
-}) {
+function setSession(opts: { role?: string; admin?: boolean; permissions?: string[] }) {
   localStorage.setItem("token", "t");
   localStorage.setItem("userId", "u1");
   localStorage.setItem("admin", String(opts.admin ?? false));
@@ -61,6 +57,35 @@ describe("Sidebar", () => {
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Files")).toBeInTheDocument();
+  });
+
+  it("hides the Files item from a referring_physician with only STUDY_READ/VIEWER_READ", () => {
+    // referring_physician walk F2: the role holds STUDY_READ/VIEWER_READ which
+    // pass the Files route gate, but the backend /api/files* endpoints require
+    // FILE_READ → the page would 403 on every data load. Gate the nav item on
+    // FILE_READ so the dead item is hidden (route stays deep-linkable).
+    setSession({
+      role: "referring_physician",
+      permissions: ["STUDY_READ", "VIEWER_READ", "REPORT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
+  });
+
+  it("hides the Acquisition section from a referring_physician with WORKLIST_READ/SCHEDULE_READ", () => {
+    // referring_physician walk (sidebar refinement): the Acquisition section is
+    // the technologist/scheduler's operational surface. The referring physician
+    // holds WORKLIST_READ/SCHEDULE_READ but does not operate the acquisition
+    // workflow — hide the section while keeping Reading + Coordination.
+    setSession({
+      role: "referring_physician",
+      permissions: ["REPORT_READ", "WORKLIST_READ", "SCHEDULE_READ", "ORDER_READ", "PATIENT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.getByText("Coordination")).toBeInTheDocument();
   });
 
   it("renders Account nav item", () => {
@@ -83,10 +108,7 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "tenant_admin");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["TENANT_READ", "USER_READ"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["TENANT_READ", "USER_READ"]));
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Admin")).toBeInTheDocument();
     await user.click(screen.getByText("Admin"));
@@ -101,10 +123,7 @@ describe("Sidebar", () => {
     localStorage.setItem("userId", "u1");
     localStorage.setItem("admin", "false");
     localStorage.setItem("role", "cashier");
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(["PATIENT_READ", "PATIENT_WRITE"]),
-    );
+    localStorage.setItem("permissions", JSON.stringify(["PATIENT_READ", "PATIENT_WRITE"]));
     renderWithAuth(<Sidebar />);
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
   });
@@ -162,18 +181,22 @@ describe("Sidebar", () => {
     expect(screen.queryByText("QA Queue")).not.toBeInTheDocument();
   });
 
-  it("renders no PACS sections for a patient role", () => {
+  it("renders only Portal and Account sections for a patient role", () => {
+    // patient walk R1: the patient portal is the only workspace — hide the
+    // Acquisition and Front Desk sections that leak via SCHEDULE_READ.
     setSession({
       role: "patient",
-      permissions: ["FILE_READ", "PORTAL_READ", "RESULTS_READ"],
+      permissions: ["PORTAL_READ", "SCHEDULE_READ", "RESULTS_READ", "CHART_READ"],
     });
     renderWithAuth(<Sidebar />);
-    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getAllByText("My Records").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Account")).toBeInTheDocument();
+    expect(screen.queryByText("Files")).not.toBeInTheDocument();
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
     expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
     expect(screen.queryByText("QA")).not.toBeInTheDocument();
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
     expect(screen.queryByText("Analytics")).not.toBeInTheDocument();
     expect(screen.queryByText("Metrics")).not.toBeInTheDocument();
   });
@@ -192,13 +215,7 @@ describe("Sidebar", () => {
   it("hides clinical sections for a tenant_admin even with clinical grants", () => {
     setSession({
       role: "tenant_admin",
-      permissions: [
-        "REPORT_READ",
-        "EXAM_READ",
-        "QA_READ",
-        "WORKLIST_READ",
-        "USER_READ",
-      ],
+      permissions: ["REPORT_READ", "EXAM_READ", "QA_READ", "WORKLIST_READ", "USER_READ"],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.queryByText("Reading")).not.toBeInTheDocument();
@@ -269,15 +286,52 @@ describe("Sidebar", () => {
         "QUEUE_READ",
         "SCHEDULE_READ",
         "SCHEDULE_WRITE",
+        "PATIENT_READ",
       ],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Front Desk")).toBeInTheDocument();
     await user.click(screen.getByText("Front Desk"));
     expect(screen.getByText("Registration")).toBeInTheDocument();
-    expect(screen.getByText("Visits & Check-In")).toBeInTheDocument();
+    expect(screen.getByText("Today's Schedule")).toBeInTheDocument();
     expect(screen.getByText("Waiting Queue")).toBeInTheDocument();
+    expect(screen.getByText("Patient Search")).toBeInTheDocument();
     // No PORTAL_READ: the patient surface stays hidden.
+    expect(screen.queryByText("My Records")).not.toBeInTheDocument();
+  });
+
+  it("hides Acquisition but keeps Coordination for a receptionist with WORKLIST_READ/ORDER_READ", () => {
+    // receptionist walk R1: the Acquisition section (MWL/Tracking/Schedule/
+    // Calendar/Resources) is the technologist's operational surface, not the
+    // front-office workspace. Coordination (Orders/Care Plans/Communications)
+    // stays visible — the receptionist uses Orders during registration flow.
+    setSession({
+      role: "receptionist",
+      permissions: [
+        "REGISTRATION_READ", "REGISTRATION_WRITE", "QUEUE_READ",
+        "SCHEDULE_READ", "SCHEDULE_WRITE", "PATIENT_READ",
+        "WORKLIST_READ", "ORDER_READ",
+      ],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Front Desk")).toBeInTheDocument();
+    expect(screen.queryByText("Acquisition")).not.toBeInTheDocument();
+    expect(screen.getByText("Coordination")).toBeInTheDocument();
+  });
+
+  it("hides Front Desk and My Records from a physician even with SCHEDULE_READ/PATIENT_READ", async () => {
+    // physician walk R1: clinical-scoped roles hold SCHEDULE_READ and
+    // PATIENT_READ (they open clinical and coordination surfaces), but the
+    // front-office/patient UIs are not their workspace — hide the sections
+    // while keeping the underlying routes deep-linkable.
+    const user = userEvent.setup();
+    setSession({
+      role: "physician",
+      permissions: ["SCHEDULE_READ", "PATIENT_READ", "PORTAL_READ", "REPORT_READ"],
+    });
+    renderWithAuth(<Sidebar />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.queryByText("Front Desk")).not.toBeInTheDocument();
     expect(screen.queryByText("My Records")).not.toBeInTheDocument();
   });
 
@@ -319,18 +373,20 @@ describe("Sidebar", () => {
     expect(screen.getByText("Logs")).toBeInTheDocument();
   });
 
-  it("hides the DICOMweb console from a clinical role even with DICOMWEB_READ", async () => {
+  it("shows the DICOMweb console to a clinical role with DICOMWEB_READ", async () => {
     const user = userEvent.setup();
     // radiologist and physician carry legacy DICOMWEB_READ; the console is
-    // admin-scoped (adminOnly) so it never appears in clinical nav.
+    // reachable for them (user decision 2026-08-27 — the submenu is no longer
+    // adminOnly) and the backend re-checks DICOMWEB_WRITE on STOW itself.
     setSession({
       role: "radiologist",
       permissions: ["DICOMWEB_READ", "REPORT_READ"],
     });
     renderWithAuth(<Sidebar />);
     expect(screen.getByText("Reading")).toBeInTheDocument();
-    expect(screen.queryByText("Admin")).not.toBeInTheDocument();
-    expect(screen.queryByText("DICOMweb")).not.toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+    await user.click(screen.getByText("Admin"));
+    expect(screen.getByText("DICOMweb")).toBeInTheDocument();
     expect(user).toBeDefined();
   });
 

@@ -80,3 +80,24 @@
     margin: var(--space-2);
   }
 }
+
+/* §4.3 / §6 "any tool reachable by mouse must show its keyboard equivalent
+   inline on the control itself" — a small mono key-badge inside the button. */
+.ce-tool-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.ce-tool-key b {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-faint, #8992a3);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 3px;
+  opacity: 0.85;
+}

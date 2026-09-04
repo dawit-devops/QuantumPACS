@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AuthProvider } from "../auth/AuthContext";
+import { App as AntdApp } from "antd";
 import { ThemeProvider } from "../common/ThemeProvider";
 import TechnologistWorklist from "../technologist/TechnologistWorklist";
 
@@ -24,15 +24,54 @@ vi.mock("../hooks", () => ({
   useVisibilityGatedInterval: () => {},
 }));
 
+vi.mock("../common/base", () => ({
+  default: (Comp: React.ComponentType<any>) => Comp,
+}));
+
+vi.mock("../common/base", () => ({
+  default: (Comp: React.ComponentType<any>) => Comp,
+}));
+
+let mockUser: { id: string | null; permissions: string[] } = {
+  id: null,
+  permissions: [],
+};
+
+vi.mock("../auth/AuthContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../auth/AuthContext")>();
+  return {
+    ...actual,
+    useAuth: () => ({
+      user: mockUser.id
+        ? { id: mockUser.id, permissions: mockUser.permissions, admin: false, role: "technologist" }
+        : null,
+      hasPermission: (p: string) =>
+        mockUser.permissions.includes(p) || mockUser.permissions.length === 0,
+      isAuthenticated: mockUser.id != null,
+      signIn: () => {},
+      signOut: () => {},
+      activeTenant: null,
+      setActiveTenant: () => {},
+    }),
+  };
+});
+
+function seedTechSession(userId = "42") {
+  mockUser = {
+    id: userId,
+    permissions: ["EXAM_READ", "EXAM_WRITE"],
+  };
+}
+
 function renderWorklist() {
   return render(
-    <ThemeProvider>
-      <AuthProvider>
+    <AntdApp>
+      <ThemeProvider>
         <MemoryRouter initialEntries={["/exams"]}>
           <TechnologistWorklist />
         </MemoryRouter>
-      </AuthProvider>
-    </ThemeProvider>,
+      </ThemeProvider>
+    </AntdApp>,
   );
 }
 
@@ -73,6 +112,8 @@ describe("TechnologistWorklist", () => {
   beforeEach(() => {
     localStorage.clear();
     mockRequest.mockReset();
+    // Default: no session (user null) — matches the legacy test baseline.
+    mockUser = { id: null, permissions: [] };
   });
 
   it("renders the assigned exams with priority, modality, and status", async () => {
@@ -237,5 +278,71 @@ describe("TechnologistWorklist", () => {
     await waitFor(() => {
       expect(screen.getByText("45m")).toBeInTheDocument();
     });
+  });
+
+  it("releases an owned exam back to the pool", async () => {
+    // T-02: the current user sees a Release action on their owned exams.
+    seedTechSession("42");
+    const owned = [
+      { ...mockExams[0], assigned_technologist: "42" },
+      { ...mockExams[1], assigned_technologist: "" },
+    ];
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams") return Promise.resolve({ data: owned });
+      return Promise.resolve({ data: {} });
+    });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    const releaseBtn = screen.getByRole("button", { name: /release exam/i });
+    expect(releaseBtn).toBeInTheDocument();
+    // The unassigned row shows Claim, not Release.
+    expect(
+      screen.getByRole("button", { name: /claim exam/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(releaseBtn);
+    await waitFor(() => {
+      const call = mockRequest.mock.calls.find((c: any) =>
+        (c[0] as string).endsWith("/claim"),
+      );
+      expect(call).toBeTruthy();
+      expect(call![1].data).toEqual({ release: true });
+    });
+  });
+
+  it("defaults to My Exams and toggles to the unassigned pool", async () => {
+    // T-01: the worklist defaults to assigned=mine, and the toggle switches
+    // to assigned=pool so the tech can work the shared pool.
+    mockRequest.mockImplementation((url: string) => {
+      if (url === "exams") return Promise.resolve({ data: mockExams });
+      return Promise.resolve({ data: {} });
+    });
+    renderWorklist();
+
+    await waitFor(() => {
+      expect(screen.getByText("John Doe")).toBeInTheDocument();
+    });
+
+    // Default fetch is assigned=mine.
+    const defaultCall = mockRequest.mock.calls.find(
+      (c: any) => c[0] === "exams",
+    );
+    expect(defaultCall![1].query.assigned).toBe("mine");
+
+    fireEvent.click(screen.getByRole("button", { name: /Unassigned Pool/ }));
+    await waitFor(() => {
+      const poolCall = mockRequest.mock.calls.find(
+        (c: any) => c[0] === "exams" && c[1].query.assigned === "pool",
+      );
+      expect(poolCall).toBeTruthy();
+    });
+    // The pool subtitle explains the claim action.
+    expect(
+      screen.getByText(/Unassigned pool — claim exams to take ownership/),
+    ).toBeInTheDocument();
   });
 });

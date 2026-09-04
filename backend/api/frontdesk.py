@@ -20,7 +20,8 @@ from api.validate import parse_body
 from api.schemas.frontdesk import (
     AttachConsentRequest, CreateAppointmentRequest, CreateConsentRequest,
     CreateInsuranceRequest, CreateOrderRequest, CreatePatientRequest,
-    CreateVisitRequest, UpdateInsuranceRequest, UpdateVisitRequest,
+    CreateVisitRequest, MergePatientsRequest, UndoMergeRequest,
+    UpdateInsuranceRequest, UpdatePatientRequest, UpdateVisitRequest,
 )
 from db.audit_log import AuditLog
 from db.conn import get_conn
@@ -67,46 +68,196 @@ class PatientsSearchHandler(HTTPEndpoint):
         return ok({'data': [_row_dict(r) for r in rows]})
 
 
+async def _register_patient(conn, request, body):
+    """Shared register path for the legacy and RIS patient endpoints — the
+    MPI pre-check (R5-13) must behave identically whichever contract the
+    front desk uses."""
+    fd = FrontDesk(conn)
+    patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
+    name = body.name.strip()
+    existing = await fd.find_patient_duplicate(
+        name, body.birth_date, (body.phone or '').strip())
+    if existing:
+        return api_error(
+            'PATIENT_EXISTS',
+            'Patient with this name and birth date already exists',
+            details={'patient': _row_dict(existing)},
+            status=409,
+        )
+    try:
+        row = await fd.create_patient({
+            'patient_id': patient_id,
+            'name': name,
+            'birth_date': body.birth_date,
+            'sex': body.sex,
+            'phone': body.phone,
+            'email': body.email,
+            'meta': body.meta,
+        })
+    except UniqueViolationError:
+        return validation_error('Patient with this ID already exists')
+    # FD-01: MPI soft alert — the exact match missed, but a fuzzy trigram
+    # match on the name is a probable duplicate the front desk should flag.
+    warning = None
+    try:
+        fuzzy = await fd.search_patients_fuzzy(name, threshold=0.3, limit=1)
+    except Exception:
+        fuzzy = []
+    if fuzzy:
+        match = fuzzy[0]
+        warning = {
+            'existing_patient_id': match['patient_id'],
+            'existing_patient_name': match['name'],
+        }
+    await AuditLog(conn).log_event(
+        event_type='frontdesk.patient_registered',
+        actor_id=request.user.id,
+        resource_type='patient',
+        resource_id=row['id'],
+        details={'patient_id': patient_id},
+        tenant=effective_tenant(request),
+        request_id=request_id_var.get(),
+    )
+    data = _row_dict(row)
+    if warning:
+        data['warning'] = warning
+    return created({'data': data})
+
+
 class PatientsRegistrationHandler(HTTPEndpoint):
     @requires_permission(Permission.REGISTRATION_WRITE)
     async def post(self, request):
         body = await parse_body(CreatePatientRequest, request)
-        patient_id = (body.patient_id or '').strip() or f'P{int(_time.time() * 1000)}'
-        name = body.name.strip()
+        async with get_conn() as conn:
+            return await _register_patient(conn, request, body)
+
+
+# ---- RIS patient contract (§4.1) ----
+# Same registration/search/insurance logic as the legacy frontdesk endpoints,
+# gated by the RIS permission vocabulary (PATIENT_READ/PATIENT_WRITE) and
+# adding update + check-in, which the legacy contract never exposed.
+
+
+class RisPatientsHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def post(self, request):
+        body = await parse_body(CreatePatientRequest, request)
+        async with get_conn() as conn:
+            return await _register_patient(conn, request, body)
+
+
+class RisPatientsSearchHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        # FD-07: search by name/MRN (q), DOB, or phone — the quick-search
+        # overlay fires whichever field the user filled.
+        q = (request.query_params.get('q') or '').strip()
+        dob = (request.query_params.get('dob') or '').strip()
+        phone = (request.query_params.get('phone') or '').strip()
+        if len(q) < 2 and not dob and not phone:
+            return ok({'data': []})
+        async with get_conn() as conn:
+            rows = await FrontDesk(conn).search_patients(q, dob=dob, phone=phone)
+        return ok({'data': [_row_dict(r) for r in rows]})
+
+
+class RisPatientHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        patient_id = request.path_params['id']
+        async with get_conn() as conn:
+            row = await FrontDesk(conn).get_patient(patient_id)
+        if not row:
+            return not_found('Patient not found')
+        return ok({'data': _row_dict(row)})
+
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def put(self, request):
+        patient_id = request.path_params['id']
+        body = await parse_body(UpdatePatientRequest, request)
+        updates = body.model_dump(exclude_none=True)
         async with get_conn() as conn:
             fd = FrontDesk(conn)
-            # R5-13: MPI dedup belongs on the server, not in a client banner —
-            # two registrations of the same person (same name + birth date,
-            # different MRNs) must not create two records. 409 with the
-            # existing row lets the front desk re-use it instead of probing.
-            existing = await fd.find_patient_duplicate(name, body.birth_date)
-            if existing:
-                return api_error(
-                    'PATIENT_EXISTS',
-                    'Patient with this name and birth date already exists',
-                    details={'patient': _row_dict(existing)},
-                    status=409,
-                )
-            try:
-                row = await fd.create_patient({
-                    'patient_id': patient_id,
-                    'name': name,
-                    'birth_date': body.birth_date,
-                    'sex': body.sex,
-                    'meta': body.meta,
-                })
-            except UniqueViolationError:
-                return validation_error('Patient with this ID already exists')
+            if not await fd.get_patient(patient_id):
+                return not_found('Patient not found')
+            if updates:
+                await fd.update_patient(patient_id, updates)
+            row = await fd.get_patient(patient_id)
             await AuditLog(conn).log_event(
-                event_type='frontdesk.patient_registered',
+                event_type='frontdesk.patient_updated',
                 actor_id=request.user.id,
                 resource_type='patient',
+                resource_id=row['id'],
+                details={'patient_id': patient_id, 'updates': updates},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': _row_dict(row)})
+
+
+class RisPatientInsuranceHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_WRITE)
+    async def post(self, request):
+        patient_id = request.path_params['id']
+        body = await parse_body(CreateInsuranceRequest, request)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            row = await fd.create_insurance({
+                'patient_id': patient_id,
+                'policy_number': body.policy_number,
+                'guarantor_name': body.guarantor_name,
+                'authorization_status': body.authorization_status,
+                'authorization_number': body.authorization_number,
+                'notes': body.notes,
+                'created_by': str(request.user.id),
+            })
+            await AuditLog(conn).log_event(
+                event_type='frontdesk.insurance_created',
+                actor_id=request.user.id,
+                resource_type='insurance',
                 resource_id=row['id'],
                 details={'patient_id': patient_id},
                 tenant=effective_tenant(request),
                 request_id=request_id_var.get(),
             )
         return created({'data': _row_dict(row)})
+
+
+class RisPatientCheckInHandler(HTTPEndpoint):
+    # F-09: The Visits UI performs check-in via PUT /visits/{id} (REGISTRATION_WRITE),
+    # not this endpoint. Both permissions are held by receptionists. This endpoint
+    # is kept on SCHEDULE_WRITE for backend/machine-to-machine callers (HL7, RIS)
+    # that may not hold REGISTRATION_WRITE.
+    @requires_permission(Permission.SCHEDULE_WRITE)
+    async def post(self, request):
+        patient_id = request.path_params['id']
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            if not await fd.get_patient(patient_id):
+                return not_found('Patient not found')
+            visit = await fd.find_open_visit(patient_id)
+            if not visit:
+                return api_error(
+                    'NO_OPEN_VISIT',
+                    'Patient has no open visit to check in',
+                    status=409,
+                )
+            await fd.update_visit(visit['id'], {'status': 'checked_in'})
+            row = dict(visit)
+            row['status'] = 'checked_in'
+            await AuditLog(conn).log_event(
+                event_type='frontdesk.checkin',
+                actor_id=request.user.id,
+                resource_type='visit',
+                resource_id=visit['id'],
+                details={'patient_id': patient_id},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': _row_dict(row)})
 
 
 class VisitsHandler(HTTPEndpoint):
@@ -525,26 +676,136 @@ class InsuranceHandler(HTTPEndpoint):
         return ok({})
 
 
+# ---- MPI merge / undo (S3-11) ----
+
+
+class RisPatientsMergeHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_MERGE)
+    async def post(self, request):
+        body = await parse_body(MergePatientsRequest, request)
+        if body.surviving_patient_id == body.merged_patient_id:
+            return api_error('SAME_PATIENT', 'Cannot merge a patient with itself', status=400)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            surviving = await fd.get_patient(body.surviving_patient_id)
+            if not surviving:
+                return not_found('Surviving patient not found')
+            merged = await fd.get_patient(body.merged_patient_id)
+            if not merged:
+                return not_found('Merged patient not found')
+            result = await fd.merge_patients(
+                body.surviving_patient_id, body.merged_patient_id,
+                reason=body.reason or '',
+            )
+            await AuditLog(conn).log_event(
+                event_type='mpi.patient_merged',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=surviving['id'],
+                details={
+                    'surviving_patient_id': body.surviving_patient_id,
+                    'merged_patient_id': body.merged_patient_id,
+                    'reason': body.reason or '',
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': result})
+
+
+class RisPatientsUndoMergeHandler(HTTPEndpoint):
+    @requires_permission(Permission.PATIENT_MERGE)
+    async def post(self, request):
+        body = await parse_body(UndoMergeRequest, request)
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(body.patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            result = await fd.undo_merge(body.patient_id, reason=body.reason or '')
+            await AuditLog(conn).log_event(
+                event_type='mpi.patient_unmerged',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient['id'],
+                details={'patient_id': body.patient_id, 'reason': body.reason or ''},
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': result})
+
+
+# ---- Insurance eligibility (S3-14 / FD-02) ----
+
+
+class RisPatientEligibilityHandler(HTTPEndpoint):
+    """FD-02: return coverage data from the patient's most recent insurance
+    record — provider, member ID, copay, deductible, coverage status.
+
+    No live payer API is integrated; eligibility is derived from the stored
+    policy (the payer verification adapter is a later-phase concern).
+    A patient with no recorded policy reports status 'none'."""
+
+    @requires_permission(Permission.PATIENT_READ)
+    async def get(self, request):
+        patient_id = request.path_params['id']
+        from datetime import datetime, timezone
+        async with get_conn() as conn:
+            fd = FrontDesk(conn)
+            patient = await fd.get_patient(patient_id)
+            if not patient:
+                return not_found('Patient not found')
+            records = await fd.list_insurance(patient_id)
+        record = records[0] if records else None
+        if record is None:
+            return ok({
+                'data': {
+                    'patient_id': patient_id,
+                    'status': 'none',
+                    'provider': '',
+                    'member_id': '',
+                    'copay_amount': None,
+                    'deductible_total': None,
+                    'deductible_remaining': None,
+                    'checked_at': datetime.now(timezone.utc).isoformat(),
+                },
+            })
+        return ok({
+            'data': {
+                'patient_id': patient_id,
+                'status': 'active',
+                'provider': record.get('provider') or '',
+                'member_id': record.get('member_id') or '',
+                'copay_amount': record.get('copay_amount'),
+                'deductible_total': record.get('deductible_total'),
+                'deductible_remaining': record.get('deductible_remaining'),
+                'checked_at': datetime.now(timezone.utc).isoformat(),
+            },
+        })
+
+
 class WaitingQueueHandler(HTTPEndpoint):
     @requires_permission(Permission.QUEUE_READ)
     async def get(self, request):
         date_str = request.query_params.get('date') or ''
         async with get_conn() as conn:
             rows = await FrontDesk(conn).waiting_queue(date=date_str)
-        # HIPAA minimum necessary: initials + last-4 of the MRN only —
-        # full names and MRNs never leave the server.
+        # FD-05: the queue is a staff-authenticated surface (QUEUE_READ) —
+        # it carries full patient names, wait time, priority, modality/room.
         data = []
         for r in rows:
-            name = r['patient_name'] or ''
-            pid = r['patient_id'] or ''
-            initials = ''.join(w[0].upper() + '.' for w in name.split() if w) if name else ''
-            last4 = pid[-4:] if len(pid) >= 4 else pid
             data.append({
                 'visit_id': str(r['visit_id']),
-                'initials': initials,
-                'last4': last4,
+                'patient_id': r['patient_id'] or '',
+                'patient_name': r['patient_name'] or '',
                 'status': r['status'],
                 'destination': r['destination'] or '',
+                'modality': r.get('modality') or '',
+                'priority': r.get('priority') or '',
                 'updated_at': str(r['updated_at']),
+                # FD-05: minutes-since-arrival (None for registered-only visits).
+                'wait_minutes': (round(r['wait_minutes'])
+                                 if r.get('wait_minutes') is not None
+                                 else None),
             })
         return ok({'data': data})

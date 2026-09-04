@@ -52,15 +52,23 @@ def has_permission(user, permission) -> bool:
 
 
 def requires_permission(permission):
+    """Gate a handler method on a permission (or any-of a list of them).
+
+    Passing a list means ANY listed grant suffices — used where a write
+    path has distinct staff (FOLLOW_UP_WRITE) and patient (FOLLOW_UP_SELF)
+    callers (P-05) but must not give patients the staff grant.
+    """
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(self, request, *args, **kwargs):
             user = request.user
             if not user.is_authenticated:
                 raise HTTPException(status_code=401, detail='Not authenticated')
-            if not has_permission(user, permission):
-                code = permission.value if isinstance(permission, Permission) else str(permission)
-                return forbidden(f'Missing permission: {code}')
+            perms = permission if isinstance(permission, (list, tuple)) else [permission]
+            if not any(has_permission(user, p) for p in perms):
+                codes = [p.value if isinstance(p, Permission) else str(p)
+                         for p in perms]
+                return forbidden(f'Missing permission: {", ".join(codes)}')
             return await func(self, request, *args, **kwargs)
         return wrapper
     return decorator

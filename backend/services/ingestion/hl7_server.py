@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from datetime import datetime
 import ipaddress
 import json
 import traceback
@@ -192,14 +193,57 @@ def _seg_field_raw(seg, hl7_field, default=''):
         return default
 
 
+def _obr_procedure(obr) -> dict:
+    """Per-OBR procedure entry (B1): every OBR in an ORM is a schedulable
+    procedure — the segment map must not collapse them."""
+    start_dt = _seg_field(obr, 7, 0, 0)
+    return {
+        'procedure_code': _seg_field(obr, 3, 0, 0),
+        'procedure_desc': _seg_field_raw(obr, 4),
+        # Universal service ID components → RequestedProcedureCodeSequence
+        # (0008,0100 CodeValue / 0008,0102 Scheme / 0008,0104 CodeMeaning).
+        # NOTE: this hl7 lib indexes field[comp] as repetitions and
+        # rep[sub] as components — component 0/1/2 = (field, 0, 0/1/2).
+        'requested_procedure_code': _seg_field(obr, 4, 0, 0),
+        'requested_procedure_code_meaning': _seg_field(obr, 4, 0, 1),
+        'requested_procedure_code_scheme': _seg_field(obr, 4, 0, 2),
+        'requesting_physician': _seg_field_raw(obr, 16),
+        # Ordering provider doubles as the referring physician in most RIS
+        # integrations; ZDS-level separation is a later refinement.
+        'referring_physician': _seg_field_raw(obr, 16),
+        'modality': _seg_field(obr, 24, 0, 0),
+        'station_ae_title': _seg_field(obr, 18, 0, 0),
+        'scheduled_station_name': _seg_field(obr, 18, 0, 1),
+        # OBR-32 principal result interpreter → ScheduledPerformingPhysician.
+        'scheduled_performing_physician': _seg_field_raw(obr, 32),
+        # OBR-31 reason for study → ReasonForTheRequestedProcedure (0040,1002).
+        'reason_for_requested_procedure': _seg_field(obr, 31, 0, 0),
+        # OBR-27 Quantity/Timing component 7 (priority: R routine, A ASAP,
+        # S stat) → RequestedProcedurePriority (0040,1003).
+        'requested_procedure_priority': _seg_field(obr, 27, 0, 5),
+        'scheduled_date': start_dt[:8] if start_dt else '',
+        'scheduled_time': (
+            start_dt[8:14] if len(start_dt) >= 14
+            else (start_dt[8:12] if len(start_dt) >= 12 else '')
+        ),
+        'result_status': _seg_field(obr, 25, 0, 0),
+    }
+
+
 def parse_hl7_message(data) -> dict | None:
     if isinstance(data, bytes):
         data = data.decode('utf-8', errors='replace')
+    # Line-ending normalization: python-hl7 splits segments on \r only, so
+    # \r\n (Windows senders) leaves the \n glued to the next segment name
+    # ('\nPID' never matches 'PID') and bare \n swallows the segment. Real
+    # HIS feeds use both — normalize before parsing (S3-05 conformance).
+    data = data.replace('\r\n', '\r').replace('\n', '\r')
     try:
         msg = hl7.parse(data)
     except Exception:
         return None
 
+    # Singleton segments: last occurrence wins (feeds never repeat them).
     segments = {seg[0][0]: seg for seg in msg}
     msh = segments.get('MSH')
     if msh is None:
@@ -226,44 +270,73 @@ def parse_hl7_message(data) -> dict | None:
         result['merged_patient_id'] = _seg_field(mrg, 1, 0, 0)
         result['surviving_patient_id'] = result.get('patient_id', '')
 
+    # B2: PV1 encounter context (S3-02 conformance set) — patient class
+    # (PV1-2), attending doctor (PV1-7), visit number (PV1-19).
+    pv1 = segments.get('PV1')
+    if pv1 is not None:
+        result['patient_class'] = _seg_field(pv1, 2, 0, 0)
+        result['attending_doctor'] = _seg_field_raw(pv1, 7)
+        result['visit_number'] = _seg_field(pv1, 19, 0, 0)
+
+    # B2: DG1 diagnoses — repeatable segment, so collect every occurrence.
+    dg1s = [seg for seg in msg if seg[0][0] == 'DG1']
+    if dg1s:
+        result['diagnoses'] = [
+            {
+                'code': _seg_field(dg1, 3, 0, 0),
+                'description': _seg_field(dg1, 3, 0, 1),
+                'coding_system': _seg_field(dg1, 3, 0, 2),
+            }
+            for dg1 in dg1s
+        ]
+
     orc = segments.get('ORC')
     if orc is not None:
         result['accession_number'] = _seg_field(orc, 2, 0, 0)
         result['order_control'] = _seg_field(orc, 1, 0, 0)
 
-    obr = segments.get('OBR')
-    if obr is not None:
-        result['requested_procedure_id'] = _seg_field(obr, 3, 0, 0)
-        result['requested_procedure_desc'] = _seg_field_raw(obr, 4)
-        # Universal service ID components → RequestedProcedureCodeSequence
-        # (0008,0100 CodeValue / 0008,0102 Scheme / 0008,0104 CodeMeaning).
-        # NOTE: this hl7 lib indexes field[comp] as repetitions and
-        # rep[sub] as components — component 0/1/2 = (field, 0, 0/1/2).
-        result['requested_procedure_code'] = _seg_field(obr, 4, 0, 0)
-        result['requested_procedure_code_meaning'] = _seg_field(obr, 4, 0, 1)
-        result['requested_procedure_code_scheme'] = _seg_field(obr, 4, 0, 2)
-        result['requesting_physician'] = _seg_field_raw(obr, 16)
-        # Ordering provider doubles as the referring physician in most RIS
-        # integrations; ZDS-level separation is a later refinement.
-        result['referring_physician'] = _seg_field_raw(obr, 16)
-        result['modality'] = _seg_field(obr, 24, 0, 0)
-        result['station_ae_title'] = _seg_field(obr, 18, 0, 0)
-        result['scheduled_station_name'] = _seg_field(obr, 18, 0, 1)
-        # OBR-32 principal result interpreter → ScheduledPerformingPhysician.
-        result['scheduled_performing_physician'] = _seg_field_raw(obr, 32)
-        # OBR-31 reason for study → ReasonForTheRequestedProcedure (0040,1002).
-        result['reason_for_requested_procedure'] = _seg_field(obr, 31, 0, 0)
-        # OBR-27 Quantity/Timing component 7 (priority: R routine, A ASAP,
-        # S stat) → RequestedProcedurePriority (0040,1003).
-        result['requested_procedure_priority'] = _seg_field(obr, 27, 0, 5)
-        start_dt = _seg_field(obr, 7, 0, 0)
-        result['scheduled_date'] = start_dt[:8] if start_dt else ''
-        result['scheduled_time'] = start_dt[8:14] if len(start_dt) >= 14 else (start_dt[8:12] if len(start_dt) >= 12 else '')
-        # ORU^R01 carries no ORC segment; the accession rides in OBR-3
-        # (filler order number) or OBR-2 (placer order number).
-        if not result.get('accession_number'):
-            result['accession_number'] = _seg_field(obr, 3, 0, 0) or _seg_field(obr, 2, 0, 0)
-        result['result_status'] = _seg_field(obr, 25, 0, 0)
+    # B1: collect EVERY OBR — multi-procedure orders are the norm in
+    # radiology (bilateral joints, CT abdo+pelvis). First OBR also feeds
+    # the legacy top-level scalar fields so single-procedure callers and
+    # previously-stored parsed_segments stay compatible.
+    obrs = [seg for seg in msg if seg[0][0] == 'OBR']
+    if obrs:
+        procedures = []
+        for idx, obr in enumerate(obrs):
+            proc = _obr_procedure(obr)
+            procedures.append(proc)
+            if idx == 0:
+                result['requested_procedure_id'] = proc['procedure_code']
+                result['requested_procedure_desc'] = proc['procedure_desc']
+                result['requested_procedure_code'] = \
+                    proc['requested_procedure_code']
+                result['requested_procedure_code_meaning'] = \
+                    proc['requested_procedure_code_meaning']
+                result['requested_procedure_code_scheme'] = \
+                    proc['requested_procedure_code_scheme']
+                result['requesting_physician'] = \
+                    proc['requesting_physician']
+                result['referring_physician'] = \
+                    proc['referring_physician']
+                result['modality'] = proc['modality']
+                result['station_ae_title'] = proc['station_ae_title']
+                result['scheduled_station_name'] = \
+                    proc['scheduled_station_name']
+                result['scheduled_performing_physician'] = \
+                    proc['scheduled_performing_physician']
+                result['reason_for_requested_procedure'] = \
+                    proc['reason_for_requested_procedure']
+                result['requested_procedure_priority'] = \
+                    proc['requested_procedure_priority']
+                result['scheduled_date'] = proc['scheduled_date']
+                result['scheduled_time'] = proc['scheduled_time']
+                # ORU^R01 carries no ORC segment; the accession rides in
+                # OBR-3 (filler order number) or OBR-2 (placer order no.).
+                if not result.get('accession_number'):
+                    result['accession_number'] = \
+                        _seg_field(obr, 3, 0, 0) or _seg_field(obr, 2, 0, 0)
+                result['result_status'] = proc['result_status']
+        result['procedures'] = procedures
 
     return result
 
@@ -273,6 +346,11 @@ async def handle_adt_message(parsed: dict) -> bool:
     patient_id = parsed.get('patient_id', '')
     if not patient_id:
         return False
+
+    # S3-20 / R2-06-06: HIS pre-registration — patient record plus an
+    # unassigned appointment stub so front desk never re-keys the visit.
+    if event == 'Z01':
+        return await _preregister_patient(parsed)
 
     if event == 'A03':
         data = {'patient_id': patient_id}
@@ -304,6 +382,52 @@ async def handle_adt_message(parsed: dict) -> bool:
 
     log.warning('Unknown ADT event: %s for patient %s', event, patient_id)
     return False
+
+
+async def _preregister_patient(parsed: dict) -> bool:
+    try:
+        async with get_conn() as conn:
+            await Patient(conn).insert_or_select({
+                'patient_id': parsed.get('patient_id', ''),
+                'patient_name': parsed.get('patient_name', ''),
+                'patient_birth_date': parsed.get('birth_date', ''),
+                'patient_sex': parsed.get('sex', ''),
+                'sending_facility': parsed.get('sending_facility', ''),
+            })
+            sd = parsed.get('scheduled_date', '')
+            if not sd:
+                return True  # registration only; slot comes later
+            stime = (parsed.get('scheduled_time') or '').replace(':', '')
+            stime = stime.ljust(6, '0')[:6] or '000000'
+            try:
+                start = datetime.strptime(sd + stime, '%Y%m%d%H%M%S')
+            except ValueError:
+                log.warning('Z01 unparsable schedule %s/%s — registered '
+                            'patient without booking', sd, stime)
+                return True
+            from datetime import timedelta
+            from db.conn import get_tenant_slug
+            from db.ris_appointments import RisAppointments
+            tenant = get_tenant_slug() or (
+                parsed.get('sending_facility') or 'default').lower()
+            await RisAppointments(conn).create({
+                'tenant_id': tenant,
+                # resource stays NULL until staff assign a room/device;
+                # EXCLUDE guard treats NULLs as distinct so stubs never
+                # collide with real bookings (migration 085).
+                'resource_id': None,
+                'patient_id': parsed.get('patient_id', ''),
+                'start_time': start,
+                'end_time': start + timedelta(minutes=30),
+                'status': 'SCHEDULED',
+                'reason': 'HL7 pre-registration (ADT^Z01)',
+                'created_by': 'hl7:adt-z01',
+            })
+        return True
+    except Exception:
+        log.exception('Z01 pre-registration failed for %s',
+                      parsed.get('patient_id'))
+        return False
 
 
 async def _upsert_patient(data: dict) -> bool:
@@ -341,7 +465,7 @@ async def _upsert_patient(data: dict) -> bool:
 async def _deactivate_patient(data: dict) -> bool:
     try:
         async with get_conn() as conn:
-            q = "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1"
+            q = "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(false)) WHERE patient_id = $1"
             await conn.execute(q, data['patient_id'])
         return True
     except Exception:
@@ -360,14 +484,65 @@ async def _merge_patients(surviving_id: str, parsed: dict, merged_id: str) -> bo
                 'patient_birth_date': parsed.get('birth_date', ''),
                 'patient_sex': parsed.get('sex', ''),
             })
+            # B3 (S3-12): merges must propagate. Re-point every RIS
+            # reference from the merged-away MRN to the survivor inside
+            # one transaction, otherwise schedulers/techs lose sight of
+            # live work the moment the HIS collapses duplicate MRNs.
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE ris_orders SET patient_id = $1"
+                    " WHERE patient_id = $2",
+                    surviving_id, merged_id,
+                )
+                await conn.execute(
+                    "UPDATE ris_appointments SET patient_id = $1"
+                    " WHERE patient_id = $2",
+                    surviving_id, merged_id,
+                )
+                await conn.execute(
+                    "UPDATE worklist_entries SET patient_id = $1"
+                    " WHERE patient_id = $2",
+                    surviving_id, merged_id,
+                )
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{merged_into}', '\"' || $1::text || '\"') WHERE patient_id = $2",
+                # to_jsonb() gives an explicit jsonb argument — a $n::text
+                # expression will not implicitly cast (jsonb_set has no
+                # (jsonb, text[], text) overload).
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{merged_into}', to_jsonb($1::text)) WHERE patient_id = $2",
                 surviving_id, merged_id,
             )
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"false\"') WHERE patient_id = $1",
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(false)) WHERE patient_id = $1",
                 merged_id,
             )
+            # B3: audit the propagation with per-table re-point counts so
+            # MPI operators can verify what moved (0-count merges are legal).
+            counts = await conn.fetchrow(
+                "SELECT"
+                " (SELECT count(*) FROM ris_orders WHERE patient_id = $1) AS orders,"
+                " (SELECT count(*) FROM ris_appointments WHERE patient_id = $1) AS appointments,"
+                " (SELECT count(*) FROM worklist_entries WHERE patient_id = $1) AS worklist",
+                surviving_id,
+            )
+            try:
+                from db.audit_log import AuditLog
+                from db.conn import get_tenant_slug
+                await AuditLog(conn).log_event(
+                    event_type='mpi.hl7_merged',
+                    actor_id='hl7',
+                    resource_type='patient',
+                    resource_id=surviving_id,
+                    details={
+                        'merged_patient_id': merged_id,
+                        'orders': int(counts['orders']),
+                        'appointments': int(counts['appointments']),
+                        'worklist': int(counts['worklist']),
+                    },
+                    tenant=get_tenant_slug(),
+                )
+            except Exception:
+                log.warning('merge audit failed for %s->%s',
+                            merged_id, surviving_id, exc_info=True)
         return True
     except Exception:
         log.exception('patient merge failed')
@@ -390,7 +565,7 @@ async def _unmerge_patients(surviving_id: str, parsed: dict, merged_id: str) -> 
                 merged_id,
             )
             await conn.execute(
-                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', '\"true\"') WHERE patient_id = $1",
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), '{active}', to_jsonb(true)) WHERE patient_id = $1",
                 merged_id,
             )
         return True

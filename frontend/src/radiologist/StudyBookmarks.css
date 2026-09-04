@@ -1,0 +1,13 @@
+.bookmarks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.bookmarks-subtitle {
+  color: var(--text-secondary, #8c8c8c);
+  font-size: 13px;
+}

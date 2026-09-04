@@ -4,11 +4,6 @@
   margin-top: 8px;
 }
 
-.reading-presets-panel .ant-collapse-header {
-  padding: 8px 12px !important;
-  color: var(--text-secondary, #c7c9d4) !important;
-}
-
 .rp-inner {
   display: flex;
   flex-direction: column;
@@ -73,12 +68,6 @@
   display: flex;
   gap: 6px;
   align-items: center;
-}
-
-.rp-save-row .ant-input {
-  flex: 1;
-  background: var(--bg-input, #12141d);
-  color: var(--text-primary, #e8eaf2);
 }
 
 .rp-standard {

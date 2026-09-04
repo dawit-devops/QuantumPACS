@@ -7,6 +7,7 @@ appointments, consent_documents, insurance_records, modality_capacity).
 No Table base class: these tables are owned by Alembic, not sync_db().
 """
 from datetime import datetime, timezone
+import json
 
 from db.conn import get_tenant_slug
 
@@ -17,53 +18,109 @@ class FrontDesk:
 
     # ---- patients ----
 
-    async def search_patients(self, q, limit=50):
-        like = f'%{q}%'
+    async def search_patients(self, q, dob='', phone='', limit=50):
+        # FD-07: quick search matches by name/MRN (q), DOB (full or partial
+        # like '1980'), or phone — each optional, combined with AND.
+        clauses = []
+        params = []
+        if q:
+            like = f'%{q}%'
+            clauses.append('(name ILIKE $%d OR patient_id ILIKE $%d)' % (
+                len(params) + 1, len(params) + 2))
+            params.extend([like, like])
+        if dob:
+            dob_like = f'%{dob}%'
+            clauses.append(f'birth_date ILIKE ${len(params) + 1}')
+            params.append(dob_like)
+        if phone:
+            phone_like = f'%{phone}%'
+            clauses.append(f'phone ILIKE ${len(params) + 1}')
+            params.append(phone_like)
+        where = ' AND '.join(clauses) if clauses else '1=1'
         rows = await self.conn.fetch(
-            """
-            SELECT id, patient_id, name, birth_date, sex
+            f"""
+            SELECT id, patient_id, name, birth_date, sex, phone, email
             FROM patients
-            WHERE name ILIKE $1 OR patient_id ILIKE $1
+            WHERE {where}
             ORDER BY name
-            LIMIT $2
+            LIMIT ${len(params) + 1}
             """,
-            like, limit,
+            *params, limit,
         )
         return rows
 
     async def create_patient(self, data):
+        # meta is JSONB — asyncpg rejects bare dicts, so serialize here and
+        # cast in SQL (same pattern as the RIS tables).
+        meta = json.dumps(data.get('meta')) if data.get('meta') is not None else None
         return await self.conn.fetchrow(
             """
-            INSERT INTO patients (patient_id, name, birth_date, sex, meta, tenant_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, patient_id, name, birth_date, sex
+            INSERT INTO patients (patient_id, name, birth_date, sex, phone,
+                                  email, meta, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+            RETURNING id, patient_id, name, birth_date, sex, phone, email
             """,
             data['patient_id'], data['name'], data.get('birth_date', ''),
-            data.get('sex', ''), data.get('meta'),
+            data.get('sex', ''), data.get('phone'), data.get('email'), meta,
             get_tenant_slug() or 'default',
         )
 
-    async def find_patient_duplicate(self, name, birth_date):
-        """Exact demographic match for the MPI pre-check (R5-13) — a patient
-        with the same name and date of birth is presumed to be the same
-        person regardless of the MRN seen. Only meaningful when a birth date
-        was actually captured; empty dates never match."""
-        if not birth_date:
+    async def find_patient_duplicate(self, name, birth_date, phone=''):
+        """Exact demographic match for the MPI pre-check (R5-13 / FD-01) — a
+        patient with the same name+DOB (or same phone, when provided) is
+        presumed to be the same person regardless of the MRN seen. Only
+        meaningful when a birth date was actually captured; empty dates
+        never match."""
+        # Build OR clauses: (name + birth_date) OR (phone) when phone given.
+        clauses = []
+        if birth_date:
+            clauses.append('(name = $%d AND birth_date = $%d)' % (
+                len(clauses) + 1, len(clauses) + 2))
+        if phone:
+            clauses.append('phone = $%d' % (len(clauses) + 1))
+        if not clauses:
             return None
+        params = [name, birth_date] if birth_date else []
+        if phone:
+            params.append(phone)
+        where = ' OR '.join(clauses)
         return await self.conn.fetchrow(
-            """
-            SELECT id, patient_id, name, birth_date, sex
+            f"""
+            SELECT id, patient_id, name, birth_date, sex, phone
             FROM patients
-            WHERE name = $1 AND birth_date = $2
+            WHERE {where}
             ORDER BY created_at
             LIMIT 1
             """,
-            name, birth_date,
+            *params,
         )
 
     async def get_patient(self, patient_id):
         return await self.conn.fetchrow(
             "SELECT id, patient_id, name, birth_date, sex FROM patients WHERE patient_id = $1",
+            patient_id,
+        )
+
+    async def update_patient(self, patient_id, updates):
+        # patients has no updated_at column — update only the caller-supplied
+        # demographic columns.
+        keys = list(updates.keys())
+        set_clause = ', '.join(f"{k} = ${i + 2}" for i, k in enumerate(keys))
+        await self.conn.execute(
+            f"UPDATE patients SET {set_clause} WHERE patient_id = $1",
+            patient_id, *updates.values(),
+        )
+
+    async def find_open_visit(self, patient_id):
+        """Earliest open visit (registered/checked_in) for check-in; a visit
+        already in progress or complete is no longer checkable."""
+        return await self.conn.fetchrow(
+            """
+            SELECT * FROM visits
+            WHERE patient_id = $1 AND status IN ('registered', 'checked_in')
+            ORDER BY visit_date, created_at
+            LIMIT 1
+            """,
             patient_id,
         )
 
@@ -114,6 +171,11 @@ class FrontDesk:
         now = datetime.now(timezone.utc)
         keys = list(updates.keys()) + ['updated_at']
         values = list(updates.values()) + [now]
+        # FD-05: stamp the arrival time when a visit first checks in so the
+        # front-desk queue can compute minutes-since-arrival.
+        if updates.get('status') == 'checked_in':
+            keys.append('checked_in_at')
+            values.append(now)
         set_clause = ', '.join(f"{k} = ${i + 2}" for i, k in enumerate(keys))
         await self.conn.execute(
             f"UPDATE visits SET {set_clause} WHERE id = $1",
@@ -318,14 +380,18 @@ class FrontDesk:
             """
             INSERT INTO insurance_records (patient_id, policy_number, guarantor_name,
                                            authorization_status, authorization_number, notes,
+                                           provider, member_id, copay_amount,
+                                           deductible_total, deductible_remaining,
                                            created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
             """,
             data['patient_id'], data.get('policy_number', ''),
             data.get('guarantor_name', ''), data.get('authorization_status', 'none'),
             data.get('authorization_number', ''), data.get('notes', ''),
-            data.get('created_by', ''),
+            data.get('provider', ''), data.get('member_id', ''),
+            data.get('copay_amount'), data.get('deductible_total'),
+            data.get('deductible_remaining'), data.get('created_by', ''),
         )
 
     async def update_insurance(self, insurance_id, updates):
@@ -338,14 +404,75 @@ class FrontDesk:
             insurance_id, *values,
         )
 
+    # ---- MPI: fuzzy search ----
+
+    async def search_patients_fuzzy(self, q, threshold=0.3, limit=20):
+        """pg_trgm fuzzy search for probable MPI matches (S3-11).
+
+        Returns patients whose name similarity to *q* exceeds *threshold*,
+        ordered by descending similarity.  The GIN trigram index
+        (migration 047) makes this index-assisted at scale.
+        """
+        return await self.conn.fetch(
+            """
+            SELECT id, patient_id, name, birth_date, sex,
+                   similarity(name, $1) AS sim
+            FROM patients
+            WHERE similarity(name, $1) > $2
+            ORDER BY sim DESC
+            LIMIT $3
+            """,
+            q, threshold, limit,
+        )
+
+    # ---- MPI: merge / undo ----
+
+    async def merge_patients(self, surviving_id, merged_id, *, reason=''):
+        """Merge *merged_id* into *surviving_id* (S3-11).
+
+        Sets ``meta.merged_into`` on the loser, flips ``meta.active`` to
+        false.  The audit trail is the caller's responsibility.
+        Both updates run in a single transaction to prevent partial state
+        if the connection drops between them.
+        """
+        async with self.conn.transaction():
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{merged_into}', to_jsonb($1::text)) WHERE patient_id = $2",
+                surviving_id, merged_id,
+            )
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{active}', to_jsonb(false)) WHERE patient_id = $1",
+                merged_id,
+            )
+        return {'surviving_patient_id': surviving_id, 'merged_patient_id': merged_id}
+
+    async def undo_merge(self, patient_id, *, reason=''):
+        """Undo a previous merge: reactivate *patient_id* (S3-11).
+
+        Removes ``meta.merged_into`` and flips ``meta.active`` back to true.
+        Both updates run in a single transaction to prevent partial state
+        if the connection drops between them.
+        """
+        async with self.conn.transaction():
+            await self.conn.execute(
+                "UPDATE patients SET meta = (meta - 'merged_into') WHERE patient_id = $1",
+                patient_id,
+            )
+            await self.conn.execute(
+                "UPDATE patients SET meta = jsonb_set(COALESCE(meta, '{}'), "
+                "'{active}', to_jsonb(true)) WHERE patient_id = $1",
+                patient_id,
+            )
+        return {'patient_id': patient_id, 'status': 'active'}
+
     # ---- waiting queue ----
 
     async def waiting_queue(self, date=''):
-        """Open visits (registered/checked_in) for the day. The exams join
-        added no columns yet multiplied rows (one patient can have many
-        exams), so the destination room is fetched per-visit instead (R5-09).
-        Completed/archived visits are hidden — the queue shows patients
-        waiting to be seen."""
+        """Open visits (registered/checked_in) for the day. Returns wait
+        minutes, modality, room, and priority per FD-05. The queue shows
+        full patient names (staff-authenticated surface, QUEUE_READ)."""
         return await self.conn.fetch(
             """
             SELECT
@@ -359,13 +486,31 @@ class FrontDesk:
                       ORDER BY a.created_at LIMIT 1),
                     v.destination_room
                 ) AS destination,
+                COALESCE(
+                    (SELECT a.modality FROM appointments a
+                      WHERE a.visit_id = v.id AND a.status != 'cancelled'
+                      ORDER BY a.created_at LIMIT 1),
+                    ''
+                ) AS modality,
+                COALESCE(
+                    (SELECT MAX(CASE vo.urgency
+                       WHEN 'stat' THEN 'STAT'
+                       WHEN 'urgent' THEN 'URGENT'
+                       ELSE 'ROUTINE' END)
+                     FROM visit_orders vo
+                     WHERE vo.visit_id = v.id),
+                    ''
+                ) AS priority,
                 v.updated_at,
-                v.created_at
+                v.created_at,
+                EXTRACT(EPOCH FROM (now() - v.checked_in_at)) / 60
+                    AS wait_minutes
             FROM visits v
             LEFT JOIN patients p ON p.patient_id = v.patient_id
             WHERE v.status IN ('registered', 'checked_in')
               AND ($1 = '' OR v.visit_date = $1::date)
-            ORDER BY v.created_at
+            ORDER BY v.checked_in_at IS NOT NULL DESC NULLS LAST,
+                     v.checked_in_at, v.created_at
             """,
             date,
         )

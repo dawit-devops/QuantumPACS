@@ -56,6 +56,10 @@ class LifecycleState:
     mllp_task: Optional[asyncio.Task] = None
     mwl_sync_thread: Optional[threading.Thread] = None
     dcm4chee_sync_thread: Optional[threading.Thread] = None
+    escalation_thread: Optional[threading.Thread] = None
+    prior_auth_thread: Optional[threading.Thread] = None
+    reminder_failure_thread: Optional[threading.Thread] = None
+    distribution_retry_thread: Optional[threading.Thread] = None
 
 
 def _run_dicom_mwl_scp(port):
@@ -75,6 +79,33 @@ def _run_dicom_mwl_scp(port):
     ae.supported_contexts = [build_context(ModalityWorklistInformationFind)]
     server = ae.start_server(('', port), evt_handlers=_dcm_server.handlers, block=False)
     log.info('DICOM MWL server started on port %s', port)
+    server.serve_forever()
+
+
+def _run_dicom_mpps_scp(port):
+    """Serve the MPPS N-CREATE/N-SET model on a dedicated port (S6-07).
+
+    Modalities performing exams send MPPS messages to track procedure
+    progress (IN_PROGRESS → COMPLETED/DISCONTINUED). A dedicated port
+    (default 11114) keeps MPPS traffic separate from C-STORE/C-FIND.
+
+    Runs in its own daemon thread with its own AE. Like the MWL SCP, it
+    must NOT touch dcm.server._loop — the N-CREATE/N-SET handlers bridge
+    onto the main loop via run_coroutine_threadsafe.
+    """
+    from pynetdicom import AE
+    from pynetdicom.presentation import build_context
+    from pynetdicom.sop_class import ModalityPerformedProcedureStep
+    import dcm.server as _dcm_server
+    ae = AE()
+    ae.ae_title = config.get('dicom_ae_title', 'QUANTUMPACS')
+    _dcm_server.apply_association_policy(ae)
+    # MPPS SCP only supports N-CREATE and N-SET — no storage, no find.
+    ae.supported_contexts = [build_context(ModalityPerformedProcedureStep)]
+    server = ae.start_server(
+        ('', port), evt_handlers=_dcm_server.handlers, block=False,
+    )
+    log.info('DICOM MPPS server started on port %s', port)
     server.serve_forever()
 
 
@@ -134,6 +165,12 @@ def _run_dicom(loop=None):
         if mwl_port and int(mwl_port) != port:
             threading.Thread(target=_run_dicom_mwl_scp, args=(int(mwl_port),), daemon=True).start()
 
+        # Optional dedicated MPPS listener (S6-07): modalities send
+        # N-CREATE/N-SET to report procedure progress. Default port 11114.
+        mpps_port = config.get('dicom_mpps_port', '11114')
+        if mpps_port and int(mpps_port) != port:
+            threading.Thread(target=_run_dicom_mpps_scp, args=(int(mpps_port),), daemon=True).start()
+
         server.serve_forever()
     except Exception:
         log.warning('Failed to start DICOM server', exc_info=True)
@@ -171,6 +208,7 @@ async def _start_mllp():
     state = get_app_state()
     try:
         import ssl
+        from services.hl7_engine.service import Hl7InterfaceEngine
         from services.ingestion.hl7_server import MllpServer
         port = int(config.get('hl7_mllp_port', '12579'))
         ssl_context = None
@@ -181,7 +219,13 @@ async def _start_mllp():
             ssl_context.load_cert_chain(cert_file, key_file)
         allowed_ips_str = config.get('hl7_mllp_allowed_ips', '')
         allowed_ips = [ip.strip() for ip in allowed_ips_str.split(',') if ip.strip()] if allowed_ips_str else []
-        server = MllpServer(host='', port=port, ssl_context=ssl_context, allowed_ips=allowed_ips)
+        # Single engine entry point (S3-18): the wire must exercise the same
+        # parse -> persist -> route -> alert pipeline as the HTTP receiver,
+        # so dashboard, exception queue, and failure alerts see MLLP feeds too.
+        server = MllpServer(
+            host='', port=port, ssl_context=ssl_context, allowed_ips=allowed_ips,
+            handler=Hl7InterfaceEngine().receive_message,
+        )
 
         async def _run():
             await server.start()
@@ -207,6 +251,181 @@ def _stop_mllp():
         state.mllp_task.cancel()
         state.mllp_task = None
         log.info('MLLP server stopped')
+
+
+# CR-8: S10-04 escalation engine background loop. Runs in a daemon thread
+# with its own event loop (same pattern as _run_dicom) so the sync period
+# never blocks the uvicorn loop. Each pass checks for unacknowledged critical
+# findings past the SLA and notifies the backup escalation role.
+def _run_critical_escalation(loop):
+    async def _loop():
+        from services.notification.escalation import CriticalEscalationEngine
+        engine = CriticalEscalationEngine()
+        interval = int(config.get('critical_escalation_interval', '60'))
+        while True:
+            try:
+                await engine.run_escalation_check()
+            except Exception:
+                log.warning('Critical escalation check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        # The engine uses get_conn() which binds to the asyncpg pool / redis
+        # clients on the MAIN loop (uvicorn's loop).  Scheduling the coroutine
+        # via run_coroutine_threadsafe places it on the same loop that owns
+        # those clients, avoiding the "Future attached to a different loop"
+        # RuntimeError that the previous new_event_loop + run_forever pattern
+        # produced every 60s in the backend logs (mirror _run_dicom).
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_critical_escalation():
+    state = get_app_state()
+    try:
+        # Hand the uvicorn main loop to the escalation thread so the engine's
+        # get_conn() runs on the loop that owns the asyncpg pool / redis /
+        # ES clients (mirror _start_dicom). A new_event_loop would raise
+        # "Future attached to a different loop" on every check.
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_critical_escalation,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    state = get_app_state()
+    if state:
+        state.escalation_thread = thread
+    log.info('Critical escalation engine started')
+
+
+# R2-01-07: prior-auth expiry alerts. Same main-loop scheduling pattern as
+# the escalation engine — the alert/expiry worker touches the asyncpg pool.
+def _run_prior_auth_alert(loop):
+    async def _loop():
+        from services.prior_auth_alert.service import PriorAuthAlertEngine
+        engine = PriorAuthAlertEngine()
+        interval = int(config.get('prior_auth_alert_interval', '3600'))
+        while True:
+            try:
+                await engine.run_alert_check()
+            except Exception:
+                log.warning('Prior-auth alert check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_prior_auth_alert():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_prior_auth_alert,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.prior_auth_thread = thread
+    log.info('Prior-auth alert engine started')
+
+
+# R2-01-13: reminder delivery failure monitor (<= 5-min alerting). Same
+# main-loop scheduling pattern so the worker touches the asyncpg pool safely.
+def _run_reminder_failure_monitor(loop):
+    async def _loop():
+        from services.reminders.service import ReminderFailureMonitor
+        monitor = ReminderFailureMonitor()
+        interval = int(config.get('reminder_failure_interval', '300'))
+        while True:
+            try:
+                await monitor.check()
+            except Exception:
+                log.warning('Reminder failure monitor check failed', exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_reminder_failure_monitor():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_reminder_failure_monitor,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.reminder_failure_thread = thread
+    log.info('Reminder failure monitor started')
+
+
+# A2 (GAP_AUDIT_TDD_PIPELINE.md): ORU retry scheduler. retry_failed_deliveries()
+# existed with real transmission logic but nothing ever ran it, so FAILED
+# deliveries accumulated silently. Same main-loop scheduling pattern as the
+# other pool-owning workers.
+def _run_distribution_retry(loop):
+    async def _loop():
+        from services.results_distribution.service import ResultsDistributionEngine
+        engine = ResultsDistributionEngine()
+        interval = int(config.get('distribution_retry_interval', '300'))
+        while True:
+            try:
+                retried = await engine.retry_failed_deliveries()
+                if retried:
+                    log.info('ORU retry worker delivered %d backlogged report(s)',
+                             retried)
+            except Exception:
+                log.warning('ORU distribution retry pass failed',
+                            exc_info=True)
+            await asyncio.sleep(interval)
+
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_loop(), loop)
+    else:
+        asyncio.set_event_loop(loop)
+        loop.create_task(_loop())
+        loop.run_forever()
+
+
+def _start_distribution_retry():
+    state = get_app_state()
+    try:
+        main_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        main_loop = None
+    thread = threading.Thread(
+        target=_run_distribution_retry,
+        args=(main_loop,),
+        daemon=True,
+    )
+    thread.start()
+    if state:
+        state.distribution_retry_thread = thread
+    log.info('ORU distribution retry worker started')
 
 
 async def setup(db_pool_size=None, sync_db=False, services=None):
@@ -293,6 +512,10 @@ async def setup(db_pool_size=None, sync_db=False, services=None):
 
     _start_dicom()
     await _start_mllp()
+    _start_critical_escalation()
+    _start_prior_auth_alert()
+    _start_reminder_failure_monitor()
+    _start_distribution_retry()
 
     # ADR-028 Phase 3: mirror worklist_entries to dcm4chee via MWL-RS when the
     # DICOMweb proxy is enabled. start_mwl_sync no-ops otherwise.

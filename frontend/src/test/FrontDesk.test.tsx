@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  fireEvent,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { renderWithAuth } from "./renderWithApp";
 import userEvent from "@testing-library/user-event";
 import dayjs from "dayjs";
@@ -14,6 +8,8 @@ import Registration from "../frontdesk/Registration";
 import Visits from "../frontdesk/Visits";
 import WaitingQueue from "../frontdesk/WaitingQueue";
 import AppointmentBooking from "../frontdesk/AppointmentBooking";
+import ScheduleToday from "../frontdesk/ScheduleToday";
+import PatientSearchOverlay from "../frontdesk/PatientSearchOverlay";
 
 const mockSearchPatients = vi.hoisted(() => vi.fn());
 const mockCreatePatient = vi.hoisted(() => vi.fn());
@@ -26,10 +22,13 @@ const mockListConsents = vi.hoisted(() => vi.fn());
 const mockAttachConsent = vi.hoisted(() => vi.fn());
 const mockListInsurance = vi.hoisted(() => vi.fn());
 const mockCreateInsurance = vi.hoisted(() => vi.fn());
+const mockGetInsuranceEligibility = vi.hoisted(() => vi.fn());
 const mockUpdateVisit = vi.hoisted(() => vi.fn());
 const mockGetWaitingQueue = vi.hoisted(() => vi.fn());
 const mockGetAvailability = vi.hoisted(() => vi.fn());
 const mockCreateAppointment = vi.hoisted(() => vi.fn());
+const mockListRisAppointments = vi.hoisted(() => vi.fn());
+const mockSearchRisPatients = vi.hoisted(() => vi.fn());
 
 vi.mock("../api/frontdesk", () => ({
   searchPatients: mockSearchPatients,
@@ -45,10 +44,13 @@ vi.mock("../api/frontdesk", () => ({
   attachConsent: mockAttachConsent,
   listInsurance: mockListInsurance,
   createInsurance: mockCreateInsurance,
+  getInsuranceEligibility: mockGetInsuranceEligibility,
   getAvailability: mockGetAvailability,
   createAppointment: mockCreateAppointment,
   cancelAppointment: vi.fn(),
   getWaitingQueue: mockGetWaitingQueue,
+  listRisAppointments: mockListRisAppointments,
+  searchRisPatients: mockSearchRisPatients,
 }));
 
 // Real antd Popconfirm renders a portal overlay that needs act() plumbing;
@@ -66,7 +68,7 @@ vi.mock("antd", async () => {
           onConfirm?.();
         },
       },
-      children,
+      children
     );
   return { ...actual, Popconfirm };
 });
@@ -120,11 +122,9 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByPlaceholderText(/Search name or MRN/), "Jo");
-    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
     await waitFor(() => expect(mockSearchPatients).toHaveBeenCalledWith("Jo"));
-    expect(
-      await screen.findByText(/No existing patient matched/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/No existing patient matched/)).toBeInTheDocument();
   });
 
   it("shows matching patients and offers to use the existing record", async () => {
@@ -132,7 +132,7 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByPlaceholderText(/Search name or MRN/), "Jo");
-    await user.click(screen.getByRole("button", { name: /search/i }));
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
     expect(await screen.findByText("John Doe")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /use this patient/i }));
     expect(await screen.findByText(/Selected John Doe/)).toBeInTheDocument();
@@ -142,31 +142,62 @@ describe("Registration", () => {
     const user = userEvent.setup();
     renderWithAuth(<Registration />);
     await user.type(screen.getByLabelText("Full name"), "Jane Roe");
-    await user.type(
-      screen.getByLabelText("MRN / Patient ID (optional)"),
-      "P099",
-    );
-    await user.click(
-      screen.getByRole("button", { name: /register & open visit/i }),
-    );
+    await user.type(screen.getByLabelText("MRN / Patient ID (optional)"), "P099");
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
     await waitFor(() => {
       expect(mockCreatePatient).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Jane Roe", patient_id: "P099" }),
+        expect.objectContaining({ name: "Jane Roe", patient_id: "P099" })
       );
       // The visit opens against the server-returned patient id (P001 fixture).
-      expect(mockCreateVisit).toHaveBeenCalledWith(
-        expect.objectContaining({ patient_id: "P001" }),
+      expect(mockCreateVisit).toHaveBeenCalledWith(expect.objectContaining({ patient_id: "P001" }));
+    });
+  });
+
+  it("captures address and emergency contact in the registration payload (FD-01)", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<Registration />);
+    await user.type(screen.getByLabelText("Full name"), "Jane Roe");
+    await user.type(screen.getByPlaceholderText(/Street, city, state/), "1 Main St");
+    await user.type(screen.getByLabelText("Emergency contact (optional)"), "Jim Roe");
+    await user.type(screen.getByLabelText("Emergency phone (optional)"), "555-0100");
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
+    await waitFor(() => {
+      expect(mockCreatePatient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Jane Roe",
+          meta: expect.objectContaining({
+            address: "1 Main St",
+            emergency_contact: { name: "Jim Roe", phone: "555-0100" },
+          }),
+        })
       );
     });
+  });
+
+  it("surfaces the MPI fuzzy duplicate warning after registration", async () => {
+    // FD-01: the backend flags a probable duplicate via the fuzzy probe.
+    mockCreatePatient.mockResolvedValue({
+      ...PATIENT,
+      name: "Jane Roe",
+      warning: {
+        existing_patient_id: "P099",
+        existing_patient_name: "Jane Roey",
+      },
+    });
+    const user = userEvent.setup();
+    renderWithAuth(<Registration />);
+    await user.type(screen.getByLabelText("Full name"), "Jane Roe");
+    await user.click(screen.getByRole("button", { name: /register & open visit/i }));
+    expect(
+      await screen.findByText(/Similar patient exists: Jane Roey \(P099\)/)
+    ).toBeInTheDocument();
   });
 
   it("hides write affordances for a read-only user", async () => {
     seedUser(["REGISTRATION_READ"]);
     renderWithAuth(<Registration />);
     expect(screen.getByText(/Read-only registration/)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /register new patient/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /register new patient/i })).toBeNull();
   });
 });
 
@@ -193,6 +224,16 @@ describe("Visits & Check-In", () => {
     mockListOrders.mockResolvedValue([]);
     mockListConsents.mockResolvedValue([]);
     mockListInsurance.mockResolvedValue([]);
+    mockGetInsuranceEligibility.mockResolvedValue({
+      patient_id: "P001",
+      status: "none",
+      provider: "",
+      member_id: "",
+      copay_amount: null,
+      deductible_total: null,
+      deductible_remaining: null,
+      checked_at: "2026-08-08T10:00:00Z",
+    });
     mockUpdateVisit.mockResolvedValue(undefined);
     mockCreateOrder.mockResolvedValue({});
     mockAttachConsent.mockResolvedValue({});
@@ -218,9 +259,36 @@ describe("Visits & Check-In", () => {
     await user.click(screen.getByRole("button", { name: /details/i }));
     expect(await screen.findByText(/Orders/)).toBeInTheDocument();
     expect(await screen.findByText(/Consents/)).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Insurance \/ Guarantor/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Insurance \/ Guarantor/)).toBeInTheDocument();
+  });
+
+  it("shows insurance eligibility coverage when active (FD-02)", async () => {
+    mockGetInsuranceEligibility.mockResolvedValue({
+      patient_id: "P001",
+      status: "active",
+      provider: "Aetna",
+      member_id: "M-123",
+      copay_amount: 25,
+      deductible_total: 500,
+      deductible_remaining: 350,
+      checked_at: "2026-08-08T10:00:00Z",
+    });
+    mockListInsurance.mockResolvedValue([
+      {
+        id: "ins-1",
+        patient_id: "P001",
+        policy_number: "POL-1",
+        provider: "Aetna",
+        member_id: "M-123",
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithAuth(<Visits />);
+    expect(await screen.findByText("P001")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /details/i }));
+    expect(await screen.findByText("Aetna")).toBeInTheDocument();
+    expect(screen.getByText(/Copay:\s*\$25/)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining:\s*\$350/)).toBeInTheDocument();
   });
 
   it("adds an order from the drawer", async () => {
@@ -230,15 +298,81 @@ describe("Visits & Check-In", () => {
     await user.click(screen.getByRole("button", { name: /details/i }));
     await user.type(
       await screen.findByPlaceholderText(/CT CHEST W CONTRAST/),
-      "CT CHEST W CONTRAST",
+      "CT CHEST W CONTRAST"
     );
     await user.click(screen.getByRole("button", { name: /add order/i }));
     await waitFor(() => {
       expect(mockCreateOrder).toHaveBeenCalledWith(
         "v1",
-        expect.objectContaining({ requested_procedure: "CT CHEST W CONTRAST" }),
+        expect.objectContaining({ requested_procedure: "CT CHEST W CONTRAST" })
       );
     });
+  });
+});
+
+describe("ScheduleToday", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["SCHEDULE_READ"]);
+    mockListRisAppointments.mockResolvedValue([
+      {
+        id: "a1",
+        patient_id: "P001",
+        patient_name: "John Smith",
+        resource_id: "res-1",
+        order_id: "ord-1",
+        start_time: "2026-08-08T09:00:00+00:00",
+        end_time: "2026-08-08T09:30:00+00:00",
+        status: "SCHEDULED",
+        modality: "CT",
+        room: "CT-1",
+        priority: "routine",
+      },
+      {
+        id: "a2",
+        patient_id: "P002",
+        patient_name: "Jane Doe",
+        resource_id: "res-2",
+        order_id: "ord-2",
+        start_time: "2026-08-08T10:00:00+00:00",
+        end_time: "2026-08-08T10:30:00+00:00",
+        status: "ARRIVED",
+        modality: "MR",
+        room: "MR-1",
+        priority: "STAT",
+      },
+    ]);
+  });
+
+  it("renders the schedule with time, patient, modality, room, status", async () => {
+    renderWithAuth(<ScheduleToday />);
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
+    expect(screen.getByText("Jane Doe")).toBeInTheDocument();
+    expect(screen.getAllByText("CT").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("MR").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("CT-1")).toBeInTheDocument();
+    expect(screen.getAllByText("SCHEDULED").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("ARRIVED")).toBeInTheDocument();
+  });
+
+  it("shows STAT badge for high-priority appointments", async () => {
+    renderWithAuth(<ScheduleToday />);
+    expect(await screen.findByText("STAT")).toBeInTheDocument();
+  });
+
+  it("fetches with modality and status filters", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ScheduleToday />);
+    await screen.findByText("John Smith");
+    // Click the CT modality chip (antd Segmented renders a hidden radio
+    // input with pointer-events:none — click the label element instead).
+    const ctLabel = screen.getByTitle("CT");
+    await user.click(ctLabel);
+    await waitFor(() =>
+      expect(mockListRisAppointments).toHaveBeenCalledWith(
+        expect.objectContaining({ modality: "CT" })
+      )
+    );
   });
 });
 
@@ -249,31 +383,29 @@ describe("WaitingQueue", () => {
     mockGetWaitingQueue.mockResolvedValue([
       {
         visit_id: "v1",
-        // The payload leaks a full name (a projection bug would surface it):
-        // the board must still render initials/last4 only (R4-07).
-        name: "John Smith",
-        initials: "J.S.",
-        last4: "2345",
+        patient_id: "MRN12345",
+        patient_name: "John Smith",
         status: "checked_in",
         destination: "CT1",
+        modality: "CT",
+        priority: "STAT",
         updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 12,
       },
     ]);
   });
 
-  it("renders the privacy-projected queue and the HIPAA note", async () => {
+  it("renders the staff queue with full names, priority and modality", async () => {
     renderWithAuth(<WaitingQueue />);
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
-    expect(screen.getByText(/· · · · 2345/)).toBeInTheDocument();
-    expect(screen.getByText(/HIPAA minimum necessary/)).toBeInTheDocument();
-    // Full names never appear on the board — even when the payload leaks one.
-    expect(screen.queryByText(/John Smith/)).toBeNull();
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
+    expect(screen.getByText("CT")).toBeInTheDocument();
+    expect(screen.getByText("STAT")).toBeInTheDocument();
   });
 
   it("refetches with the selected day when the date changes", async () => {
     const user = userEvent.setup();
     renderWithAuth(<WaitingQueue />);
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
+    expect(await screen.findByText("John Smith")).toBeInTheDocument();
 
     // Role/label query instead of the brittle .ant-picker CSS class (the
     // input carries the aria-label the component sets on the DatePicker).
@@ -289,7 +421,7 @@ describe("WaitingQueue", () => {
     await waitFor(() =>
       expect(mockGetWaitingQueue).toHaveBeenCalledWith({
         date: "2026-08-09",
-      }),
+      })
     );
   });
 
@@ -304,28 +436,75 @@ describe("WaitingQueue", () => {
     mockGetWaitingQueue.mockResolvedValue([
       {
         visit_id: "v1",
-        initials: "J.S.",
-        last4: "2345",
+        patient_id: "MRN12345",
+        patient_name: "John Smith",
         status: "checked_in",
+        destination: "CT1",
+        modality: "CT",
+        priority: "ROUTINE",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: null,
       },
     ]);
     await user.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByText(/J\.S\./)).toBeInTheDocument();
+    expect(await screen.findByText(/John Smith/)).toBeInTheDocument();
   });
 
   it("renders the empty state for a day with no waiting patients", async () => {
     mockGetWaitingQueue.mockResolvedValue([]);
     renderWithAuth(<WaitingQueue />);
     const today = dayjs().format("YYYY-MM-DD");
-    expect(
-      await screen.findByText(`No patients waiting on ${today}`),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(`No patients waiting on ${today}`)).toBeInTheDocument();
   });
 
   it("fetches the queue once on mount (interval behavior lives in the hook)", async () => {
     renderWithAuth(<WaitingQueue />);
-    await screen.findByText(/J\.S\./);
+    await screen.findByText(/John Smith/);
     expect(mockGetWaitingQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("color-codes the wait badge by minutes since check-in", async () => {
+    // FD-05: green <15m, amber 15-30m, red >30m.
+    mockGetWaitingQueue.mockResolvedValue([
+      {
+        visit_id: "v1",
+        patient_id: "P001",
+        patient_name: "Alice Brown",
+        status: "checked_in",
+        destination: "CT1",
+        modality: "CT",
+        priority: "STAT",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 12,
+      },
+      {
+        visit_id: "v2",
+        patient_id: "P002",
+        patient_name: "Carol Davis",
+        status: "checked_in",
+        destination: "MR1",
+        modality: "MR",
+        priority: "ROUTINE",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 22,
+      },
+      {
+        visit_id: "v3",
+        patient_id: "P003",
+        patient_name: "Eve Foster",
+        status: "checked_in",
+        destination: "XR1",
+        modality: "XR",
+        priority: "URGENT",
+        updated_at: "2026-08-08T10:00:00+00:00",
+        wait_minutes: 45,
+      },
+    ]);
+    renderWithAuth(<WaitingQueue />);
+    await screen.findByText(/Alice Brown/);
+    expect(screen.getByText("12m")).toHaveClass("fd-wait-green");
+    expect(screen.getByText("22m")).toHaveClass("fd-wait-amber");
+    expect(screen.getByText("45m")).toHaveClass("fd-wait-red");
   });
 });
 
@@ -342,12 +521,7 @@ describe("AppointmentBooking", () => {
 
   it("renders free slots enabled and full slots disabled", async () => {
     renderWithAuth(
-      <AppointmentBooking
-        open
-        onClose={() => {}}
-        patientId="P001"
-        patientName="John Doe"
-      />,
+      <AppointmentBooking open onClose={() => {}} patientId="P001" patientName="John Doe" />
     );
     const freeSlot = await screen.findByRole("gridcell", {
       name: /09:00/,
@@ -360,12 +534,7 @@ describe("AppointmentBooking", () => {
   it("books the selected slot for the patient", async () => {
     const user = userEvent.setup();
     renderWithAuth(
-      <AppointmentBooking
-        open
-        onClose={() => {}}
-        patientId="P001"
-        patientName="John Doe"
-      />,
+      <AppointmentBooking open onClose={() => {}} patientId="P001" patientName="John Doe" />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -375,7 +544,7 @@ describe("AppointmentBooking", () => {
         expect.objectContaining({
           patient_id: "P001",
           scheduled_time: "09:00:00",
-        }),
+        })
       );
     });
   });
@@ -396,7 +565,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -404,9 +573,7 @@ describe("AppointmentBooking", () => {
     // The backend 409 message surfaces in the conflict alert.
     expect(await screen.findByText(/Slot already booked/)).toBeInTheDocument();
     // Availability reloads after the conflict.
-    await waitFor(() =>
-      expect(mockGetAvailability.mock.calls.length).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(mockGetAvailability.mock.calls.length).toBeGreaterThan(1));
     // The modal must STAY open with the refreshed grid: closing it or firing
     // onBooked here would drop the booking attempt (R4-06).
     expect(screen.getByText("Book Appointment")).toBeInTheDocument();
@@ -427,7 +594,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(screen.getByRole("gridcell", { name: /09:00/ }));
@@ -452,7 +619,7 @@ describe("AppointmentBooking", () => {
         onBooked={onBooked}
         patientId="P001"
         patientName="John Doe"
-      />,
+      />
     );
     const freeSlot = await screen.findByRole("gridcell", { name: /09:00/ });
     await user.click(freeSlot);
@@ -463,8 +630,47 @@ describe("AppointmentBooking", () => {
     await waitFor(() =>
       expect(screen.getByRole("gridcell", { name: /09:00/ })).toHaveAttribute(
         "aria-pressed",
-        "false",
-      ),
+        "false"
+      )
+    );
+  });
+});
+
+describe("PatientSearchOverlay", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedUser(["PATIENT_READ"]);
+    mockSearchRisPatients.mockResolvedValue([
+      {
+        id: 1,
+        patient_id: "P001",
+        name: "Jane Doe",
+        birth_date: "1980-05-04",
+        sex: "F",
+        phone: "555-0100",
+      },
+    ]);
+    localStorage.clear();
+  });
+
+  it("searches by name and opens patient detail on click", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PatientSearchOverlay />);
+    await user.click(screen.getByRole("button", { name: /patient search/i }));
+    await user.type(await screen.findByPlaceholderText(/search patients/i), "Jane");
+    await waitFor(() =>
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(expect.objectContaining({ q: "Jane" }))
+    );
+    expect(await screen.findByText("Jane Doe")).toBeInTheDocument();
+  });
+
+  it("searches by phone and records recent searches", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PatientSearchOverlay />);
+    await user.click(screen.getByRole("button", { name: /patient search/i }));
+    await user.type(await screen.findByLabelText(/search by phone/i), "555");
+    await waitFor(() =>
+      expect(mockSearchRisPatients).toHaveBeenCalledWith(expect.objectContaining({ phone: "555" }))
     );
   });
 });

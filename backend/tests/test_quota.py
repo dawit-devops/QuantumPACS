@@ -219,8 +219,9 @@ class TestUploadQuota:
             client = TestClient(_make_app(tenant_state=state))
             resp, content = _upload(client)
         assert resp.status_code == 200
-        mock_conn.execute.assert_awaited_once()
-        sql, used, slug = mock_conn.execute.await_args.args
+        calls = [c for c in mock_conn.execute.await_args_list if 'UPDATE tenants SET storage_used_bytes' in c.args[0]]
+        assert len(calls) == 1
+        sql, used, slug = calls[0].args
         assert 'UPDATE tenants SET storage_used_bytes' in sql
         assert used == len(content)
         assert slug == 'clinic-alfa'

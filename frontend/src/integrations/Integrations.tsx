@@ -27,11 +27,14 @@ import {
   SendOutlined,
 } from "@ant-design/icons";
 import withSidebar from "../common/base";
+import { useAuth } from "../auth/AuthContext";
 import {
   listOauthProviders,
   createOauthProvider,
   updateOauthProvider,
   deleteOauthProvider,
+  testOauthProvider,
+  type OidcTestResult,
   listWebhooks,
   createWebhook,
   updateWebhook,
@@ -48,14 +51,18 @@ const { TextArea } = Input;
 
 function Integrations(props: any) {
   const { message } = App.useApp();
+  const { user } = useAuth();
+  const isSystemAdmin = user?.admin || user?.permissions?.includes("SYSTEM_ADMIN");
   // ---- OAuth Providers ----
   const [providers, setProviders] = useState<OauthProvider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providerModal, setProviderModal] = useState(false);
-  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(
-    null,
-  );
+  const [editingProvider, setEditingProvider] = useState<OauthProvider | null>(null);
   const [providerForm] = Form.useForm();
+  // ADM-16: OIDC test connection state.
+  const [oidcTestResult, setOidcTestResult] = useState<OidcTestResult | null>(null);
+  const [oidcTestTarget, setOidcTestTarget] = useState<string | null>(null);
+  const [oidcTesting, setOidcTesting] = useState(false);
 
   // ---- Webhooks ----
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -109,7 +116,7 @@ function Integrations(props: any) {
         scope: "openid email profile",
         auto_provision: true,
         enabled: true,
-      },
+      }
     );
     setProviderModal(true);
   };
@@ -141,6 +148,26 @@ function Integrations(props: any) {
     }
   };
 
+  // ADM-16: Test OIDC connection for a provider.
+  const handleProviderTest = async (id: string) => {
+    setOidcTesting(true);
+    setOidcTestTarget(id);
+    setOidcTestResult(null);
+    try {
+      const result = await testOauthProvider(id);
+      setOidcTestResult(result);
+      if (result.ok) {
+        message.success("OIDC connection verified");
+      } else {
+        message.warning("OIDC connection failed — check discovery/JWKS endpoints");
+      }
+    } catch (e: any) {
+      message.error(e.message);
+    } finally {
+      setOidcTesting(false);
+    }
+  };
+
   // ---- Webhook CRUD ----
   const openWhModal = (wh?: any) => {
     setEditingWh(wh || null);
@@ -154,7 +181,7 @@ function Integrations(props: any) {
         active: true,
         retry_count: 3,
         timeout_ms: 5000,
-      },
+      }
     );
     setWhModal(true);
   };
@@ -228,10 +255,14 @@ function Integrations(props: any) {
           <Button size="small" onClick={() => openProviderModal(r)}>
             Edit
           </Button>
-          <Popconfirm
-            title="Delete this provider?"
-            onConfirm={() => handleProviderDelete(r.id)}
+          <Button
+            size="small"
+            loading={oidcTesting && oidcTestTarget === r.id}
+            onClick={() => handleProviderTest(r.id)}
           >
+            Test
+          </Button>
+          <Popconfirm title="Delete this provider?" onConfirm={() => handleProviderDelete(r.id)}>
             <Button size="small" danger>
               Delete
             </Button>
@@ -297,10 +328,7 @@ function Integrations(props: any) {
           <Button size="small" onClick={() => openWhModal(r)}>
             Edit
           </Button>
-          <Popconfirm
-            title="Delete this webhook?"
-            onConfirm={() => handleWhDelete(r.id)}
-          >
+          <Popconfirm title="Delete this webhook?" onConfirm={() => handleWhDelete(r.id)}>
             <Button size="small" danger>
               Delete
             </Button>
@@ -310,11 +338,11 @@ function Integrations(props: any) {
     },
   ];
 
-  return (
-    <Content className="integrations" style={{ padding: 24 }}>
-      <Tabs
-        defaultActiveKey="webhooks"
-        items={[
+  const defaultTab = isSystemAdmin ? "webhooks" : "oauth";
+
+  const tabItems = [
+    ...(isSystemAdmin
+      ? [
           {
             key: "webhooks",
             label: (
@@ -332,18 +360,13 @@ function Integrations(props: any) {
                   }}
                 >
                   <span style={{ color: "var(--text-secondary)" }}>
-                    {webhooks.length} webhook{webhooks.length !== 1 ? "s" : ""}{" "}
-                    configured
+                    {webhooks.length} webhook{webhooks.length !== 1 ? "s" : ""} configured
                   </span>
                   <Space>
                     <Button icon={<ReloadOutlined />} onClick={fetchWebhooks}>
                       Refresh
                     </Button>
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={() => openWhModal()}
-                    >
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => openWhModal()}>
                       Add Webhook
                     </Button>
                   </Space>
@@ -362,55 +385,59 @@ function Integrations(props: any) {
               </div>
             ),
           },
-          {
-            key: "oauth",
-            label: (
-              <span>
-                <ApiOutlined /> OAuth Providers
-              </span>
-            ),
-            children: (
-              <div>
-                <div
-                  style={{
-                    marginBottom: 12,
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {providers.length} provider
-                    {providers.length !== 1 ? "s" : ""}
-                  </span>
-                  <Space>
-                    <Button icon={<ReloadOutlined />} onClick={fetchProviders}>
-                      Refresh
-                    </Button>
-                    <Button
-                      type="primary"
-                      icon={<PlusOutlined />}
-                      onClick={() => openProviderModal()}
-                    >
-                      Add Provider
-                    </Button>
-                  </Space>
-                </div>
-                <Table
-                  dataSource={providers}
-                  columns={provColumns}
-                  rowKey="id"
-                  loading={providersLoading}
-                  pagination={false}
-                  locale={{
-                    emptyText:
-                      "No OAuth providers configured. Add a provider to enable SSO.",
-                  }}
-                />
-              </div>
-            ),
-          },
-        ]}
-      />
+        ]
+      : []),
+    {
+      key: "oauth",
+      label: (
+        <span>
+          <ApiOutlined /> OAuth Providers
+        </span>
+      ),
+      children: (
+        <div>
+          <div
+            style={{
+              marginBottom: 12,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ color: "var(--text-secondary)" }}>
+              {providers.length} provider
+              {providers.length !== 1 ? "s" : ""}
+            </span>
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={fetchProviders}>
+                Refresh
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openProviderModal()}
+              >
+                Add Provider
+              </Button>
+            </Space>
+          </div>
+          <Table
+            dataSource={providers}
+            columns={provColumns}
+            rowKey="id"
+            loading={providersLoading}
+            pagination={false}
+            locale={{
+              emptyText: "No OAuth providers configured. Add a provider to enable SSO.",
+            }}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <Content className="integrations" style={{ padding: 24 }}>
+      <Tabs defaultActiveKey={defaultTab} items={tabItems} />
 
       {/* OAuth Provider Modal */}
       <Modal
@@ -421,18 +448,10 @@ function Integrations(props: any) {
         width={600}
       >
         <Form form={providerForm} layout="vertical">
-          <Form.Item
-            name="issuer"
-            label="Issuer URL"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="issuer" label="Issuer URL" rules={[{ required: true }]}>
             <Input placeholder="https://accounts.google.com" />
           </Form.Item>
-          <Form.Item
-            name="client_id"
-            label="Client ID"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="client_id" label="Client ID" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item
@@ -440,9 +459,7 @@ function Integrations(props: any) {
             label="Client Secret"
             rules={[{ required: !editingProvider }]}
           >
-            <Input.Password
-              placeholder={editingProvider ? "(unchanged)" : ""}
-            />
+            <Input.Password placeholder={editingProvider ? "(unchanged)" : ""} />
           </Form.Item>
           <Form.Item name="jwks_uri" label="JWKS URI">
             <Input />
@@ -460,11 +477,7 @@ function Integrations(props: any) {
             <Form.Item name="enabled" label="Enabled" valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item
-              name="auto_provision"
-              label="Auto-Provision"
-              valuePropName="checked"
-            >
+            <Form.Item name="auto_provision" label="Auto-Provision" valuePropName="checked">
               <Switch />
             </Form.Item>
           </Space>
@@ -486,11 +499,7 @@ function Integrations(props: any) {
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input placeholder="e.g., Slack notifications" />
           </Form.Item>
-          <Form.Item
-            name="url"
-            label="URL"
-            rules={[{ required: true, type: "url" }]}
-          >
+          <Form.Item name="url" label="URL" rules={[{ required: true, type: "url" }]}>
             <Input placeholder="https://hooks.slack.com/services/..." />
           </Form.Item>
           <Form.Item name="events" label="Events">

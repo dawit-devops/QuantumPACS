@@ -77,6 +77,11 @@ class TestDicomCoreStoreIntegration:
         mock_conn = MagicMock()
         mock_conn.transaction.return_value.__aenter__ = AsyncMock()
         mock_conn.transaction.return_value.__aexit__ = AsyncMock(return_value=None)
+        # The auto-handoff bridge (services/reading_handoff) runs inside
+        # store_instance and issues its own reads/writes on the same conn.
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=None)
+        mock_conn.execute = AsyncMock(return_value='UPDATE 0')
 
         with patch('dcm.store.get_conn') as mock_get_conn, \
              patch('dcm.store.get_database', return_value=_make_fake_database()):
@@ -243,6 +248,11 @@ class TestPhase3Pipeline:
         mock_conn = MagicMock()
         mock_tx = _TxContext()
         mock_conn.transaction = MagicMock(return_value=mock_tx)
+        # The auto-handoff bridge (services/reading_handoff) runs inside
+        # store_instance and issues its own reads/writes on the same conn.
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=None)
+        mock_conn.execute = AsyncMock(return_value='UPDATE 0')
 
         mock_replica = AsyncMock()
         mock_replica.master = AsyncMock(return_value={'id': 1, 'type': 'local', 'location': '/data'})

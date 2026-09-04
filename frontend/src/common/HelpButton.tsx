@@ -1,6 +1,7 @@
-import React, { useState } from "react";
-import { Button, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
+import { Button, Tooltip } from "antd";
+import React, { useState } from "react";
+
 import { QuickReference } from "./QuickReference";
 
 export function HelpButton() {

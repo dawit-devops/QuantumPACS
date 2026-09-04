@@ -129,13 +129,13 @@ function Settings() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`Some settings need a restart to take effect: ${restartKeys.join(", ")}`}
+          title={`Some settings need a restart to take effect: ${restartKeys.join(", ")}`}
         />
       )}
 
       <PageState loading={loading} error={error} onRetry={load}>
         {settings && (
-          <Space direction="vertical" style={{ width: "100%" }} size={16}>
+          <Space vertical style={{ width: "100%" }} size={16}>
             {GROUPS.map((group) => (
               <Card
                 key={group.key}

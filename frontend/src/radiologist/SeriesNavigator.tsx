@@ -80,6 +80,7 @@ export default function SeriesNavigator({
             tooltip={{ formatter: (v: any) => files[v]?.name }}
             onChange={onFileChange}
             aria-label={`Instance ${fileIndex + 1} of ${files.length}`}
+            style={{ flex: 1, margin: '8px 0' }}
           />
           <span className="series-navigator-count" aria-hidden="true">
             <FileImageOutlined /> {fileIndex + 1}/{files.length}

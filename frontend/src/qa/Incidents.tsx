@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Table,
   Button,
@@ -9,7 +10,6 @@ import {
   Modal,
   Form,
   InputNumber,
-  message,
   Alert,
   Space,
   Tag,
@@ -40,6 +40,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 function Incidents() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Incidents");
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("QA_WRITE");
@@ -205,7 +206,7 @@ function Incidents() {
         <Alert
           type="error"
           showIcon
-          message={error}
+          title={error}
           style={{ margin: "8px 0" }}
         />
       )}

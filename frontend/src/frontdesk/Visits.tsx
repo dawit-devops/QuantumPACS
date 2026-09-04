@@ -44,10 +44,12 @@ import {
   attachConsent,
   listInsurance,
   createInsurance,
+  getInsuranceEligibility,
   type Visit,
   type VisitOrder,
   type ConsentDocument,
   type InsuranceRecord,
+  type InsuranceEligibility,
 } from "../api/frontdesk";
 import "./FrontDesk.css";
 
@@ -89,6 +91,7 @@ function Visits() {
   const [orders, setOrders] = useState<VisitOrder[]>([]);
   const [consents, setConsents] = useState<ConsentDocument[]>([]);
   const [insurance, setInsurance] = useState<InsuranceRecord[]>([]);
+  const [eligibility, setEligibility] = useState<InsuranceEligibility | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [orderForm] = Form.useForm();
@@ -96,17 +99,24 @@ function Visits() {
   const [insuranceForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
+  // R4: seq guard for the list fetch — rapid filter/pagination changes must
+  // not let an earlier slow response overwrite a newer one.
+  const listSeq = useRef(0);
   const fetch = useCallback(
-    (page = 1) => {
+    (page = 1, pageSize?: number) => {
+      const seq = ++listSeq.current;
       setLoading(true);
       setError(null);
       const query: Record<string, string> = {
         page: String(page),
-        per_page: String(pagination.pageSize),
+        // S14: accept pageSize as a parameter to avoid stale closure —
+        // setPagination hasn't applied yet when onChange calls fetch.
+        per_page: String(pageSize ?? pagination.pageSize),
       };
       if (statusFilter) query.status = statusFilter;
       listVisits(query)
         .then((res) => {
+          if (seq !== listSeq.current) return;
           setLoading(false);
           setData(res.data);
           setPagination({
@@ -116,6 +126,7 @@ function Visits() {
           });
         })
         .catch((e: any) => {
+          if (seq !== listSeq.current) return;
           setLoading(false);
           setError(e.message);
         });
@@ -144,18 +155,21 @@ function Visits() {
     setOrders([]);
     setConsents([]);
     setInsurance([]);
+    setEligibility(null);
     Promise.all([
       getVisit(visit.id),
       listOrders(visit.id),
       listConsents(visit.id),
       listInsurance(visit.patient_id),
+      getInsuranceEligibility(visit.patient_id),
     ])
-      .then(([v, o, c, i]) => {
+      .then(([v, o, c, i, e]) => {
         if (seq !== detailSeq.current) return;
         setVisitDetail(v);
         setOrders(o);
         setConsents(c);
         setInsurance(i);
+        setEligibility(e);
       })
       .catch((e: any) => {
         if (seq === detailSeq.current) {
@@ -389,7 +403,7 @@ function Visits() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load visits"
+          title="Failed to load visits"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -408,12 +422,15 @@ function Visits() {
         loading={loading}
         pagination={pagination}
         onChange={(pag) => {
+          const newPageSize = pag.pageSize ?? 20;
           setPagination({
             current: pag.current ?? 1,
-            pageSize: pag.pageSize ?? 20,
+            pageSize: newPageSize,
             total: pag.total ?? data.length,
           });
-          fetch(pag.current ?? 1);
+          // S14: pass pageSize explicitly — fetch's closure still has the
+          // old value since setPagination hasn't applied yet.
+          fetch(pag.current ?? 1, newPageSize);
         }}
         scroll={{ x: 800 }}
         locale={{ emptyText: "No visits for this filter" }}
@@ -483,7 +500,7 @@ function Visits() {
                 <Alert
                   type="info"
                   showIcon
-                  message="No orders yet — add the referring order below."
+                  title="No orders yet — add the referring order below."
                 />
               ) : (
                 <Timeline
@@ -590,7 +607,7 @@ function Visits() {
                 <Alert
                   type="warning"
                   showIcon
-                  message="No required consents seeded for this visit."
+                  title="No required consents seeded for this visit."
                 />
               ) : (
                 consents.map((c) => (
@@ -667,11 +684,44 @@ function Visits() {
               <div className="fd-visit-section-title">
                 <span>Insurance / Guarantor</span>
               </div>
+              {eligibility && eligibility.status === "active" && (
+                <div className="fd-eligibility" style={{ marginBottom: 8 }}>
+                  <div>
+                    <Tag color="green">{eligibility.provider || "Active"}</Tag>
+                    <span className="fd-patient-meta">
+                      Member: {eligibility.member_id || "—"}
+                    </span>
+                  </div>
+                  <div className="fd-patient-meta">
+                    Copay:{" "}
+                    {eligibility.copay_amount != null
+                      ? `$${eligibility.copay_amount}`
+                      : "—"}{" "}
+                    · Deductible:{" "}
+                    {eligibility.deductible_total != null
+                      ? `$${eligibility.deductible_total}`
+                      : "—"}{" "}
+                    · Remaining:{" "}
+                    {eligibility.deductible_remaining != null
+                      ? `$${eligibility.deductible_remaining}`
+                      : "—"}
+                  </div>
+                </div>
+              )}
+              {eligibility && eligibility.status === "none" && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 8 }}
+                  title="No coverage on file"
+                  description="Add an insurance policy to run an eligibility check."
+                />
+              )}
               {insurance.length === 0 ? (
                 <Alert
                   type="info"
                   showIcon
-                  message="No insurance record yet."
+                  title="No insurance record yet."
                 />
               ) : (
                 insurance.map((i) => (
@@ -715,6 +765,33 @@ function Visits() {
                       <Input placeholder="Guarantor name" />
                     </Form.Item>
                   </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <Form.Item name="provider" label="Provider" style={{ flex: 1 }}>
+                      <Input placeholder="Payer/provider" />
+                    </Form.Item>
+                    <Form.Item name="member_id" label="Member ID" style={{ flex: 1 }}>
+                      <Input placeholder="Member ID" />
+                    </Form.Item>
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <Form.Item name="copay_amount" label="Copay ($)" style={{ flex: 1 }}>
+                      <Input type="number" placeholder="0.00" />
+                    </Form.Item>
+                    <Form.Item
+                      name="deductible_total"
+                      label="Deductible ($)"
+                      style={{ flex: 1 }}
+                    >
+                      <Input type="number" placeholder="0.00" />
+                    </Form.Item>
+                    <Form.Item
+                      name="deductible_remaining"
+                      label="Deductible remaining ($)"
+                      style={{ flex: 1 }}
+                    >
+                      <Input type="number" placeholder="0.00" />
+                    </Form.Item>
+                  </div>
                   <Form.Item name="notes" label="Notes">
                     <Input.TextArea rows={2} />
                   </Form.Item>
@@ -731,7 +808,7 @@ function Visits() {
             </div>
           </>
         ) : (
-          <Alert type="error" showIcon message="Visit could not be loaded." />
+          <Alert type="error" showIcon title="Visit could not be loaded." />
         )}
       </Drawer>
     </Content>

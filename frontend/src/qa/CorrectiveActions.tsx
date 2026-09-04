@@ -1,6 +1,7 @@
 import { useDocumentTitle } from "../hooks";
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  App,
   Layout,
   Card,
   Tag,
@@ -8,7 +9,6 @@ import {
   Select,
   Modal,
   Input,
-  message,
   Alert,
   Empty,
   Space,
@@ -30,6 +30,7 @@ const SOURCE_COLORS: Record<string, string> = {
 };
 
 function CorrectiveActions() {
+  const { message } = App.useApp();
   useDocumentTitle("QuantumPACS - Corrective Actions");
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("QA_WRITE");
@@ -111,7 +112,7 @@ function CorrectiveActions() {
         <Alert
           type="error"
           showIcon
-          message={error}
+          title={error}
           style={{ margin: "8px 0" }}
         />
       )}

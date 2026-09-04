@@ -1,0 +1,195 @@
+/* Left-hand vertical thumbnail rail for the reading console. Series are
+   stacked into acquisition-protocol phase groups (scout, non-contrast,
+   arterial, portal venous, delayed, reformat, dose…) with a color-coded label
+   above each phase stack. The rail has its own scrollbar on its right edge;
+   the viewport flexes to fill the rest and Cornerstone letterboxes the image,
+   so the rail never distorts the displayed study. */
+
+.reading-thumbnails {
+  flex: 0 0 88px;
+  width: 88px;
+  min-width: 88px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  background: var(--panel);
+  border-right: 1px solid var(--rc-border);
+  padding: 4px 2px 4px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rc-border) transparent;
+  scrollbar-gutter: stable;
+}
+
+.reading-thumbnails::-webkit-scrollbar {
+  width: 8px;
+}
+
+.reading-thumbnails::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.reading-thumbnails::-webkit-scrollbar-thumb {
+  background: var(--rc-border);
+  border-radius: 4px;
+}
+
+.reading-thumbnail-phase {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reading-thumbnail-phase.active .reading-thumbnail-phase-label {
+  background: color-mix(in srgb, var(--thumbnail-item-active-border, #0891b2) 12%, transparent);
+}
+
+.reading-thumbnail-phase-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--rc-border);
+  border-left: 3px solid var(--rc-border);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.reading-thumbnail-phase-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reading-thumbnail-phase-stats {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.reading-thumbnail-series {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reading-thumbnail-series-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.reading-thumbnail-series-number {
+  font-weight: 600;
+}
+
+.reading-thumbnail-series-mod {
+  color: var(--text-faint);
+}
+
+.reading-thumbnail-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+  border: 2px solid var(--thumbnail-border, transparent);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--thumbnail-item-bg, #000);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease;
+}
+
+.reading-thumbnail-item:hover {
+  border-color: var(--thumbnail-item-hover-border, #64748b);
+}
+
+.reading-thumbnail-item.active {
+  border-color: var(--thumbnail-item-active-border, #0891b2);
+}
+
+.reading-thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Slice-count badge — the thumbnail is one representative image per series;
+   the badge shows how many slices the series actually holds. */
+.reading-thumbnail-slice-count {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-family: var(--font-mono, monospace);
+  pointer-events: none;
+}
+
+.reading-thumbnail-placeholder {
+  color: var(--thumbnail-placeholder-color, #94a3b8);
+  font-size: 12px;
+}
+/* §4.2 "PRIOR · <n>" divider — dashed top border beneath the current study's
+   phase groups signals comparison studies exist without full compare state. */
+.reading-thumbnails-priors {
+  margin-top: 12px;
+  border-top: 1px dashed var(--rc-border, #2a3140);
+  padding-top: 8px;
+}
+
+.reading-thumbnails-divider {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.reading-thumbnails-divider-label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-faint, #5b6472);
+}
+
+.reading-thumbnails-prior {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.reading-thumbnails-prior-mod {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint, #5b6472);
+}
+
+.reading-thumbnails-prior-desc {
+  font-size: 11px;
+  color: var(--text-dim, #8992a3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

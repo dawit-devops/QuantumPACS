@@ -467,6 +467,11 @@ async def oauth_callback(request):
         key='refresh_token', value=refresh, httponly=True,
         samesite='strict', secure=cookie_secure(), path='/api/auth',
     )
+    import secrets
+    resp.set_cookie(
+        key='csrf_token', value=secrets.token_hex(32),
+        httponly=False, samesite='strict', secure=cookie_secure(), path='/',
+    )
     return resp
 
 
@@ -552,6 +557,11 @@ async def oauth_token_exchange(request):
         resp.set_cookie(
             key='refresh_token', value=new_refresh, httponly=True,
             samesite='strict', secure=cookie_secure(), path='/api',
+        )
+        import secrets
+        resp.set_cookie(
+            key='csrf_token', value=secrets.token_hex(32),
+            httponly=False, samesite='strict', secure=cookie_secure(), path='/',
         )
         return resp
 

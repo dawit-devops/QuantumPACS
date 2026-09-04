@@ -2,11 +2,36 @@ from datetime import datetime, timezone
 
 from db.conn import get_tenant_slug
 from db.table import Table
+from pypika import Case, Order
 
 
 def _mwl_like(value):
     """Translate DICOM C-FIND wildcards to SQL LIKE patterns."""
     return value.replace('%', '').replace('_', '').replace('*', '%').replace('?', '_')
+
+
+def _mwl_single(value):
+    """Single-value / wildcard pattern for non-name attributes.
+
+    PS3.4 C.2.2.2: '*' and '?' are the only DICOM wildcards; a query value
+    containing neither is a single-value match (exact). Literal '%'/'_'
+    must never act as LIKE syntax, so a value like '100%' matches the
+    literal '100' — stripping prevents pattern injection.
+    """
+    value = value.replace('%', '').replace('_', '').strip()
+    if '*' not in value and '?' not in value:
+        return value
+    return value.replace('*', '%').replace('?', '_')
+
+
+# S6-02: STAT entries must sort first in MWL results.
+# Priority codes from HL7 OBR-27.7: S/STAT, A/ASAP, U/URGENT, R/Routine.
+PRIORITY_SORT_ORDER = {
+    'STAT': 0, 'S': 0,
+    'A': 1, 'ASAP': 1, 'U': 1, 'URGENT': 1, 'T': 1,
+    'B': 2,  # callback
+    'R': 3, 'ROUTINE': 3, '': 3,
+}
 
 
 class Worklist(Table):
@@ -143,10 +168,15 @@ class Worklist(Table):
                      date_from=None, date_to=None,
                      time_from=None, time_to=None, search=None, patient_id=None,
                      patient_name=None, requested_procedure_id=None,
-                     page=1, per_page=20):
-        from pypika import Order, Query as PypikaQuery, functions as fn
+                     accession=None, page=1, per_page=20, tenant_id=None):
+        from pypika import Query as PypikaQuery, functions as fn
 
         conditions = []
+        # F2: row-level tenant scope (role-walk technologist). Callers pass
+        # the effective tenant; legacy callers that don't keep the old
+        # unscoped behaviour (DICOM C-FIND path stamps entries at create).
+        if tenant_id:
+            conditions.append(self.table.tenant_id == tenant_id)
         if status:
             conditions.append(self.table.status == status)
         if modality:
@@ -162,7 +192,14 @@ class Worklist(Table):
         if time_to:
             conditions.append(self.table.scheduled_time <= time_to)
         if patient_id:
-            conditions.append(self.table.patient_id.ilike(_mwl_like(patient_id)))
+            conditions.append(
+                self.table.patient_id.ilike(_mwl_single(patient_id)))
+        if accession:
+            # M-7: DICOM C-FIND accession matching is single-value (exact)
+            # unless '*'/'?' wildcards are present — unlike the REST `search`
+            # free-text contains filter.
+            conditions.append(
+                self.table.accession_number.ilike(_mwl_single(accession)))
         if patient_name:
             # DICOM MWL matching treats a bare name as a leading wildcard.
             name_pattern = _mwl_like(patient_name.strip())
@@ -179,9 +216,19 @@ class Worklist(Table):
                 (self.table.accession_number.ilike(like))
             )
 
+        # S6-02: STAT entries sort first, then by scheduled date/time.
+        priority_expr = (
+            Case()
+            .when(self.table.requested_procedure_priority.isin(['STAT', 'S']), 0)
+            .when(self.table.requested_procedure_priority.isin(['A', 'ASAP', 'U', 'URGENT', 'T']), 1)
+            .when(self.table.requested_procedure_priority == 'B', 2)
+            .else_(3)
+        )
         q = PypikaQuery.from_(self.table).select(
             self.table.star,
-        ).orderby(self.table.scheduled_date, order=Order.desc)
+        ).orderby(priority_expr, order=Order.asc).orderby(
+            self.table.scheduled_date, order=Order.desc,
+        ).orderby(self.table.scheduled_time, order=Order.desc)
         for c in conditions:
             q = q.where(c)
         q = q.limit(per_page).offset((page - 1) * per_page)
@@ -240,6 +287,27 @@ class Worklist(Table):
         )
         row = await self.fetchone(q)
         return dict(row) if row else None
+
+    async def update_status_if(self, entry_id, from_status, to_status):
+        """Atomic guarded status transition (S6-24): the UPDATE only applies
+        when the row still holds from_status, so concurrent tracking updates
+        cannot clobber each other — a stale reader loses the race instead of
+        regressing the status. Returns True when the transition applied.
+        The handler's pre-check stays for a friendly 409; this guard is the
+        authoritative race backstop."""
+        now = datetime.now(timezone.utc)
+        result = await self.exec(
+            self.update().where(
+                self.table.id == entry_id,
+            ).where(
+                self.table.status == from_status,
+            ).set(
+                self.table.status, to_status,
+            ).set(
+                self.table.updated_at, now,
+            ),
+        )
+        return result == 'UPDATE 1'
 
     async def cancel(self, entry_id):
         now = datetime.now(timezone.utc)

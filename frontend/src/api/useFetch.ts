@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
 import { LOADING_DELAY, API_URL } from "../config";
-import {
-  fetchWithRetry,
-  handleResponse,
-  ApiError,
-  RequestOptions,
-} from "./client";
+import { fetchWithRetry, handleResponse, ApiError, type RequestOptions } from "./client";
 import { tryRefreshToken, wasRefreshRateLimited } from "./session";
 import { navigate } from "../navigator";
 
@@ -25,10 +21,7 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
     url = `${API_URL}/${url}`;
   }
   const exec = useCallback(
-    async (
-      doShowLoading = true,
-      execOptions: RequestOptions = {},
-    ): Promise<void> => {
+    async (doShowLoading = true, execOptions: RequestOptions = {}): Promise<void> => {
       if (controller.current) {
         controller.current.abort();
       }
@@ -74,10 +67,7 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
         setData(result);
         finish();
       } catch (error: any) {
-        const is401 =
-          error instanceof ApiError
-            ? error.status === 401
-            : error?.error === 401;
+        const is401 = error instanceof ApiError ? error.status === 401 : error?.error === 401;
         if (is401) {
           const refreshed = await tryRefreshToken();
           if (refreshed) {
@@ -102,16 +92,12 @@ export function useFetch<T = any>(url: string, options: RequestOptions = {}) {
         // signalling cancellation — swallow it.
         const aborted = error?.name === "AbortError" || error?.code === 20;
         if (!aborted) {
-          setError(
-            error instanceof ApiError
-              ? error
-              : Error(String(error?.message || error)),
-          );
+          setError(error instanceof ApiError ? error : Error(String(error?.message || error)));
         }
         finish();
       }
     },
-    [url],
+    [url]
   );
   return { exec, loading, showLoading, data, error, controller };
 }

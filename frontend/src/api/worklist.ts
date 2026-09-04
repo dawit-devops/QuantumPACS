@@ -34,6 +34,21 @@ export const listWorklist = (
   query: Record<string, string>,
 ): Promise<WorklistPage> => request<WorklistPage>("worklist", { query });
 
+export interface MwlSyncStats {
+  synced: boolean;
+  pushed: number;
+  status: number;
+  removed: number;
+  failed: number;
+  reason?: string;
+}
+
+// T-05: manual MWL sync trigger — replays dirty entries to the archive.
+export const syncWorklist = (): Promise<MwlSyncStats> =>
+  request<{ data: MwlSyncStats }>("worklist/sync", { method: "POST" }).then(
+    (res) => res?.data ?? { synced: false, pushed: 0, status: 0, removed: 0, failed: 0 },
+  );
+
 export const listStationAes = (): Promise<StationAe[]> =>
   request<StationAe[]>("worklist/station-aes", { method: "GET" });
 

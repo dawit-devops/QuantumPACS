@@ -1,9 +1,10 @@
 import { useDocumentTitle } from "../hooks";
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   App,
   Layout,
   Card,
+  Checkbox,
   Row,
   Col,
   Tag,
@@ -20,6 +21,16 @@ import {
   Spin,
   Alert,
 } from "antd";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+} from "chart.js";
 import {
   PlusOutlined,
   EditOutlined,
@@ -70,6 +81,29 @@ const PLAN_COLORS: Record<string, string> = {
 
 const PLAN_OPTIONS = ["free", "pro", "growth", "enterprise"];
 
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+
+// ADM-14: usage-history series rendered as trend lines in the drawer.
+const USAGE_SERIES: {
+  key: "api_calls" | "storage_gb" | "active_users";
+  label: string;
+  color: string;
+}[] = [
+  { key: "api_calls", label: "API calls", color: "#0891B2" },
+  { key: "storage_gb", label: "Storage (GB)", color: "#F59E0B" },
+  { key: "active_users", label: "Active users", color: "#22C55E" },
+];
+
+// Empty input means "unchanged"; only a real numeric difference triggers the
+// justification requirement (ADM-17).
+function watchQuotaDiffers(watched: number | undefined, original: number | undefined): boolean {
+  const next =
+    watched === undefined || watched === null || (watched as unknown as string) === ""
+      ? original
+      : Number(watched);
+  return next !== original;
+}
+
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -104,8 +138,8 @@ function AdminPasswordPanel({
     >
       <div style={{ marginBottom: 16 }}>
         <Text>
-          Tenant <Text strong>{slug}</Text> was provisioned. Share the admin
-          password below with the tenant administrator.
+          Tenant <Text strong>{slug}</Text> was provisioned. Share the admin password below with the
+          tenant administrator.
         </Text>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -130,10 +164,7 @@ function AdminPasswordPanel({
           Copy
         </Button>
       </div>
-      <Text
-        type="secondary"
-        style={{ display: "block", marginTop: 12, fontSize: 12 }}
-      >
+      <Text type="secondary" style={{ display: "block", marginTop: 12, fontSize: 12 }}>
         This password will not be shown again.
       </Text>
       <Button type="primary" block style={{ marginTop: 16 }} onClick={onDone}>
@@ -141,6 +172,27 @@ function AdminPasswordPanel({
       </Button>
     </Modal>
   );
+}
+
+// ADM-17 threshold ladder (§2.10): usage alerts at 80 / 90 / 100 percent.
+const QUOTA_ALERTS: Record<string, { type: "warning" | "error"; text: string }> = {
+  full: {
+    type: "error",
+    text: "Storage quota exhausted — new studies will be rejected",
+  },
+  critical: {
+    type: "warning",
+    text: "Storage above 90% — plan a quota increase",
+  },
+  warn: { type: "warning", text: "Storage above 80% of quota" },
+};
+
+function quotaAlertKey(pct: number): string | null {
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  if (pct >= 100) return "full";
+  if (pct >= 90) return "critical";
+  if (pct >= 80) return "warn";
+  return null;
 }
 
 function Tenants() {
@@ -160,6 +212,14 @@ function Tenants() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
+  // ADM-17: the justification field only exists while the edited quota
+  // differs from the stored one; watched live so it appears as the number
+  // is changed.
+  const watchedQuotaGb = Form.useWatch("storage_quota_gb", editForm);
+  const editingOriginalGb = editingTenant?.storage_quota_bytes
+    ? Math.round(editingTenant.storage_quota_bytes / 1073741824)
+    : undefined;
+  const quotaChangedInForm = watchQuotaDiffers(watchedQuotaGb, editingOriginalGb);
   const [provisionPassword, setProvisionPassword] = useState<{
     password: string;
     slug: string;
@@ -172,6 +232,32 @@ function Tenants() {
   const [usageTenant, setUsageTenant] = useState<Tenant | null>(null);
   const [usageRows, setUsageRows] = useState<TenantUsageRow[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
+  // Visible ADM-14 series (toggles above the trend chart).
+  const [usageSeries, setUsageSeries] = useState<Record<string, boolean>>({
+    api_calls: true,
+    storage_gb: true,
+    active_users: false,
+  });
+
+  const usageChartData = useMemo(() => {
+    const visible = USAGE_SERIES.filter((s) => usageSeries[s.key]);
+    return {
+      labels: usageRows.map((r) => r.date),
+      datasets: visible.map((s) => ({
+        label: s.label,
+        data: usageRows.map((r) =>
+          s.key === "storage_gb"
+            ? Math.round((r.storage_bytes ?? 0) / 1073741824)
+            : ((r[s.key] as number) ?? 0)
+        ),
+        borderColor: s.color,
+        backgroundColor: s.color,
+        fill: false,
+        tension: 0.3,
+        pointRadius: 2,
+      })),
+    };
+  }, [usageRows, usageSeries]);
 
   useEffect(() => {
     fetch();
@@ -245,13 +331,20 @@ function Tenants() {
       .then((values: any) => {
         const data: any = {};
         if (values.name !== editingTenant.name) data.name = values.name;
-        if (values.domain !== editingTenant.domain)
-          data.domain = values.domain || null;
-        const newQuota = values.storage_quota_gb
-          ? values.storage_quota_gb * 1073741824
-          : null;
-        if (newQuota !== editingTenant.storage_quota_bytes)
+        if (values.domain !== editingTenant.domain) data.domain = values.domain || null;
+        const newQuota = values.storage_quota_gb ? values.storage_quota_gb * 1073741824 : null;
+        const quotaChanged =
+          newQuota !== editingTenant.storage_quota_bytes &&
+          !(newQuota === null && !editingTenant.storage_quota_bytes);
+        if (quotaChanged && !(values.quota_justification || "").trim()) {
+          // Mirrors the server-side 400 — fail fast inside the form.
+          message.error("A justification is required when changing the storage quota");
+          return;
+        }
+        if (quotaChanged) {
           data.storage_quota_bytes = newQuota;
+          data.quota_justification = (values.quota_justification || "").trim();
+        }
         if (Object.keys(data).length === 0) {
           setEditVisible(false);
           return;
@@ -369,15 +462,13 @@ function Tenants() {
             const isSuspended = tenant.status === "suspended";
             const usedBytes = tenant.storage_used_bytes || 0;
             const quotaBytes = tenant.storage_quota_bytes || 0;
-            const pct = quotaBytes
-              ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100))
-              : 0;
+            const pct = quotaBytes ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100)) : 0;
             const hStatus = healthStatus(tenant);
             const statusPopconfirm = (
               target: string,
               label: string,
               title: string,
-              desc: string,
+              desc: string
             ) => (
               <Popconfirm
                 key={target}
@@ -398,8 +489,8 @@ function Tenants() {
                     "active",
                     "Activate",
                     `Activate ${tenant.name}?`,
-                    "Restores full access for this tenant.",
-                  ),
+                    "Restores full access for this tenant."
+                  )
                 );
               } else {
                 lifecycleActions.push(
@@ -407,16 +498,16 @@ function Tenants() {
                     "suspended",
                     "Suspend",
                     `Suspend ${tenant.name}?`,
-                    "Tenant users will be blocked from all scoped requests.",
-                  ),
+                    "Tenant users will be blocked from all scoped requests."
+                  )
                 );
                 lifecycleActions.push(
                   statusPopconfirm(
                     "quarantined",
                     "Quarantine",
                     `Quarantine ${tenant.name}?`,
-                    "Suspicious activity detected — tenant becomes read-only.",
-                  ),
+                    "Suspicious activity detected — tenant becomes read-only."
+                  )
                 );
               }
             }
@@ -484,7 +575,7 @@ function Tenants() {
                   {isQuarantined && (
                     <Alert
                       type="warning"
-                      message="Suspicious activity detected — tenant is read-only"
+                      title="Suspicious activity detected — tenant is read-only"
                       style={{
                         marginBottom: 12,
                         fontSize: 12,
@@ -493,9 +584,27 @@ function Tenants() {
                       showIcon
                     />
                   )}
+                  {(() => {
+                    // ADM-17: usage alerts at 80/90/100% of the quota.
+                    const key = quotaAlertKey(pct);
+                    if (!key) return null;
+                    const cfg = QUOTA_ALERTS[key];
+                    return (
+                      <Alert
+                        type={cfg.type}
+                        title={cfg.text}
+                        style={{
+                          marginBottom: 12,
+                          fontSize: 12,
+                          padding: "4px 8px",
+                        }}
+                        showIcon
+                      />
+                    );
+                  })()}
                   {isProvisioning ? (
                     <Spin
-                      tip="Provisioning database..."
+                      description="Provisioning database..."
                       style={{
                         display: "block",
                         textAlign: "center",
@@ -510,9 +619,7 @@ function Tenants() {
                         <Text strong style={{ fontSize: 16 }}>
                           {tenant.name}
                         </Text>
-                        <Tag style={{ marginLeft: 6, fontSize: 10 }}>
-                          {tenant.slug}
-                        </Tag>
+                        <Tag style={{ marginLeft: 6, fontSize: 10 }}>{tenant.slug}</Tag>
                         {hStatus ? (
                           hStatus === "ok" || hStatus === "healthy" ? (
                             <CheckCircleOutlined
@@ -557,8 +664,7 @@ function Tenants() {
                           >
                             <Text type="secondary" style={{ fontSize: 11 }}>
                               <HddOutlined style={{ marginRight: 4 }} />
-                              {formatBytes(usedBytes)} /{" "}
-                              {formatBytes(quotaBytes)}
+                              {formatBytes(usedBytes)} / {formatBytes(quotaBytes)}
                             </Text>
                             <Text
                               style={{
@@ -596,11 +702,8 @@ function Tenants() {
                         </span>
                       </div>
                       {tenant.last_activity && (
-                        <div
-                          style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}
-                        >
-                          Last activity:{" "}
-                          {new Date(tenant.last_activity).toLocaleString()}
+                        <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>
+                          Last activity: {new Date(tenant.last_activity).toLocaleString()}
                         </div>
                       )}
                     </>
@@ -620,11 +723,7 @@ function Tenants() {
         okText="Provision"
       >
         <Form form={createForm} layout="vertical">
-          <Form.Item
-            name="name"
-            label="Tenant Name"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
             <Input placeholder="e.g., Memorial Hospital West" />
           </Form.Item>
           <Form.Item name="slug" label="Slug" rules={[{ required: true }]}>
@@ -637,9 +736,7 @@ function Tenants() {
             <Input placeholder="e.g., admin@memorialwest.com" />
           </Form.Item>
           <Form.Item name="plan" label="Plan" initialValue="free">
-            <Select
-              options={PLAN_OPTIONS.map((p) => ({ value: p, label: p }))}
-            />
+            <Select options={PLAN_OPTIONS.map((p) => ({ value: p, label: p }))} />
           </Form.Item>
           <Form.Item name="storage_quota_gb" label="Storage Quota (GB)">
             <Input type="number" placeholder="Leave empty for system default" />
@@ -658,11 +755,7 @@ function Tenants() {
         okText="Save"
       >
         <Form form={editForm} layout="vertical">
-          <Form.Item
-            name="name"
-            label="Tenant Name"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="name" label="Tenant Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="domain" label="Custom Domain">
@@ -671,6 +764,24 @@ function Tenants() {
           <Form.Item name="storage_quota_gb" label="Storage Quota (GB)">
             <Input type="number" placeholder="Current: unchanged" />
           </Form.Item>
+          {quotaChangedInForm && (
+            <Form.Item
+              name="quota_justification"
+              label="Justification (required for quota changes)"
+              rules={[
+                {
+                  required: true,
+                  message: "A justification is required when changing the storage quota",
+                },
+              ]}
+            >
+              <Input.TextArea
+                rows={2}
+                maxLength={1000}
+                placeholder="Why is this quota being changed? Stored in the audit log."
+              />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -680,6 +791,49 @@ function Tenants() {
         onClose={() => setUsageTenant(null)}
         size={480}
       >
+        {/* ADM-14: usage-over-time trends; series toggles keep the small
+            drawer readable while the full table stays beneath. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            marginBottom: 8,
+            flexWrap: "wrap",
+          }}
+          role="group"
+          aria-label="Usage trend series"
+        >
+          {USAGE_SERIES.map((s) => (
+            <Checkbox
+              key={s.key}
+              checked={!!usageSeries[s.key]}
+              onChange={(e) =>
+                setUsageSeries((prev) => ({
+                  ...prev,
+                  [s.key]: e.target.checked,
+                }))
+              }
+            >
+              <span style={{ color: s.color, fontSize: 12 }}>{s.label}</span>
+            </Checkbox>
+          ))}
+        </div>
+        <div style={{ height: 160, marginBottom: 16 }} data-testid="usage-trend-chart">
+          <Line
+            aria-label="Tenant usage history chart"
+            data={usageChartData}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { maxRotation: 0, autoSkip: true } },
+                y: { beginAtZero: true },
+              },
+            }}
+          />
+        </div>
         <Table
           rowKey="date"
           size="small"
@@ -689,6 +843,18 @@ function Tenants() {
           columns={[
             { title: "Date", dataIndex: "date" },
             { title: "API calls", dataIndex: "api_calls", align: "right" },
+            {
+              title: "MWL queries",
+              dataIndex: "mwl_queries",
+              align: "right",
+              render: (v?: number) => v ?? 0,
+            },
+            {
+              title: "Notifications",
+              dataIndex: "notifications",
+              align: "right",
+              render: (v?: number) => v ?? 0,
+            },
           ]}
           locale={{ emptyText: "No usage data for this tenant" }}
         />

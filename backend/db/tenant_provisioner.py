@@ -147,12 +147,22 @@ class TenantProvisioner:
             await TenantProvisioner.run_migrations(
                 db_name, db_host, db_port, db_user, db_password,
             )
+            # D6: give the tenant working RIS capacity and report templates
+            # before the registry flips active — a fresh clinic should be
+            # schedulable and readable without a manual setup session.
+            await TenantProvisioner.seed_ris_defaults(
+                db_name, slug,
+                db_host=db_host, db_port=db_port, db_user=db_user,
+                db_password=db_password,
+            )
             admin_password = await TenantProvisioner.create_initial_admin(
                 db_name=db_name, slug=slug, admin_email=admin_email,
                 db_host=db_host, db_port=db_port, db_user=db_user, db_password=db_password,
             )
         except Exception as e:
-            await TenantProvisioner._mark_failed(slug, tenant_id, str(e))
+            await TenantProvisioner._mark_failed(
+                slug, tenant_id, str(e), db_name=db_name,
+            )
             raise TenantProvisionError(
                 f'Provision failed for {slug}: {e}'
             ) from e
@@ -167,7 +177,7 @@ class TenantProvisioner:
             await Tenants(conn).set_status(slug, 'active')
 
     @staticmethod
-    async def _mark_failed(slug: str, tenant_id, reason: str):
+    async def _mark_failed(slug: str, tenant_id, reason: str, db_name: str = None):
         async with get_conn() as conn:
             await Tenants(conn).set_status(slug, 'decommissioned')
             from db.audit_log import AuditLog
@@ -179,6 +189,71 @@ class TenantProvisioner:
                 details={'slug': slug, 'reason': reason},
                 tenant=slug,
             )
+        # D6 rollback hygiene: drop the half-created tenant database so a
+        # retry does not collide with a partially-migrated DB. Best-effort —
+        # the registry is already decommissioned; cleanup failure is logged
+        # and does not mask the original provisioning error.
+        if db_name and db_name != config['db_database']:
+            try:
+                await TenantProvisioner.drop_database(db_name)
+            except Exception as e:
+                log.warning('Failed to drop tenant DB %s after failed provision: %s',
+                            db_name, e)
+
+    @staticmethod
+    async def seed_ris_defaults(db_name: str, slug: str, db_host: str = None,
+                                db_port: int = None, db_user: str = None,
+                                db_password: str = None):
+        """D6: seed default RIS capacity + report templates for a new tenant.
+
+        Runs after migrations, before the registry flips to active. All
+        inserts are idempotent so a re-provision or re-run never duplicates
+        rows (resources are unique by (tenant_id, name); templates guard on
+        name+tenant via ON CONFLICT DO NOTHING).
+        """
+        host = db_host or config['db_host']
+        port = db_port or int(config.get('db_port', '5432'))
+        user = db_user or config['db_user']
+        password = db_password or config['db_password']
+
+        conn = await asyncpg.connect(
+            user=user, password=password,
+            database=db_name, host=host, port=port,
+        )
+        try:
+            await conn.execute("""
+            INSERT INTO ris_resources (tenant_id, name, resource_type, modality, status)
+            VALUES ($1, 'CT Room 1', 'ROOM', 'CT', 'ACTIVE'),
+                   ($1, 'X-Ray Room 1', 'ROOM', 'CR', 'ACTIVE'),
+                   ($1, 'MR Room 1', 'ROOM', 'MR', 'ACTIVE')
+            ON CONFLICT (tenant_id, name) DO NOTHING
+            """, slug)
+            await conn.execute("""
+            INSERT INTO ris_report_templates
+                (tenant_id, name, modality, body_part, is_default)
+            SELECT $1, name, modality, body_part, is_default
+            FROM (VALUES
+                ('CT Chest', 'CT', 'CHEST', TRUE),
+                ('CXR 1 View', 'CR', 'CHEST', TRUE),
+                ('MR Brain', 'MR', 'BRAIN', TRUE)
+            ) AS seed(name, modality, body_part, is_default)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ris_report_templates
+                WHERE tenant_id = $1 AND name = seed.name
+            )
+            """, slug)
+            log.info('Seeded RIS defaults for tenant %s (db=%s)', slug, db_name)
+        finally:
+            await conn.close()
+
+    @staticmethod
+    async def drop_database(db_name: str):
+        conn = await TenantProvisioner._connect_maintenance_db()
+        try:
+            await conn.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+            log.info('Dropped tenant database: %s', db_name)
+        finally:
+            await conn.close()
 
     @staticmethod
     async def create_initial_admin(db_name: str, slug: str, admin_email: str = None,

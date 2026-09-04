@@ -161,8 +161,8 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | REPORT_WRITE | ✓ | | | | | | | | ✓ | | |
 | REPORT_SIGN | ✓ | | | | | | | | | | |
 | CRITICAL_RESULTS_WRITE | ✓ | ✓ | | | | ✓ | | | ✓ | | |
-| REPORT_TEMPLATE_ADMIN | ✓ | | | | | | | | ✓ | | ✓ |
-| BILLING_READ | | | | | | | ✓ | ✓ | ✓ | | ✓ |
+| REPORT_TEMPLATE_ADMIN | ✓ | | | | | | | | ✓ | ✓ | ✓ |
+| BILLING_READ | | | | | | | ✓ | ✓ | ✓ | ✓ | ✓ |
 | BILLING_WRITE | | | | | | | ✓ | | | | |
 | VIEWER_READ | ✓ | ✓ | | | ✓ | ✓ | | | ✓ | ✓ | ✓ |
 | STUDY_READ | ✓ | ✓ | | | ✓ | ✓ | | ✓ | ✓ | ✓ | ✓ |
@@ -175,6 +175,7 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | METERING_READ | | | | | | | | ✓ | ✓ | | ✓ |
 | CHART_READ / RESULTS_READ | ✓ | ✓ | | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | USER_READ / USER_WRITE | | | | | | | | | ✓ | ✓ | |
+| ROLE_READ / ROLE_WRITE / ROLE_DELETE | | | | | | | | | ✓ | ✓ | |
 | ENCOUNTER_WRITE | | | | | | ✓ | | | ✓ | | |
 | NOTE_SIGN | | | | | | ✓ | | | | | |
 | MED_ORDER_READ | ✓ | | | | | ✓ | | | ✓ | | |
@@ -183,6 +184,19 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | ADMIN | | | | | | | | | ✓ | | |
 
 > **ED_PHYSICIAN scope note:** this role spans three personas — PACS-P07 / RIS-P09 (view + critical alerts) and **EMR-P10 (full ED scope: chart, STAT ordering, ED notes)** per `requrements/EMR/01_persona_catalog.md` §EMR-P10 and EMR-US-P10-01. The matrix above grants the **union** (view/alert + ENCOUNTER_WRITE, NOTE_SIGN, MED_ORDER_READ/WRITE, ORDER_WRITE, MAR_READ). Sites preferring separation may assign ED physicians the `PHYSICIAN` role in the EMR context instead, and keep `ED_PHYSICIAN` view-only.
+>
+> **PACSADM addendum (pacs_admin walk, 2026-08-28):** The facility PACS operator role additionally holds
+> `DICOMWEB_READ`/`DICOMWEB_WRITE` (DICOMweb console + STOW), `HL7_READ` (HL7 console +
+> Interface Health), `REPLICA_READ` (Replicas), `ROUTING_READ` (Routing) — code-level
+> grants that enable the actual PACS-ops surfaces. `CRITICAL_RESULTS_WRITE` and
+> `WORKLIST_WRITE` were trimmed (the exam console / MWL are clinical-scoped, hidden
+> for this admin role).
+>
+> **RECEPT addendum (receptionist walk, 2026-08-29):** code grants RECEPT four R08
+> front-desk grants beyond the matrix row — `QUEUE_READ` (privacy-projected waiting
+> queue), `REGISTRATION_READ`/`REGISTRATION_WRITE` (patient registration), and
+> `SCHEDULE_WRITE` (appointment booking with capacity conflict detection). These are
+> documented in `MATRIX_A_RECEPT` (permissions.py).
 
 ### Matrix B — EMR roles
 
@@ -217,6 +231,11 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | CDS_ADMIN / REPORT_TEMPLATE_ADMIN | | | | | | | | | ✓ |
 | METERING_READ / TENANT_READ | | | | | | | | | ✓ |
 
+> **PHYS addendum (physician walk, 2026-08-28):** code grants PHYS two legacy additions beyond the matrix row —
+> `FILE_READ` (the always-visible Files page, held by every viewer role) and `DICOMWEB_READ` (intentional legacy reach,
+> user decision 2026-08-27 — the DICOMweb console is open to clinical roles despite being an admin surface). Both are
+> documented in `LEGACY_PHYSICIAN` (permissions.py).
+
 ### Matrix C — Platform roles
 
 | Permission | SYSTEM_ADMIN | TENANT_ADMIN | PATIENT |
@@ -232,6 +251,11 @@ Turn the persona catalogs into a **directly implementable RBAC spec**. Engineeri
 | PATIENT_READ, ORDER_READ, WORKLIST_READ, REPORT_READ, STUDY_READ, VIEWER_READ, CHART_READ, RESULTS_READ | ✓ | ✓ | |
 | PORTAL_READ, CHART_READ (own), RESULTS_READ (released), MED_ORDER_READ (own), SCHEDULE_READ (own), VIEWER_READ (share) | ✓ | | ✓ |
 | **All clinical writes** (PATIENT_WRITE, ORDER_WRITE, REPORT_*, MAR_*, …) | ✓ | — (no clinical writes) | — |
+
+> **PATIENT addendum (patient walk, 2026-08-29):** code grants two self-scoped
+> grants beyond the matrix row — `FOLLOW_UP_SELF` (own follow-up tasks) and
+> `NOTIFICATIONS_SELF` (own notification preferences/feed). Both are strictly
+> own-data scoped (`MATRIX_C_PATIENT`, permissions.py).
 
 ---
 

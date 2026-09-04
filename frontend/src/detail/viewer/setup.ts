@@ -82,10 +82,13 @@ export async function ensureGlobalInit() {
   // Cornerstone3D >= 5.x: `mouseButtonMask` was removed from the tool-mode
   // API — mouse bindings are expressed via `bindings`. Without an explicit
   // binding the tool flips to Active but stays inert (E2E-verified).
-  tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 1 }] });
-  tg.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: 2 }] });
+  // Default on load is Window/Level on the primary (left) button per the
+  // reader spec §4.3/§5 ("W — also default on load"); Pan, which used to be
+  // primary, moves to the middle button so it stays one click away.
   tg.setToolActive(WindowLevelTool.toolName, {
-    bindings: [{ mouseButton: 4 }],
+    bindings: [{ mouseButton: 1 }],
   });
+  tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 4 }] });
+  tg.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: 2 }] });
   tg.setToolActive(StackScrollTool.toolName);
 }

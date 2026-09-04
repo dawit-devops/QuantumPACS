@@ -90,10 +90,22 @@ class TestNotificationsList:
         assert resp.json()['total'] == 0
 
     def test_missing_permission(self):
-        user = User({'id': 42, 'permissions': []})
-        client = TestClient(self._make_app(user=user))
+        client = TestClient(self._make_app(
+            user=User({'id': 1, 'permissions': []})))
         resp = client.get('/notifications')
         assert resp.status_code == 403
+
+    def test_notifications_self_grants_access(self):
+        """S3: patient role holds NOTIFICATIONS_SELF (no FILE_READ) —
+        the self-scoped handlers must accept it as an alternative gate."""
+        mock_conn = _mock_conn()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        with _patch_get_conn('api.notifications', mock_conn):
+            client = TestClient(self._make_app(
+                user=User({'id': 1, 'permissions': ['NOTIFICATIONS_SELF']})))
+            resp = client.get('/notifications')
+        assert resp.status_code == 200, resp.text
 
     def test_dismiss_all(self):
         mock_conn = _mock_conn()

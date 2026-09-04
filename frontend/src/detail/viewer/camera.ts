@@ -60,3 +60,34 @@ export function invertViewport(vp: StackViewport): void {
 export function zoomViewport(vp: StackViewport, factor: number): void {
   vp.setZoom(vp.getZoom() * factor);
 }
+
+// The W/L the image loaded with, snapshotted once per viewport so Reset has a
+// known-good target to return to regardless of what the reader dragged/baked.
+const initialVoi = new WeakMap<StackViewport, { lower: number; upper: number }>();
+
+/** Record the viewport's first observed W/L window (no-op after the first). */
+export function rememberInitialVoi(vp: StackViewport): void {
+  if (initialVoi.has(vp)) return;
+  const voiRange = (vp as any).voiRange;
+  if (voiRange && Number.isFinite(voiRange.lower) && Number.isFinite(voiRange.upper)) {
+    initialVoi.set(vp, { lower: voiRange.lower, upper: voiRange.upper });
+  }
+}
+
+/** Restore the viewport to its default framing: zoom 1, no rotation, no
+ *  flips, invert off, and the original W/L window. (docs/viewer spec — Reset
+ *  (R) returns the image to how it read on load.) */
+export function resetViewport(vp: StackViewport): void {
+  vp.setZoom(1);
+  vp.setCamera({ flipHorizontal: false, flipVertical: false });
+  const anyVp = vp as unknown as {
+    useCPURendering: boolean;
+    setRotationCPU: (rotation: number) => void;
+    setRotationGPU: (rotation: number) => void;
+  };
+  if (anyVp.useCPURendering) anyVp.setRotationCPU(0);
+  else anyVp.setRotationGPU(0);
+  const init = initialVoi.get(vp);
+  vp.setProperties({ invert: false, voiRange: init ?? (vp as any).voiRange });
+  repaint(vp);
+}

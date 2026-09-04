@@ -7,13 +7,14 @@ from "no such patient", so staff cannot enumerate or probe other patients.
 """
 from starlette.endpoints import HTTPEndpoint
 
-from api.notify import notify_role
+from api.notify import notify_patient_scoped, notify_role
 from api.permissions import Permission
 from api.rbac import requires_permission
 from api.response import created, not_found, ok, validation_error
 from api.schemas.portal import (
     CreateFollowUpRequest,
     CreateScopeRequest,
+    UpdateConsentRequest,
     UpdateFollowUpRequest,
 )
 from api.validate import parse_body
@@ -168,6 +169,19 @@ class PortalPatientHandler(HTTPEndpoint):
             demo = await portal.get_demographics(patient_id)
             orders = await portal.list_orders(patient_id)
             reports = await portal.list_final_reports(patient_id)
+            # E1: scoped but no consent -> the empty view is consent-gated;
+            # audit it so HIM can distinguish gating from no-data.
+            if demo is None and await portal.consent_granted(patient_id) is None \
+                    and scope:
+                await AuditLog(conn).log_event(
+                    event_type='portal.consent_blocked',
+                    actor_id=request.user.id,
+                    resource_type='patient',
+                    resource_id=patient_id,
+                    details={'patient_id': patient_id},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
             await AuditLog(conn).log_event(
                 event_type='portal.patient_view',
                 actor_id=request.user.id,
@@ -212,6 +226,18 @@ class PortalReportHandler(HTTPEndpoint):
                 return ok({'data': None})
             row = await portal.get_final_report(patient_id, report_id)
             if not row:
+                # A4: a scoped patient hitting a HIM-held report is a
+                # blocked patient-visible access — audit it before the 404.
+                if await portal.release_blocked(patient_id, report_id):
+                    await AuditLog(conn).log_event(
+                        event_type='portal.report_hold_blocked',
+                        actor_id=request.user.id,
+                        resource_type='report',
+                        resource_id=report_id,
+                        details={'patient_id': patient_id},
+                        tenant=effective_tenant(request),
+                        request_id=request_id_var.get(),
+                    )
                 return not_found('Report not found')
             await AuditLog(conn).log_event(
                 event_type='portal.report_view',
@@ -223,6 +249,43 @@ class PortalReportHandler(HTTPEndpoint):
                 request_id=request_id_var.get(),
             )
         return ok({'data': row})
+
+
+class PortalAppointmentsHandler(HTTPEndpoint):
+    @requires_permission(Permission.PORTAL_READ)
+    async def get(self, request):
+        patient_id = request.path_params['patient_id']
+        history = request.query_params.get('status') == 'history'
+        async with get_conn() as conn:
+            portal = Portal(conn)
+            scope = await portal.get_scope(patient_id, request.user.id)
+            if not scope:
+                await AuditLog(conn).log_event(
+                    event_type='portal.appointments_view',
+                    actor_id=request.user.id,
+                    resource_type='patient',
+                    resource_id=patient_id,
+                    details={'scoped': False, 'scope_type': None},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
+                return ok({'data': []})
+            rows = await portal.list_appointments(patient_id, history)
+            await AuditLog(conn).log_event(
+                event_type='portal.appointments_view',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient_id,
+                details={
+                    'scoped': True,
+                    'scope_type': scope['scope_type'],
+                    'appointment_count': len(rows),
+                    'history': history,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': rows})
 
 
 class PortalOrdersHandler(HTTPEndpoint):
@@ -244,6 +307,19 @@ class PortalOrdersHandler(HTTPEndpoint):
                 )
                 return ok({'data': []})
             orders = await portal.list_orders(patient_id)
+            # E1: a scoped patient whose consent was not (yet) granted sees
+            # an empty list — audit the blocked access distinctly so HIM can
+            # tell consent-gating from a genuinely absent order set.
+            if scope and not orders and not await portal.consent_granted(patient_id):
+                await AuditLog(conn).log_event(
+                    event_type='portal.consent_blocked',
+                    actor_id=request.user.id,
+                    resource_type='patient',
+                    resource_id=patient_id,
+                    details={'patient_id': patient_id},
+                    tenant=effective_tenant(request),
+                    request_id=request_id_var.get(),
+                )
             await AuditLog(conn).log_event(
                 event_type='portal.orders_view',
                 actor_id=request.user.id,
@@ -260,6 +336,35 @@ class PortalOrdersHandler(HTTPEndpoint):
         return ok({'data': orders})
 
 
+class PortalConsentHandler(HTTPEndpoint):
+    @requires_permission(Permission.PORTAL_READ)
+    async def put(self, request):
+        patient_id = request.path_params['patient_id']
+        body = await parse_body(UpdateConsentRequest, request)
+        async with get_conn() as conn:
+            portal = Portal(conn)
+            if not await portal.get_scope(patient_id, request.user.id):
+                return not_found('Patient not found')
+            await portal.set_consent(
+                patient_id, body.consent_results, body.consent_appointments,
+            )
+            await AuditLog(conn).log_event(
+                event_type='portal.consent_changed',
+                actor_id=request.user.id,
+                resource_type='patient',
+                resource_id=patient_id,
+                details={
+                    'patient_id': patient_id,
+                    'consent_results': body.consent_results,
+                    'consent_appointments': body.consent_appointments,
+                },
+                tenant=effective_tenant(request),
+                request_id=request_id_var.get(),
+            )
+        return ok({'data': {'patient_id': patient_id,
+                            'consent_results': body.consent_results}})
+
+
 class PortalFollowUpHandler(HTTPEndpoint):
     @requires_permission(Permission.PORTAL_READ)
     async def get(self, request):
@@ -268,7 +373,7 @@ class PortalFollowUpHandler(HTTPEndpoint):
             rows = await Portal(conn).list_follow_ups(request.user.id, status)
         return ok({'data': rows})
 
-    @requires_permission(Permission.FOLLOW_UP_WRITE)
+    @requires_permission([Permission.FOLLOW_UP_WRITE, Permission.FOLLOW_UP_SELF])
     async def post(self, request):
         body = await parse_body(CreateFollowUpRequest, request)
         async with get_conn() as conn:
@@ -329,5 +434,15 @@ class PortalFollowUpStatusHandler(HTTPEndpoint):
                     details={'status': body.status},
                     tenant=effective_tenant(request),
                     request_id=request_id_var.get(),
+                )
+            elif body.status == 'completed':
+                # S3 (P-04): the coordinator's response reaches the patient
+                # (all users scoped to that patient).
+                await notify_patient_scoped(
+                    conn, row['patient_id'],
+                    'portal.follow_up_response',
+                    'Follow-up response available',
+                    'Your follow-up request has been completed by the team.',
+                    '/portal/follow-ups',
                 )
         return ok({})

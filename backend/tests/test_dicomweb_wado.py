@@ -131,7 +131,7 @@ class TestWadoInstance:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get('/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8')
 
         assert resp.status_code == 200
@@ -195,7 +195,7 @@ class TestWadoUri:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/wado?requestType=WADO&studyUID=1.2.3.4.5.6&objectUID=1.2.3.4.5.6.7.8'
                     )
@@ -244,12 +244,45 @@ class TestWadoUri:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6')
 
         assert resp.status_code == 200
         assert resp.headers['content-type'].startswith('multipart/related')
         assert b'WADO_BOUNDARY' in resp.content
+
+    def test_study_multipart_part_headers_carry_transfer_syntax(self):
+        # Same PS3.18 §11.4.1 requirement as the instance path: every part of
+        # a study/series multipart body names its stored transfer syntax.
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(self._make_app(user))
+        dcm_bytes = _make_mini_dicom()
+
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(return_value={
+            'id': 1, 'type': 'local', 'location': '/data/files',
+            'master': True, 'delay': 0, 'status': 'ok',
+            'total': 100, 'meta': '{}',
+        })
+        conn.fetch = AsyncMock(return_value=[
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
+                    resp = client.get('/wado?requestType=WADO&studyUID=1.2.3.4.5.6')
+
+        assert resp.status_code == 200
+        assert (
+            b'Content-Type: application/dicom; transfer-syntax=1.2.840.10008.1.2.1'
+            in resp.content
+        )
 
     def test_object_uid_cross_checked_against_study_uid(self):
         user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
@@ -301,7 +334,7 @@ class TestWadoUri:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/wado?requestType=WADO&studyUID=1.2.3.4.5.6'
                         '&seriesUID=1.2.3.4.5.6.7&objectUID=1.2.3.4.5.6.7.8'
@@ -333,7 +366,7 @@ class TestWadoMultipart:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8',
                         headers={'Accept': 'multipart/related; type="application/dicom"'},
@@ -344,6 +377,42 @@ class TestWadoMultipart:
         assert 'WADO_BOUNDARY' in resp.headers['content-type']
         assert b'WADO_BOUNDARY' in resp.content
         assert dcm_bytes in resp.content
+
+    def test_instance_multipart_part_headers_carry_transfer_syntax(self):
+        # PS3.18 §11.4.1: each multipart part must declare the transfer
+        # syntax of the enclosed DICOM object as a Content-Type parameter;
+        # without it the wadors loader assumes Implicit VR LE and misparses
+        # Explicit VR LE pixel data (the stored default here).
+        user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
+        client = TestClient(_make_app(user))
+
+        dcm_bytes = _make_mini_dicom()
+        conn = _FakeConn()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {'id': 1, 'type': 'local', 'location': '/data/files',
+             'master': True, 'delay': 0, 'status': 'ok',
+             'total': 100, 'meta': '{}'},
+            {'id': 42, 'location': '/tmp/test.dcm', 'name': 'test.dcm',
+             'patient_id': 1, 'study_id': 1, 'series_id': 1,
+             'meta': '{}', 'replica_meta': '{}'},
+        ])
+
+        mock_storage = MagicMock()
+        mock_storage.fetch = AsyncMock(return_value='/tmp/test.dcm')
+
+        with patch('api.dicomweb.get_conn', return_value=conn):
+            with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
+                    resp = client.get(
+                        '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8',
+                        headers={'Accept': 'multipart/related; type="application/dicom"'},
+                    )
+
+        assert resp.status_code == 200
+        assert (
+            b'Content-Type: application/dicom; transfer-syntax=1.2.840.10008.1.2.1'
+            in resp.content
+        )
 
     def test_metadata_takes_precedence_over_multipart(self):
         user = User({'id': 1, 'permissions': ['DICOMWEB_READ']})
@@ -412,7 +481,7 @@ class TestWadoMetadata:
 
         with patch('api.dicomweb.get_conn', return_value=conn):
             with patch('api.dicomweb.Storage.get', new=AsyncMock(return_value=mock_storage)):
-                with patch('aiofiles.open', return_value=_AsyncFileMock(dcm_bytes)):
+                with patch('aiofiles.open', side_effect=lambda *a, **k: _AsyncFileMock(dcm_bytes)):
                     resp = client.get(
                         '/dicomweb/studies/1.2.3.4.5.6/series/1.2.3.4.5.6.7/instances/1.2.3.4.5.6.7.8?transferSyntax=*'
                     )

@@ -4,6 +4,9 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 timeout = 300
 timeout_method = "thread"
+markers = [
+    "perf: performance/concurrency gates (S12-01..07) — soft thresholds, CI-tolerant",
+]
 filterwarnings = [
     "ignore::UserWarning:jwt.warnings",
     'ignore:Using `httpx` with `starlette.testclient`:UserWarning',

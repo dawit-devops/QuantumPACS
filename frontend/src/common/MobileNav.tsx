@@ -1,18 +1,15 @@
-import React, { useState } from "react";
-import { Link, useLocation } from "react-router";
-import { Badge, Drawer, Menu } from "antd";
 import {
   FileSearchOutlined,
   UserOutlined,
   MenuOutlined,
   SolutionOutlined,
 } from "@ant-design/icons";
+import { Badge, Drawer, Menu } from "antd";
+import React, { useState } from "react";
+import { Link, useLocation } from "react-router";
+
 import { useAuth } from "../auth/AuthContext";
-import {
-  workspaceFor,
-  isAdminScopedRole,
-  NON_ADMIN_WORKSPACES,
-} from "../navigator";
+import { workspaceFor, isAdminScopedRole, NON_ADMIN_WORKSPACES } from "../navigator";
 import { NAV_SECTIONS, hasItemPermission, type NavItemDef } from "./Sidebar";
 import "./MobileNav.css";
 
@@ -58,16 +55,10 @@ export default function MobileNav() {
   const isAdminScoped = isAdminScopedRole(user?.role);
   const sections = NAV_SECTIONS.map((section) => ({
     section,
-    items: section.items.filter((item) =>
-      hasItemPermission(item, hasPermission, isAdminScoped),
-    ),
+    items: section.items.filter((item) => hasItemPermission(item, hasPermission, isAdminScoped)),
   }))
-    .filter(
-      ({ section, items }) => userWorkspace === section.key || items.length > 0,
-    )
-    .filter(
-      ({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key),
-    );
+    .filter(({ section, items }) => userWorkspace === section.key || items.length > 0)
+    .filter(({ section }) => !isAdminScoped || !NON_ADMIN_WORKSPACES.has(section.key));
 
   const isActive = (path: string) =>
     path === "/"
@@ -105,7 +96,7 @@ export default function MobileNav() {
               // the bar — /portal is closed to them (ClinicalRoute), so the
               // item would be a dead link, mirroring the sidebar's
               // NON_ADMIN_WORKSPACES filter.
-              (!isAdminScoped && hasPermission(item.permission)),
+              (!isAdminScoped && hasPermission(item.permission))
           )
           .map((item) => {
             const active = isActive(item.path);

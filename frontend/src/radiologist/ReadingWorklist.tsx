@@ -1,5 +1,5 @@
 import { useDocumentTitle, useTenantRefetch } from "../hooks";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Layout,
   Table,
@@ -71,10 +71,18 @@ function ReadingWorklist() {
   const [reviewFilter, setReviewFilter] = useState(
     () => searchParams.get("review") === "1",
   );
+  // R-01: unread toggle — exams never opened for reading.
+  const [unreadOnly, setUnreadOnly] = useState(
+    () => searchParams.get("unread") === "1",
+  );
   const [physicianFilter, setPhysicianFilter] = useState(
     () => searchParams.get("physician") || "",
   );
   const [data, setData] = useState<any[]>([]);
+  // D1: server-side pagination state
+  const [total, setTotal] = useState(0);
+  const pageRef = useRef(1);
+  const pageSizeRef = useRef(20);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -95,10 +103,15 @@ function ReadingWorklist() {
     if (assignedToMe) query.radiologist = "me";
     if (physicianFilter) query.physician = physicianFilter;
     if (reviewFilter) query.review = "1";
+    if (unreadOnly) query.unread = "1";
+    // D1: server-side pagination — the queue can exceed any client page.
+    query.page = String(pageRef.current);
+    query.per_page = String(pageSizeRef.current);
     request("reports/reading-list", { query })
       .then((res: any) => {
         setLoading(false);
         setData(Array.isArray(res.data) ? res.data : []);
+        setTotal(typeof res.total === "number" ? res.total : res.data.length);
       })
       .catch((e: any) => {
         setLoading(false);
@@ -111,6 +124,7 @@ function ReadingWorklist() {
     assignedToMe,
     physicianFilter,
     reviewFilter,
+    unreadOnly,
   ]);
 
   useEffect(() => {
@@ -118,6 +132,14 @@ function ReadingWorklist() {
     const timer = setInterval(fetchList, REFRESH_MS);
     return () => clearInterval(timer);
   }, [fetchList]);
+
+  // R-17: personal stats — one fetch on mount (not part of the poll loop).
+  const [stats, setStats] = useState<any>(null);
+  useEffect(() => {
+    request("reports/reading-stats?days=14")
+      .then((res: any) => setStats(res?.data ?? null))
+      .catch(() => {});
+  }, []);
 
   // Tenant switch → refetch immediately (interval may be up to 30s away).
   useTenantRefetch(fetchList);
@@ -267,6 +289,7 @@ function ReadingWorklist() {
     if (assignedToMe) q.radiologist = "me";
     if (physicianFilter) q.physician = physicianFilter;
     if (reviewFilter) q.review = "1";
+    if (unreadOnly) q.unread = "1";
     const s = new URLSearchParams(q).toString();
     navigate(`/reading/${examId}${s ? `?${s}` : ""}`);
   };
@@ -356,16 +379,35 @@ function ReadingWorklist() {
         >
           Awaiting review
         </Checkbox>
+        <Checkbox
+          checked={unreadOnly}
+          onChange={(e) => setUnreadOnly(e.target.checked)}
+        >
+          Unread only
+        </Checkbox>
       </div>
 
       {error && (
         <Alert
           type="error"
-          message="Failed to load reading worklist"
+          title="Failed to load reading worklist"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
         />
+      )}
+
+      {/* R-17: personal reading stats — one fetch on mount. */}
+      {stats && (
+        <div className="reading-wl-stats" style={{ marginBottom: 12, fontSize: 13 }}>
+          Signed today: {stats.signed_today}
+          {typeof stats.avg_tat_seconds?.stat === "number" && (
+            <> · Avg STAT turnaround: {Math.round(stats.avg_tat_seconds.stat / 60)} min</>
+          )}
+          {typeof stats.stat_compliance_pct === "number" && (
+            <> · STAT compliance: {stats.stat_compliance_pct}%</>
+          )}
+        </div>
       )}
 
       {loading && !data.length ? (
@@ -377,7 +419,17 @@ function ReadingWorklist() {
           rowKey="exam_id"
           columns={columns}
           dataSource={data}
-          pagination={{ pageSize: 20, showSizeChanger: false }}
+          pagination={{
+            current: pageRef.current,
+            pageSize: pageSizeRef.current,
+            total,
+            showSizeChanger: false,
+            onChange: (p: number, ps: number) => {
+              pageRef.current = p;
+              pageSizeRef.current = ps;
+              fetchList();
+            },
+          }}
           onRow={(r) => ({
             // STAT studies get a persistent red edge + (in the priority tag) a
             // pulsing dot — visible even when the STAT row sorts below the fold.

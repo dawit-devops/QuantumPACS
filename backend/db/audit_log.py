@@ -78,7 +78,7 @@ class AuditLog:
         }
 
     async def query(self, event_type=None, actor=None, actor_id=None, date_from=None, date_to=None,
-                    tenant=None, cursor=None, limit=50, offset=None):
+                    tenant=None, cursor=None, limit=50, offset=None, resource_id=None):
         where = ["l.log LIKE '{%'"]
         params = []
         idx = 1
@@ -115,6 +115,10 @@ class AuditLog:
         if cursor:
             where.append(f"l.id < ${idx}")
             params.append(int(cursor))
+            idx += 1
+        if resource_id:
+            where.append(f"(l.log::json->'resource'->>'id') = ${idx}")
+            params.append(str(resource_id))
             idx += 1
 
         q = f"""

@@ -82,6 +82,8 @@ class TestPatientRegistration:
                 'birth_date': '1990-01-01', 'sex': 'F',
             },
         ]
+        # FD-01: the fuzzy MPI probe returns no similar matches.
+        mock_conn.fetch.return_value = []
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.post('/patients', json={
                 'patient_id': 'P001', 'name': 'Test Patient',
@@ -129,6 +131,8 @@ class TestPatientRegistration:
             'id': 2, 'patient_id': 'P1234567890', 'name': 'Gen Patient',
             'birth_date': '', 'sex': '',
         }
+        # FD-01: the fuzzy MPI probe returns no similar matches.
+        mock_conn.fetch.return_value = []
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.post('/patients', json={'name': 'Gen Patient'})
         assert resp.status_code == 201
@@ -253,14 +257,57 @@ class TestAppointmentConflict:
         assert mock_conn.fetchrow.await_count == 1
 
 
-class TestWaitingQueuePrivacy:
+class TestWaitingQueueSpec:
     def test_queue_requires_queue_read(self):
         user = User({'id': 1, 'permissions': []})
         client = TestClient(_make_app(user))
         resp = client.get('/queue')
         assert resp.status_code == 403
 
-    def test_queue_projects_privacy_fields(self):
+    def test_queue_returns_full_name_priority_and_modality(self):
+        # FD-05: the staff queue (QUEUE_READ) carries full patient names,
+        # wait time, priority, and modality — not HIPAA initials+last4.
+        user = User({'id': 1, 'permissions': ['QUEUE_READ']})
+        client = TestClient(_make_app(user))
+        mock_conn = AsyncMock()
+        mock_conn.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = [
+            {
+                'visit_id': 'v1', 'patient_id': 'MRN12345',
+                'patient_name': 'John Smith', 'status': 'checked_in',
+                'destination': 'CT1', 'modality': 'CT',
+                'priority': 'STAT', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': 12,
+            },
+            {
+                'visit_id': 'v2', 'patient_id': 'P1',
+                'patient_name': 'Jane Doe', 'status': 'registered',
+                'destination': 'MR2', 'modality': 'MR',
+                'priority': 'ROUTINE', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': None,
+            },
+        ]
+        with patch('api.frontdesk.get_conn', return_value=mock_conn):
+            resp = client.get('/queue?date=2026-08-04')
+        assert resp.status_code == 200
+        data = resp.json()['data']
+        assert len(data) == 2
+        row = data[0]
+        assert row['patient_name'] == 'John Smith'
+        assert row['patient_id'] == 'MRN12345'
+        assert row['status'] == 'checked_in'
+        assert row['destination'] == 'CT1'
+        assert row['modality'] == 'CT'
+        assert row['priority'] == 'STAT'
+        assert row['wait_minutes'] == 12
+        assert 'initials' not in row
+        assert 'last4' not in row
+        assert data[1]['priority'] == 'ROUTINE'
+        assert data[1]['wait_minutes'] is None
+
+    def test_queue_exposes_wait_minutes(self):
+        # FD-05: the front-desk queue needs minutes-since-arrival so the UI
+        # can color-code by wait time (green <15m, amber 15-30m, red >30m).
         user = User({'id': 1, 'permissions': ['QUEUE_READ']})
         client = TestClient(_make_app(user))
         mock_conn = AsyncMock()
@@ -270,29 +317,55 @@ class TestWaitingQueuePrivacy:
                 'visit_id': 'v1', 'patient_id': 'MRN12345',
                 'patient_name': 'John Smith', 'status': 'checked_in',
                 'destination': 'CT1', 'updated_at': '2026-08-04T10:00:00+00:00',
-            },
-            {
-                'visit_id': 'v2', 'patient_id': 'P1',
-                'patient_name': '', 'status': 'registered',
-                'destination': '', 'updated_at': '2026-08-04T10:00:00+00:00',
+                'wait_minutes': 22,
             },
         ]
         with patch('api.frontdesk.get_conn', return_value=mock_conn):
             resp = client.get('/queue?date=2026-08-04')
         assert resp.status_code == 200
         data = resp.json()['data']
-        assert len(data) == 2
-        row = data[0]
-        assert row['initials'] == 'J.S.'
-        assert row['last4'] == '2345'
-        assert row['status'] == 'checked_in'
-        assert row['destination'] == 'CT1'
-        assert row['visit_id'] == 'v1'
-        assert 'patient_name' not in row
-        assert 'name' not in row
-        assert 'patient_id' not in row
-        assert data[1]['initials'] == ''
-        assert data[1]['last4'] == 'P1'
+        assert len(data) == 1
+        assert data[0]['wait_minutes'] == 22
+
+
+class TestInsuranceRecordFields:
+    """FD-02: create_insurance persists coverage fields so the eligibility
+    handler can return real copay/deductible/provider data."""
+
+    def test_create_insurance_persists_coverage_fields(self):
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(return_value={'id': 'ins-1'})
+        from db.frontdesk import FrontDesk
+        fd = FrontDesk(mock_conn)
+        import asyncio
+        asyncio.run(fd.create_insurance({
+            'patient_id': 'P-1', 'policy_number': 'POL-1',
+            'provider': 'Aetna', 'member_id': 'M-123',
+            'copay_amount': 25.0, 'deductible_total': 500.0,
+            'created_by': '1',
+        }))
+        sql = mock_conn.fetchrow.call_args.args[0]
+        assert 'provider' in sql
+        assert 'member_id' in sql
+        assert 'copay_amount' in sql
+        assert 'deductible_total' in sql
+
+
+class TestSearchPatientsFields:
+    """FD-07: search_patients matches by name/MRN plus DOB and phone so the
+    quick-search overlay can look up by any identifier."""
+
+    def test_search_matches_dob_and_phone_columns(self):
+        mock_conn = MagicMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        from db.frontdesk import FrontDesk
+        fd = FrontDesk(mock_conn)
+        import asyncio
+        asyncio.run(fd.search_patients('', dob='1980', phone='555'))
+        sql = mock_conn.fetch.call_args.args[0]
+        assert 'birth_date' in sql
+        assert 'phone' in sql
+        assert 'ILIKE' in sql
 
 
 class TestVisitStatusTransitions:
